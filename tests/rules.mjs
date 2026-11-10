@@ -1,0 +1,31 @@
+import {createRequire} from "node:module";const require=createRequire(import.meta.url);require("firebase/compat/firestore");
+import fs from 'node:fs';const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');const {doc,setDoc,getDoc,getDocs,collection,updateDoc,writeBatch}=require('firebase/firestore');
+const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
+try{
+ const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
+ const owner=env.authenticatedContext('owner',claims('meniviner@gmail.com')).firestore();const guest=env.unauthenticatedContext().firestore();const stranger=env.authenticatedContext('stranger',claims('stranger@example.com')).firestore();const editor=env.authenticatedContext('editor',claims('editor@example.com')).firestore();
+ const data={values:{f001:'בדיקה'},events:[],position:'experiences'};const row=(revision,email='meniviner@gmail.com')=>({data,revision,updated_at:new Date().toISOString(),updated_by:email});
+ await assertFails(setDoc(doc(guest,'cms_state','draft'),row(1)));
+ await assertFails(setDoc(doc(stranger,'cms_state','draft'),row(1,'stranger@example.com')));
+ const unverified=env.authenticatedContext('bad',{...claims('meniviner@gmail.com'),email_verified:false}).firestore();await assertFails(setDoc(doc(unverified,'cms_state','draft'),row(1)));
+ const password=env.authenticatedContext('pass',{...claims('meniviner@gmail.com'),firebase:{sign_in_provider:'password'}}).firestore();await assertFails(setDoc(doc(password,'cms_state','draft'),row(1)));
+ await assertSucceeds(setDoc(doc(owner,'cms_state','draft'),row(1)));await assertFails(getDoc(doc(guest,'cms_state','draft')));
+ await assertSucceeds(setDoc(doc(owner,'cms_state','published'),row(1)));await assertSucceeds(getDoc(doc(guest,'cms_state','published')));
+ await assertFails(setDoc(doc(owner,'cms_state','draft'),row(1)));
+ await assertFails(setDoc(doc(owner,'cms_state','published'),{...row(2),data:{...data,values:{f001:'not draft'}}}));
+ await assertSucceeds(setDoc(doc(owner,'cms_admins','editor@example.com'),{email:'editor@example.com',uid:null,role:'editor',active:true,created_at:'now'}));
+ await assertFails(setDoc(doc(editor,'cms_state','draft'),row(2,'editor@example.com')));
+ await assertSucceeds(updateDoc(doc(editor,'cms_admins','editor@example.com'),{uid:'editor'}));
+ await assertSucceeds(setDoc(doc(editor,'cms_state','draft'),row(2,'editor@example.com')));
+ await assertFails(updateDoc(doc(editor,'cms_admins','editor@example.com'),{role:'owner'}));
+ await assertFails(getDocs(collection(editor,'cms_admins')));
+ const history={data,revision:2,name:'draft',created_at:'now',actor:'editor@example.com'};
+ const batch=writeBatch(editor);batch.set(doc(editor,'cms_history','h1'),history);batch.set(doc(editor,'cms_state','draft'),row(3,'editor@example.com'));await assertSucceeds(batch.commit());
+ await assertFails(getDoc(doc(guest,'cms_history','h1')));
+ await assertSucceeds(updateDoc(doc(owner,'cms_admins','editor@example.com'),{active:false}));await assertFails(setDoc(doc(editor,'cms_state','draft'),row(4,'editor@example.com')));
+ const image={key:'image-1',name:'photo.webp',type:'image/webp',size:4,created_at:'now',actor:'meniviner@gmail.com',dataUrl:'data:image/webp;base64,AAAA'};
+ await assertSucceeds(setDoc(doc(owner,'cms_media','image-1'),image));await assertSucceeds(getDoc(doc(guest,'cms_media','image-1')));await assertFails(getDocs(collection(guest,'cms_media')));
+ await assertFails(setDoc(doc(owner,'cms_media','image-2'),{...image,key:'image-2',dataUrl:'data:image/svg+xml,<svg/>'}));
+ await assertFails(updateDoc(doc(owner,'cms_media','image-1'),{dataUrl:'data:image/webp;base64,BBBB'}));
+ console.log('PASS: owner, Google-only auth, invited account binding, revocation, immutable images, private drafts/history, public published content, publication equality and revision checks.');
+}finally{await env.cleanup();}

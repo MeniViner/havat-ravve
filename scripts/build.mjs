@@ -1,0 +1,9 @@
+import {build} from 'esbuild';import fs from 'node:fs/promises';import {createHash} from 'node:crypto';
+const config=JSON.parse(await fs.readFile('site.config.json','utf8'));if(config.firebase.projectId!=='havat-ravve'||config.origin!=='https://havat-ravve.web.app')throw Error('Unexpected project target');
+await fs.rm('dist',{recursive:true,force:true});await fs.cp('public','dist',{recursive:true});
+await build({entryPoints:['src/admin-entry.tsx'],bundle:true,format:'esm',outfile:'dist/admin.js',jsx:'automatic',external:['/assets/*'],minify:true,define:{'process.env.NODE_ENV':'"production"'}});
+await fs.writeFile('dist/admin.html','<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>ניהול חוות רווה</title><link rel="stylesheet" href="/admin.css"></head><body><div id="root"></div><script type="module" src="/admin.js"></script></body></html>');
+await build({entryPoints:['src/site-entry.ts'],bundle:true,format:'esm',outfile:'dist/site.js',minify:true});await build({entryPoints:['src/sw.ts'],bundle:true,format:'iife',outfile:'dist/sw.js',minify:true});
+await build({entryPoints:['src/cms.ts'],bundle:true,platform:'node',format:'esm',outfile:'.build/cms.mjs'});const {defaults,render}=await import('../.build/cms.mjs?'+Date.now());await fs.writeFile('dist/index.html',render(defaults));await fs.writeFile('dist/archive.html',render(defaults,true));
+const version=createHash('sha256').update(await fs.readFile('dist/site.js')).update(await fs.readFile('dist/styles.css')).digest('hex').slice(0,12);await fs.writeFile('dist/sw.js',(await fs.readFile('dist/sw.js','utf8')).replaceAll('__BUILD_ID__',version));
+console.log('Built dist/ for Firebase Spark. No Cloud Functions or Cloud Storage required.');

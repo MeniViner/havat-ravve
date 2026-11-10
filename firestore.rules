@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function google(){return request.auth != null && request.auth.token.email_verified == true && request.auth.token.firebase.sign_in_provider == 'google.com';}
+  function owner(){return google() && request.auth.token.email == 'meniviner@gmail.com';}
+  function member(){return google() && exists(/databases/$(database)/documents/cms_admins/$(request.auth.token.email)) && get(/databases/$(database)/documents/cms_admins/$(request.auth.token.email)).data.active == true && get(/databases/$(database)/documents/cms_admins/$(request.auth.token.email)).data.uid == request.auth.uid;}
+  function editor(){return owner() || member();}
+  function contentValid(){return request.resource.data.keys().hasOnly(['data','revision','updated_at','updated_by']) && request.resource.data.data is map && request.resource.data.data.keys().hasOnly(['values','events','position']) && request.resource.data.data.values is map && request.resource.data.data.events is list && request.resource.data.data.events.size() <= 100 && request.resource.data.data.position in ['story','heritage','experiences','visit'] && request.resource.data.revision is int && request.resource.data.updated_by == request.auth.token.email && request.resource.data.updated_at is string;}
+  function publicationValid(name){return name == 'draft' || (getAfter(/databases/$(database)/documents/cms_state/draft).data.data == request.resource.data.data);}
+  match /cms_state/{name} {
+   allow read: if name == 'published' || editor();
+   allow create: if editor() && name in ['draft','published'] && contentValid() && request.resource.data.revision == 1 && publicationValid(name);
+   allow update: if editor() && name in ['draft','published'] && contentValid() && request.resource.data.revision == resource.data.revision + 1 && publicationValid(name);
+  }
+  match /cms_admins/{email} {
+   allow get: if owner() || (google() && email == request.auth.token.email);
+   allow list: if owner();
+   allow create: if owner() && request.resource.data.keys().hasOnly(['email','uid','role','active','created_at']) && request.resource.data.email == email && request.resource.data.role == 'editor' && request.resource.data.active is bool && request.resource.data.uid == null;
+   allow update: if (owner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']) && request.resource.data.active is bool) || (google() && request.auth.token.email == email && resource.data.active == true && resource.data.uid == null && request.resource.data.uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid']));
+  }
+  match /cms_history/{id} {
+   allow read: if editor();
+   allow create: if editor() && request.resource.data.keys().hasOnly(['data','name','revision','created_at','actor']) && request.resource.data.name in ['draft','published'] && request.resource.data.actor == request.auth.token.email && request.resource.data.data == get(/databases/$(database)/documents/cms_state/$(request.resource.data.name)).data.data && request.resource.data.revision == get(/databases/$(database)/documents/cms_state/$(request.resource.data.name)).data.revision;
+  }
+  match /cms_media/{id} {
+   allow get: if true;
+   allow list: if editor();
+   allow create: if editor() && request.resource.data.keys().hasOnly(['key','name','type','size','created_at','actor','dataUrl']) && request.resource.data.key == id && request.resource.data.actor == request.auth.token.email && request.resource.data.type == 'image/webp' && request.resource.data.name is string && request.resource.data.name.size() < 250 && request.resource.data.size is int && request.resource.data.size <= 450000 && request.resource.data.dataUrl is string && request.resource.data.dataUrl.size() <= 650000 && request.resource.data.dataUrl.matches('data:image/webp;base64,[A-Za-z0-9+/=]+');
+  }
+ }
+}

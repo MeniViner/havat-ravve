@@ -1,0 +1,12 @@
+{
+  "origin": "https://havat-ravve.web.app",
+  "ownerEmail": "meniviner@gmail.com",
+  "firebase": {
+    "apiKey": "AIzaSyCeQthaj4A6FP6__BUiArf57BBqfByaUog",
+    "authDomain": "havat-ravve.firebaseapp.com",
+    "projectId": "havat-ravve",
+    "storageBucket": "havat-ravve.firebasestorage.app",
+    "messagingSenderId": "714901430354",
+    "appId": "1:714901430354:web:ba53a5f2dfdb1f133a3f8b"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "havat-ravve-firebase",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node tests/core.mjs",
+    "deploy": "npm run build && firebase deploy --only hosting,firestore --project havat-ravve",
+    "emulators": "npm run build && firebase emulators:start --project demo-havat-ravve",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs\""
+  },
+  "dependencies": {
+    "firebase": "^12.0.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "0.25.12",
+    "firebase-tools": "^14.0.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "@firebase/app-compat": "0.5.19",
+    "@firebase/app": "0.16.3"
+  }
+}
