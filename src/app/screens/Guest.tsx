@@ -120,7 +120,7 @@ export function LoginPage({ ctx }: { ctx: GuestCtx }) {
   const demo = useDemo();
   useEffect(() => { if (ctx.profile) navigate(next, true); }, [ctx.profile]);
   const go = async () => {
-    if (demo.on && demo.persona !== 'real') { setDemo({ persona: 'guest' }); navigate(next, true); return; }
+    if (demo.on) { setDemo({ persona: 'guest' }); navigate(next, true); return; }
     setBusy(true); setError('');
     try { await signIn(); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
   };
@@ -308,7 +308,7 @@ export function DonatePage({ ctx }: { ctx: GuestCtx }) {
 export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
   const uid = ctx.profile?.uid || '';
   const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const tabs = useMyTabs(uid, !!uid);
-  if (!ctx.profile) return <><Top title="החשבון שלי" /><Empty title="עוד לא נכנסתם" text="נכנסים פעם אחת עם Google, וזה נשמר בטלפון." action={<Btn to="/login?next=/me/account">כניסה</Btn>} /><div className="links" style={{ marginTop: 20 }}><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A></div><DemoSection /></>;
+  if (!ctx.profile) return <><Top title="החשבון שלי" /><Empty title="עוד לא נכנסתם" text="נכנסים פעם אחת עם Google, וזה נשמר בטלפון." action={<Btn to="/login?next=/me/account">כניסה</Btn>} /><div className="links" style={{ marginTop: 20 }}><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A></div><DemoSection role="guest" /></>;
   const p = ctx.profile;
   const missing = ctx.settings.registrationFields.filter((f) => !(p.fields?.[f.id] || '').trim());
   const orders = [...new Map(tickets.items.map((t) => [t.orderId, t])).values()];
@@ -329,7 +329,7 @@ export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
       <NotificationsSection team={false} />
       <Sec title="עוד" />
       <div className="links"><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a></div>
-      <DemoSection />
+      <DemoSection role={p.role} />
       <SignOut />
     </>
   );

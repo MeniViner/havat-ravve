@@ -1,17 +1,17 @@
-// One door to the data: Firestore when signed in for real, the demo store when a demo persona is active,
-// and both merged when demo examples are shown on top of real data. Screens never import firebase/firestore directly.
+// One door to the data: Firestore when signed in for real, the demo store while demo mode is on. Never both.
+// Demo on => no Firestore listener and no Firestore write. Demo off => an id that belongs to the demo data is refused.
+// Screens never import firebase/firestore directly.
 import { useEffect, useMemo, useState } from 'react';
 import {
   collection, doc, onSnapshot, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction,
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { demoOnly, demoVisible, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion } from './demo/store';
+import { demoOnly, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion } from './demo/store';
 
 export type Op = '==' | '!=' | '<' | '<=' | '>' | '>=' | 'in' | 'array-contains';
 export type Spec = { where?: [string, Op, unknown][]; orderBy?: [string, 'asc' | 'desc'][]; limit?: number };
 type Row = Record<string, unknown>;
-const rid = (r: Row) => String(r.id ?? r.uid ?? '');
 
 // ---------- in-memory evaluation of a spec (for demo rows) ----------
 const get = (o: Record<string, unknown>, f: string) => f.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o);
@@ -47,7 +47,7 @@ export type ListState<T> = { items: T[]; loading: boolean; error: string };
 export function useList<T extends Row>(path: string, spec: Spec, enabled = true): ListState<T> {
   const demo = useDemo(); const v = useDemoVersion();
   const specKey = JSON.stringify(spec);
-  const local = demo.on && demo.persona !== 'real';
+  const local = demo.on;
   const [fs, setFs] = useState<ListState<T>>({ items: [], loading: enabled && !local, error: '' });
   useEffect(() => {
     if (!enabled || local) { setFs({ items: [], loading: false, error: '' }); return; }
@@ -58,49 +58,53 @@ export function useList<T extends Row>(path: string, spec: Spec, enabled = true)
   }, [path, specKey, enabled, local]);
   return useMemo(() => {
     if (!enabled) return { items: [], loading: false, error: '' };
-    if (!demo.on) return fs;
-    const extra = applySpec(demoItems(path) as T[], spec);
-    if (local) return { items: extra, loading: false, error: '' };
-    const merged = applySpec([...fs.items.filter((i) => !isDemoId(rid(i))), ...extra], { orderBy: spec.orderBy, limit: spec.limit });
-    return { items: merged, loading: fs.loading, error: fs.error };
-  }, [fs, demo.on, local, path, specKey, enabled, v]);
+    if (local) return { items: applySpec(demoItems(path) as T[], spec), loading: false, error: '' };
+    return fs;
+  }, [fs, local, path, specKey, enabled, v]);
 }
 export function useDoc<T extends Row>(path: string, enabled = true): { item: T | null; loading: boolean } {
   const demo = useDemo(); const v = useDemoVersion();
-  const id = path.slice(path.lastIndexOf('/') + 1);
-  const local = demo.on && (demo.persona !== 'real' || isDemoId(id));
-  const [fs, setFs] = useState<{ item: T | null; loading: boolean }>({ item: null, loading: enabled && !local });
+  const local = demo.on;
+  // the state remembers which document it holds, so a new path never shows the previous document, not even for one render
+  const [fs, setFs] = useState<{ path: string; item: T | null; loading: boolean }>({ path, item: null, loading: enabled && !local });
   useEffect(() => {
-    if (!enabled || local) { setFs({ item: null, loading: false }); return; }
-    setFs({ item: null, loading: true });
-    return onSnapshot(doc(db, path), (snap) => setFs({ item: snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as unknown as T) : null, loading: false }), () => setFs({ item: null, loading: false }));
+    if (!enabled || local) { setFs({ path, item: null, loading: false }); return; }
+    setFs({ path, item: null, loading: true });
+    return onSnapshot(doc(db, path), (snap) => setFs({ path, item: snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as unknown as T) : null, loading: false }), () => setFs({ path, item: null, loading: false }));
   }, [path, enabled, local]);
   return useMemo(() => {
     if (!enabled) return { item: null, loading: false };
     if (local) return { item: (demoDoc(path) as T | null), loading: false };
-    if (demo.on && !fs.item && !fs.loading) return { item: (demoDoc(path) as T | null), loading: false };
-    return fs;
-  }, [fs, demo.on, local, path, enabled, v]);
+    if (fs.path !== path) return { item: null, loading: true };
+    return { item: fs.item, loading: fs.loading };
+  }, [fs, local, path, enabled, v]);
 }
 
 // ---------- writes ----------
-const routeLocal = (id: string) => demoOnly() || (demoVisible() && isDemoId(id));
+/** Demo on: everything is local. Demo off: a demo id or a path under a demo document must never reach Firestore. */
+const isDemoRef = (col: string, id: string) => isDemoId(id) || col.split('/').some(isDemoId);
+function real(col: string, id: string) {
+  if (isDemoRef(col, id)) throw new Error('זה פריט לדוגמה. הוא לא נשמר בשרת.');
+  return doc(db, col, id);
+}
 export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collection(db, col)).id);
 export const write = {
-  async set(col: string, id: string, data: Record<string, unknown>) { if (routeLocal(id)) return demoSet(col, id, data); await setDoc(doc(db, col, id), data); },
-  async update(col: string, id: string, patch: Record<string, unknown>) { if (routeLocal(id)) return demoUpdate(col, id, patch); await updateDoc(doc(db, col, id), patch); },
-  async remove(col: string, id: string) { if (routeLocal(id)) return demoDelete(col, id); await deleteDoc(doc(db, col, id)); },
+  async set(col: string, id: string, data: Record<string, unknown>) { if (demoOnly()) return demoSet(col, id, data); await setDoc(real(col, id), data); },
+  async update(col: string, id: string, patch: Record<string, unknown>) { if (demoOnly()) return demoUpdate(col, id, patch); await updateDoc(real(col, id), patch); },
+  async remove(col: string, id: string) { if (demoOnly()) return demoDelete(col, id); await deleteDoc(real(col, id)); },
   /** Several sets/updates that should land together. */
   async batch(ops: { op: 'set' | 'update' | 'remove'; col: string; id: string; data?: Record<string, unknown> }[]) {
     if (!ops.length) return;
-    if (ops.every((o) => routeLocal(o.id))) { for (const o of ops) o.op === 'set' ? demoSet(o.col, o.id, o.data!) : o.op === 'update' ? demoUpdate(o.col, o.id, o.data!) : demoDelete(o.col, o.id); return; }
+    if (demoOnly()) { for (const o of ops) o.op === 'set' ? demoSet(o.col, o.id, o.data!) : o.op === 'update' ? demoUpdate(o.col, o.id, o.data!) : demoDelete(o.col, o.id); return; }
+    const refs = ops.map((o) => real(o.col, o.id)); // throws before anything is queued if one of them is a demo id
     const b = writeBatch(db);
-    for (const o of ops) { const r = doc(db, o.col, o.id); o.op === 'set' ? b.set(r, o.data!) : o.op === 'update' ? b.update(r, o.data!) : b.delete(r); }
+    ops.forEach((o, i) => { o.op === 'set' ? b.set(refs[i], o.data!) : o.op === 'update' ? b.update(refs[i], o.data!) : b.delete(refs[i]); });
     await b.commit();
   },
   /** Read-then-write on one document. `fn` returns the full new document, or undefined to leave it alone. */
   async tx(col: string, id: string, fn: (current: Record<string, unknown> | null) => Record<string, unknown> | undefined) {
-    if (routeLocal(id)) { const next = fn(demoDoc(`${col}/${id}`)); if (next) demoSet(col, id, next); return; }
-    await runTransaction(db, async (t) => { const ref = doc(db, col, id); const snap = await t.get(ref); const next = fn(snap.exists() ? (snap.data() as Record<string, unknown>) : null); if (next) t.set(ref, next); });
+    if (demoOnly()) { const next = fn(demoDoc(`${col}/${id}`)); if (next) demoSet(col, id, next); return; }
+    const ref = real(col, id);
+    await runTransaction(db, async (t) => { const snap = await t.get(ref); const next = fn(snap.exists() ? (snap.data() as Record<string, unknown>) : null); if (next) t.set(ref, next); });
   },
 };

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node tests/core.mjs",
+    "test": "node tests/core.mjs && node tests/demo.mjs",
     "deploy": "npm run build && firebase deploy --only hosting,firestore --project havat-ravve",
     "emulators": "npm run build && firebase emulators:start --project demo-havat-ravve",
     "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs\"",

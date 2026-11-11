@@ -30,7 +30,7 @@ export function MoreScreen({ ctx }: { ctx: TeamCtx }) {
         <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A>
         <a href="/" target="_blank" rel="noopener"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a>
       </div>
-      <DemoSection />
+      <DemoSection role={ctx.owner ? 'owner' : ctx.manager ? 'manager' : ctx.profile.role} />
       <SignOut />
       <p className="lead" style={{ paddingTop: 20, fontSize: 13 }}>חוות רווה · גרסה 2.0 · עובד בלי קליטה, מסתנכרן כשיש</p>
     </>
@@ -78,20 +78,23 @@ export function InstallHint() {
 }
 export function SignOut() {
   const demo = useDemo();
-  return <div className="actions" style={{ paddingTop: 20 }}><Btn kind="ghost" icon="logout" onClick={() => demo.on && demo.persona !== 'real' ? setDemo({ persona: 'anon' }) : signOutUser().then(() => navigate('/', true))}>יציאה מהחשבון במכשיר הזה</Btn><p className="lead" style={{ padding: 0, fontSize: 13 }}>בפעם הבאה תצטרכו להיכנס שוב עם Google.</p></div>;
+  return <div className="actions" style={{ paddingTop: 20 }}><Btn kind="ghost" icon="logout" onClick={() => demo.on ? setDemo({ persona: 'anon' }) : signOutUser().then(() => navigate('/', true))}>יציאה מהחשבון במכשיר הזה</Btn><p className="lead" style={{ padding: 0, fontSize: 13 }}>בפעם הבאה תצטרכו להיכנס שוב עם Google.</p></div>;
 }
 
-/** Demo mode: show the example data on top of real data, or walk through the app as one of the example people. */
-export function DemoSection() {
+/**
+ * Demo mode: walk through the app as one of the example people. It is a sandbox: while it is on the real data is not shown
+ * and nothing is written to the server. It starts as the example person with the same role as the signed-in account.
+ */
+export function DemoSection({ role }: { role: Profile['role'] }) {
   const demo = useDemo();
   const toast = useToast();
-  const personas: Persona[] = ['real', 'owner', 'manager', 'staff', 'guest', 'blocked', 'anon'];
+  const personas: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon'];
   return (
     <>
       <Sec title="מצב הדגמה" n={demo.on ? 'פעיל' : undefined} />
-      <SwitchRow on={demo.on} onChange={(on) => { setDemo({ on, persona: on ? demo.persona : 'real' }); navigate('/', true); }} title="להציג נתוני דוגמה" meta="משימות, אירועים, אנשים ותרומות לדוגמה, על גבי הנתונים האמיתיים. אפשר להסתיר בכל רגע." />
+      <SwitchRow on={demo.on} onChange={(on) => { setDemo({ on }, role); navigate('/', true); }} title="לעבור לנתוני דוגמה" meta="האפליקציה נפתחת עם אנשים, משימות ואירועים לדוגמה. בזמן ההדגמה הנתונים האמיתיים לא מוצגים, ושום דבר לא נשמר בשרת." />
       {demo.on && <>
-        <Field label="לעבור באפליקציה בתור…" hint="בתור דמות לדוגמה שום דבר לא נשמר בשרת: הכל נשאר במכשיר הזה.">
+        <Field label="לעבור באפליקציה בתור…" hint="כל מה שעושים בהדגמה נשאר במכשיר הזה בלבד. כדי לחזור לעבודה אמיתית מכבים את ההדגמה.">
           <Chips value={demo.persona} onChange={(persona) => { setDemo({ persona }); navigate('/', true); }} options={personas.map((p) => ({ value: p, label: PERSONA_LABELS[p] }))} />
         </Field>
         <div className="inline pad" style={{ paddingTop: 14 }}><Btn kind="ghost" size="sm" icon="repeat" onClick={() => { resetDemoData(); toast({ text: 'נתוני הדוגמה אופסו' }, 2500); }}>איפוס נתוני הדוגמה</Btn><Btn kind="quiet" size="sm" onClick={() => navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast({ text: 'הקישור הועתק: /app?demo=owner' }, 3000))}>קישור להדגמה</Btn></div>
@@ -99,4 +102,3 @@ export function DemoSection() {
     </>
   );
 }
-
