@@ -6,6 +6,21 @@ window.initFarm = () => {
   const listen = (target, type, handler, options = {}) => target.addEventListener(type, handler, {...options, signal: controller.signal});
   window.cleanupFarm = () => { controller.abort(); observers.forEach(observer => observer.disconnect()); };
 
+  // The app (same origin) leaves the signed-in person's name here, so the site can show who is signed in.
+  const account = document.querySelector('[data-account-link]');
+  if (account) {
+    let me = null;
+    try { me = JSON.parse(localStorage.getItem('farm-me') || 'null'); } catch {}
+    if (me && typeof me.name === 'string' && me.name.trim()) {
+      const name = me.name.trim();
+      account.querySelector('.account-mark').textContent = name.split(/\s+/).slice(0, 2).map(word => word[0] || '').join('');
+      account.querySelector('.account-name').textContent = name;
+      const role = account.querySelector('.account-role');
+      if (typeof me.role === 'string' && me.role) { role.textContent = me.role; role.hidden = false; }
+      account.setAttribute('aria-label', 'האזור האישי של ' + name);
+    }
+  }
+
   const menuButton = document.querySelector('.menu-toggle');
   const navigation = document.querySelector('.main-nav');
   const header = document.querySelector('.site-header');

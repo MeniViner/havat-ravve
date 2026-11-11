@@ -50,16 +50,18 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
 
 const ICONS: Record<AppNotification['type'], string> = { visit: 'pin', donation: 'heart', join: 'user', order: 'ticket', receipt: 'file', tab: 'store', claim: 'ticket' };
 export function InboxRow({ n, ctx, handled }: { n: AppNotification; ctx: TeamCtx; handled?: boolean }) {
-  const toast = useToast();
+  const toast = useToast(); const desktop = useDesktop();
   const done = () => handleNotification(n, ctx.actor, !handled).then(() => toast({ text: handled ? 'חזר לתור' : 'סומן טופל', action: { label: 'ביטול', onClick: () => handleNotification(n, ctx.actor, !!handled) } }, 4000));
+  const acts = !handled && <><Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn><Btn size="sm" kind="quiet" onClick={done}>טופל</Btn></>;
   return (
-    <div className="row" style={handled ? { color: 'var(--muted)' } : undefined}>
+    <div className={'row' + (desktop ? ' center' : '')} style={handled ? { color: 'var(--muted)' } : undefined}>
       <span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={ICONS[n.type] || 'bell'} /></span>
       <div className="main">
         <A to={n.link} className="title" style={{ display: 'block' }}>{n.title}</A>
         <div className="meta"><span>{n.text}</span><span>{relTime(n.createdAt)}</span>{handled && n.handledBy && <span>· {firstName(n.handledBy.name)}</span>}</div>
-        {!handled && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn><Btn size="sm" kind="quiet" onClick={done}>טופל</Btn></div>}
+        {!handled && !desktop && <div className="inline" style={{ marginTop: 8 }}>{acts}</div>}
       </div>
+      {!handled && desktop && <div className="end">{acts}</div>}
       {handled && <Btn size="xs" kind="quiet" onClick={done}>החזרה לתור</Btn>}
     </div>
   );

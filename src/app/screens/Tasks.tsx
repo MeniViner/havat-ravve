@@ -5,17 +5,17 @@ import { Top, Sec, Row, Chk, Pill, Btn, Icon, Empty, Field, Input, Textarea, Chi
 import { navigate, match, useRoute } from '../router';
 import { setTaskDone, addTask, editTask, deleteTask, restoreTask, setTaskDoneDetails, useTask, compressPhoto, getPosition, useHistoryTasks, useBoughtHistory, type NewTask } from '../store';
 import { useActivityFor, ACTION_LABELS, useActivityByKind } from '../activity';
-import { byPriority } from './Today';
+import { byPriority, TaskRow, TaskOwner, useTakeTask } from './Today';
 import { KIND_LABELS } from '../types';
 void _Days;
 
 // ---------- shared bits ----------
-export function taskMeta(t: Task, ctx: TeamCtx, today: string): ReactNode {
+export function taskMeta(t: Task, ctx: TeamCtx, today: string, noOwner = false): ReactNode {
   const parts: ReactNode[] = [];
   if (t.templateId) { const tpl = ctx.templates.find((x) => x.id === t.templateId); parts.push(<span key="r"><Icon name="repeat" /> {tpl?.days.length ? 'חוזרת' : 'כל יום'}{tpl?.time ? ` עד ${tpl.time}` : ''}</span>); }
   else if (t.dueDate && t.dueDate < today) parts.push(<span key="d" style={{ color: 'var(--rust)', fontWeight: 600 }}>היה עד {dayLabel(t.dueDate)}</span>);
   else if (t.dueDate && t.dueDate !== today) parts.push(<span key="d">{dayLabel(t.dueDate)}</span>);
-  if (t.assignee && t.assignee.uid !== ctx.actor.uid) parts.push(<span key="a">{firstName(t.assignee.name)}</span>);
+  if (!noOwner && t.assignee && t.assignee.uid !== ctx.actor.uid) parts.push(<span key="a">{firstName(t.assignee.name)}</span>);
   if (!t.templateId && t.createdBy.uid !== ctx.actor.uid && (!t.assignee || t.assignee.uid === ctx.actor.uid)) parts.push(<span key="c">{firstName(t.createdBy.name)}{t.assignee ? ' ביקש' : ''}{!t.assignee ? ` · ${relTime(t.createdAt)}` : ''}</span>);
   if (t.location) parts.push(<span key="l"><Icon name="pin" /> {t.location.placeName || 'נקודה'}</span>);
   if (t.note && !t.photo) parts.push(<Icon key="n" name="info" />);
@@ -40,14 +40,14 @@ export function PhotoPicker({ value, onChange, label = 'צילום', big }: { va
 export const mapsLink = (l: TaskLocation) => `https://maps.google.com/?q=${l.lat},${l.lng}`;
 
 // ---------- list ----------
-type Filter = 'all' | 'mine' | 'urgent' | 'managers';
+type Filter = 'all' | 'mine' | 'free' | 'theirs' | 'urgent' | 'managers';
 export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: TeamCtx; open: Task[]; recent: Task[]; loading: boolean; selectedId?: string }) {
   const desktop = useDesktop();
   const today = todayISO();
   const [filter, setFilter] = useState<Filter>('all');
   const [who, setWho] = useState('');
   const mineCount = open.filter((t) => t.assignee?.uid === ctx.actor.uid).length;
-  const list = useMemo(() => open.filter((t) => filter === 'mine' ? t.assignee?.uid === ctx.actor.uid : filter === 'urgent' ? t.urgent : filter === 'managers' ? t.managersOnly : true)
+  const list = useMemo(() => open.filter((t) => filter === 'mine' ? t.assignee?.uid === ctx.actor.uid : filter === 'free' ? !t.assignee : filter === 'theirs' ? !!t.assignee && t.assignee.uid !== ctx.actor.uid : filter === 'urgent' ? t.urgent : filter === 'managers' ? t.managersOnly : true)
     .filter((t) => !who || (who === 'none' ? !t.assignee : t.assignee?.uid === who)).sort(byPriority(ctx.actor.uid, today)), [open, filter, who, today]);
   const groups = [
     { key: 'late', title: 'באיחור', items: list.filter((t) => t.dueDate && t.dueDate < today) },
@@ -57,45 +57,46 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
   ].filter((g) => g.items.length);
   const toggleDone = (t: Task, v: boolean) => setTaskDone(ctx.actor, t, v).catch(() => {});
   const { isOpen, toggle } = useOpenSections(['late', 'today', 'later', 'nodate', 'done'], 'tasks');
-  const chips = <Chips value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: open.length }, { value: 'mine', label: 'רק שלי', n: mineCount }, { value: 'urgent', label: 'דחוף', n: open.filter((t) => t.urgent).length || undefined }, ...(ctx.manager ? [{ value: 'managers' as Filter, label: 'מנהלים בלבד', n: open.filter((t) => t.managersOnly).length || undefined }] : [])]} scroll={!desktop} />;
+  const chips = <Chips value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: open.length }, { value: 'mine', label: 'עליי', n: mineCount }, { value: 'free', label: 'פנויות', n: open.filter((t) => !t.assignee).length }, { value: 'theirs', label: 'אצל אחרים', n: open.filter((t) => t.assignee && t.assignee.uid !== ctx.actor.uid).length || undefined }, { value: 'urgent', label: 'דחוף', n: open.filter((t) => t.urgent).length || undefined }, ...(ctx.manager ? [{ value: 'managers' as Filter, label: 'מנהלים בלבד', n: open.filter((t) => t.managersOnly).length || undefined }] : [])]} scroll={!desktop} />;
 
   return (
     <>
-      <Top title="משימות" sub={`${open.length} לביצוע · ${recent.length} בוצעו ביממה${desktop ? '. ריבוע = בוצע. השם של המבצע נרשם לבד.' : ''}`}
+      <Top title="משימות" sub={`${open.length} לביצוע · ${mineCount} עליך · ${recent.length} בוצעו ביממה${desktop ? '. מסמנים בעיגול, והשם של המבצע נרשם לבד.' : ''}`}
         end={desktop ? <>{ctx.manager && <Btn kind="ghost" size="sm" icon="repeat" to="/manage/templates">משימות חוזרות</Btn>}{ctx.manager && <Btn kind="ghost" size="sm" icon="pin" to="/manage/places">מקומות</Btn>}<Btn kind="ghost" size="sm" icon="history" to="/history">היסטוריה</Btn><Btn size="sm" icon="plus" to="/tasks/new">משימה</Btn></> : <Btn kind="quiet" size="sm" icon="history" to="/history">היסטוריה</Btn>} />
       <div style={{ padding: desktop ? '8px 20px 0' : '8px 0 0', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {chips}
         {desktop && <><span className="muted">·</span><Chips value={who} onChange={setWho} options={[{ value: '', label: 'כולם' }, ...ctx.team.filter((p) => p.role !== 'guest' && p.status === 'active').slice(0, 8).map((p) => ({ value: p.uid, label: firstName(p.displayName) })), { value: 'none', label: 'לא הוקצה' }]} /></>}
       </div>
-      {loading && !open.length ? <Loading /> : !groups.length ? <Empty title={filter === 'mine' ? 'אין משימות עליך' : 'אין משימות פתוחות'} text="כל הכבוד. אפשר להוסיף משימה בכפתור למטה." /> : desktop ? (
+      {loading && !open.length ? <Loading /> : !groups.length ? <Empty title={filter === 'mine' ? 'אין משימות עליך' : filter === 'free' ? 'אין משימות פנויות' : 'אין משימות כאלה'} text={filter === 'mine' ? 'אפשר לקחת אחת מהפנויות.' : 'אפשר להוסיף משימה בכפתור הפלוס.'} /> : desktop ? (
         <div className="tablewrap"><table>
-          <thead><tr><th style={{ width: 48 }}></th><th>מתי</th><th>משימה</th><th>למי</th><th>מקום</th><th>יצר/ה</th></tr></thead>
+          <thead><tr><th style={{ width: 44 }}></th><th>מתי</th><th>משימה</th><th>של מי</th><th className="opt">מקום</th><th className="opt">יצר/ה</th></tr></thead>
           <tbody>{groups.map((g) => <GroupRows key={g.key} g={g} ctx={ctx} today={today} selectedId={selectedId} onDone={toggleDone} />)}</tbody>
         </table></div>
       ) : groups.map((g) => (
         <div key={g.key}>
-          <Sec title={g.title} n={g.items.length} open={isOpen(g.key)} onToggle={() => toggle(g.key)} />
-          {isOpen(g.key) && <div className="list">{g.items.map((t) => <Row key={t.id} to={`/tasks/${t.id}`} thumb={t.photo || undefined} start={<Chk on={t.done} onChange={(v) => toggleDone(t, v)} label={`בוצע: ${t.title}`} rust={t.urgent} />} title={t.title} meta={<>{t.urgent && <Pill tone="rust">דחוף</Pill>}{t.assignee?.uid === ctx.actor.uid && <Pill tone="gold">עליך</Pill>}{t.managersOnly && <Pill>מנהלים</Pill>}{taskMeta(t, ctx, today)}</>} />)}</div>}
+          <Sec serif tone={g.key === 'late' ? 'rust' : undefined} title={g.title} n={g.items.length} open={isOpen(g.key)} onToggle={() => toggle(g.key)} />
+          {isOpen(g.key) && <div className="list">{g.items.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>}
         </div>
       ))}
       {!desktop && recent.length > 0 && <>
-        <Sec title="בוצע ביממה האחרונה" n={recent.length} link="היסטוריה" linkTo="/history" open={isOpen('done')} onToggle={() => toggle('done')} />
-        {isOpen('done') && <div className="list">{recent.slice(0, 10).map((t) => <Row key={t.id} done to={`/tasks/${t.id}`} start={<Chk on onChange={(v) => toggleDone(t, v)} label={`להחזיר לביצוע: ${t.title}`} />} title={t.title} meta={<span>{firstName(t.doneBy?.name || '')} · {whenText(t.doneAt!)}</span>} />)}</div>}
+        <Sec serif title="בוצע ביממה האחרונה" n={recent.length} link="היסטוריה" linkTo="/history" open={isOpen('done')} onToggle={() => toggle('done')} />
+        {isOpen('done') && <div className="list">{recent.slice(0, 10).map((t) => <Row key={t.id} done to={`/tasks/${t.id}`} start={<Chk round on onChange={(v) => toggleDone(t, v)} label={`להחזיר לביצוע: ${t.title}`} />} title={t.title} meta={<span>{firstName(t.doneBy?.name || '')} · {whenText(t.doneAt!)}</span>} />)}</div>}
       </>}
     </>
   );
 }
 function GroupRows({ g, ctx, today, selectedId, onDone }: { g: { key: string; title: string; items: Task[] }; ctx: TeamCtx; today: string; selectedId?: string; onDone: (t: Task, v: boolean) => void }) {
+  const take = useTakeTask(ctx);
   return <>
-    <tr className="sub"><td colSpan={6} style={{ fontWeight: 700, color: 'var(--ink)', background: 'var(--paper2)' }}>{g.title} · {g.items.length}</td></tr>
-    {g.items.map((t) => <tr key={t.id} className={'link ' + (t.id === selectedId ? 'sel' : '')} onClick={() => navigate(`/tasks/${t.id}`)}>
-      <td onClick={(e) => e.stopPropagation()}><Chk on={t.done} onChange={(v) => onDone(t, v)} label={`בוצע: ${t.title}`} rust={t.urgent} small /></td>
-      <td style={{ whiteSpace: 'nowrap' }}>{t.urgent ? <Pill tone="rust">דחוף</Pill> : t.templateId ? <span className="muted">{ctx.templates.find((x) => x.id === t.templateId)?.time ? `עד ${ctx.templates.find((x) => x.id === t.templateId)!.time}` : 'חוזרת'}</span> : t.dueDate ? (t.dueDate < today ? <span style={{ color: 'var(--rust)', fontWeight: 600 }}>היה עד {dayLabel(t.dueDate)}</span> : dayLabel(t.dueDate)) : <span className="muted">{relTime(t.createdAt)}</span>}</td>
-      <td style={{ fontWeight: 600 }}>{t.title}{t.managersOnly && <> <Pill>מנהלים</Pill></>}</td>
-      <td>{t.assignee ? firstName(t.assignee.name) : <span className="muted">כל מי שפנוי</span>}</td>
-      <td>{t.location?.placeName || <span className="muted">—</span>}</td>
-      <td className="muted">{t.templateId ? 'חוזרת' : firstName(t.createdBy.name)}</td>
-    </tr>)}
+    <tr className="grp"><td colSpan={6} className={g.key === 'late' ? 'rust' : ''}>{g.title}<span className="n"> · {g.items.length}</span></td></tr>
+    {g.items.map((t) => { const tpl = t.templateId ? ctx.templates.find((x) => x.id === t.templateId) : null; return <tr key={t.id} className={'link ' + (t.id === selectedId ? 'sel' : '') + (t.assignee?.uid === ctx.actor.uid ? ' mine' : '')} onClick={() => navigate(`/tasks/${t.id}`)}>
+      <td onClick={(e) => e.stopPropagation()}><Chk round small on={t.done} onChange={(v) => onDone(t, v)} label={`בוצע: ${t.title}`} rust={t.urgent} /></td>
+      <td>{t.urgent ? <Pill tone="rust">דחוף</Pill> : tpl ? <span className="muted">{tpl.time ? `עד ${tpl.time}` : 'חוזרת'}</span> : t.dueDate ? (t.dueDate < today ? <span style={{ color: 'var(--rust)', fontWeight: 600 }}>היה עד {dayLabel(t.dueDate)}</span> : dayLabel(t.dueDate)) : <span className="muted">{relTime(t.createdAt)}</span>}</td>
+      <td className="wrap" style={{ fontWeight: 600 }}>{t.title}{t.managersOnly && <> <Pill>מנהלים</Pill></>}</td>
+      <td onClick={(e) => { if (!t.assignee && !t.templateId) e.stopPropagation(); }}><TaskOwner t={t} ctx={ctx} onTake={() => take(t)} /></td>
+      <td className="opt">{t.location?.placeName || <span className="muted">—</span>}</td>
+      <td className="opt muted">{t.templateId ? 'חוזרת' : firstName(t.createdBy.name)}</td>
+    </tr>; })}
   </>;
 }
 

@@ -85,7 +85,7 @@ export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', s
 export type Invite = { code: string; role: 'staff'; active: boolean; createdBy: Actor; createdAt: string; usedBy: string[] };
 
 export const CATEGORY_LABELS: Record<ShoppingCategory, string> = { super: 'סופר', building: 'חומרי בניין', online: 'אינטרנט', giveaway: 'מוצרי מסירה' };
-export const ROLE_LABELS: Record<Role, string> = { owner: 'בעלים', manager: 'מנהל/ת', staff: 'צוות', guest: 'אורח/ת' };
+export const ROLE_LABELS: Record<Role, string> = { owner: 'בעלים', manager: 'מנהל/ת', staff: 'מתנדב/ת', guest: 'אורח/ת' };
 export const STATUS_LABELS: Record<Status, string> = { active: 'פעיל', pending: 'ממתין לאישור', blocked: 'חסום' };
 export const DAY_LABELS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
