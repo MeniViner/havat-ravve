@@ -27,5 +27,157 @@ service cloud.firestore {
    allow list: if editor();
    allow create: if editor() && request.resource.data.keys().hasOnly(['key','name','type','size','created_at','actor','dataUrl']) && request.resource.data.key == id && request.resource.data.actor == request.auth.token.email && request.resource.data.type == 'image/webp' && request.resource.data.name is string && request.resource.data.name.size() < 250 && request.resource.data.size is int && request.resource.data.size <= 450000 && request.resource.data.dataUrl is string && request.resource.data.dataUrl.size() <= 650000 && request.resource.data.dataUrl.matches('data:image/webp;base64,[A-Za-z0-9+/=]+');
   }
+
+  // ---------- Team app (users, tasks, shopping) ----------
+  function uid(){return request.auth.uid;}
+  function self(id){return google() && id == uid();}
+  function userPath(){return /databases/$(database)/documents/users/$(uid());}
+  function bootstrapOwner(){return request.auth.token.email == 'meniviner@gmail.com';}
+  function activeRole(){return exists(userPath()) && get(userPath()).data.status == 'active' ? get(userPath()).data.role : 'none';}
+  function isOwner(){return google() && (bootstrapOwner() || activeRole() == 'owner');}
+  function isManager(){return google() && (bootstrapOwner() || activeRole() in ['owner','manager']);}
+  function isStaff(){return google() && (bootstrapOwner() || activeRole() in ['owner','manager','staff']);}
+  function str(v, max){return v is string && v.size() <= max;}
+  function actorOk(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid == uid() && str(a.name, 80);}
+  function photoOk(v){return v == '' || (v is string && v.size() <= 400000 && v.matches('data:image/webp;base64,[A-Za-z0-9+/=]+'));}
+  function inviteValid(code){return code is string && exists(/databases/$(database)/documents/invites/$(code)) && get(/databases/$(database)/documents/invites/$(code)).data.active == true && get(/databases/$(database)/documents/invites/$(code)).data.role == 'staff';}
+  function incoming(){return request.resource.data;}
+  function changed(){return request.resource.data.diff(resource.data).affectedKeys();}
+
+  match /users/{id} {
+   function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function emailInvite(){return get(/databases/$(database)/documents/role_invites/$(request.auth.token.email)).data;}
+   function hasEmailInvite(){return exists(/databases/$(database)/documents/role_invites/$(request.auth.token.email));}
+   function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']));}
+   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
+   function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && incoming().role in ['guest','staff','manager','owner'] && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
+   allow get: if self(id) || isManager();
+   allow list: if isManager();
+   allow create: if self(id) && profileShape() && incoming().email == request.auth.token.email && createRole();
+   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit()) || (isManager() && managerEdit()));
+   allow delete: if isOwner();
+  }
+  match /counters/{name} {
+   allow read: if google();
+   allow create: if google() && name == 'users' && incoming().keys().hasOnly(['value']) && incoming().value == 1;
+   allow update: if google() && name == 'users' && incoming().keys().hasOnly(['value']) && incoming().value == resource.data.value + 1;
+  }
+  match /role_invites/{email} {
+   allow read: if isManager() || (google() && request.auth.token.email == email);
+   allow create, update: if isManager() && incoming().keys().hasOnly(['email','role','createdBy','createdAt']) && incoming().email == email && incoming().role in ['staff','manager','owner'] && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner()) && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
+   allow delete: if isManager();
+  }
+  match /invites/{code} {
+   function inviteShape(){return incoming().keys().hasOnly(['code','role','active','createdBy','createdAt','usedBy']) && incoming().code == code && incoming().role == 'staff' && incoming().active is bool && str(incoming().createdAt, 40) && incoming().usedBy is list;}
+   allow read: if isManager();
+   allow create: if isManager() && inviteShape() && actorOk(incoming().createdBy) && code.size() >= 4 && code.size() <= 12;
+   allow update: if (isManager() && inviteShape() && changed().hasOnly(['active','usedBy'])) || (google() && changed().hasOnly(['usedBy']) && incoming().usedBy.size() == resource.data.usedBy.size() + 1 && incoming().usedBy[resource.data.usedBy.size()] == uid());
+   allow delete: if isManager();
+  }
+  match /tasks/{id} {
+   function taskShape(){return incoming().keys().hasOnly(['title','note','photo','location','dueDate','managersOnly','templateId','dateKey','createdBy','createdAt','done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','urgent']) && str(incoming().title, 200) && (incoming().assignee == null || (incoming().assignee is map && incoming().assignee.keys().hasOnly(['uid','name']) && str(incoming().assignee.name, 80))) && incoming().urgent is bool && incoming().title.size() >= 1 && str(incoming().note, 4000) && photoOk(incoming().photo) && (incoming().location == null || (incoming().location is map && incoming().location.lat is number && incoming().location.lng is number)) && str(incoming().dueDate, 10) && incoming().managersOnly is bool && (incoming().templateId == null || (str(incoming().templateId, 60) && str(incoming().dateKey, 10) && id == incoming().templateId + '_' + incoming().dateKey)) && incoming().done is bool && photoOk(incoming().donePhoto) && str(incoming().doneNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().managersOnly == false || isManager());}
+   function doneShape(){return (incoming().done == false && incoming().doneBy == null && incoming().doneAt == null) || (incoming().done == true && actorOk(incoming().doneBy) && str(incoming().doneAt, 40)) || (incoming().done == true && incoming().doneBy == resource.data.doneBy && incoming().doneAt == resource.data.doneAt);}
+   function canSee(){return isStaff() && (resource.data.managersOnly == false || isManager());}
+   allow read: if canSee();
+   allow create: if isStaff() && taskShape() && actorOk(incoming().createdBy) && incoming().done == false && incoming().doneBy == null && incoming().doneAt == null && incoming().donePhoto == '' && incoming().doneNote == '';
+   allow update: if canSee() && taskShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && incoming().templateId == resource.data.templateId && doneShape() && (isManager() || resource.data.createdBy.uid == uid() || changed().hasOnly(['done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee']));
+   allow delete: if canSee() && (isManager() || resource.data.createdBy.uid == uid());
+  }
+  match /task_templates/{id} {
+   function templateShape(){return incoming().keys().hasOnly(['title','note','days','time','active','managersOnly','createdBy','createdAt','updatedAt']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 4000) && incoming().days is list && incoming().days.size() <= 7 && str(incoming().time, 5) && incoming().active is bool && incoming().managersOnly is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   allow read: if isStaff() && (resource.data.managersOnly == false || isManager());
+   allow create: if isManager() && templateShape() && actorOk(incoming().createdBy);
+   allow update: if isManager() && templateShape() && incoming().createdBy == resource.data.createdBy;
+   allow delete: if isManager();
+  }
+  match /shopping/{id} {
+   function itemShape(){return incoming().keys().hasOnly(['title','note','link','category','createdBy','createdAt','bought','boughtBy','boughtAt','expireAt','updatedAt','qty','urgent']) && str(incoming().qty, 40) && incoming().urgent is bool && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 1000) && str(incoming().link, 2000) && (incoming().link == '' || incoming().link.matches('https://.*')) && incoming().category in ['super','building','online','giveaway'] && incoming().bought is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ((incoming().bought == false && incoming().boughtBy == null && incoming().boughtAt == null && incoming().expireAt == null) || (incoming().bought == true && incoming().boughtBy is map && str(incoming().boughtAt, 40) && str(incoming().expireAt, 40)));}
+   allow read: if isStaff();
+   allow create: if isStaff() && itemShape() && actorOk(incoming().createdBy) && incoming().bought == false;
+   allow update: if isStaff() && itemShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && (incoming().bought == resource.data.bought || incoming().bought == false || actorOk(incoming().boughtBy));
+   allow delete: if isStaff();
+  }
+  match /activity/{id} {
+   function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}
+   allow read: if isManager() || (isStaff() && teamKind()) || mine('subjectUid');
+   allow create: if google() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   allow update, delete: if false;
+  }
+  match /places/{id} {
+   allow read: if isStaff();
+   allow create: if isManager() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
+   allow update: if isManager() && changed().hasOnly(['name','lat','lng']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number;
+   allow delete: if isManager();
+  }
+  // ---------- Guest side: events, tickets, visits, donations, stalls ----------
+  function signed(){return google() && exists(userPath());}
+  function mine(field){return google() && resource.data[field] == uid();}
+  function actorOf(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid is string && a.name is string;}
+  match /settings/{name} {
+   allow read: if true;
+   allow write: if isManager() && name == 'app';
+  }
+  match /events/{id} {
+   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','questions','createdBy','createdAt','updatedAt']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10;}
+   allow read: if resource.data.published == true || isStaff();
+   allow create: if isManager() && eventShape() && actorOk(incoming().createdBy);
+   allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy;
+   allow delete: if isManager();
+   match /vendors/{vid} {
+    allow read: if isStaff();
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['vendorId','name','confirmed','notes']) && str(incoming().name, 200) && incoming().confirmed is bool && str(incoming().notes, 1000)));
+   }
+   match /products/{pid} {
+    allow read: if isStaff();
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','price','active','sort']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number));
+   }
+  }
+  match /tickets/{id} {
+   function event(){return get(/databases/$(database)/documents/events/$(incoming().eventId)).data;}
+   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   allow read: if isStaff() || mine('ownerUid');
+   allow create: if signed() && ticketShape() && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
+   allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && (
+     isManager()
+     || (isStaff() && changed().hasOnly(['scans','entries','paymentStatus','updatedAt']) && incoming().entries == resource.data.entries + 1 && incoming().scans.size() == resource.data.scans.size() + 1 && actorOk(incoming().scans[resource.data.scans.size()].by) && (incoming().paymentStatus == resource.data.paymentStatus || incoming().paymentStatus == 'paid_onsite'))
+     || (mine('ownerUid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed')
+     || (mine('ownerUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'valid' && resource.data.entries == 0 && incoming().status == 'cancelled'));
+   allow delete: if isManager();
+  }
+  match /visits/{id} {
+   function visitShape(){return incoming().keys().hasOnly(['uid','name','phone','date','people','type','note','status','managerNote','handledBy','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && str(incoming().date, 10) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500 && str(incoming().type, 100) && str(incoming().note, 2000) && incoming().status in ['new','approved','rejected','cancelled'] && str(incoming().managerNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   allow read: if isManager() || mine('uid');
+   allow create: if signed() && visitShape() && incoming().uid == uid() && incoming().status == 'new' && incoming().handledBy == null;
+   allow update: if visitShape() && incoming().uid == resource.data.uid && ((isManager() && changed().hasOnly(['status','managerNote','handledBy','updatedAt']) && actorOk(incoming().handledBy)) || (mine('uid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'new' && incoming().status == 'cancelled'));
+   allow delete: if isManager();
+  }
+  match /donations/{id} {
+   function donationShape(){return incoming().keys().hasOnly(['uid','name','phone','amount','label','note','memorial','receiptWanted','receiptName','receiptSent','paymentStatus','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && incoming().amount is number && incoming().amount > 0 && incoming().amount <= 1000000 && str(incoming().label, 100) && str(incoming().note, 2000) && str(incoming().memorial, 500) && incoming().receiptWanted is bool && str(incoming().receiptName, 120) && incoming().receiptSent is bool && incoming().paymentStatus in ['pending','claimed','paid','cancelled'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   allow read: if isManager() || mine('uid');
+   allow create: if signed() && donationShape() && incoming().uid == uid() && incoming().paymentStatus == 'pending' && incoming().receiptSent == false;
+   allow update: if donationShape() && incoming().uid == resource.data.uid && incoming().amount == resource.data.amount && ((isManager() && changed().hasOnly(['paymentStatus','receiptSent','updatedAt'])) || (mine('uid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed'));
+   allow delete: if isManager();
+  }
+  match /vendors/{id} {
+   allow read: if isStaff();
+   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().product, 300) && incoming().external is bool && str(incoming().notes, 2000)));
+  }
+  match /tabs/{id} {
+   function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   allow read: if isStaff() || mine('guestUid');
+   allow create: if isStaff() && tabShape() && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0;
+   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && ((isManager()) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow delete: if isManager();
+  }
+  match /notifications/{id} {
+   allow read: if isManager();
+   allow create: if google() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
+   allow update: if isManager() && changed().hasOnly(['handled','handledBy','handledAt']);
+   allow delete: if isManager();
+  }
+  match /calendar/{id} {
+   allow read: if isManager();
+   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 5) && incoming().kind in ['manual','visit','event']));
+  }
  }
 }

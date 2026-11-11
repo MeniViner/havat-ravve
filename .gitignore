@@ -6,3 +6,5 @@ functions/node_modules/
 service-account*.json
 *-backup.json
 .build/
+.emulator-data/
+.DS_Store
