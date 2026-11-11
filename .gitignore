@@ -8,3 +8,4 @@ service-account*.json
 .build/
 .emulator-data/
 .DS_Store
+.dev

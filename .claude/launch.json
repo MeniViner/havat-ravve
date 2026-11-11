@@ -2,12 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "emulators",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": [
-        "scripts/dev.sh"
-      ],
-      "port": 5050
+      "name": "app-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev.mjs"],
+      "port": 5173
+    },
+    {
+      "name": "canvas-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "/private/tmp/claude-501/-Users-meni-dev-personal-projects-havat-ravve--claude-worktrees-ui-redesign-audit-7c89a0/68af9cd5-33d9-4a72-b1d8-071170d7564c/scratchpad/canvas/project"],
+      "port": 8765
     }
   ]
 }
