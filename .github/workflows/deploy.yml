@@ -1,0 +1,47 @@
+name: Deploy
+
+# Every push to main goes live: Hosting (site havat-ravve) + Firestore rules and indexes.
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE (see README, "CI ופריסה אוטומטית").
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to Firebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Core tests
+        run: npm test
+
+      - name: Deploy Hosting + Firestore rules/indexes
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE }}
+        run: |
+          if [ -z "$SA_JSON" ]; then
+            echo "::error::Missing repository secret FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE. Run 'npx firebase init hosting:github' once (see README)."
+            exit 1
+          fi
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx firebase deploy --only hosting,firestore --project havat-ravve --non-interactive --force
+          rm -f "$RUNNER_TEMP/firebase-sa.json"

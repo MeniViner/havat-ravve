@@ -1,190 +1,90 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ShoppingItem, ShoppingCategory, Actor } from '../types';
+import { useMemo, useState } from 'react';
+import type { ShoppingItem, ShoppingCategory } from '../types';
 import { CATEGORY_LABELS } from '../types';
-import { addShopping, editShopping, setBought, deleteShopping, restoreShopping, useBoughtHistory, type NewShopping } from '../store';
-import { useActivityFor, ACTION_LABELS } from '../activity';
-import { Icon, Check, Empty, Segmented, Button, Sheet, useToast, relTime, firstName, fmtDate, fmtTime, fmtDayLong } from '../ui';
+import type { TeamCtx } from '../ctx';
+import { Top, Sec, Row, Chk, Pill, Btn, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Loading, Fab, useToast, useUndoable, firstName, relTime, whenText, fmtTime, useDesktop, useOpenSections, addDays, todayISO } from '../ui';
 import { navigate } from '../router';
-import { dateKeyOf } from '../firebase';
+import { setBought, addShopping, editShopping, deleteShopping, restoreShopping, useShoppingItem, useBoughtHistory, type NewShopping } from '../store';
+import { useActivityFor, ACTION_LABELS } from '../activity';
 
 const CATS: ShoppingCategory[] = ['super', 'building', 'online', 'giveaway'];
-const PLACEHOLDER: Record<ShoppingCategory, string> = { super: 'מה לקנות בסופר?', building: 'מה חסר לבנייה?', online: 'מה להזמין באינטרנט?', giveaway: 'מה נשמח לקבל?' };
-const EMPTY: Record<ShoppingCategory, [string, string]> = {
-  super: ['הסופר מסודר', 'כשחסר משהו, כותבים למעלה ומי שיוצא לקניות רואה.'],
-  building: ['אין חומרי בניין לקנות', 'מלט, ברגים, צינורות. כל מה שצריך מחנות הבניין.'],
-  online: ['אין הזמנות ממתינות', 'פריט עם קישור, כדי שמי שמזמין ימצא בדיוק את זה.'],
-  giveaway: ['אין בקשות כרגע', 'דברים שנשמח לקבל בחינם. ראיתם ברשתות או ברחוב? סמנו "נמצא".'],
-};
-type Ctx = { actor: Actor; manager: boolean };
+const CAT_TITLE: Record<ShoppingCategory, string> = { super: 'לקנות בסופר', building: 'חומרי בניין', online: 'להזמין באינטרנט', giveaway: 'למסירה · נשמח לקבל בחינם' };
 
-/** Suggestions: what was bought before, most frequent first. */
-function useSuggestions(history: ShoppingItem[], open: ShoppingItem[], cat: ShoppingCategory) {
-  return useMemo(() => {
-    const counts = new Map<string, { title: string; qty: string; n: number; last: string }>();
-    for (const i of history) if (i.category === cat) { const k = i.title.trim().toLowerCase(); const c = counts.get(k); if (c) { c.n++; if (i.boughtAt! > c.last) { c.last = i.boughtAt!; c.qty = i.qty; } } else counts.set(k, { title: i.title.trim(), qty: i.qty, n: 1, last: i.boughtAt || '' }); }
-    const openTitles = new Set(open.filter((i) => i.category === cat).map((i) => i.title.trim().toLowerCase()));
-    return [...counts.values()].filter((c) => !openTitles.has(c.title.toLowerCase())).sort((a, b) => b.n - a.n || b.last.localeCompare(a.last));
-  }, [history, open, cat]);
-}
-
-export function ShoppingScreen({ open, recent, ctx, loading, initial = 'super' }: { open: ShoppingItem[]; recent: ShoppingItem[]; ctx: Ctx; loading: boolean; initial?: ShoppingCategory }) {
-  const [cat, setCat] = useState<ShoppingCategory>(() => (localStorage.getItem('farm-shop-cat') as ShoppingCategory) || initial);
-  useEffect(() => localStorage.setItem('farm-shop-cat', cat), [cat]);
-  const [title, setTitle] = useState('');
-  const [qty, setQty] = useState('');
-  const [link, setLink] = useState('');
-  const [urgent, setUrgent] = useState(false);
-  const [more, setMore] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<ShoppingItem | null>(null);
-  const toast = useToast();
-  const ninety = useMemo(() => new Date(Date.now() - 90 * 86400_000).toISOString(), []);
-  const history = useBoughtHistory(true, ninety);
-  const suggestions = useSuggestions(history.items, open, cat);
-  const counts = useMemo(() => Object.fromEntries(CATS.map((c) => [c, open.filter((i) => i.category === c).length])) as Record<ShoppingCategory, number>, [open]);
-  const items = useMemo(() => open.filter((i) => i.category === cat).sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.createdAt.localeCompare(a.createdAt)), [open, cat]);
-  const bought = recent.filter((i) => i.category === cat);
-  const typed = title.trim().toLowerCase();
-  const matches = typed.length >= 1 ? suggestions.filter((s) => s.title.toLowerCase().includes(typed) && s.title.toLowerCase() !== typed).slice(0, 4) : [];
-  const quick = suggestions.slice(0, 8);
-
-  const add = async (data?: Partial<NewShopping>) => {
-    const t = (data?.title ?? title).trim();
-    if (!t) return;
-    if (cat === 'online' && link && !/^https:\/\//.test(link.trim())) return toast({ text: 'הקישור צריך להתחיל ב־https://', kind: 'error' });
-    setBusy(true);
-    try {
-      await addShopping(ctx.actor, { title: t, qty: data?.qty ?? qty, note: '', link: cat === 'online' ? link : '', category: cat, urgent: data?.urgent ?? urgent });
-      setTitle(''); setQty(''); setLink(''); setUrgent(false); setMore(false);
-    } catch { toast({ text: 'לא נשמר', kind: 'error' }); } finally { setBusy(false); }
-  };
-  const toggle = async (item: ShoppingItem, v: boolean) => {
-    try {
-      await setBought(ctx.actor, item, v);
-      if (v) toast({ text: cat === 'giveaway' ? `נמצא: ${item.title}` : `נקנה: ${item.title}`, action: { label: 'ביטול', onClick: () => setBought(ctx.actor, { ...item, bought: true }, false) } }, 6000);
-    } catch { toast({ text: 'לא נשמר', kind: 'error' }); }
-  };
-  const remove = async (item: ShoppingItem) => {
-    try { await deleteShopping(ctx.actor, item); setSelected(null); toast({ text: 'נמחק', action: { label: 'ביטול', onClick: () => restoreShopping(item) } }, 6000); }
-    catch { toast({ text: 'לא נמחק', kind: 'error' }); }
-  };
-  const Row = ({ item }: { item: ShoppingItem }) => (
-    <div className={'row ' + (item.bought ? 'done' : '')}>
-      <Check checked={item.bought} onChange={(v) => toggle(item, v)} label={item.bought ? 'בטל' : cat === 'giveaway' ? 'נמצא' : 'נקנה'} />
-      <button type="button" className="row-main" style={{ textAlign: 'start', background: 'none' }} onClick={() => setSelected(item)}>
-        <div className="row-title">{item.title}{item.qty && <span className="qty">{item.qty}</span>}{item.urgent && !item.bought && <span className="tag bad" style={{ marginInlineStart: 6 }}>דחוף</span>}</div>
-        <div className="row-meta">
-          {item.bought && item.boughtBy ? <span className="who"><Icon name="check" />{firstName(item.boughtBy.name)} · {relTime(item.boughtAt)}</span> : <span className="who">{firstName(item.createdBy.name)} · {relTime(item.createdAt)}</span>}
-          {item.note && <span>{item.note}</span>}
-          {item.link && <a className="who" href={item.link} target="_blank" rel="noopener" style={{ color: 'var(--olive)' }} onClick={(e) => e.stopPropagation()}><Icon name="link" />קישור</a>}
-        </div>
-      </button>
-    </div>
-  );
-  const live = selected ? open.find((i) => i.id === selected.id) || recent.find((i) => i.id === selected.id) || selected : null;
-  return (
-    <>
-      <header className="topbar"><div><h1>קניות</h1><div className="sub">{open.length ? `${open.length} פריטים פתוחים${open.some((i) => i.urgent) ? ' · יש דחופים' : ''}` : 'הכל מסודר'}</div></div>
-        <div className="topbar-actions"><button type="button" className="icon-btn ghost" onClick={() => navigate('/history/shopping')} aria-label="היסטוריית קניות"><Icon name="history" /></button></div></header>
-      <Segmented value={cat} onChange={setCat} options={CATS.map((c) => ({ value: c, label: CATEGORY_LABELS[c], count: counts[c] }))} />
-      <div className="card add-card">
-        <div className="add-row">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder={PLACEHOLDER[cat]} aria-label="פריט" />
-          <input className="add-qty" value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="כמות" aria-label="כמות" />
-          <Button kind="primary" disabled={busy || !title.trim()} onClick={() => add()} aria-label="הוספה"><Icon name="plus" /></Button>
-        </div>
-        {matches.length > 0 && <div className="chips" style={{ marginTop: 8 }}>{matches.map((m) => <button key={m.title} type="button" className="chip" onClick={() => add({ title: m.title, qty: qty || m.qty })}><Icon name="history" />{m.title}{m.qty && <small> · {m.qty}</small>}</button>)}</div>}
-        <div className="add-tools">
-          <button type="button" className={'chip ' + (urgent ? 'on bad' : '')} onClick={() => setUrgent(!urgent)}>{urgent ? 'דחוף ✓' : 'דחוף'}</button>
-          {cat === 'online' && <button type="button" className={'chip ' + (more ? 'on' : '')} onClick={() => setMore(!more)}><Icon name="link" />קישור</button>}
-        </div>
-        {cat === 'online' && more && <input style={{ marginTop: 8 }} value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://… קישור למוצר" dir="ltr" inputMode="url" aria-label="קישור" />}
-      </div>
-      {quick.length > 0 && !typed && (
-        <div className="section" style={{ marginTop: 14 }}>
-          <div className="section-head"><h2>קונים בדרך כלל</h2></div>
-          <div className="chips">{quick.map((s) => <button key={s.title} type="button" className="chip" onClick={() => add({ title: s.title, qty: s.qty })}><Icon name="plus" />{s.title}{s.qty && <small> · {s.qty}</small>}</button>)}</div>
-        </div>
-      )}
-      <div className="section">
-        <div className="section-head"><h2>לקנות · {items.length}</h2>{items.length > 0 && <span className="hint">{items.filter((i) => i.urgent).length ? `${items.filter((i) => i.urgent).length} דחופים` : ''}</span>}</div>
-        {loading && !open.length ? <div className="loading">טוען…</div> : !items.length ? <Empty title={EMPTY[cat][0]} text={EMPTY[cat][1]} icon="cart" /> : <div className="list">{items.map((i) => <Row key={i.id} item={i} />)}</div>}
-      </div>
-      {bought.length > 0 && <div className="section"><div className="section-head"><h2>{cat === 'giveaway' ? 'נמצא לאחרונה' : 'נקנה ב־24 השעות האחרונות'}</h2><a href="/app/history/shopping" onClick={(e) => { e.preventDefault(); navigate('/history/shopping'); }}>כל ההיסטוריה</a></div><div className="list">{bought.map((i) => <Row key={i.id} item={i} />)}</div></div>}
-      <ItemSheet item={live} onClose={() => setSelected(null)} ctx={ctx} onDelete={remove} />
-    </>
-  );
-}
-
-function ItemSheet({ item, onClose, ctx, onDelete }: { item: ShoppingItem | null; onClose: () => void; ctx: Ctx; onDelete: (i: ShoppingItem) => void }) {
-  const [form, setForm] = useState({ title: '', qty: '', note: '', link: '', urgent: false });
-  const [editing, setEditing] = useState(false);
-  const toast = useToast();
-  const activity = useActivityFor(item?.id || '', !!item);
-  useEffect(() => { if (item) { setForm({ title: item.title, qty: item.qty, note: item.note, link: item.link, urgent: item.urgent }); setEditing(false); } }, [item?.id]);
-  if (!item) return <Sheet open={false} onClose={onClose}><div /></Sheet>;
-  return (
-    <Sheet open={!!item} onClose={onClose} title={editing ? 'עריכת פריט' : item.title}>
-      {editing ? (
-        <>
-          <label className="field"><span>פריט</span><input data-autofocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
-          <div className="two"><label className="field"><span>כמות</span><input value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} placeholder="למשל: 3 יח׳, 2 ק״ג" /></label><label className="field"><span>הערה</span><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="מותג, גודל, מאיפה" /></label></div>
-          {item.category === 'online' && <label className="field"><span>קישור</span><input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} dir="ltr" /></label>}
-          <div className="toggle"><div>דחוף</div><button type="button" role="switch" aria-checked={form.urgent} className="switch" aria-label="דחוף" onClick={() => setForm({ ...form, urgent: !form.urgent })} /></div>
-          <div className="sheet-foot"><Button kind="primary" onClick={async () => { if (!form.title.trim()) return; try { await editShopping(ctx.actor, item, { ...form, title: form.title.trim() }); setEditing(false); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } }}>שמירה</Button><Button kind="quiet" onClick={() => setEditing(false)}>ביטול</Button></div>
-        </>
-      ) : (
-        <>
-          <div className="detail-list">
-            <div className="kv"><Icon name="cart" size={18} /><div>{CATEGORY_LABELS[item.category]}{item.qty ? ` · ${item.qty}` : ''}{item.urgent ? ' · דחוף' : ''}</div></div>
-            {item.note && <div className="kv"><Icon name="info" size={18} /><div>{item.note}</div></div>}
-            {item.link && <div className="kv"><Icon name="link" size={18} /><a href={item.link} target="_blank" rel="noopener" style={{ color: 'var(--olive)', wordBreak: 'break-all' }}>{item.link}</a></div>}
-            <div className="kv"><Icon name="user" size={18} /><div>הוסיף/ה {item.createdBy.name}<br /><span>{fmtDate(item.createdAt)} · {fmtTime(item.createdAt)}</span></div></div>
-            {item.bought && item.boughtBy && <div className="kv"><Icon name="check" size={18} /><div>{item.category === 'giveaway' ? 'נמצא על ידי' : 'נקנה על ידי'} {item.boughtBy.name}<br /><span>{fmtDate(item.boughtAt)} · {fmtTime(item.boughtAt)}</span></div></div>}
-          </div>
-          <Timeline items={activity.items} />
-          <div className="sheet-foot">
-            <Button kind={item.bought ? 'secondary' : 'primary'} onClick={async () => { await setBought(ctx.actor, item, !item.bought).catch(() => toast({ text: 'לא נשמר', kind: 'error' })); onClose(); }}><Icon name="check" />{item.bought ? 'החזרה לרשימה' : item.category === 'giveaway' ? 'נמצא' : 'נקנה'}</Button>
-            <Button kind="quiet" onClick={() => setEditing(true)}><Icon name="edit" />עריכה</Button>
-            <Button kind="quiet" onClick={() => onDelete(item)}><Icon name="trash" />מחיקה</Button>
-          </div>
-        </>
-      )}
-    </Sheet>
-  );
-}
-
-export function Timeline({ items, title = 'היסטוריה' }: { items: { id: string; at: string; by: Actor; action: string; text: string }[]; title?: string }) {
-  if (!items.length) return null;
-  return (
-    <div className="section">
-      <div className="section-head"><h2>{title}</h2></div>
-      <ol className="timeline">{items.map((a) => <li key={a.id}><span className="tl-dot" /><div><b>{ACTION_LABELS[a.action] || a.action}</b> · {firstName(a.by.name)}<small>{fmtDate(a.at)} · {fmtTime(a.at)}{a.text ? ' · ' + a.text : ''}</small></div></li>)}</ol>
-    </div>
-  );
-}
-
-/** Full purchase history, grouped by day, with "add again". */
-export function ShoppingHistoryScreen({ ctx }: { ctx: Ctx }) {
-  const [days, setDays] = useState<'30' | '90' | '365'>('30');
+export function ShoppingScreen({ ctx, open, recent, loading, selectedId }: { ctx: TeamCtx; open: ShoppingItem[]; recent: ShoppingItem[]; loading: boolean; selectedId?: string }) {
+  const desktop = useDesktop();
   const [cat, setCat] = useState<ShoppingCategory | 'all'>('all');
-  const from = useMemo(() => new Date(Date.now() - Number(days) * 86400_000).toISOString(), [days]);
-  const { items, loading } = useBoughtHistory(true, from);
+  const history = useBoughtHistory(true, addDays(todayISO(), -90) + 'T00:00:00.000Z');
   const toast = useToast();
-  const list = items.filter((i) => cat === 'all' || i.category === cat);
-  const groups = useMemo(() => { const m = new Map<string, ShoppingItem[]>(); for (const i of list) { const k = dateKeyOf(new Date(i.boughtAt!)); (m.get(k) || m.set(k, []).get(k)!).push(i); } return [...m.entries()]; }, [list]);
-  const byPerson = useMemo(() => { const m = new Map<string, number>(); for (const i of list) if (i.boughtBy) m.set(i.boughtBy.name, (m.get(i.boughtBy.name) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [list]);
+  const urgent = open.filter((i) => i.urgent).length;
+  const sorted = useMemo(() => [...open].sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.createdAt.localeCompare(a.createdAt)), [open]);
+  const usual = useMemo(() => {
+    const count = new Map<string, { n: number; item: ShoppingItem }>();
+    for (const i of history.items) { const k = i.title.trim(); const c = count.get(k); count.set(k, { n: (c?.n || 0) + 1, item: i }); }
+    return [...count.values()].filter((c) => !open.some((o) => o.title.trim() === c.item.title.trim())).sort((a, b) => b.n - a.n).slice(0, 8);
+  }, [history.items, open]);
+  const { isOpen, toggle } = useOpenSections([...CATS, 'bought'], 'shopping');
+  const mark = (i: ShoppingItem, v: boolean) => setBought(ctx.actor, i, v).then(() => { if (v) toast({ text: `${i.title} · נקנה`, action: { label: 'ביטול', onClick: () => setBought(ctx.actor, i, false) } }, 4000); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
+  const quick = (i: ShoppingItem) => addShopping(ctx.actor, { title: i.title, qty: i.qty, note: '', link: i.link, category: i.category, urgent: false }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
+  const groups = CATS.map((c) => ({ c, items: sorted.filter((i) => i.category === c) })).filter((g) => g.items.length && (cat === 'all' || cat === g.c));
+  const itemRow = (i: ShoppingItem) => <Row key={i.id} to={`/shopping/${i.id}`} className={i.id === selectedId ? 'sel' : ''} start={<Chk on={false} onChange={(v) => mark(i, v)} label={`נקנה: ${i.title}`} rust={i.urgent} />}
+    title={<>{i.title}{i.qty && <span className="muted" style={{ fontWeight: 400 }}> {i.qty}</span>}</>} meta={<>{i.urgent && <Pill tone="rust">דחוף</Pill>}<span>{firstName(i.createdBy.name)} · {relTime(i.createdAt)}</span>{i.note && <span>{i.note}</span>}{i.link && <Icon name="link" />}</>} />;
   return (
     <>
-      <Segmented value={days} onChange={setDays} options={[{ value: '30', label: 'חודש' }, { value: '90', label: '3 חודשים' }, { value: '365', label: 'שנה' }]} />
-      <div className="chips" style={{ marginBottom: 12 }}>{(['all', ...CATS] as const).map((c) => <button key={c} type="button" className={'chip ' + (cat === c ? 'on' : '')} onClick={() => setCat(c)}>{c === 'all' ? 'הכל' : CATEGORY_LABELS[c]}</button>)}</div>
-      {byPerson.length > 0 && <div className="stats-grid">{byPerson.slice(0, 3).map(([n, c]) => <div className="stat" key={n}><b>{c}</b><span>{n}</span></div>)}</div>}
-      {loading && !items.length ? <div className="loading">טוען…</div> : !groups.length ? <Empty title="אין קניות בתקופה" icon="cart" /> : groups.map(([day, rows]) => (
-        <div className="day-group" key={day}><h3>{fmtDayLong(day)} · {rows.length}</h3><div className="list">{rows.map((i) => (
-          <div className="row" key={i.id}><div className="row-main"><div className="row-title" style={{ fontSize: 15 }}>{i.title}{i.qty && <span className="qty">{i.qty}</span>}</div><div className="row-meta"><span>{CATEGORY_LABELS[i.category]}</span><span>{i.boughtBy ? firstName(i.boughtBy.name) : ''} · {fmtTime(i.boughtAt)}</span></div></div>
-            <Button kind="quiet" className="sm" onClick={async () => { await addShopping(ctx.actor, { title: i.title, qty: i.qty, note: i.note, link: i.link, category: i.category, urgent: false }); toast({ text: `נוסף שוב: ${i.title}` }, 2500); }}><Icon name="plus" />שוב</Button></div>
-        ))}</div></div>
-      ))}
+      <Top title="קניות" sub={`${open.length} פריטים${urgent ? ` · ${urgent} דחוף` : ''}${desktop ? '. ריבוע = נקנה. נשאר בקו חוצה 24 שעות ואז עובר להיסטוריה.' : ''}`}
+        end={desktop ? <><Btn kind="ghost" size="sm" icon="history" to="/history/shopping">היסטוריית קניות</Btn><Btn kind="ghost" size="sm" icon="print" onClick={() => window.print()}>רשימה להדפסה</Btn><Btn size="sm" icon="plus" to="/shopping/new">פריט חדש</Btn></> : <Btn kind="quiet" size="sm" icon="history" to="/history/shopping">היסטוריה</Btn>} />
+      {!desktop && <div style={{ paddingTop: 8 }}><Chips scroll value={cat} onChange={setCat} options={[{ value: 'all', label: 'הכל', n: open.length }, ...CATS.map((c) => ({ value: c, label: CATEGORY_LABELS[c], n: open.filter((i) => i.category === c).length || undefined }))]} /></div>}
+      {loading && !open.length ? <Loading /> : !open.length ? <Empty title="הרשימה ריקה" text="מה שחסר, מוסיפים בכפתור למטה. כולם רואים מיד." /> : desktop ? (
+        <div className="cols" style={{ padding: '0 0 0', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 0 }}>{CATS.map((c) => { const items = sorted.filter((i) => i.category === c); return <div key={c}><Sec title={CATEGORY_LABELS[c]} n={items.length} />{items.length ? <div className="list">{items.map(itemRow)}</div> : <p className="lead">ריק</p>}{c === 'giveaway' && <p className="note">דברים שנשמח לקבל בחינם. האם להציג גם לאורחים באתר? עדיין פתוח באפיון.</p>}</div>; })}</div>
+      ) : groups.map((g) => <div key={g.c}><Sec title={CAT_TITLE[g.c]} n={g.items.length} open={isOpen(g.c)} onToggle={() => toggle(g.c)} />{isOpen(g.c) && <div className="list">{g.items.map(itemRow)}</div>}</div>)}
+      {recent.length > 0 && (cat === 'all' || desktop) && <>
+        <Sec title="נקנה ביממה האחרונה" n={recent.length} open={isOpen('bought')} onToggle={() => toggle('bought')} />
+        {isOpen('bought') && <div className="list">{recent.map((i) => <Row key={i.id} done to={`/shopping/${i.id}`} start={<Chk on onChange={(v) => mark(i, v)} label={`להחזיר לרשימה: ${i.title}`} />} title={<>{i.title}{i.qty && <span> · {i.qty}</span>}</>} meta={<span>{firstName(i.boughtBy?.name || '')} {i.category === 'giveaway' ? 'מצא/ה' : 'קנה/תה'} · {fmtTime(i.boughtAt)}</span>} />)}</div>}
+      </>}
+      {usual.length > 0 && <><Sec title="קונים בדרך כלל" /><div className="chips" style={{ padding: '4px 20px 0' }}>{usual.map((u) => <Chip key={u.item.id} onClick={() => quick(u.item)}><Icon name="plus" size={14} />{u.item.title}</Chip>)}</div></>}
+      {!desktop && <Fab items={[{ icon: 'plus', label: 'פריט חדש', to: '/shopping/new' }]} />}
     </>
   );
 }
+
+// ---------- item (detail + edit) ----------
+export function ShopItemPage({ id, ctx, panel }: { id: string; ctx: TeamCtx; panel?: boolean }) {
+  const { item, loading } = useShoppingItem(id);
+  if (loading) return <Loading />;
+  if (!item) return <><Top backTo="/shopping" title="הפריט לא נמצא" /><Empty title="אולי נמחק או נקנה מזמן" action={<Btn kind="ghost" to="/shopping">לרשימה</Btn>} /></>;
+  return <ShopForm ctx={ctx} existing={item} panel={panel} />;
+}
+export function ShopForm({ ctx, existing, panel }: { ctx: TeamCtx; existing?: ShoppingItem; panel?: boolean }) {
+  const toast = useToast(); const undoable = useUndoable();
+  const [f, setF] = useState<NewShopping>(() => existing ? { title: existing.title, qty: existing.qty, note: existing.note, link: existing.link, category: existing.category, urgent: existing.urgent } : { title: '', qty: '', note: '', link: '', category: 'super', urgent: false });
+  const [busy, setBusy] = useState(false);
+  const log = useActivityFor(existing?.id || '', !!existing);
+  const set = (p: Partial<NewShopping>) => setF((s) => ({ ...s, ...p }));
+  const dirty = !existing || JSON.stringify(f) !== JSON.stringify({ title: existing.title, qty: existing.qty, note: existing.note, link: existing.link, category: existing.category, urgent: existing.urgent });
+  const save = async () => {
+    if (!f.title.trim()) return; setBusy(true);
+    try { if (existing) await editShopping(ctx.actor, existing, f); else await addShopping(ctx.actor, f); navigate('/shopping', true); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } finally { setBusy(false); }
+  };
+  const bought = () => existing && setBought(ctx.actor, existing, !existing.bought).then(() => navigate('/shopping', true)).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
+  return (
+    <>
+      <Top backTo={panel ? undefined : '/shopping'} back={panel} backLabel={panel ? 'סגירה' : 'קניות'} title={existing ? existing.title : 'פריט חדש'} sub={existing ? `${CATEGORY_LABELS[existing.category]} · ${firstName(existing.createdBy.name)} הוסיף/ה · ${relTime(existing.createdAt)}` : undefined} />
+      <Field><div className="chips">{CATS.map((c) => <Chip key={c} on={f.category === c} onClick={() => set({ category: c })}>{CATEGORY_LABELS[c]}</Chip>)}</div></Field>
+      <Field><Input big autoFocus={!existing} placeholder="מה לקנות?" value={f.title} onChange={(e) => set({ title: e.target.value })} /></Field>
+      <Field label="כמות (לא חובה)"><Input placeholder="6 קרטונים, 2 חבילות, 50 מ׳" value={f.qty} onChange={(e) => set({ qty: e.target.value })} /></Field>
+      {(f.category === 'online' || f.link) && <Field label="קישור"><Input dir="ltr" inputMode="url" placeholder="https://" value={f.link} onChange={(e) => set({ link: e.target.value })} /></Field>}
+      <Field label="הערה (לא חובה)"><Textarea rows={2} placeholder="מהסוג הגס, מהחנות ליד הצומת" value={f.note} onChange={(e) => set({ note: e.target.value })} /></Field>
+      <div style={{ marginTop: 14 }}><SwitchRow on={f.urgent} onChange={(urgent) => set({ urgent })} title="דחוף" meta="עולה לראש הרשימה אצל כולם" /></div>
+      {existing && <>
+        <Sec title="היסטוריה של הפריט" n={log.items.length || undefined} />
+        <div className="list">{log.items.map((a) => <Row key={a.id} center title={<span style={{ fontSize: 15, fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={<span>{whenText(a.at)}</span>} />)}{!log.items.length && <p className="lead">נוסף {whenText(existing.createdAt)} · {existing.createdBy.name}</p>}</div>
+      </>}
+      <div className="actions sticky">
+        {existing && !existing.bought && <Btn size="big" icon="check" onClick={bought}>{existing.category === 'giveaway' ? 'נמצא' : 'נקנה'}</Btn>}
+        {existing && existing.bought && <Btn kind="ghost" onClick={bought}>להחזיר לרשימה</Btn>}
+        {dirty && <Btn kind={existing ? 'ghost' : 'primary'} size={existing ? undefined : 'big'} disabled={!f.title.trim() || busy} onClick={save}>{existing ? 'שמירת השינויים' : 'הוספה'}</Btn>}
+        {existing && <Btn kind="danger" size="sm" onClick={() => undoable('הפריט נמחק', async () => { await deleteShopping(ctx.actor, existing); navigate('/shopping', true); }, () => restoreShopping(existing))}>מחיקה מהרשימה</Btn>}
+      </div>
+    </>
+  );
+}
+

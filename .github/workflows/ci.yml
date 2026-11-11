@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, build, tests, Firestore rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The Firestore emulator (rules tests) needs a JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Cache Firebase emulator binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+
+      - name: Build
+        run: npm run build
+
+      - name: dist/ is committed and up to date
+        run: |
+          if ! git diff --quiet -- dist; then
+            git --no-pager diff --stat -- dist
+            echo "::error::dist/ is stale. Run 'npm run build' and commit the result."
+            exit 1
+          fi
+
+      - name: Core tests
+        run: npm test
+
+      - name: Firestore rules tests
+        run: npm run test:rules

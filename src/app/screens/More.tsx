@@ -1,80 +1,102 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import type { TeamCtx, GuestCtx } from '../ctx';
 import type { Profile } from '../types';
-import { ROLE_LABELS, STATUS_LABELS } from '../types';
-import { updateOwnProfile } from '../store';
+import { ROLE_LABELS } from '../types';
+import { Top, Ledger, Sec, Btn, Icon, A, Field, Input, Select, SwitchRow, Avatar, Chips, useToast, todayISO, addDays } from '../ui';
+import { navigate } from '../router';
 import { signOutUser } from '../firebase';
-import { Icon, Button, Avatar, useToast } from '../ui';
-import { navigate, back } from '../router';
+import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
+import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
 
-let installPrompt: any = null;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+const PREF_KEY = 'farm-prefs';
+const readPrefs = () => { try { return { assigned: true, urgent: true, eventDay: true, newEvents: true, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') } as Record<string, boolean>; } catch { return { assigned: true, urgent: true, eventDay: true, newEvents: true }; } };
 
-export function MoreScreen({ profile, manager }: { profile: Profile; manager: boolean }) {
+export function MoreScreen({ ctx }: { ctx: TeamCtx }) {
+  const today = todayISO();
+  const month = useHistoryTasks(true, ctx.manager, addDays(today, -30) + 'T00:00:00.000Z', today + 'T23:59:59.999Z');
+  const open = useOpenTasks(true, ctx.manager);
+  const mine = month.items.filter((t) => t.doneBy?.uid === ctx.actor.uid);
+  const week = mine.filter((t) => (t.doneAt || '') >= addDays(today, -7)).length;
+  return (
+    <>
+      <Top backTo="/" backLabel="היום" title={ctx.profile.displayName} sub={`${ROLE_LABELS[ctx.profile.role]} · ${ctx.profile.email}`} end={<Avatar name={ctx.profile.displayName} />} />
+      <Ledger items={[{ n: open.items.filter((t) => t.assignee?.uid === ctx.actor.uid).length, label: 'עליך עכשיו' }, { n: week, label: 'ביצעת השבוע' }, { n: mine.length, label: 'החודש' }]} />
+      <ProfileSection profile={ctx.profile} fields={ctx.settings.registrationFields} />
+      <NotificationsSection team />
+      <Sec title="עוד" />
+      <div className="links">
+        <A to="/me"><Icon name="ticket" />הכרטיסים והתרומות שלי<span className="s">כמו אורח, אם הזמנתי לאירוע</span><Icon name="chev" className="chev" size={18} /></A>
+        <InstallHint />
+        <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A>
+        <a href="/" target="_blank" rel="noopener"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a>
+      </div>
+      <DemoSection />
+      <SignOut />
+      <p className="lead" style={{ paddingTop: 20, fontSize: 13 }}>חוות רווה · גרסה 2.0 · עובד בלי קליטה, מסתנכרן כשיש</p>
+    </>
+  );
+}
+
+export function ProfileSection({ profile, fields }: { profile: Profile; fields: GuestCtx['settings']['registrationFields'] }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ displayName: profile.displayName, phone: profile.phone, fields: { ...(profile.fields || {}) } });
   const toast = useToast();
-  const [name, setName] = useState(profile.displayName);
-  const [phone, setPhone] = useState(profile.phone);
-  const [editing, setEditing] = useState(false);
-  useEffect(() => { setName(profile.displayName); setPhone(profile.phone); }, [profile.displayName, profile.phone]);
-  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  const go = (path: string) => (e: React.MouseEvent) => { e.preventDefault(); navigate(path); };
+  const save = async () => { try { await updateOwnProfile(profile.uid, f); setEdit(false); toast({ text: 'נשמר' }, 2000); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } };
   return (
     <>
-      <header className="topbar"><div><h1>עוד</h1></div></header>
-      <div className="card" style={{ padding: 16 }}>
-        <div className="person"><Avatar name={profile.displayName} size={46} /><div><b>{profile.displayName}</b><small>{ROLE_LABELS[profile.role]} · {STATUS_LABELS[profile.status]} · {profile.email}</small></div></div>
-        {editing ? (
-          <div style={{ marginTop: 14 }}>
-            <label className="field"><span>השם בעברית</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
-            <label className="field"><span>טלפון</span><input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" inputMode="tel" /></label>
-            <div className="row-actions"><Button kind="primary" className="sm" onClick={async () => { try { await updateOwnProfile(profile.uid, { displayName: name, phone }); setEditing(false); toast({ text: 'נשמר' }, 2000); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } }}>שמירה</Button><Button kind="quiet" className="sm" onClick={() => setEditing(false)}>ביטול</Button></div>
-          </div>
-        ) : <div className="row-actions"><Button kind="quiet" className="sm" onClick={() => setEditing(true)}><Icon name="edit" />עריכת פרטים</Button></div>}
-      </div>
-      <div className="section"><div className="menu">
-        {manager && <a href="/app/manage" onClick={go('/manage')}><Icon name="people" /><div>ניהול<small>אנשים, קודי הצטרפות, משימות חוזרות, מקומות</small></div><Icon name="chev" className="chev" size={18} /></a>}
-        <a href="/app/history" onClick={go('/history')}><Icon name="history" /><div>היסטוריית משימות<small>מי עשה מה ומתי</small></div><Icon name="chev" className="chev" size={18} /></a>
-        <a href="/app/terms" onClick={go('/terms')}><Icon name="info" /><div>תנאי שימוש ופרטיות</div><Icon name="chev" className="chev" size={18} /></a>
-        <a href="/admin" target="_blank" rel="noopener" hidden={!manager}><Icon name="edit" /><div>עריכת האתר<small>נפתח בחלון נפרד</small></div><Icon name="chev" className="chev" size={18} /></a>
-      </div></div>
-      {!standalone && (
-        <div className="section"><div className="card" style={{ padding: 16 }}>
-          <b style={{ fontWeight: 500 }}>להתקין על מסך הבית</b>
-          <p className="hint" style={{ marginTop: 6 }}>{ios ? 'ב־Safari: לחצו על כפתור השיתוף ואז "הוספה למסך הבית". ככה גם התראות יעבדו.' : 'בתפריט הדפדפן בחרו "התקנת אפליקציה" או "הוספה למסך הבית".'}</p>
-          {installPrompt && !ios && <Button kind="secondary" className="sm" style={{ marginTop: 10 }} onClick={async () => { await installPrompt.prompt(); installPrompt = null; }}><Icon name="download" />התקנה</Button>}
-        </div></div>
-      )}
-      <div className="section"><Button kind="quiet" onClick={async () => { if (confirm('לצאת מהחשבון במכשיר הזה?')) await signOutUser(); }}><Icon name="logout" />יציאה מהחשבון</Button></div>
-      <p className="hint" style={{ marginTop: 20 }}>חוות רווה · גרסה 0.1 · <a href="/" style={{ color: 'var(--olive)' }}>לאתר</a></p>
+      <Sec title="הפרטים שלי" link={edit ? 'ביטול' : 'עריכה'} onLink={() => setEdit(!edit)} />
+      {!edit ? <dl className="kv"><dt>שם בעברית</dt><dd>{profile.displayName}</dd><dt>טלפון</dt><dd className="ltr">{profile.phone || '—'}</dd>{fields.map((x) => <span key={x.id} style={{ display: 'contents' }}><dt>{x.label}</dt><dd>{profile.fields?.[x.id] || <span className="muted">—</span>}</dd></span>)}</dl>
+        : <>
+          <Field label="שם בעברית"><Input value={f.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} /></Field>
+          <Field label="טלפון"><Input dir="ltr" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+          {fields.map((x) => <Field key={x.id} label={x.label}>{x.type === 'choice' ? <Select value={f.fields[x.id] || ''} onChange={(e) => setF({ ...f, fields: { ...f.fields, [x.id]: e.target.value } })}><option value="">בחירה…</option>{x.options.map((o) => <option key={o}>{o}</option>)}</Select> : <Input type={x.type === 'date' ? 'date' : 'text'} dir={x.type === 'date' ? 'ltr' : undefined} value={f.fields[x.id] || ''} onChange={(e) => setF({ ...f, fields: { ...f.fields, [x.id]: e.target.value } })} />}</Field>)}
+          <div className="actions"><Btn disabled={!f.displayName.trim()} onClick={save}>שמירה</Btn></div>
+        </>}
+    </>
+  );
+}
+export function NotificationsSection({ team }: { team: boolean }) {
+  const [p, setP] = useState(readPrefs);
+  const set = (k: string, v: boolean) => { const n = { ...p, [k]: v }; setP(n); try { localStorage.setItem(PREF_KEY, JSON.stringify(n)); } catch {} };
+  return (
+    <>
+      <Sec title="התראות" />
+      {team ? <>
+        <SwitchRow on={p.assigned} onChange={(v) => set('assigned', v)} title="משימה חדשה הוקצתה לי" />
+        <SwitchRow on={p.urgent} onChange={(v) => set('urgent', v)} title="משימה דחופה לכולם" />
+        <SwitchRow on={p.eventDay} onChange={(v) => set('eventDay', v)} title="תזכורת ביום אירוע" />
+      </> : <SwitchRow on={p.newEvents} onChange={(v) => set('newEvents', v)} title="עדכונים על אירועים חדשים" meta="התראה בטלפון כשמתפרסם אירוע" />}
+      <p className="lead" style={{ fontSize: 13 }}>ההתראות עובדות אחרי שמתקינים על מסך הבית.</p>
+    </>
+  );
+}
+export function InstallHint() {
+  const standalone = matchMedia('(display-mode: standalone)').matches;
+  if (standalone) return null;
+  const ios = /iP(hone|ad)/.test(navigator.userAgent);
+  return <button type="button" onClick={() => alert(ios ? 'בספארי: כפתור שיתוף (הריבוע עם החץ) ← "הוספה למסך הבית".' : 'בתפריט הדפדפן (⋮) ← "התקנת אפליקציה" או "הוספה למסך הבית".')}><Icon name="download" />להתקין על מסך הבית<span className="s">{ios ? 'שיתוף ← הוספה למסך הבית' : 'מהתפריט של הדפדפן'}</span><Icon name="chev" className="chev" size={18} /></button>;
+}
+export function SignOut() {
+  const demo = useDemo();
+  return <div className="actions" style={{ paddingTop: 20 }}><Btn kind="ghost" icon="logout" onClick={() => demo.on && demo.persona !== 'real' ? setDemo({ persona: 'anon' }) : signOutUser().then(() => navigate('/', true))}>יציאה מהחשבון במכשיר הזה</Btn><p className="lead" style={{ padding: 0, fontSize: 13 }}>בפעם הבאה תצטרכו להיכנס שוב עם Google.</p></div>;
+}
+
+/** Demo mode: show the example data on top of real data, or walk through the app as one of the example people. */
+export function DemoSection() {
+  const demo = useDemo();
+  const toast = useToast();
+  const personas: Persona[] = ['real', 'owner', 'manager', 'staff', 'guest', 'blocked', 'anon'];
+  return (
+    <>
+      <Sec title="מצב הדגמה" n={demo.on ? 'פעיל' : undefined} />
+      <SwitchRow on={demo.on} onChange={(on) => { setDemo({ on, persona: on ? demo.persona : 'real' }); navigate('/', true); }} title="להציג נתוני דוגמה" meta="משימות, אירועים, אנשים ותרומות לדוגמה, על גבי הנתונים האמיתיים. אפשר להסתיר בכל רגע." />
+      {demo.on && <>
+        <Field label="לעבור באפליקציה בתור…" hint="בתור דמות לדוגמה שום דבר לא נשמר בשרת: הכל נשאר במכשיר הזה.">
+          <Chips value={demo.persona} onChange={(persona) => { setDemo({ persona }); navigate('/', true); }} options={personas.map((p) => ({ value: p, label: PERSONA_LABELS[p] }))} />
+        </Field>
+        <div className="inline pad" style={{ paddingTop: 14 }}><Btn kind="ghost" size="sm" icon="repeat" onClick={() => { resetDemoData(); toast({ text: 'נתוני הדוגמה אופסו' }, 2500); }}>איפוס נתוני הדוגמה</Btn><Btn kind="quiet" size="sm" onClick={() => navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast({ text: 'הקישור הועתק: /app?demo=owner' }, 3000))}>קישור להדגמה</Btn></div>
+      </>}
     </>
   );
 }
 
-export function TermsScreen() {
-  return (
-    <>
-      <header className="topbar"><div><h1>תנאי שימוש</h1><div className="sub">טיוטה. גרסה ראשונה לאישור המנהלים.</div></div><div className="topbar-actions"><button type="button" className="icon-btn ghost" onClick={() => back('/more')} aria-label="חזרה"><Icon name="back" /></button></div></header>
-      <div className="prose card" style={{ padding: '6px 18px 18px' }}>
-        <h2>מה האפליקציה</h2>
-        <p>האפליקציה של חוות רווה משמשת את צוות החווה, מתנדבים ואורחים לניהול משימות, קניות, אירועים, ביקורים ותרומות. האפליקציה מופעלת על ידי חוות רווה ("החווה").</p>
-        <h2>הרשמה ופרטים</h2>
-        <p>ההרשמה נעשית באמצעות חשבון Google. אנחנו שומרים את השם שכתבתם, מספר הטלפון וכתובת המייל, ובהמשך פרטים נוספים שתבחרו למסור. מספר לקוח פנימי מוקצה לכל נרשם לצורכי ניהול בלבד.</p>
-        <h2>למה משמש המידע</h2>
-        <ul>
-          <li>תפעול שוטף: משימות שסימנתם, פריטים שקניתם, כרטיסים שהזמנתם וביקורים שתיאמתם, לצד שמכם.</li>
-          <li>יצירת קשר אתכם בנוגע לפעילותכם בחווה.</li>
-          <li>שליחת עדכונים על אירועים ופעילות בחווה, בהתראות באפליקציה, במייל, בוואטסאפ או ב־SMS. אפשר לבקש להפסיק בכל עת דרך "עוד" באפליקציה או בפנייה למנהלים.</li>
-        </ul>
-        <h2>מי רואה מה</h2>
-        <p>חברי צוות רואים את שמות חברי הצוות האחרים ליד משימות ופריטים. מנהלי החווה רואים את פרטי הקשר של הנרשמים. המידע אינו נמכר ואינו מועבר לגורמים חיצוניים, למעט ספקי התשתית שמפעילים את האפליקציה (Google Firebase) וספקי תשלום כשיופעלו.</p>
-        <h2>תמונות ומיקום</h2>
-        <p>צירוף תמונה או מיקום למשימה הוא לבחירתכם. תמונות ומיקומים שצורפו נראים לחברי הצוות.</p>
-        <h2>אחריות</h2>
-        <p>האפליקציה ניתנת כמות שהיא. החווה עושה מאמץ סביר לשמור על זמינות ודיוק אבל אינה מתחייבת לכך. אין להשתמש באפליקציה לפגיעה באחרים או להפצת תוכן פוגעני.</p>
-        <h2>הסרה</h2>
-        <p>אפשר לבקש מהמנהלים למחוק את החשבון והפרטים בכל עת. רשומות של משימות שבוצעו עשויות להישמר ללא פרטים מזהים.</p>
-        <p className="hint">עדכון אחרון: נובמבר 2026. מסמך זה הוא טיוטה שטרם עברה בדיקה משפטית.</p>
-      </div>
-    </>
-  );
-}

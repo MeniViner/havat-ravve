@@ -27,6 +27,14 @@ npm run dev
 
 בדיקות חוקי ההרשאות של האפליקציה: `npm run test:rules` (מריץ גם `tests/rules-app.mjs`).
 
+### מצב הדגמה (נתוני דוגמה)
+כל הדוגמאות מהקנבס העיצובי שמורות ב־`src/app/demo/data.ts` עם הטיפוסים האמיתיים של האפליקציה. אפשר להציג אותן על גבי הנתונים האמיתיים, או לעבור באפליקציה בתור דמות לדוגמה בלי Firestore בכלל:
+- `/app?demo=owner` (בעלים · בני), `?demo=manager`, `?demo=staff`, `?demo=guest`, `?demo=blocked`, `?demo=anon`; `?demo=on` מציג את הדוגמאות מעל החשבון האמיתי, `?demo=off` מכבה.
+- אותו מתג נמצא ב"עוד" (צוות) וב"החשבון שלי" (אורח) תחת "מצב הדגמה", כולל איפוס.
+- בתור דמות לדוגמה כל פעולה נשמרת רק בדפדפן (`localStorage`), לא בשרת. מזהי דוגמה מתחילים ב־`demo-` ולעולם לא נכתבים ל־Firestore.
+- תצוגה מקומית בלי אמולטורים: `node scripts/dev.mjs` ואז http://localhost:5173/app?demo=owner.
+
+
 פריסה: `npm run deploy` פורס גם את האינדקסים. מדיניות TTL למחיקת פריטי קניות ישנים דורשת מסלול Blaze ולכן עדיין לא מופעלת; האפליקציה מסתירה פריטים שנקנו לפני יותר מ־24 שעות בעצמה. האפליקציה נשארת במסלול Spark: אין Cloud Functions ואין Storage. תמונות נשמרות דחוסות (WebP עד ~300KB) בתוך מסמך המשימה. התראות push כשהאפליקציה סגורה ידרשו Cloud Functions (מסלול Blaze) בשלב הבא.
 
 ## מה כלול
@@ -37,6 +45,32 @@ npm run dev
 - firebase.json — הגדרת Hosting והפניות ל־/admin ולארכיון.
 - package-lock.json — גרסאות תלויות נעולות.
 - tests/ — בדיקות תוכן ובדיקות הרשאות מול Firestore Emulator.
+
+## CI ופריסה אוטומטית
+
+התיקייה `.github/workflows` מגדירה שלושה תהליכים ב־GitHub Actions:
+
+- **CI** (`ci.yml`) – על כל Pull Request ועל כל דחיפה ל־`main`: typecheck, בנייה, בדיקה ש־`dist/` מעודכן ביחס לקוד, `npm test`, ובדיקות כללי Firestore מול האמולטור (עם Java 21 של הריצה).
+- **Preview** (`preview.yml`) – על כל Pull Request מתוך הריפו: ערוץ Hosting זמני לשבוע, עם קישור בתגובה על ה־PR. עד שהסוד מוגדר התהליך מדלג עם הודעה.
+- **Deploy** (`deploy.yml`) – כל דחיפה ל־`main` (וגם ידנית מ־Actions) בונה ופורסת Hosting + כללי Firestore + אינדקסים לפרויקט havat-ravve. אין כאן שדרוג תוכנית חיוב; הפריסה זהה ל־`npm run deploy`.
+
+הגדרה חד־פעמית (מהמחשב, עם חשבון שמורשה לפרויקט):
+
+```bash
+npx firebase init hosting:github
+```
+
+הפקודה יוצרת חשבון שירות בפרויקט ושומרת אותו כסוד `FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE` בריפו MeniViner/havat-ravve. כשהיא מציעה ליצור קבצי workflow בעצמה – לענות **לא**, הקבצים כבר כאן. חשבון השירות שנוצר מורשה ל־Hosting בלבד; כדי שהפריסה תכלול גם את כללי Firestore והאינדקסים צריך להוסיף לו שני תפקידים (בפרויקט הזה חשבון השירות הוא `github-action-1453082479@havat-ravve.iam.gserviceaccount.com`):
+
+```bash
+gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:github-action-1453082479@havat-ravve.iam.gserviceaccount.com --role=roles/firebaserules.admin
+```
+
+```bash
+gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:github-action-1453082479@havat-ravve.iam.gserviceaccount.com --role=roles/datastore.indexAdmin
+```
+
+אפשר גם דרך IAM במסוף Google Cloud. בלי התפקידים האלה Hosting יעלה אבל שלב ה־Firestore ייכשל, וה־Deploy יסומן אדום.
 
 ## פריסה מהמחשב
 יש להתקין Node.js 22 ומעלה. חלצו את החבילה, פתחו Terminal בתיקייה והפעילו:

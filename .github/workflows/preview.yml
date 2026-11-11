@@ -1,0 +1,53 @@
+name: Preview
+
+# A temporary Hosting preview channel per pull request (expires after 7 days).
+# Skipped with a notice until the secret FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE exists.
+
+on:
+  pull_request:
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Hosting preview channel
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    env:
+      HAS_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE != '' }}
+    steps:
+      - name: No Firebase credentials yet
+        if: env.HAS_SA != 'true'
+        run: echo "::notice::Preview skipped - repository secret FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE is not set (see README)."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_SA == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_SA == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+        if: env.HAS_SA == 'true'
+
+      - name: Build
+        if: env.HAS_SA == 'true'
+        run: npm run build
+
+      - name: Deploy preview channel
+        if: env.HAS_SA == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE }}
+          projectId: havat-ravve
+          expires: 7d

@@ -1,169 +1,85 @@
-import { useEffect, useState } from 'react';
-import type { Profile, Template, RoleInvite, Actor, Role, Status, Place } from '../types';
-import { ROLE_LABELS, STATUS_LABELS, DAY_LABELS } from '../types';
-import { usePeople, setUserRole, useRoleInvites, inviteByEmail, removeRoleInvite, saveTemplate, deleteTemplate, addPlace, deletePlace, getPosition, type NewTemplate } from '../store';
-import { useActivityForUser } from '../activity';
-import { Timeline } from './Shopping';
-import { Icon, Sheet, Button, Empty, Avatar, Segmented, useToast, fmtDate } from '../ui';
-import { back, navigate } from '../router';
-import { downloadCsv } from '../data';
-import type { RegistrationField } from '../types';
+// Manager home ("ניהול") and the inbox of things waiting for a decision.
+import { useState } from 'react';
+import type { AppNotification, FarmEvent, Visit, Donation, CalendarItem, Profile } from '../types';
+import type { TeamCtx } from '../ctx';
+import { Top, Sec, Btn, A, Icon, Avatar, Empty, Chips, Loading, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, useDesktop, useOpenSections, inText } from '../ui';
+import { useHandledNotifications, handleNotification } from '../data';
 
-type Ctx = { actor: Actor; owner: boolean; templates: Template[]; places: Place[]; fields?: RegistrationField[] };
-type Tab = 'people' | 'templates' | 'places';
+type Props = { ctx: TeamCtx; inbox: AppNotification[]; events: FarmEvent[]; visits: Visit[]; donations: Donation[]; people: Profile[]; calendar: CalendarItem[]; templatesCount: number; placesCount: number; vendorsCount: number };
 
-export function ManageScreen({ ctx, tab = 'people' }: { ctx: Ctx; tab?: Tab }) {
-  const setTab = (t: Tab) => navigate('/manage/' + t, true);
-  const titles: Record<Tab, string> = { people: 'אנשים', templates: 'משימות חוזרות', places: 'מקומות' };
-  const subs: Record<Tab, string> = { people: 'צוות, אורחים וקודי הצטרפות', templates: 'מה חוזר כל יום ומי מסמן', places: 'נקודות שמורות בחווה' };
+export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people, calendar, templatesCount, placesCount, vendorsCount }: Props) {
+  const today = todayISO();
+  const desktop = useDesktop();
+  const { isOpen, toggle } = useOpenSections(['inbox', 'topics'], 'manage');
+  const next = events.filter((e) => e.published && e.end >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start))[0];
+  const monthStart = today.slice(0, 8) + '01';
+  const paidMonth = donations.filter((d) => d.createdAt >= monthStart && (d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite')).reduce((s, d) => s + d.amount, 0);
+  const pendingDon = donations.filter((d) => d.paymentStatus === 'claimed' || d.paymentStatus === 'pending').length;
+  const newVisits = visits.filter((v) => v.status === 'new').length;
+  const approvedMonth = visits.filter((v) => v.status === 'approved' && v.date >= monthStart).length;
+  const team = people.filter((p) => p.role !== 'guest' && p.status === 'active').length;
+  const todayCal = calendar.filter((c) => c.date === today);
+  const topics: { to: string; icon: string; title: string; sub: string; badge?: number }[] = [
+    { to: '/manage/events', icon: 'ticket', title: 'אירועים', sub: next ? `${next.title} · ${fmtWeekday(next.start)} · ${inText(next.start)}` : 'אין אירוע קרוב' },
+    { to: '/manage/people', icon: 'people', title: 'אנשים', sub: `${people.length} נרשמים · ${team} בצוות` },
+    { to: '/manage/visits', icon: 'pin', title: 'ביקורים', sub: `${newVisits ? `${newVisits} חדשות · ` : ''}${approvedMonth} מאושרים החודש`, badge: newVisits || undefined },
+    { to: '/manage/donations', icon: 'heart', title: 'תרומות', sub: `${money(paidMonth)} החודש${pendingDon ? ` · ${pendingDon} ממתינה` : ''}` },
+    { to: '/manage/calendar', icon: 'calendar', title: 'יומן', sub: todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן' },
+    { to: '/manage/reports', icon: 'chart', title: 'דוחות', sub: 'משימות, תרומות, חובות פתוחים' },
+  ];
   return (
     <>
-      <header className="topbar"><div><h1>{titles[tab]}</h1><div className="sub">{subs[tab]}</div></div><div className="topbar-actions"><button type="button" className="icon-btn ghost" onClick={() => back('/manage')} aria-label="חזרה"><Icon name="back" /></button></div></header>
-      <Segmented value={tab} onChange={setTab} options={[{ value: 'people', label: 'אנשים' }, { value: 'templates', label: 'משימות חוזרות' }, { value: 'places', label: 'מקומות' }]} />
-      {tab === 'people' && <People ctx={ctx} />}
-      {tab === 'templates' && <Templates ctx={ctx} />}
-      {tab === 'places' && <Places ctx={ctx} />}
-    </>
-  );
-}
-
-// ---------- people ----------
-function People({ ctx }: { ctx: Ctx }) {
-  const { items, loading } = usePeople(true);
-  const invites = useRoleInvites(true);
-  const toast = useToast();
-  const [selected, setSelected] = useState<Profile | null>(null);
-  const [q, setQ] = useState('');
-  const [inviting, setInviting] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<RoleInvite['role']>('staff');
-  const s = q.trim().toLowerCase();
-  const match = (p: Profile) => !s || p.displayName.toLowerCase().includes(s) || p.email.includes(s) || p.phone.replace(/\D/g, '').includes(s.replace(/\D/g, '') || '—') || String(p.customerNumber) === s;
-  const team = items.filter((p) => p.role !== 'guest' && match(p)).sort((a, b) => ['owner', 'manager', 'staff'].indexOf(a.role) - ['owner', 'manager', 'staff'].indexOf(b.role) || a.displayName.localeCompare(b.displayName, 'he'));
-  const guests = items.filter((p) => p.role === 'guest' && match(p));
-  const pendingInvites = invites.items.filter((i) => !items.some((p) => p.email === i.email));
-  const exportCsv = () => downloadCsv('אנשים.csv', ['מספר לקוח', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'תאריך הרשמה', ...(ctx.fields || []).map((f) => f.label)], [...items].sort((a, b) => a.customerNumber - b.customerNumber).map((p) => [p.customerNumber, p.displayName, p.phone, p.email, ROLE_LABELS[p.role], STATUS_LABELS[p.status], fmtDate(p.createdAt), ...(ctx.fields || []).map((f) => p.fields?.[f.id] || '')]));
-  const PersonRow = ({ p }: { p: Profile }) => (
-    <button type="button" className="row" onClick={() => setSelected(p)}>
-      <Avatar name={p.displayName} size={38} />
-      <div className="row-main"><div className="row-title">{p.displayName}</div><div className="row-meta"><span className={'tag ' + (p.role === 'owner' ? 'gold' : p.role === 'manager' ? 'ok' : '')}>{ROLE_LABELS[p.role]}</span>{p.phone && <span dir="ltr">{p.phone}</span>}<span>#{p.customerNumber}</span>{p.status === 'blocked' && <span className="tag bad">חסום</span>}</div></div>
-      <span className="row-end"><Icon name="chev" size={18} /></span>
-    </button>
-  );
-  return (
-    <>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <label className="field" style={{ flex: 1, margin: 0 }}><span className="sr-only">חיפוש</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="חיפוש לפי שם, טלפון, מייל או מספר" /></label>
-        <Button kind="secondary" className="sm" onClick={exportCsv} aria-label="ייצוא לאקסל"><Icon name="download" /></Button>
-      </div>
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <div><b style={{ fontWeight: 500 }}>תפקיד לפי חשבון גוגל</b><div className="hint">מי שנכנס עם הכתובת שהגדרתם מקבל את התפקיד אוטומטית. בלי קודים.</div></div>
-          <Button kind="primary" className="sm" onClick={() => setInviting(true)}><Icon name="plus" />הוספה</Button>
+      <Top date={fmtDayLong(today)} title="ניהול" end={<A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
+      <Sec title="לטיפול" n={inbox.length} link="הכל, גם מה שטופל" linkTo="/manage/inbox" open={isOpen('inbox')} onToggle={() => toggle('inbox')} />
+      {isOpen('inbox') && (inbox.length ? <div className="list">{inbox.slice(0, desktop ? 10 : 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} />)}</div> : <p className="lead">אין כלום שמחכה להחלטה. יופי.</p>)}
+      <Sec title="הכל לפי נושא" open={isOpen('topics')} onToggle={() => toggle('topics')} />
+      {isOpen('topics') && <>
+        <div className="tiles">{topics.map((t) => <A key={t.to} to={t.to} className="tile"><div className="h"><Icon name={t.icon} />{t.title}{t.badge ? <span className="pill rust" style={{ marginInlineStart: 'auto' }}>{t.badge}</span> : null}</div><div className="s">{t.sub}</div></A>)}</div>
+        <div className="links">
+          <A to="/manage/templates"><Icon name="repeat" />משימות חוזרות<span className="s">{templatesCount} פעילות</span><Icon name="chev" className="chev" size={18} /></A>
+          <A to="/manage/places"><Icon name="pin" />מקומות בחווה<span className="s">{placesCount}</span><Icon name="chev" className="chev" size={18} /></A>
+          <A to="/manage/vendors"><Icon name="store" />בעלי דוכנים<span className="s">{vendorsCount} ברשימה</span><Icon name="chev" className="chev" size={18} /></A>
+          <A to="/manage/activity"><Icon name="history" />כל הפעילות<span className="s">מי עשה מה</span><Icon name="chev" className="chev" size={18} /></A>
+          <A to="/manage/settings"><Icon name="sliders" />הגדרות<span className="s">תשלום, תרומות, הודעות</span><Icon name="chev" className="chev" size={18} /></A>
+          <a href="/admin" target="_blank" rel="noopener"><Icon name="external" />עריכת האתר<span className="s">נפתח בחלון נפרד</span><Icon name="chev" className="chev" size={18} /></a>
         </div>
-        {pendingInvites.length > 0 && <div className="list" style={{ marginTop: 12, boxShadow: 'none' }}>{pendingInvites.map((i) => (
-          <div className="row" key={i.id} style={{ padding: '10px 12px' }}><div className="row-main"><div className="row-title" style={{ fontSize: 15 }} dir="ltr">{i.email}</div><div className="row-meta"><span className="tag">{ROLE_LABELS[i.role]}</span><span>עדיין לא נכנס/ה</span></div></div><button type="button" className="icon-btn ghost" aria-label="הסרה" onClick={() => removeRoleInvite(i.email)}><Icon name="x" size={18} /></button></div>
-        ))}</div>}
-      </div>
-      <div className="section"><div className="section-head"><h2>הצוות · {team.length}</h2></div>{loading ? <div className="loading">טוען…</div> : team.length ? <div className="list">{team.map((p) => <PersonRow key={p.uid} p={p} />)}</div> : <Empty title="עדיין אין צוות" text="הוסיפו כתובת מייל של מתנדב או מנהל למעלה." icon="people" />}</div>
-      {guests.length > 0 && <div className="section"><div className="section-head"><h2>אורחים · {guests.length}</h2></div><div className="list">{guests.map((p) => <PersonRow key={p.uid} p={p} />)}</div></div>}
-      <PersonSheet person={selected} onClose={() => setSelected(null)} ctx={ctx} />
-      <Sheet open={inviting} onClose={() => setInviting(false)} title="תפקיד לפי מייל">
-        <p className="hint" style={{ marginBottom: 14 }}>כשהאדם ייכנס לראשונה עם חשבון הגוגל הזה, הוא יקבל את התפקיד מיד. אם כבר נרשם, שנו את התפקיד דרך הכרטיס שלו.</p>
-        <label className="field"><span>כתובת גוגל</span><input data-autofocus value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} dir="ltr" inputMode="email" placeholder="name@gmail.com" /></label>
-        <div className="field"><span>תפקיד</span><div className="chips">{(ctx.owner ? ['staff', 'manager', 'owner'] : ['staff']).map((r) => <button key={r} type="button" className={'chip ' + (inviteRole === r ? 'on' : '')} onClick={() => setInviteRole(r as RoleInvite['role'])}>{ROLE_LABELS[r as Role]}</button>)}</div></div>
-        <div className="sheet-foot"><Button kind="primary" onClick={async () => { try { await inviteByEmail(ctx.actor, inviteEmail, inviteRole); setInviteEmail(''); setInviting(false); toast({ text: 'נשמר. התפקיד יחול בכניסה הראשונה.' }, 3000); } catch (e: any) { toast({ text: e.message || 'לא נשמר', kind: 'error' }); } }}>שמירה</Button><Button kind="quiet" onClick={() => setInviting(false)}>ביטול</Button></div>
-      </Sheet>
+      </>}
     </>
   );
 }
 
-function PersonSheet({ person, onClose, ctx }: { person: Profile | null; onClose: () => void; ctx: Ctx }) {
+const ICONS: Record<AppNotification['type'], string> = { visit: 'pin', donation: 'heart', join: 'user', order: 'ticket', receipt: 'file', tab: 'store', claim: 'ticket' };
+export function InboxRow({ n, ctx, handled }: { n: AppNotification; ctx: TeamCtx; handled?: boolean }) {
   const toast = useToast();
-  const [role, setRole] = useState<Role>('staff');
-  const [status, setStatus] = useState<Status>('active');
-  const [notes, setNotes] = useState('');
-  const activity = useActivityForUser(person?.uid || '', !!person);
-  useEffect(() => { if (person) { setRole(person.role); setStatus(person.status); setNotes(person.notes || ''); } }, [person?.uid]);
-  if (!person) return <Sheet open={false} onClose={onClose}><div /></Sheet>;
-  const isSelf = person.uid === ctx.actor.uid;
-  const roles: Role[] = ctx.owner ? ['guest', 'staff', 'manager', 'owner'] : ['guest', 'staff'];
-  const locked = person.role === 'owner' && !ctx.owner;
-  const dirty = role !== person.role || status !== person.status || notes !== (person.notes || '');
+  const done = () => handleNotification(n, ctx.actor, !handled).then(() => toast({ text: handled ? 'חזר לתור' : 'סומן טופל', action: { label: 'ביטול', onClick: () => handleNotification(n, ctx.actor, !!handled) } }, 4000));
   return (
-    <Sheet open={!!person} onClose={onClose} title={person.displayName}>
-      <div className="detail-list">
-        <div className="kv"><Icon name="user" size={18} /><div dir="ltr" style={{ textAlign: 'end' }}>{person.email}</div></div>
-        <div className="kv"><Icon name="info" size={18} /><div>לקוח מספר {person.customerNumber} · נרשם/ה {fmtDate(person.createdAt)}</div></div>
-        {person.phone && <div className="kv"><Icon name="phone" size={18} /><div dir="ltr" style={{ textAlign: 'end' }}>{person.phone}</div></div>}
-        {(ctx.fields || []).filter((f) => person.fields?.[f.id]).map((f) => <div className="kv" key={f.id}><Icon name="info" size={18} /><div>{f.label}: {person.fields![f.id]}</div></div>)}
+    <div className="row" style={handled ? { color: 'var(--muted)' } : undefined}>
+      <span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={ICONS[n.type] || 'bell'} /></span>
+      <div className="main">
+        <A to={n.link} className="title" style={{ display: 'block' }}>{n.title}</A>
+        <div className="meta"><span>{n.text}</span><span>{relTime(n.createdAt)}</span>{handled && n.handledBy && <span>· {firstName(n.handledBy.name)}</span>}</div>
+        {!handled && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn><Btn size="sm" kind="quiet" onClick={done}>טופל</Btn></div>}
       </div>
-      {person.phone && <div className="row-actions" style={{ marginTop: 10 }}><a className="btn secondary sm" href={`https://wa.me/${person.phone.replace(/\D/g, '').replace(/^0/, '972')}`} target="_blank" rel="noopener">וואטסאפ</a><a className="btn secondary sm" href={`tel:${person.phone}`}>התקשרות</a></div>}
-      {locked ? <p className="hint" style={{ marginTop: 16 }}>רק בעלים יכולים לשנות בעלים.</p> : (
-        <>
-          <div className="section"><div className="section-head"><h2>תפקיד</h2></div><div className="chips">{roles.map((r) => <button key={r} type="button" className={'chip ' + (role === r ? 'on' : '')} onClick={() => setRole(r)} disabled={isSelf && r !== person.role}>{ROLE_LABELS[r]}</button>)}</div></div>
-          <div className="section"><div className="section-head"><h2>מצב</h2></div><div className="chips">{(['active', 'blocked'] as Status[]).map((st) => <button key={st} type="button" className={'chip ' + (status === st ? (st === 'blocked' ? 'on bad' : 'on') : '')} onClick={() => setStatus(st)} disabled={isSelf}>{STATUS_LABELS[st]}</button>)}</div></div>
-          <label className="field" style={{ marginTop: 16 }}><span>הערות פנימיות (רק מנהלים רואים)</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
-          {dirty && <div className="row-actions"><Button kind="primary" onClick={async () => { try { await setUserRole(ctx.actor, person, role, status, notes); toast({ text: 'נשמר' }, 2000); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } }}>שמירה</Button><Button kind="quiet" onClick={() => { setRole(person.role); setStatus(person.status); setNotes(person.notes || ''); }}>ביטול</Button></div>}
-        </>
-      )}
-      {(person.log || []).length > 0 && <div className="section"><div className="section-head"><h2>שינויים</h2></div><ol className="timeline">{[...(person.log || [])].reverse().map((l, i) => <li key={i}><span className="tl-dot" /><div><b>{l.text}</b><small>{fmtDate(l.at)} · {l.by.name}</small></div></li>)}</ol></div>}
-      <Timeline items={activity.items} title="פעילות" />
-    </Sheet>
+      {handled && <Btn size="xs" kind="quiet" onClick={done}>החזרה לתור</Btn>}
+    </div>
   );
 }
 
-// ---------- recurring templates ----------
-const blank: NewTemplate = { title: '', note: '', days: [], time: '', active: true, managersOnly: false };
-function Templates({ ctx }: { ctx: Ctx }) {
-  const toast = useToast();
-  const [editing, setEditing] = useState<Template | null | 'new'>(null);
-  const [form, setForm] = useState<NewTemplate>(blank);
-  useEffect(() => { if (editing === 'new') setForm(blank); else if (editing) setForm({ title: editing.title, note: editing.note, days: editing.days, time: editing.time, active: editing.active, managersOnly: editing.managersOnly }); }, [editing]);
-  const dayText = (t: Template) => t.days.length === 0 || t.days.length === 7 ? 'כל יום' : t.days.map((d) => DAY_LABELS[d]).join(' ');
+type InboxFilter = 'all' | 'visit' | 'donation' | 'tab' | 'order' | 'handled';
+export function InboxScreen({ ctx, inbox }: { ctx: TeamCtx; inbox: AppNotification[] }) {
+  const [filter, setFilter] = useState<InboxFilter>('all');
+  const handled = useHandledNotifications(true);
+  const desktop = useDesktop();
+  const count = (t: AppNotification['type'][]) => inbox.filter((n) => t.includes(n.type)).length;
+  const list = filter === 'handled' ? handled.items : inbox.filter((n) => filter === 'all' ? true : filter === 'visit' ? n.type === 'visit' : filter === 'donation' ? n.type === 'donation' || n.type === 'receipt' : filter === 'tab' ? n.type === 'tab' : n.type === 'order' || n.type === 'claim');
   return (
     <>
-      <p className="hint" style={{ margin: '0 0 12px' }}>משימה חוזרת נוצרת מחדש כל יום שבו היא פעילה, ומופיעה אצל כולם ב"היום". מי שסימן אותה נרשם.</p>
-      {ctx.templates.length ? <div className="list">{ctx.templates.map((t) => (
-        <button type="button" className="row" key={t.id} onClick={() => setEditing(t)}>
-          <span className="icon-btn ghost" style={{ width: 30, height: 30, color: t.active ? 'var(--olive)' : 'var(--faint)' }}><Icon name="repeat" size={20} /></span>
-          <div className="row-main"><div className="row-title" style={{ color: t.active ? undefined : 'var(--muted)' }}>{t.title}</div><div className="row-meta"><span>{dayText(t)}</span>{t.time && <span>{t.time}</span>}{!t.active && <span className="tag">מושהית</span>}{t.managersOnly && <span className="tag gold">מנהלים</span>}</div></div>
-        </button>
-      ))}</div> : <Empty title="אין משימות חוזרות" text="למשל: השקיית העציצים כל יום, סידור כלים בימי שישי." icon="repeat" />}
-      <button type="button" className="fab" onClick={() => setEditing('new')}><Icon name="plus" />משימה חוזרת</button>
-      <Sheet open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' ? 'משימה חוזרת חדשה' : 'עריכת משימה חוזרת'}>
-        <label className="field"><span>מה צריך לעשות?</span><input data-autofocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="למשל: השקיית העציצים" /></label>
-        <label className="field"><span>הסבר קצר (לא חובה)</span><textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
-        <div className="field"><span>באילו ימים? (בלי בחירה = כל יום)</span><div className="chips">{DAY_LABELS.map((l, d) => <button key={d} type="button" className={'chip ' + (form.days.includes(d) ? 'on' : '')} onClick={() => setForm({ ...form, days: form.days.includes(d) ? form.days.filter((x) => x !== d) : [...form.days, d].sort() })}>{l}</button>)}</div></div>
-        <label className="field"><span>שעה (לא חובה)</span><input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} dir="ltr" /></label>
-        <div className="toggle"><div>פעילה</div><button type="button" role="switch" aria-checked={form.active} className="switch" aria-label="פעילה" onClick={() => setForm({ ...form, active: !form.active })} /></div>
-        <div className="toggle"><div>למנהלים בלבד</div><button type="button" role="switch" aria-checked={form.managersOnly} className="switch" aria-label="למנהלים בלבד" onClick={() => setForm({ ...form, managersOnly: !form.managersOnly })} /></div>
-        <div className="sheet-foot">
-          <Button kind="primary" onClick={async () => { if (!form.title.trim()) return toast({ text: 'מה צריך לעשות?', kind: 'error' }); try { await saveTemplate(ctx.actor, form, editing === 'new' ? undefined : editing!); setEditing(null); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } }}>שמירה</Button>
-          {editing !== 'new' && editing && <Button kind="quiet" onClick={async () => { if (!confirm('למחוק את המשימה החוזרת? משימות שכבר נוצרו יישארו.')) return; await deleteTemplate(editing.id); setEditing(null); }}><Icon name="trash" />מחיקה</Button>}
-        </div>
-      </Sheet>
+      <Top backTo="/manage" backLabel="ניהול" title={<>לטיפול <span className="muted" style={{ fontWeight: 500 }}>· {inbox.length}</span></>} sub='כל מה שמחכה להחלטה של מנהל. פריט נסגר כשעושים את הפעולה או לוחצים "טופל".' />
+      <div style={{ paddingTop: 8 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'פתוחים', n: inbox.length }, { value: 'visit', label: 'ביקורים', n: count(['visit']) }, { value: 'donation', label: 'תרומות', n: count(['donation', 'receipt']) }, { value: 'tab', label: 'דוכן', n: count(['tab']) }, { value: 'order', label: 'הזמנות', n: count(['order', 'claim']) }, { value: 'handled', label: 'טופלו', n: handled.items.length }]} /></div>
+      {filter === 'handled' && handled.loading && <Loading />}
+      {list.length ? <div className="list" style={{ marginTop: 8 }}>{list.map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled={filter === 'handled'} />)}</div> : <Empty title={filter === 'handled' ? 'עוד לא טופל כלום' : 'אין כלום שמחכה'} text={filter === 'handled' ? '' : 'בקשות ביקור, תרומות שהועברו וחשבונות דוכן יופיעו כאן.'} />}
+      {filter === 'all' && handled.items.length > 0 && <><Sec title="טופלו לאחרונה" n={handled.items.length} link="הכל" onLink={() => setFilter('handled')} /><div className="list">{handled.items.slice(0, 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled />)}</div></>}
     </>
   );
 }
 
-// ---------- places ----------
-function Places({ ctx }: { ctx: Ctx }) {
-  const toast = useToast();
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  return (
-    <>
-      <p className="hint" style={{ margin: '0 0 12px' }}>עמדו במקום, כתבו לו שם ולחצו "שמירה כאן". המקום יופיע לבחירה בכל משימה, ובעתיד על המפה.</p>
-      <div className="card" style={{ padding: 12, marginBottom: 14, display: 'flex', gap: 8 }}>
-        <label className="field" style={{ flex: 1, margin: 0 }}><span className="sr-only">שם המקום</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="למשל: העץ מאחורי הביתן" /></label>
-        <Button kind="primary" disabled={busy || !name.trim()} onClick={async () => { setBusy(true); try { const p = await getPosition(); await addPlace(ctx.actor, name, p.lat, p.lng); setName(''); toast({ text: 'המקום נשמר' }, 2000); } catch (e: any) { toast({ text: e.message || 'לא נשמר', kind: 'error' }); } finally { setBusy(false); } }}><Icon name="pin" />שמירה כאן</Button>
-      </div>
-      {ctx.places.length ? <div className="list">{ctx.places.map((p) => (
-        <div className="row" key={p.id}><span className="icon-btn ghost" style={{ width: 30, height: 30, color: 'var(--olive)' }}><Icon name="pin" size={20} /></span>
-          <div className="row-main"><div className="row-title">{p.name}</div><div className="row-meta"><a href={`https://www.google.com/maps?q=${p.lat},${p.lng}`} target="_blank" rel="noopener" style={{ color: 'var(--olive)' }}>במפה ↗</a><span dir="ltr">{p.lat}, {p.lng}</span></div></div>
-          <button type="button" className="icon-btn ghost" aria-label="מחיקה" onClick={async () => { if (confirm('למחוק את המקום?')) await deletePlace(p.id); }}><Icon name="x" size={18} /></button></div>
-      ))}</div> : <Empty title="עדיין אין מקומות שמורים" icon="pin" />}
-    </>
-  );
-}

@@ -1,78 +1,84 @@
-import { useMemo, useState } from 'react';
-import type { Task, Profile, FarmEvent, CalendarItem } from '../types';
-import { TaskList, TaskDetail, TaskForm, QuickPhotoButton, type TaskCtx } from './Tasks';
-import { Icon, Empty, Avatar, fmtDayLong, firstName } from '../ui';
-import { navigate } from '../router';
-import { todayKey } from '../firebase';
+import type { Task, FarmEvent, CalendarItem, AppNotification, ShoppingItem } from '../types';
+import type { TeamCtx } from '../ctx';
+import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, Empty, fmtDayLong, fmtTime, firstName, greeting, inText, fmtDateShort, fmtWeekday, todayISO, useDesktop, useOpenSections, relTime, money } from '../ui';
+import { setTaskDone } from '../store';
+import { taskMeta } from './Tasks';
 
-type Props = { profile: Profile; open: Task[]; recent: Task[]; shoppingCount: number; urgentShopping: number; ctx: TaskCtx; loading: boolean; events: FarmEvent[]; calendarToday: CalendarItem[]; inboxCount: number; manager: boolean };
+type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingItem[]; events: FarmEvent[]; calendar: CalendarItem[]; inbox: AppNotification[]; loading: boolean };
 
-const isToday = (e: FarmEvent) => { const n = new Date(); return new Date(e.start).toDateString() === n.toDateString() || (new Date(e.start) <= n && new Date(e.end) >= n); };
-const daysUntil = (iso: string) => Math.ceil((new Date(iso).getTime() - Date.now()) / 86400_000);
-
-export function TodayScreen({ profile, open, recent, shoppingCount, urgentShopping, ctx, loading, events, calendarToday, inboxCount, manager }: Props) {
-  const [selected, setSelected] = useState<Task | null>(null);
-  const [adding, setAdding] = useState(false);
-  const today = todayKey();
-  const hour = new Date().getHours();
-  const greeting = hour < 5 ? 'לילה טוב' : hour < 12 ? 'בוקר טוב' : hour < 17 ? 'צהריים טובים' : hour < 21 ? 'ערב טוב' : 'לילה טוב';
+export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inbox, loading }: Props) {
+  const desktop = useDesktop();
+  const today = todayISO();
   const mine = open.filter((t) => t.assignee?.uid === ctx.actor.uid);
-  const urgent = open.filter((t) => t.urgent && t.assignee?.uid !== ctx.actor.uid);
-  const todays = open.filter((t) => (t.dateKey === today || t.dueDate === today) && !mine.includes(t) && !urgent.includes(t));
-  const overdue = open.filter((t) => t.dueDate && t.dueDate < today && !mine.includes(t) && !urgent.includes(t));
-  const doneToday = recent.filter((t) => (t.doneAt || '') >= today);
-  const live = selected ? (open.find((t) => t.id === selected.id) || recent.find((t) => t.id === selected.id) || selected) : null;
-  const eventToday = events.find(isToday);
-  const nextEvent = useMemo(() => events.filter((e) => !isToday(e) && new Date(e.end).getTime() > Date.now()).sort((a, b) => a.start.localeCompare(b.start))[0], [events]);
-  const whoToday = calendarToday.filter((c) => c.kind === 'manual');
-  const headline = open.length === 0 ? 'הכל סגור. יופי.' : mine.length ? `${mine.length} ${mine.length === 1 ? 'משימה עליך' : 'משימות עליך'}` : open.length === 1 ? 'משימה אחת מחכה' : `${open.length} משימות מחכות`;
+  const overdue = open.filter((t) => t.dueDate && t.dueDate < today);
+  const todays = open.filter((t) => !t.dueDate || t.dueDate <= today || t.urgent).sort(byPriority(ctx.actor.uid, today));
+  const doneToday = recent.filter((t) => (t.doneAt || '') >= today).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || ''));
+  const upcoming = events.filter((e) => e.end >= new Date().toISOString() && e.published).sort((a, b) => a.start.localeCompare(b.start));
+  const next = upcoming[0];
+  const eventToday = next && next.start.slice(0, 10) <= today && next.end.slice(0, 10) >= today ? next : null;
+  const urgentShop = shopping.filter((i) => i.urgent).length;
+  const { isOpen, toggle } = useOpenSections(['todo', 'done', 'inbox', 'shop'], 'today');
+  const toggleDone = (t: Task, v: boolean) => setTaskDone(ctx.actor, t, v).catch(() => {});
+
   return (
     <>
-      <header className="topbar"><div><h1>{greeting}, {firstName(profile.displayName)}</h1><div className="sub">{fmtDayLong(today)}</div></div><div className="topbar-actions">{manager && inboxCount > 0 && <button type="button" className="icon-btn" onClick={() => navigate('/inbox')} aria-label="התראות"><span className="bell"><Icon name="info" /><i>{inboxCount}</i></span></button>}<button type="button" className="icon-btn" onClick={() => navigate('/more')} aria-label="הפרופיל שלי"><Avatar name={profile.displayName} size={36} /></button></div></header>
-      <div className="hero-card">
-        <div className="eyebrow">היום בחווה</div>
-        <h2>{headline}</h2>
-        <div className="hero-stats">
-          <div><b>{doneToday.length}</b><span>בוצעו היום</span></div>
-          <div><b>{todays.length + mine.filter((t) => t.dueDate === today || t.dateKey === today).length}</b><span>להיום</span></div>
-          {overdue.length > 0 && <div><b>{overdue.length}</b><span>באיחור</span></div>}
-          {urgent.length + mine.filter((t) => t.urgent).length > 0 && <div><b>{urgent.length + mine.filter((t) => t.urgent).length}</b><span>דחופות</span></div>}
+      <Top date={fmtDayLong(today)} title={`${greeting()}, ${firstName(ctx.profile.displayName)}`} end={desktop
+        ? <><Btn kind="ghost" size="sm" icon="plus" to="/tasks/new">משימה</Btn><Btn kind="ghost" size="sm" icon="plus" to="/shopping/new">פריט לקניות</Btn></>
+        : <A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
+      <Ledger items={ctx.manager
+        ? [{ n: todays.length, label: 'לביצוע' }, { n: overdue.length, label: 'באיחור', tone: overdue.length ? 'rust' : undefined }, { n: doneToday.length, label: 'בוצעו היום' }, ...(desktop ? [{ n: shopping.length, label: 'פריטי קניות', to: '/shopping' }, { n: inbox.length, label: 'לטיפול', tone: inbox.length ? 'ochre' as const : undefined, to: '/manage/inbox' }] : [])]
+        : [{ n: todays.length, label: 'לביצוע' }, { n: mine.length, label: 'עליך' }, { n: doneToday.length, label: 'בוצעו היום' }]} />
+
+      {eventToday && <A to={`/events-staff/${eventToday.id}`} className="paybox ok" style={{ display: 'block', marginTop: 14 }}><b>היום: {eventToday.title}</b>{fmtTime(eventToday.start)}–{fmtTime(eventToday.end)} · כניסה ודוכן מהטלפון</A>}
+      {!eventToday && next && !desktop && <EventTeaser e={next} to={`/events-staff/${next.id}`} />}
+
+      <div className={desktop ? 'cols' : ''}>
+        <div>
+          <Sec title={ctx.manager ? 'לביצוע היום' : 'לביצוע'} n={todays.length} link="כל המשימות" linkTo="/tasks" open={isOpen('todo')} onToggle={() => toggle('todo')} />
+          {isOpen('todo') && (loading && !todays.length ? null : todays.length ? <div className="list">{todays.slice(0, desktop ? 12 : 8).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>
+            : <Empty title="אין משימות פתוחות" text="כשמישהו מוסיף משימה היא תופיע כאן." />)}
+          <Sec title="בוצע היום" n={doneToday.length} link="היסטוריה" linkTo="/history" open={isOpen('done')} onToggle={() => toggle('done')} />
+          {isOpen('done') && <div className="list">{doneToday.slice(0, 6).map((t) => <Row key={t.id} done to={`/tasks/${t.id}`} start={<Chk on onChange={(v) => toggleDone(t, v)} label={`להחזיר לביצוע: ${t.title}`} />} title={t.title} meta={<><span>{firstName(t.doneBy?.name || '')} · {fmtTime(t.doneAt)}</span>{t.donePhoto && <Icon name="camera" />}</>} />)}
+            {!doneToday.length && <p className="lead">עדיין לא סומן כלום היום.</p>}</div>}
         </div>
+        {desktop && (
+          <div>
+            {ctx.manager && <>
+              <Sec title="לטיפול" n={inbox.length} link="הכל" linkTo="/manage/inbox" open={isOpen('inbox')} onToggle={() => toggle('inbox')} />
+              {isOpen('inbox') && <div className="list">{inbox.slice(0, 5).map((n) => <Row key={n.id} to={n.link} center title={n.title} meta={<span>{n.text} · {relTime(n.createdAt)}</span>} chev />)}{!inbox.length && <p className="lead">אין כלום שמחכה להחלטה.</p>}</div>}
+            </>}
+            {next && <><Sec title={inText(next.start)} n={`${fmtWeekday(next.start)} ${fmtDateShort(next.start)}`} link="האירוע" linkTo={ctx.manager ? `/manage/events/${next.id}` : `/events-staff/${next.id}`} /><EventTeaser e={next} to={ctx.manager ? `/manage/events/${next.id}` : `/events-staff/${next.id}`} /></>}
+            {ctx.manager && <>
+              <Sec title="מי בחווה" link="יומן" linkTo="/manage/calendar" />
+              <div className="list">{calendar.filter((c) => c.date >= today).slice(0, 5).map((c) => <Row key={c.id} center to="/manage/calendar" title={c.title} meta={<span>{c.date === today ? 'היום' : fmtWeekday(c.date)} · {c.time}</span>} />)}{!calendar.length && <p className="lead">היומן ריק לשבוע הקרוב.</p>}</div>
+            </>}
+            <Sec title="קניות" n={`${shopping.length} פריטים${urgentShop ? ` · ${urgentShop} דחוף` : ''}`} link="לרשימה" linkTo="/shopping" open={isOpen('shop')} onToggle={() => toggle('shop')} />
+            {isOpen('shop') && <p className="lead ink">{shopping.slice(0, 8).map((i) => (i.urgent ? '🔴 ' : '') + i.title + (i.qty ? ' · ' + i.qty : '')).join(' · ') || 'הרשימה ריקה.'}</p>}
+          </div>
+        )}
       </div>
-      {eventToday && (
-        <button type="button" className="event-today" onClick={() => navigate(`/events-staff/${eventToday.id}`)}>
-          {eventToday.image && <img src={eventToday.image} alt="" />}
-          <div className="event-today-body"><span className="eyebrow">היום מתקיים</span><h2>{eventToday.title}</h2><p>{new Date(eventToday.start).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}{eventToday.location ? ' · ' + eventToday.location : ''}</p><span className="btn primary sm">לכניסה ולדוכן <Icon name="chev" /></span></div>
-        </button>
-      )}
-      <div className="quick">
-        <a href="/app/tasks" onClick={(e) => { e.preventDefault(); navigate('/tasks'); }}><Icon name="list" />משימות<span className="n">{open.length}</span></a>
-        <a href="/app/shopping" onClick={(e) => { e.preventDefault(); navigate('/shopping'); }}><Icon name="cart" />קניות<span className="n">{shoppingCount}{urgentShopping ? ` · ${urgentShopping} דחוף` : ''}</span></a>
-      </div>
-      <div className="people-row" style={{ marginTop: 12 }}>
-        <QuickPhotoButton ctx={ctx} />
-        {whoToday.length > 0 && whoToday.map((c) => <span className="person-chip" key={c.id}><Avatar name={c.ownerName} size={22} />{c.title}{c.time ? ` · ${c.time}` : ''}</span>)}
-      </div>
-      {!eventToday && nextEvent && (
-        <a className="next-event" href={`/app/events-staff/${nextEvent.id}`} onClick={(e) => { e.preventDefault(); navigate(`/events-staff/${nextEvent.id}`); }}>
-          <div className="date"><b>{new Date(nextEvent.start).getDate()}</b><span>{new Date(nextEvent.start).toLocaleDateString('he-IL', { month: 'short' })}</span></div>
-          <div className="nx-main"><b>{nextEvent.title}</b><small>בעוד {daysUntil(nextEvent.start)} ימים{nextEvent.location ? ' · ' + nextEvent.location : ''}</small></div>
-          <Icon name="chev" size={18} />
-        </a>
-      )}
-      {loading && !open.length ? <div className="loading">טוען…</div> : (
-        <>
-          {mine.length > 0 && <div className="section"><div className="section-head"><h2>עליך</h2></div><TaskList tasks={mine} ctx={ctx} onOpen={setSelected} empty={null} /></div>}
-          {urgent.length > 0 && <div className="section"><div className="section-head"><h2>דחוף</h2></div><TaskList tasks={urgent} ctx={ctx} onOpen={setSelected} empty={null} /></div>}
-          {overdue.length > 0 && <div className="section"><div className="section-head"><h2>באיחור</h2></div><TaskList tasks={overdue} ctx={ctx} onOpen={setSelected} empty={null} /></div>}
-          <div className="section"><div className="section-head"><h2>להיום</h2><a href="/app/tasks" onClick={(e) => { e.preventDefault(); navigate('/tasks'); }}>לכל המשימות</a></div>
-            <TaskList tasks={todays} ctx={ctx} onOpen={setSelected} empty={<Empty title={open.length ? 'אין משימות שמחכות דווקא להיום' : 'אין משימות פתוחות'} text={open.length ? `יש ${open.length} משימות פתוחות ברשימה המלאה.` : 'כשתופיע משימה חדשה היא תהיה כאן.'} icon="repeat" />} /></div>
-          {doneToday.length > 0 && <div className="section"><div className="section-head"><h2>בוצע היום · {doneToday.length}</h2></div><TaskList tasks={doneToday} ctx={ctx} onOpen={setSelected} empty={null} /></div>}
-        </>
-      )}
-      <button type="button" className="fab" onClick={() => setAdding(true)}><Icon name="plus" />משימה</button>
-      <TaskForm open={adding} onClose={() => setAdding(false)} ctx={ctx} />
-      <TaskDetail task={adding ? null : live} onClose={() => setSelected(null)} ctx={ctx} onEdit={() => { setSelected(null); navigate('/tasks'); }} />
+      {!desktop && <div className="phoneonly" style={{ padding: '16px 20px 0', display: 'flex', gap: 10 }}><Btn kind="ghost" size="sm" icon="cart" to="/shopping">קניות · {shopping.length}{urgentShop ? ` · ${urgentShop} דחוף` : ''}</Btn>{ctx.manager && inbox.length > 0 && <Btn kind="ghost" size="sm" icon="bell" to="/manage/inbox">לטיפול · {inbox.length}</Btn>}</div>}
     </>
+  );
+}
+
+export const byPriority = (uid: string, today: string) => (a: Task, b: Task) => {
+  const score = (t: Task) => (t.urgent ? 0 : 0) + (t.dueDate && t.dueDate < today ? 1 : 0) * -1 + (t.urgent ? -4 : 0) + (t.assignee?.uid === uid ? -2 : 0) + (t.dueDate === today ? -1 : 0);
+  return score(a) - score(b) || a.createdAt.localeCompare(b.createdAt);
+};
+
+export function TaskRow({ t, ctx, today, onDone }: { t: Task; ctx: TeamCtx; today: string; onDone: (v: boolean) => void }) {
+  const mine = t.assignee?.uid === ctx.actor.uid;
+  return <Row to={`/tasks/${t.id}`} start={<Chk on={t.done} onChange={onDone} label={`בוצע: ${t.title}`} rust={t.urgent} />} title={t.title} thumb={t.photo || undefined}
+    meta={<>{t.urgent && <Pill tone="rust">דחוף</Pill>}{mine && <Pill tone="gold">עליך</Pill>}{t.managersOnly && <Pill>מנהלים</Pill>}{taskMeta(t, ctx, today)}</>} />;
+}
+
+export function EventTeaser({ e, to }: { e: FarmEvent; to: string }) {
+  return (
+    <A to={to} className="evcard" style={{ marginTop: 8 }}>
+      <div className="date"><div className="d">{new Date(e.start).getDate()}</div><div className="m">{fmtDateShort(e.start).replace(/^\d+\s*/, '')} · {fmtWeekday(e.start)}</div></div>
+      <div className="main" style={{ flex: 1, minWidth: 0 }}><div className="t">{e.title}</div><div className="meta" style={{ marginTop: 4, color: 'var(--muted)', fontSize: 14 }}>{inText(e.start)} · {fmtTime(e.start)}{e.price ? ` · ${money(e.price)} לכרטיס` : ' · חינם'}</div></div>
+      <Icon name="chev" className="chev" size={18} />
+    </A>
   );
 }

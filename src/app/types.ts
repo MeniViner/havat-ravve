@@ -94,10 +94,12 @@ export type PaymentStatus = 'free' | 'pending' | 'claimed' | 'paid' | 'paid_onsi
 export const PAYMENT_LABELS: Record<PaymentStatus, string> = { free: 'חינם', pending: 'ממתין לתשלום', claimed: 'הועבר, ממתין לאישור', paid: 'שולם', paid_onsite: 'שולם במקום', cancelled: 'בוטל' };
 
 export type EventQuestion = { id: string; label: string; required: boolean };
+export type EventFile = { name: string; url: string; kind: 'doc' | 'image'; by: Actor; at: string };
 export type FarmEvent = {
   id: string; title: string; description: string; image: string; location: string;
   start: string; end: string; price: number; maxPerOrder: number; capacity: number;
   open: boolean; published: boolean; questions: EventQuestion[];
+  files?: EventFile[];
   createdBy: Actor; createdAt: string; updatedAt: string;
 };
 
@@ -139,7 +141,7 @@ export type Settings = {
   donationPresets: { amount: number; label: string }[];
   visitTypes: string[];
   payment: { bit: string; paybox: string; cash: boolean; note: string };
-  templates: { visitApproved: string; donationThanks: string; debtReminder: string; ticketReminder: string };
+  templates: { visitApproved: string; donationThanks: string; debtReminder: string; ticketReminder: string; vendorInvite?: string };
   registrationFields: RegistrationField[];
   guestIntro: string;
 };
@@ -152,6 +154,7 @@ export const DEFAULT_SETTINGS: Settings = {
     donationThanks: 'שלום [שם], תודה רבה על התרומה לחוות רווה.',
     debtReminder: 'שלום [שם], תודה שהייתם ב־[אירוע]. נשאר לתשלום [סכום] ₪. אפשר להעביר בביט או ב־PayBox. תודה!',
     ticketReminder: 'שלום [שם], מזכירים: [אירוע] מתקיים ב־[תאריך]. הכרטיסים באפליקציה: https://havat-ravve.web.app/app/me',
+    vendorInvite: 'שלום [שם], נשמח שתגיעו עם דוכן ל־[אירוע] ב־[תאריך] בחוות רווה. מתאים?',
   },
   registrationFields: [],
   guestIntro: 'ברוכים הבאים לחוות רווה. כאן מזמינים כרטיסים לאירועים, מתאמים ביקור ותורמים.',
