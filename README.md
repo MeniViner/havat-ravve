@@ -46,6 +46,32 @@ npm run dev
 - package-lock.json — גרסאות תלויות נעולות.
 - tests/ — בדיקות תוכן ובדיקות הרשאות מול Firestore Emulator.
 
+## CI ופריסה אוטומטית
+
+התיקייה `.github/workflows` מגדירה שלושה תהליכים ב־GitHub Actions:
+
+- **CI** (`ci.yml`) – על כל Pull Request ועל כל דחיפה ל־`main`: typecheck, בנייה, בדיקה ש־`dist/` מעודכן ביחס לקוד, `npm test`, ובדיקות כללי Firestore מול האמולטור (עם Java 21 של הריצה).
+- **Preview** (`preview.yml`) – על כל Pull Request מתוך הריפו: ערוץ Hosting זמני לשבוע, עם קישור בתגובה על ה־PR. עד שהסוד מוגדר התהליך מדלג עם הודעה.
+- **Deploy** (`deploy.yml`) – כל דחיפה ל־`main` (וגם ידנית מ־Actions) בונה ופורסת Hosting + כללי Firestore + אינדקסים לפרויקט havat-ravve. אין כאן שדרוג תוכנית חיוב; הפריסה זהה ל־`npm run deploy`.
+
+הגדרה חד־פעמית (מהמחשב, עם חשבון שמורשה לפרויקט):
+
+```bash
+npx firebase init hosting:github
+```
+
+הפקודה יוצרת חשבון שירות בפרויקט ושומרת אותו כסוד `FIREBASE_SERVICE_ACCOUNT_HAVAT_RAVVE` בריפו MeniViner/havat-ravve. כשהיא מציעה ליצור קבצי workflow בעצמה – לענות **לא**, הקבצים כבר כאן. חשבון השירות שנוצר מורשה ל־Hosting בלבד; כדי שהפריסה תכלול גם את כללי Firestore והאינדקסים צריך להוסיף לו שני תפקידים (כתובת החשבון מופיעה בפלט של הפקודה, בצורה `github-action-…@havat-ravve.iam.gserviceaccount.com`):
+
+```bash
+gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:<SA> --role=roles/firebaserules.admin
+```
+
+```bash
+gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:<SA> --role=roles/datastore.indexAdmin
+```
+
+אפשר גם דרך IAM במסוף Google Cloud. בלי התפקידים האלה Hosting יעלה אבל שלב ה־Firestore ייכשל, וה־Deploy יסומן אדום.
+
 ## פריסה מהמחשב
 יש להתקין Node.js 22 ומעלה. חלצו את החבילה, פתחו Terminal בתיקייה והפעילו:
 
