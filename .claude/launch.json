@@ -4,14 +4,22 @@
     {
       "name": "app-dev",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["scripts/dev.mjs"],
+      "runtimeArgs": [
+        "scripts/dev.mjs"
+      ],
       "port": 5173
     },
     {
-      "name": "canvas-preview",
+      "name": "site-preview",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "/private/tmp/claude-501/-Users-meni-dev-personal-projects-havat-ravve--claude-worktrees-ui-redesign-audit-7c89a0/68af9cd5-33d9-4a72-b1d8-071170d7564c/scratchpad/canvas/project"],
-      "port": 8765
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8766",
+        "--directory",
+        "dist"
+      ],
+      "port": 8766
     }
   ]
 }

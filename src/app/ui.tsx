@@ -1,5 +1,5 @@
-// Primitives of the "farm ledger" language: rows, 40px check squares, number strips, pills, buttons, fields, page headers.
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+// Primitives of the "farm ledger" language: rows, check marks that answer back, number strips, pills, buttons, fields, page headers.
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { href, navigate, back as goBack } from './router';
 
 // ---------- icons (stroke, inherit color) ----------
@@ -91,9 +91,9 @@ export const Ledger = ({ items, small }: { items: { n: ReactNode; label: string;
 );
 
 // ---------- section header (optionally collapsible) ----------
-export function Sec({ title, n, link, linkTo, onLink, children, open, onToggle }: { title: ReactNode; n?: number | string; link?: string; linkTo?: string; onLink?: () => void; children?: ReactNode; open?: boolean; onToggle?: () => void }) {
+export function Sec({ title, n, link, linkTo, onLink, children, open, onToggle, serif, tone }: { title: ReactNode; n?: number | string; link?: string; linkTo?: string; onLink?: () => void; children?: ReactNode; open?: boolean; onToggle?: () => void; serif?: boolean; tone?: 'rust' }) {
   return (
-    <div className="sec">
+    <div className={'sec' + (serif ? ' day' : '') + (tone ? ' ' + tone : '')}>
       {onToggle ? <button type="button" className={'tog' + (open ? '' : ' closed')} onClick={onToggle} aria-expanded={open}><Icon name="down" />{title}{n !== undefined && <span className="n">· {n}</span>}</button>
         : <span>{title}{n !== undefined && <span className="n">· {n}</span>}</span>}
       {children}
@@ -101,8 +101,8 @@ export function Sec({ title, n, link, linkTo, onLink, children, open, onToggle }
     </div>
   );
 }
-export function useOpenSections(keys: string[], storageKey: string) {
-  const [state, setState] = useState<Record<string, boolean>>(() => { try { return { ...Object.fromEntries(keys.map((k) => [k, true])), ...JSON.parse(localStorage.getItem('farm-sec-' + storageKey) || '{}') }; } catch { return Object.fromEntries(keys.map((k) => [k, true])); } });
+export function useOpenSections(keys: string[], storageKey: string, closed: string[] = []) {
+  const [state, setState] = useState<Record<string, boolean>>(() => { const base = Object.fromEntries(keys.map((k) => [k, !closed.includes(k)])); try { return { ...base, ...JSON.parse(localStorage.getItem('farm-sec-' + storageKey) || '{}') }; } catch { return base; } });
   const toggle = (k: string) => setState((s) => { const n = { ...s, [k]: !s[k] }; try { localStorage.setItem('farm-sec-' + storageKey, JSON.stringify(n)); } catch {} return n; });
   return { isOpen: (k: string) => state[k] !== false, toggle };
 }
@@ -110,18 +110,63 @@ export function useOpenSections(keys: string[], storageKey: string) {
 // ---------- rows ----------
 export function Row({ to, onClick, title, meta, start, end, done, thumb, chev, className = '', center }: { to?: string; onClick?: () => void; title: ReactNode; meta?: ReactNode; start?: ReactNode; end?: ReactNode; done?: boolean; thumb?: string; chev?: boolean; className?: string; center?: boolean }) {
   const cls = `row ${done ? 'done' : ''} ${center ? 'center' : ''} ${className}`;
-  const body = <>{thumb && <img className="thumb" src={thumb} alt="" />}<div className="main"><div className="title">{title}</div>{meta && <div className="meta">{meta}</div>}</div>{end && <div className="end">{end}</div>}{chev && <Icon name="chev" className="chev" size={18} />}</>;
-  if (start) {
-    // the start control (a check square) is its own button; the rest of the row is the link
-    return <div className={cls}>{start}{to ? <A to={to} className="main lnk" style={{ display: 'flex', gap: 14, flex: 1, minWidth: 0 }}>{body}</A> : onClick ? <button type="button" className="main lnk" style={{ display: 'flex', gap: 14, flex: 1, minWidth: 0 }} onClick={onClick}>{body}</button> : <div className="main" style={{ display: 'flex', gap: 14, flex: 1, minWidth: 0 }}>{body}</div>}</div>;
+  const inner = <>{thumb && <img className="thumb" src={thumb} alt="" />}<div className="main"><div className="title">{title}</div>{meta && <div className="meta">{meta}</div>}</div></>;
+  const tail = <>{end && <div className="end">{end}</div>}{chev && <Icon name="chev" className="chev" size={18} />}</>;
+  const body = <>{inner}{tail}</>;
+  if (start || (end && (to || onClick))) {
+    // a leading control (a check mark) or trailing actions are their own buttons; only the middle of the row is the link
+    const link = { className: 'main lnk', style: { display: 'flex', gap: 14, flex: 1, minWidth: 0 } as const };
+    return <div className={cls}>{start}{to ? <A to={to} {...link}>{inner}</A> : onClick ? <button type="button" {...link} onClick={onClick}>{inner}</button> : <div className="main" style={link.style}>{inner}</div>}{tail}</div>;
   }
   if (to) return <A to={to} className={cls}>{body}</A>;
   if (onClick) return <button type="button" className={cls} onClick={onClick}>{body}</button>;
   return <div className={cls}>{body}</div>;
 }
-export const Chk = ({ on, onChange, label, rust, small }: { on: boolean; onChange: (v: boolean) => void; label: string; rust?: boolean; small?: boolean }) => (
-  <button type="button" role="checkbox" aria-checked={on} aria-label={label} className={`chk ${on ? 'on' : ''} ${rust && !on ? 'rust' : ''} ${small ? 'sm' : ''}`} onClick={(e) => { e.stopPropagation(); onChange(!on); }}><Icon name="check" size={small ? 16 : 22} /></button>
-);
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+/**
+ * The "done" mark. Round for tasks, a small box for the shopping note.
+ * Checking answers back before the item leaves: the mark fills and the tick draws, the line is struck, then the row folds away.
+ * Only then is the change written, so the list never just jumps.
+ */
+export function Chk({ on, onChange, label, rust, small, round }: { on: boolean; onChange: (v: boolean) => void; label: string; rust?: boolean; small?: boolean; round?: boolean }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  const reset = useRef(0);
+  useEffect(() => () => clearTimeout(reset.current), []);
+  const click = (e: React.MouseEvent) => {
+    e.stopPropagation(); e.preventDefault();
+    if (busy) return;
+    if (on || reducedMotion()) { onChange(!on); return; }
+    setBusy(true);
+    const row = ref.current?.closest<HTMLElement>('.row, .line, tr') || null;
+    const tr = row?.tagName === 'TR';
+    row?.classList.add('checking');
+    let fold: Animation | undefined;
+    if (row && !tr && typeof row.animate === 'function') {
+      row.style.overflow = 'hidden';
+      fold = row.animate([{ height: row.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px', minHeight: '0px' }], { duration: 260, delay: 380, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    }
+    // not cleared on unmount: the user did check it, even if they navigate away in the next half second
+    setTimeout(() => onChange(true), tr ? 460 : 640);
+    // still here a moment later (the write failed, or this list keeps done items)? put the row back
+    reset.current = window.setTimeout(() => { fold?.cancel(); if (row) { row.classList.remove('checking'); row.style.overflow = ''; } setBusy(false); }, 1700);
+  };
+  const checked = on || busy;
+  return (
+    <button ref={ref} type="button" role="checkbox" aria-checked={checked} aria-label={label} className={`chk ${round ? 'round' : ''} ${checked ? 'on' : ''} ${busy ? 'pop' : ''} ${rust && !checked ? 'rust' : ''} ${small ? 'sm' : ''}`} onClick={click}>
+      <span className="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span>
+    </button>
+  );
+}
+/** Replays the page-enter motion whenever `key` changes, without remounting the screen (filters and scroll survive). */
+export function usePageEnter<T extends HTMLElement>(key: string) {
+  const ref = useRef<T>(null);
+  useLayoutEffect(() => {
+    const el = ref.current; if (!el) return;
+    el.classList.remove('page-in'); void el.offsetWidth; el.classList.add('page-in');
+  }, [key]);
+  return ref;
+}
 export const Pill = ({ tone, children }: { tone?: 'rust' | 'ochre' | 'ok' | 'gold' | 'green'; children: ReactNode }) => <span className={'pill ' + (tone || '')}>{children}</span>;
 export const Dot = () => <span aria-hidden="true">·</span>;
 
@@ -156,7 +201,7 @@ export const SwitchRow = ({ on, onChange, title, meta }: { on: boolean; onChange
   <div className="switchrow"><div className="main"><div className="title">{title}</div>{meta && <div className="meta">{meta}</div>}</div><Switch on={on} onChange={onChange} label={title} /></div>
 );
 export const Stepper = ({ value, onChange, min = 1, max = 99 }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) => (
-  <div className="stepper"><button type="button" aria-label="פחות" disabled={value <= min} onClick={() => onChange(value - 1)}><Icon name="minus" /></button><b>{value}</b><button type="button" aria-label="עוד" disabled={value >= max} onClick={() => onChange(value + 1)}><Icon name="plus" /></button></div>
+  <div className="stepper"><button type="button" aria-label="פחות" disabled={value <= min} onClick={() => onChange(value - 1)}><Icon name="minus" /></button><b key={value} className="pop">{value}</b><button type="button" aria-label="עוד" disabled={value >= max} onClick={() => onChange(value + 1)}><Icon name="plus" /></button></div>
 );
 export const DAY_SHORT = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 export const Days = ({ value, onChange, disabled = [] }: { value: number[]; onChange: (v: number[]) => void; disabled?: number[] }) => (
@@ -164,9 +209,9 @@ export const Days = ({ value, onChange, disabled = [] }: { value: number[]; onCh
 );
 
 // ---------- people ----------
-export const Avatar = ({ name, size, light }: { name: string; size?: 'sm' | 'lg'; light?: boolean }) => {
+export const Avatar = ({ name, size, light, me }: { name: string; size?: 'xs' | 'sm' | 'lg'; light?: boolean; me?: boolean }) => {
   const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('');
-  return <span className={`avatar ${size || ''} ${light ? 'light' : ''}`} aria-hidden="true">{initials}</span>;
+  return <span className={`avatar ${size || ''} ${light ? 'light' : ''} ${me ? 'me' : ''}`} aria-hidden="true">{initials}</span>;
 };
 
 // ---------- empty / loading ----------

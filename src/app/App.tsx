@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useOnline, usePeople } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
-import { useRoute, match } from './router';
-import { Icon, ToastProvider, A, Avatar, useDesktop, todayISO, addDays } from './ui';
+import { useRoute, match, navigate } from './router';
+import { Icon, ToastProvider, A, Avatar, useDesktop, usePageEnter, todayISO, addDays } from './ui';
 import type { TeamCtx, GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
+import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
-import { useDemo, setDemo, PERSONA_LABELS } from './demo/store';
+import { useDemo, setDemo, PERSONA_LABELS, type Persona } from './demo/store';
 import { TodayScreen } from './screens/Today';
 import { TasksScreen, TaskDetail, TaskForm, TaskEditPage, HistoryScreen } from './screens/Tasks';
 import { ShoppingScreen, ShopItemPage, ShopForm } from './screens/Shopping';
@@ -25,24 +26,39 @@ const isCurrent = (i: NavItem, route: string) => i.match ? i.match(route) : i.pa
 function BottomNav({ route, items }: { route: string; items: NavItem[] }) {
   return <nav className="bottom" aria-label="ניווט ראשי"><div className="nav">{items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''} aria-current={isCurrent(i, route) ? 'page' : undefined}><span className="ico"><Icon name={i.icon} /></span>{i.label}{i.badge ? <span className="badge">{i.badge > 99 ? '99+' : i.badge}</span> : null}</A>)}</div></nav>;
 }
-function Rail({ route, items, manage, profile }: { route: string; items: NavItem[]; manage?: NavItem[]; profile: Profile | null }) {
+function Rail({ route, items, manage, profile, role }: { route: string; items: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string }) {
+  const meTo = profile && profile.role === 'guest' && !manage && items[0]?.label === 'בית' ? '/me/account' : '/more';
   return (
     <aside className="rail" aria-label="ניווט">
       <A className="brand" to="/"><img src="/assets/rava-logo.png" alt="" />חוות רווה</A>
       {items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''}><Icon name={i.icon} />{i.label}{i.badge ? <span className="badge">{i.badge}</span> : null}</A>)}
       {manage && <><div className="group">ניהול</div>{manage.map((i) => <A key={i.path} to={i.path} className={'sub ' + (isCurrent(i, route) ? 'on' : '')}><Icon name={i.icon} />{i.label}{i.badge ? <span className="badge">{i.badge}</span> : null}</A>)}</>}
-      {profile ? <A to={profile.role === 'guest' ? '/me/account' : '/more'} className={'me ' + (route === '/more' ? 'on' : '')}><Avatar name={profile.displayName} size="sm" />{profile.displayName}</A> : <A to="/login" className="me"><Icon name="user" />כניסה</A>}
+      <div className="foot">
+        <a href="/" className="site"><Icon name="globe" />לאתר החווה</a>
+        {profile
+          ? <A to={meTo} className={'me ' + (route === meTo ? 'on' : '')} aria-label={`הפרופיל שלי: ${profile.displayName}, ${role || ROLE_LABELS[profile.role]}`}><Avatar name={profile.displayName} size="sm" /><span className="who"><b>{profile.displayName}</b><small>{role || ROLE_LABELS[profile.role]}</small></span></A>
+          : <A to="/login" className="me"><Icon name="user" /><span className="who"><b>כניסה</b><small>עם חשבון Google</small></span></A>}
+      </div>
     </aside>
   );
 }
-function DemoStrip() {
+const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'real'];
+/** The green bar that marks demo mode. Switching persona happens right here, from any screen. */
+export function DemoStrip() {
   const demo = useDemo();
+  const [open, setOpen] = useState(false);
   if (!demo.on) return null;
-  return <div className="strip demo"><Icon name="eye" size={16} />מצב הדגמה · {PERSONA_LABELS[demo.persona]}{demo.persona === 'real' ? ' + נתוני דוגמה' : ''}<A to={demo.persona === 'guest' || demo.persona === 'anon' || demo.persona === 'blocked' ? '/me/account' : '/more'}>החלפת דמות</A><button type="button" onClick={() => setDemo({ on: false })}>הסתרה</button></div>;
+  const pick = (persona: Persona) => { setOpen(false); setDemo({ on: true, persona }); navigate('/', true); };
+  return (
+    <div className="demobar">
+      <div className="strip demo"><Icon name="eye" size={16} /><span>מצב הדגמה · <b>{PERSONA_LABELS[demo.persona]}</b>{demo.persona === 'real' ? ' + נתוני דוגמה' : ''}</span><button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'סגירה' : 'החלפת דמות'}</button><button type="button" onClick={() => { setOpen(false); setDemo({ on: false }); navigate('/', true); }}>הסתרה</button></div>
+      {open && <div className="demopick" role="group" aria-label="לעבור באפליקציה בתור">{PERSONAS.map((p) => <button key={p} type="button" className={'chip ' + (p === demo.persona ? 'on' : '')} aria-pressed={p === demo.persona} onClick={() => pick(p)}>{PERSONA_LABELS[p]}</button>)}</div>}
+    </div>
+  );
 }
 
 /** Phone: one screen at a time. Desktop: rail + content, and a detail page opens as a side panel next to its list. */
-function Shell({ nav, manage, profile, online, master, detail }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; online: boolean; master: ReactNode; detail?: ReactNode }) {
+function Shell({ nav, manage, profile, role, online, master, detail, narrow, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; narrow?: boolean; center?: boolean }) {
   const route = useRoute(); const desktop = useDesktop();
   const content = (
     <>
@@ -50,12 +66,16 @@ function Shell({ nav, manage, profile, online, master, detail }: { nav: NavItem[
       {desktop ? master : (detail ?? master)}
     </>
   );
+  // phone: every navigation is a new page. desktop: opening a detail panel must not replay the list behind it.
+  const base = route.split('/').slice(0, route.startsWith('/manage') ? 3 : 2).join('/');
+  const pageRef = usePageEnter<HTMLDivElement>(desktop && detail ? base : route);
+  const cls = desktop ? ['content screen', narrow && !detail ? 'narrow' : '', center && !detail ? 'center' : '', detail ? 'haspanel' : ''].filter(Boolean).join(' ') : 'screen';
   return (
     <div className="app">
-      <Rail route={route} items={nav} manage={manage} profile={profile} />
-      <div className="main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: desktop ? 'row' : 'column' }}>
-        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={desktop ? 'content screen' : 'screen'}>{content}</main></div>
-        {desktop && detail && <aside className="panel"><div className="screen">{detail}</div></aside>}
+      <Rail route={route} items={nav} manage={manage} profile={profile} role={role} />
+      <div className="shellmain" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: desktop ? 'row' : 'column' }}>
+        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><div ref={pageRef} className="page">{content}</div></main></div>
+        {desktop && detail && <aside className="panel"><div className="screen page-in" key={route}>{detail}</div></aside>}
       </div>
       {!desktop && <BottomNav route={route} items={nav} />}
     </div>
@@ -68,7 +88,7 @@ function GuestApp({ user, profile, settings }: { user: Session | null; profile: 
   const ctx: GuestCtx = { user, profile, settings };
   const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
   const screen = guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
-  return <Shell nav={nav} profile={profile} online={online} master={screen} />;
+  return <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />;
 }
 function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   let m: Record<string, string> | null;
@@ -83,6 +103,9 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   if (route === '/terms') return <TermsPage />;
   return null;
 }
+
+/** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
+const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 // ---------- team app ----------
 function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
@@ -186,7 +209,7 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else master = mh;
   }
   const banner = open.error ? <div className="strip rust"><Icon name="info" size={18} />{open.error.includes('index') ? 'המערכת עדיין מתכוננת (אינדקסים). נסו שוב בעוד דקה.' : open.error}</div> : null;
-  return <Shell nav={nav} manage={manageNav} profile={profile} online={online} master={<>{banner}{master}</>} detail={detail} />;
+  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} narrow={NARROW.test(r)} />;
 }
 
 function Splash() {
@@ -199,9 +222,18 @@ export default function App() {
   const { user, loading } = useAuth();
   const { profile, loading: profileLoading, missing } = useProfile(user);
   const { settings } = useSettings();
+  const demo = useDemo();
+  // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
+  useEffect(() => {
+    if (loading || profileLoading || (demo.on && demo.persona !== 'real')) return;
+    try {
+      if (user && profile) localStorage.setItem('farm-me', JSON.stringify({ name: profile.displayName, role: isOwner(profile, user.email) ? ROLE_LABELS.owner : ROLE_LABELS[profile.role] }));
+      else if (!user) localStorage.removeItem('farm-me');
+    } catch { /* private mode */ }
+  }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
   if (loading || (user && profileLoading)) return <Splash />;
-  if (user && (missing || !profile)) return <ToastProvider><OnboardingPage user={user} /></ToastProvider>;
-  if (user && profile && profile.status === 'blocked') return <ToastProvider><BlockedPage profile={profile} /></ToastProvider>;
+  if (user && (missing || !profile)) return <ToastProvider><DemoStrip /><OnboardingPage user={user} /></ToastProvider>;
+  if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} /></ToastProvider>;
   if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;
   return <ToastProvider><GuestApp user={user} profile={profile} settings={settings} /></ToastProvider>;
 }

@@ -34,5 +34,5 @@ export function render(data:Content,archive=false){
  const block=(events.length||hasArchive)?`<section id="events" class="cms-events" dir="rtl"><${archive?'h1':'h2'}>${archive?'ארכיון אירועים':'אירועים בחווה'}</${archive?'h1':'h2'}><div class="event-grid">${cards}</div>${archive?'<a href="/">חזרה לאתר</a>':hasArchive?'<a href="/events/archive">לאירועים שהיו בחווה</a>':''}</section>`:'';
  if(archive)html=html.replace(/<main[\s\S]*?<\/main>/,`<main>${block||'<section class="cms-events"><h1>אין אירועים בארכיון</h1><a href="/">חזרה לאתר</a></section>'}</main>`).replace(/(<a[^>]*href=")#(?!main)/g,'$1/#').replace('<main>','<main id="main">').replace('<title>','<title>ארכיון אירועים | ').replace(/<link[^>]*rel="canonical"[^>]*>/, tag=>tag.replace(/href="[^"]*"/, 'href="https://havat-ravve.web.app/events/archive"'));
  else {const re=new RegExp(`(<section[^>]*id="${data.position}"[\\s\\S]*?<\\/section>)`);html=html.replace(re,'$1'+block);}
- return html.replace(/(href|src)="(assets\/|styles.css|app.js)/g,'$1="/$2');
+ return html.replace(/(href|src)="(assets\/|styles.css|farm.js)/g,'$1="/$2');
 }

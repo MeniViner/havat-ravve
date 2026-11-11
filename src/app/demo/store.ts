@@ -5,7 +5,7 @@ import { collections as baseCollections, documents as baseDocuments, U } from '.
 
 export type Persona = 'real' | 'owner' | 'manager' | 'staff' | 'guest' | 'blocked' | 'anon';
 export type DemoState = { on: boolean; persona: Persona };
-export const PERSONA_LABELS: Record<Persona, string> = { real: 'החשבון שלי', owner: 'בעלים · בני', manager: 'מנהלת · נועה', staff: 'צוות · יואב', guest: 'אורחת · מיכל', blocked: 'חסום · יוסי', anon: 'אורח לא מחובר' };
+export const PERSONA_LABELS: Record<Persona, string> = { real: 'החשבון שלי', owner: 'בעלים · בני', manager: 'מנהלת · נועה', staff: 'מתנדב · יואב', guest: 'אורחת · מיכל', blocked: 'חסום · יוסי', anon: 'אורח לא מחובר' };
 export const PERSONA_UID: Record<Persona, string> = { real: '', owner: U.beni, manager: U.noa, staff: U.yoav, guest: U.michal, blocked: U.yossi, anon: '' };
 
 const KEY = 'farm-demo';

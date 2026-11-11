@@ -328,7 +328,7 @@ export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
       <ProfileSection profile={p} fields={ctx.settings.registrationFields} />
       <NotificationsSection team={false} />
       <Sec title="עוד" />
-      <div className="links"><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A></div>
+      <div className="links"><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a></div>
       <DemoSection />
       <SignOut />
     </>
