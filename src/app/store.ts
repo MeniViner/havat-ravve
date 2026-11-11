@@ -4,7 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, auth, authReady, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
-import { useDemo, PERSONA_UID, demoDoc } from './demo/store';
+import { useDemo, PERSONA_UID, demoDoc, demoOnly } from './demo/store';
 import { logActivity } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
@@ -21,7 +21,7 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
   const fb = useFirebaseAuth();
   const demo = useDemo();
   return useMemo(() => {
-    if (demo.on && demo.persona !== 'real') {
+    if (demo.on) {
       const uid = PERSONA_UID[demo.persona];
       const p = uid ? (demoDoc('users/' + uid) as Profile | null) : null;
       return { loading: false, user: p ? { uid: p.uid, email: p.email, displayName: p.displayName } : null, real: false };
@@ -44,6 +44,8 @@ export const actorOf = (user: Session, p: Profile | null): Actor => ({ uid: user
 
 /** The role for a brand-new account: owner by bootstrap email, otherwise whatever a manager pre-assigned to this email, otherwise guest. Real accounts only. */
 export async function createProfile(user: Session, data: { displayName: string; phone: string }) {
+  // this transaction talks to Firestore directly, so it must never run for a demo persona
+  if (demoOnly() || user.uid.startsWith('demo-')) throw new Error('במצב הדגמה לא נרשמים באמת. יוצאים מההדגמה כדי להירשם.');
   const email = (user.email || '').toLowerCase();
   const counterRef = doc(db, 'counters', 'users');
   const userRef = doc(db, 'users', user.uid);

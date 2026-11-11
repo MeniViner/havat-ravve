@@ -48,10 +48,11 @@ export function DemoStrip() {
   const demo = useDemo();
   const [open, setOpen] = useState(false);
   if (!demo.on) return null;
-  const pick = (persona: Persona) => { setOpen(false); setDemo({ on: true, persona }); navigate('/', true); };
+  // 'real' ("החשבון שלי") leaves demo: there is no mixed mode
+  const pick = (persona: Persona) => { setOpen(false); setDemo(persona === 'real' ? { on: false } : { on: true, persona }); navigate('/', true); };
   return (
     <div className="demobar">
-      <div className="strip demo"><Icon name="eye" size={16} /><span>מצב הדגמה · <b>{PERSONA_LABELS[demo.persona]}</b>{demo.persona === 'real' ? ' + נתוני דוגמה' : ''}</span><button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'סגירה' : 'החלפת דמות'}</button><button type="button" onClick={() => { setOpen(false); setDemo({ on: false }); navigate('/', true); }}>הסתרה</button></div>
+      <div className="strip demo"><Icon name="eye" size={16} /><span>מצב הדגמה · <b>{PERSONA_LABELS[demo.persona]}</b> · לא נשמר בשרת</span><button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'סגירה' : 'החלפת דמות'}</button><button type="button" onClick={() => { setOpen(false); setDemo({ on: false }); navigate('/', true); }}>הסתרה</button></div>
       {open && <div className="demopick" role="group" aria-label="לעבור באפליקציה בתור">{PERSONAS.map((p) => <button key={p} type="button" className={'chip ' + (p === demo.persona ? 'on' : '')} aria-pressed={p === demo.persona} onClick={() => pick(p)}>{PERSONA_LABELS[p]}</button>)}</div>}
     </div>
   );
@@ -151,12 +152,12 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   if (r === '/') master = today_;
   else if (r === '/tasks') master = tasks();
   else if (r === '/tasks/new') { master = tasks(); detail = <TaskForm ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditPage id={m.id} ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail id={m.id} ctx={ctx} panel={desktop} />; }
+  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditPage key={m.id} id={m.id} ctx={ctx} />; }
+  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
   else if ((m = match(r, '/history/:tab')) || r === '/history') master = <HistoryScreen ctx={ctx} tab={((m?.tab as 'tasks' | 'shopping' | 'all') || 'tasks')} />;
   else if (r === '/shopping') master = shop();
   else if (r === '/shopping/new') { master = shop(); detail = <ShopForm ctx={ctx} />; }
-  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemPage id={m.id} ctx={ctx} panel={desktop} />; }
+  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemPage key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
   else if (r === '/more') master = <MoreScreen ctx={ctx} />;
   else if (r === '/events-staff') master = <StaffEventsScreen ctx={ctx} events={events.items} />;
   else if ((m = match(r, '/events-staff/:id'))) master = <StaffEventsScreen ctx={ctx} events={events.items} id={m.id} />;
@@ -172,14 +173,14 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else if (r === '/manage/inbox') master = <InboxScreen ctx={ctx} inbox={inbox.items} />;
     else if (r === '/manage/events') master = <EventsListScreen ctx={ctx} />;
     else if (r === '/manage/events/new') master = <EventEditor ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/edit'))) master = <EventEditor id={m.id} ctx={ctx} />;
+    else if ((m = match(r, '/manage/events/:id/edit'))) master = <EventEditor key={m.id} id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/guests'))) master = <EventGuestsScreen id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/entry'))) master = <EventEntryScreen id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/vendors'))) master = <EventVendorsScreen id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/products/new'))) master = <ProductEditor eventId={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/products/:pid'))) master = <ProductEditor eventId={m.id} pid={m.pid} ctx={ctx} />;
+    else if ((m = match(r, '/manage/events/:id/products/:pid'))) master = <ProductEditor key={m.id + '/' + m.pid} eventId={m.id} pid={m.pid} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/products'))) master = <EventProductsScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/tabs/:tid'))) master = <TabDetailScreen eventId={m.id} tid={m.tid} ctx={ctx} />;
+    else if ((m = match(r, '/manage/events/:id/tabs/:tid'))) master = <TabDetailScreen key={m.tid} eventId={m.id} tid={m.tid} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/tabs'))) master = <EventTabsScreen id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/report'))) master = <EventReportScreen id={m.id} ctx={ctx} />;
     else if ((m = match(r, '/manage/events/:id/files'))) master = <EventFilesScreen id={m.id} ctx={ctx} />;
@@ -187,19 +188,19 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else if ((m = match(r, '/manage/events/:id'))) master = <EventHubScreen id={m.id} ctx={ctx} />;
     else if (r === '/manage/vendors') master = <VendorsScreen ctx={ctx} />;
     else if (r === '/manage/vendors/new') master = <VendorEditor ctx={ctx} />;
-    else if ((m = match(r, '/manage/vendors/:id'))) master = <VendorEditor id={m.id} ctx={ctx} />;
+    else if ((m = match(r, '/manage/vendors/:id'))) master = <VendorEditor key={m.id} id={m.id} ctx={ctx} />;
     else if (r === '/manage/people') master = <PeopleScreen ctx={ctx} people={people.items} />;
     else if (r === '/manage/people/invite') { master = <PeopleScreen ctx={ctx} people={people.items} />; detail = <InviteRoleScreen ctx={ctx} />; }
-    else if ((m = match(r, '/manage/people/:uid'))) { master = <PeopleScreen ctx={ctx} people={people.items} selectedId={m.uid} />; detail = <PersonScreen uid={m.uid} ctx={ctx} panel={desktop} />; }
+    else if ((m = match(r, '/manage/people/:uid'))) { master = <PeopleScreen ctx={ctx} people={people.items} selectedId={m.uid} />; detail = <PersonScreen key={m.uid} uid={m.uid} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/templates') master = <TemplatesScreen ctx={ctx} />;
     else if (r === '/manage/templates/new') { master = <TemplatesScreen ctx={ctx} />; detail = <TemplateEditor ctx={ctx} />; }
-    else if ((m = match(r, '/manage/templates/:id'))) { master = <TemplatesScreen ctx={ctx} selectedId={m.id} />; detail = <TemplateEditor id={m.id} ctx={ctx} panel={desktop} />; }
+    else if ((m = match(r, '/manage/templates/:id'))) { master = <TemplatesScreen ctx={ctx} selectedId={m.id} />; detail = <TemplateEditor key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/places') master = <PlacesScreen ctx={ctx} open={open.items} />;
-    else if ((m = match(r, '/manage/places/:id'))) { master = <PlacesScreen ctx={ctx} open={open.items} selectedId={m.id} />; detail = <PlaceEditor id={m.id} ctx={ctx} panel={desktop} />; }
+    else if ((m = match(r, '/manage/places/:id'))) { master = <PlacesScreen ctx={ctx} open={open.items} selectedId={m.id} />; detail = <PlaceEditor key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/visits') master = <VisitsScreen ctx={ctx} visits={visits.items} />;
-    else if ((m = match(r, '/manage/visits/:id'))) { master = <VisitsScreen ctx={ctx} visits={visits.items} selectedId={m.id} />; detail = <VisitDetailScreen id={m.id} ctx={ctx} panel={desktop} />; }
+    else if ((m = match(r, '/manage/visits/:id'))) { master = <VisitsScreen ctx={ctx} visits={visits.items} selectedId={m.id} />; detail = <VisitDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/donations') master = <DonationsScreen ctx={ctx} donations={donations.items} />;
-    else if ((m = match(r, '/manage/donations/:id'))) { master = <DonationsScreen ctx={ctx} donations={donations.items} selectedId={m.id} />; detail = <DonationDetailScreen id={m.id} ctx={ctx} panel={desktop} />; }
+    else if ((m = match(r, '/manage/donations/:id'))) { master = <DonationsScreen ctx={ctx} donations={donations.items} selectedId={m.id} />; detail = <DonationDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/calendar') master = <CalendarScreen ctx={ctx} />;
     else if (r === '/manage/calendar/new') master = <CalendarAddScreen ctx={ctx} />;
     else if (r === '/manage/reports') master = <ReportsScreen ctx={ctx} />;
@@ -225,7 +226,7 @@ export default function App() {
   const demo = useDemo();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
-    if (loading || profileLoading || (demo.on && demo.persona !== 'real')) return;
+    if (loading || profileLoading || demo.on) return;
     try {
       if (user && profile) localStorage.setItem('farm-me', JSON.stringify({ name: profile.displayName, role: isOwner(profile, user.email) ? ROLE_LABELS.owner : ROLE_LABELS[profile.role] }));
       else if (!user) localStorage.removeItem('farm-me');
