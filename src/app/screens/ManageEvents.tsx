@@ -9,6 +9,7 @@ import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEve
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
 import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
+import { eventCalendarFields } from '../calendarRef';
 
 const toLocal = (iso: string) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocal = (s: string) => (s ? new Date(s).toISOString() : '');
@@ -72,7 +73,7 @@ function EventForm({ ctx, existing }: { ctx: TeamCtx; existing?: FarmEvent }) {
   const ok = f.title.trim() && f.start && f.end && f.end > f.start;
   const save = async () => {
     setBusy(true);
-    try { const id = await saveEvent(ctx.actor, f, existing); if (f.published) await upsertCalendarRef(ctx.actor, 'event', id, { title: f.title, date: f.start.slice(0, 10), time: `${fmtTime(f.start)}–${fmtTime(f.end)}` }); else await deleteCalendarRef('event', id); navigate(`/manage/events/${id}`, true); }
+    try { const id = await saveEvent(ctx.actor, f, existing); if (f.published) await upsertCalendarRef(ctx.actor, 'event', id, eventCalendarFields(f)); else await deleteCalendarRef('event', id); navigate(`/manage/events/${id}`, true); }
     catch { toast({ text: 'לא נשמר', kind: 'error' }); } finally { setBusy(false); }
   };
   const del = async () => { if (!existing) return; await deleteEvent(ctx.actor, existing); await deleteCalendarRef('event', existing.id); navigate('/manage/events', true); toast({ text: 'האירוע נמחק. הכרטיסים נשמרו.' }); };
