@@ -108,6 +108,7 @@ export default {
     let res: Response;
     try {
       const r = await route(req, env, url, log);
+      if (log.credential) meta.keyVersion = log.keyVersion === 'previous' ? 'previous' : 'current';
       res = ok(meta, r.data, r.status ?? 200);
     } catch (e) {
       const err = toApiError(e);

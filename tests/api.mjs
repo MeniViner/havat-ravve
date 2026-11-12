@@ -747,6 +747,7 @@ try {
     const oldUse = await api('GET', '/v1/tasks?limit=1', { key: KEYS.rotOld });
     await new Promise((res) => setTimeout(res, 300));
     check(logs.some((l) => l.requestId === oldUse.json.meta.requestId && l.keyVersion === 'previous'), 'the log marks requests made with the old key, to see when the client switched');
+    check(oldUse.json.meta.keyVersion === 'previous' && (await api('GET', '/v1/tasks?limit=1', { key: KEYS.rotNew })).json.meta.keyVersion === 'current', 'the response itself says which key was used (meta.keyVersion), so the client can check');
 
     // rate limits and the failure log
     const burst = await Promise.all(Array.from({ length: 260 }, () => api('GET', '/v1/settings', { key: KEYS.rate })));
