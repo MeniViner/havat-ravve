@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
-import { useRoute, match, navigate, back, depth } from './router';
-import { useSync } from './db';
-import { Icon, ToastProvider, useToast, A, useDesktop, addDays } from './ui';
-import { Guard, Empty, Head, Btn, isHidden, useHiddenVersion } from './kit';
+import { useRoute, match, navigate } from './router';
+import { Icon, ToastProvider, A, Avatar, useDesktop, usePageEnter, todayISO, addDays } from './ui';
 import type { TeamCtx, GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
 import { ROLE_LABELS } from './types';
@@ -14,7 +12,8 @@ import { TodayScreen } from './screens/Today';
 import { TasksScreen, TaskDetail, HistoryScreen } from './screens/Tasks';
 import { NewScreen, TaskEditScreen } from './screens/New';
 import { ShoppingScreen, ShopItemScreen } from './screens/Shopping';
-import { MeScreen } from './screens/Me';
+import { Guard, isHidden, useHiddenVersion } from './kit';
+import { MoreScreen } from './screens/More';
 import { StaffEventsScreen, ScanScreen, ScanSearchScreen, StallScreen, StallPickScreen, StallTabsScreen } from './screens/EventDay';
 import { GuestHome, EventPage, OrderPage, LoginPage, OnboardingPage, BlockedPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage } from './screens/Guest';
 import { ManageHomeScreen, InboxScreen } from './screens/Manage';
@@ -22,103 +21,77 @@ import { EventsListScreen, EventEditor, EventHubScreen, EventGuestsScreen, Event
 import { PeopleScreen, PersonScreen, InviteRoleScreen, TemplatesScreen, TemplateEditor, PlacesScreen, PlaceEditor } from './screens/ManagePeople';
 import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen, CalendarScreen, CalendarAddScreen, ReportsScreen, ActivityScreen, SettingsScreen, SettingsPage, type SettingsPageKey } from './screens/ManageMore';
 
-// ---------- navigation: words, not icons ----------
-type NavItem = { path: string; label: string; badge?: number; match?: (r: string) => boolean; plus?: boolean };
-const isCurrent = (i: NavItem, route: string) => (i.match ? i.match(route) : i.path === '/' ? route === '/' : route.startsWith(i.path));
-const Count = ({ n }: { n?: number }) => (n ? <span className="r-n">{n > 99 ? '99+' : n}</span> : null);
+// ---------- navigation ----------
+type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
+const isCurrent = (i: NavItem, route: string) => i.match ? i.match(route) : i.path === '/' ? route === '/' : route.startsWith(i.path);
 
-function Bar({ route, items }: { route: string; items: NavItem[] }) {
-  return (
-    <div className="r-bar"><nav aria-label="ניווט ראשי">
-      {items.map((i) => i.plus
-        ? <A key="plus" to={i.path} className="r-plus" aria-label="הוספה: משימה או פריט לקניות"><span><Icon name="plus" /></span></A>
-        : <A key={i.path} to={i.path} aria-current={isCurrent(i, route) ? 'page' : undefined}>{i.label}<Count n={i.badge} /></A>)}
-    </nav></div>
-  );
+function BottomNav({ route, items }: { route: string; items: NavItem[] }) {
+  return <nav className="bottom" aria-label="ניווט ראשי"><div className="nav">{items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''} aria-current={isCurrent(i, route) ? 'page' : undefined}><span className="ico"><Icon name={i.icon} /></span>{i.label}{i.badge ? <span className="badge">{i.badge > 99 ? '99+' : i.badge}</span> : null}</A>)}</div></nav>;
 }
-function Rail({ route, items, manage, profile, role, plus }: { route: string; items: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; plus?: string }) {
-  const guestRail = !plus;
-  const link = (i: NavItem) => <A key={i.path} to={i.path} aria-current={isCurrent(i, route) ? 'page' : undefined}>{i.label}<Count n={i.badge} /></A>;
+function Rail({ route, items, manage, profile, role }: { route: string; items: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string }) {
+  const meTo = profile && profile.role === 'guest' && !manage && items[0]?.label === 'בית' ? '/me/account' : '/more';
   return (
-    <aside className="r-rail" aria-label="ניווט">
-      <A className="r-brand" to="/">חוות רווה<small>{guestRail ? 'ליד טנא עומרים' : 'לוח החווה'}</small></A>
-      {plus && <A className="r-new" to={plus}><Icon name="plus" />חדש</A>}
-      <nav aria-label="ניווט ראשי">{items.filter((i) => !i.plus).map(link)}</nav>
-      {manage && <><div className="r-group">ניהול</div><nav aria-label="ניהול">{manage.map(link)}</nav></>}
-      <div className="r-foot">
-        {profile ? <A to={guestRail ? '/me/account' : '/more'}><b>{profile.displayName}</b>{role || ROLE_LABELS[profile.role]}</A> : <A to="/login"><b>כניסה</b>עם חשבון Google</A>}
-        <a href="/">לאתר החווה</a>
+    <aside className="rail" aria-label="ניווט">
+      <A className="brand" to="/"><img src="/assets/rava-logo.png" alt="" />חוות רווה</A>
+      {items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''}><Icon name={i.icon} />{i.label}{i.badge ? <span className="badge">{i.badge}</span> : null}</A>)}
+      {manage && <><div className="group">ניהול</div>{manage.map((i) => <A key={i.path} to={i.path} className={'sub ' + (isCurrent(i, route) ? 'on' : '')}><Icon name={i.icon} />{i.label}{i.badge ? <span className="badge">{i.badge}</span> : null}</A>)}</>}
+      <div className="foot">
+        <a href="/" className="site"><Icon name="globe" />לאתר החווה</a>
+        {profile
+          ? <A to={meTo} className={'me ' + (route === meTo ? 'on' : '')} aria-label={`הפרופיל שלי: ${profile.displayName}, ${role || ROLE_LABELS[profile.role]}`}><Avatar name={profile.displayName} size="sm" /><span className="who"><b>{profile.displayName}</b><small>{role || ROLE_LABELS[profile.role]}</small></span></A>
+          : <A to="/login" className="me"><Icon name="user" /><span className="who"><b>כניסה</b><small>עם חשבון Google</small></span></A>}
       </div>
     </aside>
   );
 }
-
-const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon'];
-/** Marks demo mode on every screen, and switches the example person from here. */
+const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'real'];
+/** The green bar that marks demo mode. Switching persona happens right here, from any screen. */
 export function DemoStrip() {
   const demo = useDemo();
+  const [open, setOpen] = useState(false);
   if (!demo.on) return null;
+  // 'real' ("החשבון שלי") leaves demo: there is no mixed mode
+  const pick = (persona: Persona) => { setOpen(false); setDemo(persona === 'real' ? { on: false } : { on: true, persona }); navigate('/', true); };
   return (
-    <div className="r-demo">
-      <label>הדגמה, בתור <select aria-label="לעבור בתור" value={demo.persona} onChange={(e) => { setDemo({ on: true, persona: e.target.value as Persona }); navigate('/', true); }}>{PERSONAS.map((p) => <option key={p} value={p}>{PERSONA_LABELS[p]}</option>)}</select></label>
-      <button type="button" onClick={() => { setDemo({ on: false }); navigate('/', true); }}>יציאה</button>
+    <div className="demobar">
+      <div className="strip demo"><Icon name="eye" size={16} /><span>מצב הדגמה · <b>{PERSONA_LABELS[demo.persona]}</b> · לא נשמר בשרת</span><button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'סגירה' : 'החלפת דמות'}</button><button type="button" onClick={() => { setOpen(false); setDemo({ on: false }); navigate('/', true); }}>הסתרה</button></div>
+      {open && <div className="demopick" role="group" aria-label="לעבור באפליקציה בתור">{PERSONAS.map((p) => <button key={p} type="button" className={'chip ' + (p === demo.persona ? 'on' : '')} aria-pressed={p === demo.persona} onClick={() => pick(p)}>{PERSONA_LABELS[p]}</button>)}</div>}
     </div>
   );
 }
-/** Reception and unsent work, in one quiet line. Nothing is shown while everything is in order. */
-function Status({ online }: { online: boolean }) {
-  const sync = useSync(); const toast = useToast();
-  useEffect(() => { if (sync.failure) toast({ text: `פעולה אחת לא נשמרה: ${sync.failure.text}`, kind: 'error' }, 8000); }, [sync.failure?.id]);
-  if (online) return null;
-  return <div className="r-status" role="status">אין קליטה. הכל נשמר בטלפון ויישלח לבד{sync.pending > 0 && <b>· {sync.pending} מחכים</b>}</div>;
-}
-
-/** Routes of the rebuilt screens. Everything else still renders with the previous interface inside the new frame. */
-const REBUILT = /^\//; // every route now; the legacy frame classes go away with the last old screen
-/** Single-column pages keep a readable width on a wide screen. */
-const NARROW = /^\/(more|new|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings\/[^/]+$|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 /** Phone: one screen at a time. Desktop: rail + content, and a detail page opens as a side panel next to its list. */
-function Shell({ nav, manage, profile, role, online, master, detail, plus, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; plus?: string; center?: boolean }) {
+function Shell({ nav, manage, profile, role, online, master, detail, narrow, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; narrow?: boolean; center?: boolean }) {
   const route = useRoute(); const desktop = useDesktop();
-  const rebuilt = REBUILT.test(route); const narrow = NARROW.test(route);
-  const base = route.split('/').slice(0, route.startsWith('/manage') ? 3 : 2).join('/') || '/';
-  // which way the page moves: deeper slides in from the left, back from the right
-  const last = useRef(depth()); const now = depth();
-  const dir = now < last.current ? ' backward' : '';
-  useEffect(() => { last.current = now; });
-  useEffect(() => {
-    if (!desktop || !detail) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !(e.target instanceof HTMLSelectElement)) back(base); };
-    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
-  }, [desktop, !!detail, base]);
-  const body = desktop ? master : (detail ?? master);
-  const mainClass = rebuilt
-    ? ['r-main', narrow && !detail ? 'narrow' : ''].filter(Boolean).join(' ')
-    : desktop ? ['r-main content screen', narrow && !detail ? 'narrow' : '', center && !detail ? 'center' : '', detail ? 'haspanel' : ''].filter(Boolean).join(' ') : 'r-main screen';
+  const content = (
+    <>
+      {!online && <div className="strip" style={{ marginTop: 8 }}><Icon name="wifiOff" size={18} />אין קליטה. מה שתעשו יישמר בטלפון ויישלח כשתחזור הרשת.</div>}
+      {desktop ? master : (detail ?? master)}
+    </>
+  );
+  // phone: every navigation is a new page. desktop: opening a detail panel must not replay the list behind it.
+  const base = route.split('/').slice(0, route.startsWith('/manage') ? 3 : 2).join('/');
+  const pageRef = usePageEnter<HTMLDivElement>(desktop && detail ? base : route);
+  const cls = desktop ? ['content screen', narrow && !detail ? 'narrow' : '', center && !detail ? 'center' : '', detail ? 'haspanel' : ''].filter(Boolean).join(' ') : 'screen';
   return (
-    <div className="r-app">
-      <Rail route={route} items={nav} manage={manage} profile={profile} role={role} plus={plus} />
-      <div className="r-work">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Status online={online} /><DemoStrip />
-          <main className={mainClass}><Guard resetKey={route}><div key={desktop && detail ? base : route} className={'r-page' + dir}>{body}</div></Guard></main>
-        </div>
-        {desktop && detail && <aside className={rebuilt ? 'r-side' : 'r-side panel'} aria-label="פרטים"><Guard resetKey={route}><div key={route} className={'r-page' + (rebuilt ? '' : ' screen')}>{detail}</div></Guard></aside>}
+    <div className="app">
+      <Rail route={route} items={nav} manage={manage} profile={profile} role={role} />
+      <div className="shellmain" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: desktop ? 'row' : 'column' }}>
+        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><Guard resetKey={route}><div ref={pageRef} className="page">{content}</div></Guard></main></div>
+        {desktop && detail && <aside className="panel"><Guard resetKey={route}><div className="screen page-in" key={route}>{detail}</div></Guard></aside>}
       </div>
-      {!desktop && <Bar route={route} items={nav} />}
+      {!desktop && <BottomNav route={route} items={nav} />}
     </div>
   );
 }
-const NotFound = ({ to = '/' }: { to?: string }) => <><Head title="הדף לא נמצא" /><Empty title="אין כאן כלום">ייתכן שהקישור ישן, או שאין לך הרשאה למסך הזה.</Empty><div className="r-actions"><Btn to={to}>לדף הראשי</Btn></div></>;
 
 // ---------- guest app ----------
 function GuestApp({ user, profile, settings }: { user: Session | null; profile: Profile | null; settings: Settings }) {
   const route = useRoute(); const online = useOnline();
   const ctx: GuestCtx = { user, profile, settings };
-  const nav: NavItem[] = [{ path: '/', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' }, { path: '/me', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', label: 'החשבון שלי' }];
-  const screen = guestRoutes(route, ctx) || <NotFound />;
-  return <Shell nav={nav} profile={profile} online={online} master={screen} center />;
+  const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
+  const screen = guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
+  return <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />;
 }
 function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   let m: Record<string, string> | null;
@@ -134,6 +107,8 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   return null;
 }
 
+/** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
+const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 // ---------- team app ----------
 function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
@@ -143,14 +118,13 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   const today = useToday(); useHiddenVersion();
   const openAll = useOpenTasks(true, manager); const recent = useRecentDoneTasks(true, manager);
   const shoppingAll = useOpenShopping(true); const bought = useRecentBought(true);
-  const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
-  const team = useTeam(true); const people = usePeople(manager);
-  const inbox = useNotifications(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
-  const calendar = useCalendar(manager, today, addDays(today, 14));
-  const instances = useTodayInstances(true, manager, today);
-  // yesterday's unticked chores are not today's work; records waiting out their undo window are already gone for the user
+  // yesterday's unticked chores are not today's work; rows waiting out their undo window are already gone for the user
   const open = useMemo(() => ({ ...openAll, items: openAll.items.filter((t) => !isHidden(t.id) && !(t.templateId && t.dateKey && t.dateKey < today)) }), [openAll, today, isHidden]);
   const shopping = { ...shoppingAll, items: shoppingAll.items.filter((i) => !isHidden(i.id)) };
+  const team = useTeam(true); const instances = useTodayInstances(true, manager, today);
+  const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
+  const inbox = useNotifications(manager); const people = usePeople(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
+  const calendar = useCalendar(manager, today, addDays(today, 14));
   const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, settings, places: places.items, templates: templates.items, team: team.items }), [user, actor, profile, manager, owner, settings, places.items, templates.items, team.items]);
   const guestCtx: GuestCtx = { user, profile, settings };
 
@@ -159,40 +133,36 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     materializeToday(templates.items, instances.items, actor, today);
   }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor]);
 
-  const mineCount = open.items.filter((t) => t.assignee?.uid === actor.uid).length;
-  const onShop = route.startsWith('/shopping') || route.startsWith('/history/shopping');
-  const plus = onShop ? '/new?k=shop' : '/new';
+  const myOpen = open.items.filter((t) => t.assignee?.uid === actor.uid).length;
   const nav: NavItem[] = [
-    { path: '/', label: 'היום' },
-    { path: '/tasks', label: 'משימות', badge: mineCount || undefined, match: (r) => r.startsWith('/tasks') || r === '/history' },
-    { path: plus, label: 'הוספה', plus: true },
-    { path: '/shopping', label: 'קניות', match: (r) => r.startsWith('/shopping') || r.startsWith('/history/shopping') },
-    manager && !desktop ? { path: '/manage', label: 'ניהול', badge: inbox.items.length || undefined, match: (r) => r.startsWith('/manage') } : { path: '/events-staff', label: desktop ? 'יום אירוע' : 'אירועים', match: (r) => r.startsWith('/events-staff') || r.startsWith('/scan') || r.startsWith('/stall') },
+    { path: '/', icon: 'home', label: 'היום' },
+    { path: '/tasks', icon: 'list', label: 'משימות', badge: myOpen || undefined, match: (r) => r.startsWith('/tasks') || r.startsWith('/history') },
+    { path: '/shopping', icon: 'cart', label: 'קניות', badge: shopping.items.filter((i) => i.urgent).length || undefined },
+    manager && !desktop ? { path: '/manage', icon: 'people', label: 'ניהול', badge: inbox.items.length || undefined, match: (r) => r.startsWith('/manage') } : { path: '/events-staff', icon: 'qr', label: 'אירועים', match: (r) => r.startsWith('/events-staff') || r.startsWith('/scan') || r.startsWith('/stall') },
   ];
   const manageNav: NavItem[] | undefined = manager ? [
-    { path: '/manage/inbox', label: 'לטיפול', badge: inbox.items.length || undefined, match: (r) => r === '/manage' || r.startsWith('/manage/inbox') },
-    { path: '/manage/events', label: 'אירועים' }, { path: '/manage/people', label: 'אנשים' }, { path: '/manage/visits', label: 'ביקורים' },
-    { path: '/manage/donations', label: 'תרומות' }, { path: '/manage/calendar', label: 'יומן' }, { path: '/manage/templates', label: 'משימות חוזרות' }, { path: '/manage/places', label: 'מקומות' },
-    { path: '/manage/vendors', label: 'בעלי דוכנים' }, { path: '/manage/reports', label: 'דוחות' }, { path: '/manage/activity', label: 'כל הפעילות' }, { path: '/manage/settings', label: 'הגדרות' },
+    { path: '/manage/inbox', icon: 'bell', label: 'לטיפול', badge: inbox.items.length || undefined },
+    { path: '/manage/events', icon: 'ticket', label: 'אירועים' }, { path: '/manage/people', icon: 'people', label: 'אנשים' }, { path: '/manage/visits', icon: 'pin', label: 'ביקורים' },
+    { path: '/manage/donations', icon: 'heart', label: 'תרומות' }, { path: '/manage/calendar', icon: 'calendar', label: 'יומן' }, { path: '/manage/reports', icon: 'chart', label: 'דוחות' }, { path: '/manage/settings', icon: 'sliders', label: 'הגדרות' },
   ] : undefined;
 
-  const today_ = <TodayScreen ctx={ctx} open={open.items} recent={recent.items} shopping={shopping.items} events={events.items} inbox={inbox.items} loading={open.loading} />;
+  const today_ = <TodayScreen ctx={ctx} open={open.items} recent={recent.items} shopping={shopping.items} events={events.items} calendar={calendar.items} inbox={inbox.items} loading={open.loading} />;
   const tasks = (sel?: string) => <TasksScreen ctx={ctx} open={open.items} recent={recent.items} loading={open.loading} selectedId={sel} />;
   const shop = (sel?: string) => <ShoppingScreen ctx={ctx} open={shopping.items} recent={bought.items} loading={shopping.loading} selectedId={sel} />;
   let m: Record<string, string> | null;
   const r = route;
   // master + optional detail (desktop shows both; phone shows the detail)
-  let master: ReactNode = <NotFound />; let detail: ReactNode | undefined;
+  let master: ReactNode = today_; let detail: ReactNode | undefined;
   if (r === '/') master = today_;
   else if (r === '/tasks') master = tasks();
-  else if (r === '/new' || r === '/tasks/new' || r === '/shopping/new') master = <NewScreen ctx={ctx} />;
-  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditScreen id={m.id} ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail id={m.id} ctx={ctx} />; }
-  else if (r === '/history' || r === '/history/tasks') master = <HistoryScreen ctx={ctx} tab="tasks" />;
-  else if (r === '/history/shopping') master = <HistoryScreen ctx={ctx} tab="shopping" />;
+  else if (r === '/tasks/new' || r === '/new') { master = tasks(); detail = <NewScreen ctx={ctx} />; }
+  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditScreen key={m.id} id={m.id} ctx={ctx} />; }
+  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail key={m.id} id={m.id} ctx={ctx} />; }
+  else if ((m = match(r, '/history/:tab')) || r === '/history') master = <HistoryScreen ctx={ctx} tab={m?.tab === 'shopping' ? 'shopping' : 'tasks'} />;
   else if (r === '/shopping') master = shop();
-  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemScreen id={m.id} ctx={ctx} />; }
-  else if (r === '/more') master = <MeScreen ctx={ctx} />;
+  else if (r === '/shopping/new') { master = shop(); detail = <NewScreen ctx={ctx} initial="shop" />; }
+  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemScreen key={m.id} id={m.id} ctx={ctx} />; }
+  else if (r === '/more') master = <MoreScreen ctx={ctx} />;
   else if (r === '/events-staff') master = <StaffEventsScreen ctx={ctx} events={events.items} />;
   else if ((m = match(r, '/events-staff/:id'))) master = <StaffEventsScreen ctx={ctx} events={events.items} id={m.id} />;
   else if ((m = match(r, '/scan/:id/search'))) master = <ScanSearchScreen eventId={m.id} ctx={ctx} />;
@@ -241,16 +211,16 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else if (r === '/manage/activity') master = <ActivityScreen ctx={ctx} />;
     else if (r === '/manage/settings') master = <SettingsScreen ctx={ctx} />;
     else if ((m = match(r, '/manage/settings/:page'))) master = <SettingsPage ctx={ctx} page={m.page as SettingsPageKey} />;
-    else master = <NotFound to="/manage" />;
+    else master = mh;
   }
-  const banner = open.error ? <div className="r-status" role="alert">המשימות לא נטענו: {open.error}</div> : null;
-  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} plus={plus} />;
+  const banner = open.error ? <div className="strip rust"><Icon name="info" size={18} />{open.error.includes('index') ? 'המערכת עדיין מתכוננת (אינדקסים). נסו שוב בעוד דקה.' : open.error}</div> : null;
+  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} narrow={NARROW.test(r)} />;
 }
 
 function Splash() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(t); }, []);
-  return <div className="r-splash" role="status" aria-live="polite"><img src="/assets/rava-logo.png" alt="" /><b>חוות רווה</b><div>{slow ? 'זה לוקח יותר מהרגיל. בודקים חיבור…' : 'רגע…'}</div></div>;
+  return <div className="splash" role="status" aria-live="polite"><img src="/assets/rava-logo.png" alt="" /><div className="title">חוות רווה</div><div>{slow ? 'זה לוקח יותר מהרגיל. בודקים חיבור…' : 'רגע…'}</div></div>;
 }
 
 export default function App() {
@@ -267,7 +237,7 @@ export default function App() {
     } catch { /* private mode */ }
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
   if (loading || (user && profileLoading)) return <Splash />;
-  if (user && !profile && profileError) return <div className="r-app"><div className="r-crash" role="alert"><h1>לא הצלחנו לטעון את החשבון</h1><p>{profileError}. הנתונים שלך לא נפגעו.</p><Btn onClick={() => location.reload()}>לנסות שוב</Btn></div></div>;
+  if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   if (user && (missing || !profile)) return <ToastProvider><DemoStrip /><OnboardingPage user={user} /></ToastProvider>;
   if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} /></ToastProvider>;
   if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;

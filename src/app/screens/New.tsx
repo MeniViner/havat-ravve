@@ -17,8 +17,8 @@ export const CATS: { id: ShoppingCategory; label: string; hint: string; done: st
 export const catOf = (id: ShoppingCategory) => CATS.find((c) => c.id === id) || CATS[0];
 
 type Kind = 'task' | 'shop';
-export function NewScreen({ ctx }: { ctx: TeamCtx }) {
-  const [kind, setKind] = useState<Kind>(param('k') === 'shop' ? 'shop' : 'task');
+export function NewScreen({ ctx, initial }: { ctx: TeamCtx; initial?: Kind }) {
+  const [kind, setKind] = useState<Kind>(initial || (param('k') === 'shop' ? 'shop' : 'task'));
   return (
     <>
       <Head backTo={kind === 'shop' ? '/shopping' : '/tasks'} backLabel="סיום" title="הוספה" />

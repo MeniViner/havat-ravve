@@ -1,38 +1,29 @@
-// Event day for the team: the gate and the farm stall. Both answer from what is already on the phone and never wait for the network.
+// Event day for the team: entry scanning and the farm stall. Works offline once the ticket list is on the device.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import jsQR from 'jsqr';
-import type { FarmEvent, Ticket, Tab, TabItem } from '../types';
+import type { FarmEvent, Ticket, TabItem } from '../types';
 import { PAYMENT_LABELS } from '../types';
 import type { TeamCtx } from '../ctx';
-import { A, Icon, useDesktop, useToast, fmtTime, fmtDayLong, fmtDateShort, fmtWeekday, firstName, relTime, todayISO, dateKey, money, inText } from '../ui';
-import { Head, Sect, Btn, Form, Empty, deferDelete, isHidden, useHiddenVersion } from '../kit';
-import { back, navigate } from '../router';
-import { useOnline } from '../store';
-import { useEvent, useEventTickets, useEventTabs, useProducts, parseQr, recordScan, payOrderOnsite, openTab, addTabItems, removeTabItem, setTabStatus } from '../data';
+import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Avatar, Loading, useToast, fmtTime, fmtDayLong, firstName, relTime, todayISO, money, inText } from '../ui';
+import { navigate } from '../router';
+import { useEvent, useEventTickets, useEventTabs, useProducts, parseQr, recordScan, openTab, addTabItems, removeTabItem, setTabStatus } from '../data';
 import { nowIso } from '../firebase';
+import { EventTeaser } from './Today';
 
-const dayOf = (iso: string) => dateKey(new Date(iso));
-const isToday = (e: FarmEvent, today: string) => dayOf(e.start) <= today && dayOf(e.end) >= today;
-const unpaid = (t: Ticket) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed';
-const who = (t: Ticket) => t.holderName || t.ownerName;
-const tickets_ = (n: number) => (n === 1 ? 'כרטיס אחד' : `${n} כרטיסים`);
-const digits = (s: string) => s.replace(/\D/g, '');
-function useStored(key: string) {
-  const [v, setV] = useState(() => { try { return localStorage.getItem(key) || ''; } catch { return ''; } });
-  return [v, (n: string) => { setV(n); try { if (n) localStorage.setItem(key, n); else localStorage.removeItem(key); } catch { /* private mode */ } }] as const;
-}
+const isToday = (e: FarmEvent, today: string) => e.start.slice(0, 10) <= today && e.end.slice(0, 10) >= today;
+const useLocal = (key: string) => { const [v, setV] = useState(() => localStorage.getItem(key) || ''); return [v, (n: string) => { setV(n); try { n ? localStorage.setItem(key, n) : localStorage.removeItem(key); } catch {} }] as const; };
 
 // ---------- camera ----------
-/** Reads QR codes from the back camera. The callback is kept in a ref, so it always sees the current ticket list. */
-function Camera({ onCode, onError }: { onCode: (s: string) => void; onError?: (blocked: boolean) => void }) {
+export function Camera({ onCode, active, hint }: { onCode: (s: string) => void; active: boolean; hint?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState('');
-  const cb = useRef(onCode); cb.current = onCode;
   useEffect(() => {
+    if (!active) return;
     let stream: MediaStream | null = null; let raf = 0; let last = 0; let stop = false;
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-    const fail = () => { setError('אין גישה למצלמה. אפשר לאשר מצלמה לאתר בהגדרות הדפדפן, או לחפש לפי שם.'); onError?.(true); };
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      .then((s) => { if (stop) { s.getTracks().forEach((t) => t.stop()); return; } stream = s; const v = video.current!; v.srcObject = s; v.setAttribute('playsinline', 'true'); v.play().catch(() => {}); tick(); })
+      .catch(() => setError('אין גישה למצלמה. אפשרו מצלמה לאתר, או חפשו לפי שם.'));
     const tick = () => {
       if (stop) return;
       const v = video.current; const t = performance.now();
@@ -41,399 +32,219 @@ function Camera({ onCode, onError }: { onCode: (s: string) => void; onError?: (b
         const w = 480, h = Math.round(480 * v.videoHeight / Math.max(1, v.videoWidth)) || 360;
         canvas.width = w; canvas.height = h; ctx.drawImage(v, 0, 0, w, h);
         const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
-        if (code?.data) cb.current(code.data);
+        if (code?.data) onCode(code.data);
       }
       raf = requestAnimationFrame(tick);
     };
-    if (!navigator.mediaDevices?.getUserMedia) fail();
-    else navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
-      .then((s) => { if (stop) { s.getTracks().forEach((t) => t.stop()); return; } stream = s; const v = video.current; if (!v) return; v.srcObject = s; v.setAttribute('playsinline', 'true'); v.play().catch(() => {}); tick(); })
-      .catch(fail);
     return () => { stop = true; cancelAnimationFrame(raf); stream?.getTracks().forEach((t) => t.stop()); };
-  }, []);
-  return <div className="r-ed-cam">{error ? <p role="alert">{error}</p> : <video ref={video} muted playsInline />}</div>;
+  }, [active]);
+  return <div className="camera">{error ? <p style={{ padding: 20, textAlign: 'center', lineHeight: 1.5 }}>{error}</p> : <video ref={video} muted playsInline />}<div className="camera-frame" aria-hidden="true" />{hint && !error && <div className="hintbox">{hint}</div>}</div>;
 }
 
-// ---------- the event, for whoever works it ----------
+// ---------- event hub for staff ----------
 export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: FarmEvent[]; id?: string }) {
-  const today = todayISO(); const online = useOnline(); const nowIsoStr = new Date().toISOString();
+  const today = todayISO();
   const published = events.filter((e) => e.published).sort((a, b) => a.start.localeCompare(b.start));
   const live = published.find((e) => isToday(e, today));
-  const chosen = (id ? events.find((e) => e.id === id) : null) || live || published.find((e) => e.end >= nowIsoStr) || null;
+  const chosen = (id ? events.find((e) => e.id === id) : null) || live || published.find((e) => e.end >= new Date().toISOString()) || null;
   const tickets = useEventTickets(chosen?.id || '', !!chosen);
   const tabs = useEventTabs(chosen?.id || '', !!chosen);
   const products = useProducts(chosen?.id || '', !!chosen);
   const valid = tickets.items.filter((t) => t.status === 'valid');
   const arrived = valid.filter((t) => t.entries > 0).length;
-  const scans = useMemo(() => valid.flatMap((t) => t.scans.map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at)).slice(0, 6), [tickets.items]);
+  const scans = useMemo(() => valid.flatMap((t) => t.scans.map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at)).slice(0, 6), [valid]);
   const openTabs = tabs.items.filter((t) => t.status === 'open');
-  const upcoming = published.filter((e) => e.end >= nowIsoStr && e.id !== chosen?.id);
-  if (!chosen) return (
-    <>
-      <Head backTo={id ? '/events-staff' : undefined} backLabel="אירועים" title="אירועים" />
-      <Empty title="אין אירוע קרוב">{ctx.manager ? 'יוצרים אירוע בניהול, תחת אירועים.' : 'כשמנהל יפרסם אירוע, הכניסה והדוכן יופיעו כאן.'}</Empty>
-      {ctx.manager && <div className="r-actions"><Btn kind="ghost" to="/manage/events">לניהול האירועים</Btn></div>}
-    </>
-  );
+  const upcoming = published.filter((e) => e.end >= new Date().toISOString() && e.id !== chosen?.id);
+  if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'כשמנהל יפרסם אירוע, הכניסה והדוכן יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
   const isLive = isToday(chosen, today);
-  const activeProducts = products.items.filter((p) => p.active).length;
-  const ready = !tickets.loading && !tickets.error && valid.length > 0;
   return (
     <>
-      <Head backTo={id ? '/events-staff' : undefined} backLabel="אירועים" over={`${isLive ? 'היום' : fmtDayLong(dayOf(chosen.start))} · ${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${isLive ? '' : ' · ' + inText(chosen.start)}`} title={chosen.title} />
-      <div className="r-ed-gatebtns">
-        <Btn className="r-ed-huge" to={`/scan/${chosen.id}`}>כניסה<small>סריקת כרטיסים</small></Btn>
-        <Btn className="r-ed-huge" kind="ghost" to={`/stall/${chosen.id}`}>דוכן<small>רישום לחשבון</small></Btn>
-      </div>
-      <p className={'r-ed-ready' + (ready ? '' : ' warn')} role="status">
-        {tickets.loading ? 'טוען את רשימת הכרטיסים לטלפון…'
-          : tickets.error ? `רשימת הכרטיסים לא נטענה: ${tickets.error}. בלי הרשימה הסריקה לא תזהה כרטיסים.`
-            : valid.length === 0 ? (online ? 'עדיין אין כרטיסים לאירוע הזה.' : 'אין קליטה, ורשימת הכרטיסים עוד לא ירדה לטלפון הזה. צריך לפתוח את המסך הזה פעם אחת כשיש קליטה.')
-              : `${tickets_(valid.length)} ו־${activeProducts} מוצרים שמורים בטלפון הזה. הכניסה והדוכן עובדים גם בלי קליטה.`}
-      </p>
-      {valid.length > 0 && <div style={{ marginTop: 8 }}>
-        <A className="r-linkrow" to={`/scan/${chosen.id}/search`}><div>נכנסו {arrived} מתוך {valid.length} <span>· חיפוש אורח לפי שם</span></div><Icon name="chev" /></A>
-        <A className="r-linkrow" to={`/stall/${chosen.id}/tabs`}><div>חשבונות פתוחים בדוכן <span>· {openTabs.length}{openTabs.length ? ` · ${money(openTabs.reduce((s, t) => s + t.total, 0))}` : ''}</span></div><Icon name="chev" /></A>
-        {ctx.manager && <A className="r-linkrow" to={`/manage/events/${chosen.id}`}><div>ניהול האירוע <span>· נרשמים, תשלומים, מוצרים</span></div><Icon name="chev" /></A>}
-      </div>}
-      {scans.length > 0 && <>
-        <Sect title="נכנסו לאחרונה" />
-        {scans.map(({ t, s, n }) => <div key={t.id + s.at} className="r-doneline"><s style={{ textDecoration: 'none', color: 'var(--r-ink)' }}>{who(t)}{n > 1 ? ` · כניסה ${n}` : ''}</s><b>{firstName(s.by.name)}</b><span>{fmtTime(s.at)}</span></div>)}
-      </>}
-      {upcoming.length > 0 && <>
-        <Sect title="אירועים קרובים" />
-        {upcoming.slice(0, 4).map((e) => (
-          <A key={e.id} className="r-event" to={`/events-staff/${e.id}`} style={{ borderBlockWidth: '0 1px', borderColor: 'var(--r-line)', marginTop: 0 }}>
-            <div className="r-day">{new Date(e.start).getDate()}<small>{fmtDateShort(e.start).replace(/^\d+\s*/, '')}</small></div>
-            <div><b>{e.title}</b><span>{fmtWeekday(e.start)} · {inText(e.start)} · {fmtTime(e.start)}</span></div>
-            <Icon name="chev" />
-          </A>
-        ))}
-      </>}
+      <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${isLive ? ' · השער נפתח חצי שעה לפני' : ' · ' + inText(chosen.start)}`} end={!id ? <A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
+      <Ledger items={[{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }, { n: openTabs.length, label: 'חשבונות פתוחים', tone: openTabs.length ? 'ochre' : undefined }]} />
+      <div className="actions row2" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" to={`/scan/${chosen.id}`}>כניסה</Btn><Btn size="big" kind="ghost" icon="store" to={`/stall/${chosen.id}`}>דוכן</Btn></div>
+      <div className="strip ok"><Icon name="download" size={18} />{tickets.loading ? 'מוריד את רשימת הכרטיסים…' : `${valid.length} כרטיסים ו־${products.items.filter((p) => p.active).length} מוצרים במכשיר. הסריקה והדוכן עובדים בלי קליטה.`}</div>
+      {scans.length > 0 && <><Sec title="סריקות אחרונות" link="חיפוש אורח" linkTo={`/scan/${chosen.id}/search`} /><div className="list">{scans.map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}</div></>}
+      {upcoming.length > 0 && <><Sec title="אירועים קרובים" />{upcoming.slice(0, 4).map((e) => <EventTeaser key={e.id} e={e} to={`/events-staff/${e.id}`} />)}</>}
     </>
   );
 }
 
-// ---------- the gate ----------
-type Result =
-  | { kind: 'ok'; name: string; line: string; again: number }
-  | { kind: 'pay'; name: string; ticket: Ticket; order: Ticket[]; amount: number }
-  | { kind: 'bad'; title: string; line: string };
-
-function useGate(eventId: string, ctx: TeamCtx) {
-  const { item: event, loading } = useEvent(eventId);
+// ---------- scanning ----------
+type Result = { kind: 'ok' | 'pay' | 'bad'; title: string; name?: string; sub?: string; ticket?: Ticket; order?: Ticket[] };
+function useScanner(eventId: string, ctx: TeamCtx) {
+  const { item: event } = useEvent(eventId);
   const tickets = useEventTickets(eventId, true);
+  const [result, setResult] = useState<Result | null>(null);
   const toast = useToast();
+  const recent = useRef<{ code: string; at: number }>({ code: '', at: 0 });
   const valid = tickets.items.filter((t) => t.status === 'valid');
-  const stats = { total: valid.length, arrived: valid.filter((t) => t.entries > 0).length };
-  const orderOf = (t: Ticket) => tickets.items.filter((x) => x.orderId === t.orderId && x.status === 'valid');
-  const late = (e: unknown) => toast({ text: `הכניסה נספרה בטלפון, אבל השרת סירב: ${(e as Error)?.message || ''}`, kind: 'error' }, 7000);
-  /** Counts one entry. The result is known before the write: the caller shows it at once. */
-  const admit = (t: Ticket, paidOnsite = false) => { recordScan(t, ctx.actor, paidOnsite).catch(late); };
-  /** Paid at the gate: the whole order is marked paid, and this ticket goes in. */
-  const paidHere = (t: Ticket) => { payOrderOnsite(ctx.actor, orderOf(t).filter((x) => x.id !== t.id)).catch(late); admit(t, true); };
-  return { event, loading, tickets, valid, stats, orderOf, admit, paidHere };
+  const stats = { total: valid.length, arrived: valid.filter((t) => t.entries > 0).length, scans: valid.reduce((s, t) => s + t.entries, 0), returned: valid.filter((t) => t.entries > 1).length, onsite: valid.filter((t) => t.paymentStatus === 'paid_onsite').length };
+  const admit = async (t: Ticket, paidOnsite = false) => {
+    try { await recordScan(t, ctx.actor, paidOnsite); } catch { toast({ text: 'הסריקה לא נשמרה, אבל נספרה מקומית. תסתנכרן כשיש רשת.', kind: 'error' }); }
+    setResult({ kind: 'ok', title: 'מאושר', name: t.holderName || t.ownerName, sub: `כרטיס ${t.index} מתוך ${t.total} · ${t.entries === 0 ? 'כניסה ראשונה' : `כניסה ${t.entries + 1}, יצא וחזר`}${t.holderName ? ` · הזמין/ה ${t.ownerName}` : ''} · ${paidOnsite ? 'שולם במקום' : PAYMENT_LABELS[t.paymentStatus]}`, ticket: t });
+  };
+  const evaluate = (t: Ticket | undefined, secret?: string) => {
+    if (!t) return setResult({ kind: 'bad', title: 'לא נמצא', sub: 'הכרטיס לא שייך לאירוע הזה, או שהרשימה עוד לא ירדה למכשיר.' });
+    if (secret !== undefined && secret !== t.secret) return setResult({ kind: 'bad', title: 'ברקוד לא תקין', sub: 'הקוד לא תואם את הכרטיס.' });
+    if (t.status === 'cancelled') return setResult({ kind: 'bad', title: 'כרטיס בוטל', name: `${t.ownerName} · כרטיס ${t.index}/${t.total}`, sub: 'ההזמנה בוטלה על ידי מנהל. אפשר להציע לרשום אותו מחדש בדוכן.' });
+    if (t.paymentStatus === 'pending' || t.paymentStatus === 'claimed') { const order = tickets.items.filter((x) => x.orderId === t.orderId && x.status === 'valid'); return setResult({ kind: 'pay', title: PAYMENT_LABELS[t.paymentStatus], name: t.holderName || t.ownerName, sub: `${order.length} ${order.length === 1 ? 'כרטיס' : 'כרטיסים'} · ${money(t.price * order.length)}`, ticket: t, order }); }
+    admit(t);
+  };
+  const onCode = (code: string) => {
+    if (result) return;
+    const now = Date.now();
+    if (recent.current.code === code && now - recent.current.at < 4000) return;
+    recent.current = { code, at: now };
+    const p = parseQr(code);
+    if (!p) return setResult({ kind: 'bad', title: 'זה לא כרטיס של החווה', sub: 'נסרק ברקוד אחר.' });
+    const t = tickets.items.find((x) => x.id === p.id);
+    if (t && t.eventId !== eventId) return setResult({ kind: 'bad', title: 'שייך לאירוע אחר', name: t.eventTitle });
+    evaluate(t, p.secret);
+  };
+  return { event, tickets, valid, stats, result, setResult, admit, evaluate, onCode };
 }
 
-function ResultScreen({ r, onClose, onPaid, onLater, onSearch }: { r: Result; onClose: () => void; onPaid: () => void; onLater: () => void; onSearch: () => void }) {
-  const close = useRef(onClose); close.current = onClose;
-  useEffect(() => { if (r.kind !== 'ok') return; const t = setTimeout(() => close.current(), 2600); return () => clearTimeout(t); }, [r]);
-  const tone = r.kind === 'ok' ? (r.again > 1 ? 'again' : 'ok') : r.kind;
+function ResultOverlay({ r, stats, settings, onPaid, onAdmitAnyway, onClose, onSearch }: { r: Result; stats: { arrived: number; total: number }; settings: TeamCtx['settings']; onPaid: () => void; onAdmitAnyway: () => void; onClose: () => void; onSearch: () => void }) {
+  const [left, setLeft] = useState(3);
+  useEffect(() => { if (r.kind !== 'ok') return; setLeft(3); const t = setInterval(() => setLeft((n) => { if (n <= 1) { clearInterval(t); onClose(); return 0; } return n - 1; }), 1000); return () => clearInterval(t); }, [r]);
+  const pay = settings.payment;
   return (
-    <div className={'r-ed-result ' + tone} role="alertdialog" aria-live="assertive" aria-label="תוצאת הסריקה">
-      {r.kind === 'ok' && <>
-        <div className="r-ed-verdict">{r.again > 1 ? 'כניסה חוזרת' : 'מאושר'}</div>
-        {r.again > 1 && <div className="r-ed-count">מספר {r.again}</div>}
-        <div className="r-ed-name">{r.name}</div>
-        <div className="r-ed-line">{r.line}</div>
-        <div className="r-ed-acts"><Btn className="r-ed-huge" kind="ghost" onClick={onClose} autoFocus>הבא</Btn></div>
-      </>}
-      {r.kind === 'pay' && <>
-        <div className="r-ed-verdict">ממתין לתשלום</div>
-        <div className="r-ed-count">{money(r.amount)}</div>
-        <div className="r-ed-name">{r.name}</div>
-        <div className="r-ed-line">{tickets_(r.order.length)} בהזמנה של {r.ticket.ownerName}{r.ticket.paymentStatus === 'claimed' ? ' · סימן/ה שהעביר/ה, עוד לא אושר' : ''}</div>
-        <div className="r-ed-acts">
-          <Btn className="r-ed-huge" kind="gold" onClick={onPaid}>שולם כאן · להכניס<small>מסמן את כל ההזמנה כשולמה</small></Btn>
-          <Btn kind="ghost" onClick={onLater}>להכניס, ישלמו אחר כך</Btn>
-          <Btn kind="quiet" onClick={onClose}>לא להכניס</Btn>
-        </div>
-      </>}
-      {r.kind === 'bad' && <>
-        <div className="r-ed-verdict">{r.title}</div>
-        <div className="r-ed-line">{r.line}</div>
-        <div className="r-ed-acts"><Btn className="r-ed-huge" kind="ghost" onClick={onSearch}>לחפש לפי שם</Btn><Btn kind="quiet" onClick={onClose}>לסרוק שוב</Btn></div>
-      </>}
+    <div className={'result ' + r.kind} role="dialog" aria-live="assertive">
+      <div style={{ fontSize: 15, opacity: .85 }}>{stats.arrived} מתוך {stats.total}</div>
+      <div className="big">{r.title}</div>
+      {r.name && <div className="name">{r.name}</div>}
+      {r.sub && <div className="sub">{r.sub}</div>}
+      {r.kind === 'pay' && <div className="sub">{[pay.bit && `ביט ${pay.bit}`, pay.paybox && 'PayBox', pay.cash && 'מזומן'].filter(Boolean).join(' · ')}</div>}
+      <div className="acts">
+        {r.kind === 'ok' && <><Btn size="big" onClick={onClose}>הבא</Btn><div style={{ fontSize: 14, opacity: .8 }}>נסגר לבד בעוד {left} שניות וחוזר לסריקה</div></>}
+        {r.kind === 'pay' && <><Btn size="big" icon="check" onClick={onPaid}>שולם במקום · להכניס</Btn><Btn kind="ghost" onClick={onAdmitAnyway}>להכניס, ישלמו אחר כך</Btn><Btn kind="ghost" onClick={onClose}>סגירה</Btn></>}
+        {r.kind === 'bad' && <><Btn size="big" onClick={onSearch}>לחפש לפי שם</Btn><Btn kind="ghost" onClick={onClose}>לסרוק שוב</Btn></>}
+      </div>
     </div>
   );
 }
 
 export function ScanScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
-  const g = useGate(eventId, ctx); const desktop = useDesktop();
-  const [result, setResult] = useState<Result | null>(null);
-  // the camera loop outlives renders: it reads the ticket list and the open result through refs
-  const live = useRef({ g, result }); live.current = { g, result };
-  const recent = useRef({ code: '', at: 0 });
-  const okFor = (t: Ticket, paid: boolean): Result => ({ kind: 'ok', name: who(t), again: t.entries + 1, line: `כרטיס ${t.index} מתוך ${t.total}${t.holderName ? ` · הזמין/ה ${t.ownerName}` : ''} · ${paid ? 'שולם במקום' : PAYMENT_LABELS[t.paymentStatus]}` });
-  const onCode = (code: string) => {
-    const { g: cur, result: open } = live.current;
-    if (open) return;
-    const now = Date.now();
-    if (recent.current.code === code && now - recent.current.at < 4000) return;
-    recent.current = { code, at: now };
-    const p = parseQr(code);
-    if (!p) return setResult({ kind: 'bad', title: 'לא כרטיס של החווה', line: 'נסרק ברקוד אחר.' });
-    const t = cur.tickets.items.find((x) => x.id === p.id);
-    if (!t) return setResult({ kind: 'bad', title: 'לא נמצא', line: cur.tickets.loading ? 'רשימת הכרטיסים עוד נטענת. רגע, ולנסות שוב.' : 'הכרטיס לא שייך לאירוע הזה, או שהרשימה בטלפון לא מעודכנת.' });
-    if (p.secret !== t.secret) return setResult({ kind: 'bad', title: 'ברקוד לא תקין', line: 'הקוד לא תואם את הכרטיס.' });
-    if (t.status === 'cancelled') return setResult({ kind: 'bad', title: 'הכרטיס בוטל', line: `${t.ownerName} · כרטיס ${t.index} מתוך ${t.total}. אפשר לרשום אותו כאורח בדוכן.` });
-    if (unpaid(t)) { const order = cur.orderOf(t); return setResult({ kind: 'pay', name: who(t), ticket: t, order, amount: t.price * order.filter(unpaid).length }); }
-    cur.admit(t); setResult(okFor(t, false));
-  };
-  if (g.loading) return <><Head backTo={`/events-staff/${eventId}`} backLabel="האירוע" title="" /><div className="r-empty">טוען…</div></>;
-  if (!g.event) return <><Head backTo="/events-staff" backLabel="אירועים" title="האירוע לא נמצא" /><Empty title="ייתכן שהוסר מפרסום" /></>;
-  const gate = (
-    <div className="r-ed-gate">
-      <Camera onCode={onCode} />
-      <div className="r-ed-gate-top">
-        <button type="button" className="r-back" onClick={() => back(`/events-staff/${eventId}`)}><Icon name="back" />האירוע</button>
-        <span aria-live="polite"><b>{g.stats.arrived}</b> מתוך {g.stats.total} נכנסו</span>
-      </div>
-      <div className="r-ed-gate-frame" aria-hidden="true" />
-      <div className="r-ed-gate-bottom">
-        {g.tickets.loading && <p role="status">טוען את רשימת הכרטיסים…</p>}
-        {!g.tickets.loading && g.stats.total === 0 && <p role="alert">אין בטלפון כרטיסים לאירוע הזה. סריקה לא תזהה אף אחד.</p>}
-        <Btn className="r-ed-huge" kind="ghost" to={`/scan/${eventId}/search`}>חיפוש בשם או טלפון</Btn>
-        <A className="r-ed-gate-link" to={`/stall/${eventId}`}>לדוכן</A>
-      </div>
-      {result && <ResultScreen r={result} onClose={() => setResult(null)}
-        onPaid={() => { if (result.kind !== 'pay') return; g.paidHere(result.ticket); setResult(okFor(result.ticket, true)); }}
-        onLater={() => { if (result.kind !== 'pay') return; g.admit(result.ticket); setResult(okFor(result.ticket, false)); }}
-        onSearch={() => { setResult(null); navigate(`/scan/${eventId}/search`); }} />}
-    </div>
+  const s = useScanner(eventId, ctx);
+  if (!s.event) return <Loading />;
+  return (
+    <>
+      <Top backTo={`/events-staff/${eventId}`} backLabel="אירוע" title={`${s.event.title} · כניסה`} sub={`${s.stats.arrived} נכנסו מתוך ${s.stats.total} · ${s.stats.scans} סריקות · עובד בלי קליטה`} end={<Btn kind="quiet" size="sm" icon="store" to={`/stall/${eventId}`}>לדוכן</Btn>} />
+      <Camera active={!s.result} onCode={s.onCode} hint="מכוונים את הברקוד למסגרת. הזיהוי אוטומטי." />
+      <div className="actions"><Btn kind="ghost" size="big" icon="search" to={`/scan/${eventId}/search`}>חיפוש בשם או טלפון</Btn></div>
+      {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => { s.setResult(null); navigate(`/scan/${eventId}/search`); }} />}
+    </>
   );
-  // On a phone the camera is the whole screen, above the bottom bar. It is mounted on <body>: inside the page it would be
-  // trapped by the page's enter animation (an animated transform contains position:fixed).
-  return desktop ? gate : createPortal(gate, document.body);
 }
 
 export function ScanSearchScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
-  const g = useGate(eventId, ctx); const toast = useToast();
+  const s = useScanner(eventId, ctx);
   const [q, setQ] = useState('');
   const orders = useMemo(() => {
     const t = q.trim().toLowerCase(); if (t.length < 2) return [];
-    const d = digits(t);
+    const digits = t.replace(/\D/g, '');
     const m = new Map<string, Ticket[]>();
-    for (const x of g.tickets.items) if (x.ownerName.toLowerCase().includes(t) || x.holderName.toLowerCase().includes(t) || (d.length >= 4 && digits(x.ownerPhone).includes(d))) m.set(x.orderId, []);
-    for (const x of g.tickets.items) if (m.has(x.orderId)) m.get(x.orderId)!.push(x);
-    return [...m.values()].map((o) => o.sort((a, b) => a.index - b.index));
-  }, [q, g.tickets.items]);
-  const shown = orders.slice(0, 8);
-  const enter = (t: Ticket) => { g.admit(t); toast({ text: t.entries ? `כניסה חוזרת, מספר ${t.entries + 1}: ${who(t)}` : `נכנס/ה: ${who(t)}` }, 2500); };
-  const enterAll = (list: Ticket[]) => { list.forEach((t) => g.admit(t)); toast({ text: `נכנסו ${list.length}: ${list[0].ownerName}` }, 3000); };
-  if (g.loading) return <><Head backTo={`/scan/${eventId}`} backLabel="למצלמה" title="" /><div className="r-empty">טוען…</div></>;
-  if (!g.event) return <><Head backTo="/events-staff" backLabel="אירועים" title="האירוע לא נמצא" /><Empty title="ייתכן שהוסר מפרסום" /></>;
+    for (const x of s.tickets.items) if (x.ownerName.toLowerCase().includes(t) || x.holderName.toLowerCase().includes(t) || (digits.length >= 4 && x.ownerPhone.replace(/\D/g, '').includes(digits))) m.set(x.orderId, [...(m.get(x.orderId) || []), x]);
+    return [...m.values()].slice(0, 8);
+  }, [q, s.tickets.items]);
+  if (!s.event) return <Loading />;
   return (
     <>
-      <Head backTo={`/scan/${eventId}`} backLabel="למצלמה" over={`${g.event.title} · נכנסו ${g.stats.arrived} מתוך ${g.stats.total}`} title="מי בכניסה?" />
-      <Form onSubmit={() => {}} className="r-addline"><input className="r-input big" type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="שם או טלפון" aria-label="חיפוש אורח לפי שם או טלפון" enterKeyHint="search" autoComplete="off" /></Form>
-      {q.trim().length >= 2 && <p className="r-hint" role="status">{orders.length === 0 ? 'אין הזמנה על השם הזה.' : orders.length > shown.length ? `${orders.length} הזמנות מתאימות, מוצגות ${shown.length}. כדאי לדייק.` : `${orders.length === 1 ? 'הזמנה אחת' : orders.length + ' הזמנות'}`}</p>}
-      {shown.map((o) => {
-        const first = o[0]; const valid = o.filter((x) => x.status === 'valid'); const waiting = valid.filter((x) => x.entries === 0); const owing = valid.filter(unpaid);
-        return (
-          <section key={first.orderId} className="r-ed-order">
-            <header><h2>{first.ownerName}</h2><span dir="ltr">{first.ownerPhone}</span></header>
-            {valid.length === 0 ? <p className="r-ed-owing">ההזמנה בוטלה. אי אפשר להכניס עם הכרטיסים האלה.</p> : <>
-              {owing.length > 0 && <div className="r-ed-owing"><span>{PAYMENT_LABELS[owing[0].paymentStatus]} · <b>{money(first.price * owing.length)}</b></span><Btn small kind="gold" onClick={() => { payOrderOnsite(ctx.actor, owing).then(() => toast({ text: `שולם במקום: ${first.ownerName}` }, 2500)).catch((e) => toast({ text: (e as Error).message || 'לא נשמר', kind: 'error' })); }}>שולם כאן</Btn></div>}
-              {valid.map((t) => (
-                <div key={t.id} className={'r-ed-tk' + (t.entries ? ' in' : '')}>
-                  <div><b>{who(t)}</b><span>כרטיס {t.index} מתוך {t.total}{t.entries ? ` · נכנס/ה${t.entries > 1 ? ' ' + t.entries + ' פעמים' : ''}` : ''}</span></div>
-                  <Btn small kind={t.entries ? 'ghost' : 'primary'} onClick={() => enter(t)}>{t.entries ? 'כניסה חוזרת' : 'להכניס'}</Btn>
-                </div>
-              ))}
-              {waiting.length > 1 && <div className="r-actions" style={{ paddingInline: 0, paddingTop: 12 }}><Btn block onClick={() => enterAll(waiting)}>להכניס את כולם ({waiting.length})</Btn></div>}
-            </>}
-          </section>
-        );
-      })}
-      <div className="r-ed-walkin">
-        <p><b>לא ברשימה?</b> אי אפשר להנפיק כרטיס בשער: כרטיס נוצר רק מהחשבון של האורח עצמו. אפשר לרשום אותו כאורח בדוכן, והוא יופיע ברשימות האירוע.</p>
-        <Btn kind="ghost" to={`/stall/${eventId}/pick`}>לרשום כאורח בדוכן</Btn>
-      </div>
+      <Top backTo={`/scan/${eventId}`} backLabel="למצלמה" title="מי בכניסה?" sub={`${s.event.title} · ${s.stats.arrived} מתוך ${s.stats.total}`} />
+      <Field hint="שם או טלפון. מראים רק התאמות קרובות, לא את כל הרשימה."><Input big autoFocus placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+      {q.trim().length >= 2 && <Sec title={orders.length ? `${orders.length} התאמות` : 'לא נמצא'} />}
+      <div className="list">{orders.map((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); const entered = valid.filter((x) => x.entries > 0).length; const nextT = valid.find((x) => x.entries === 0) || valid[0]; const pending = t.paymentStatus === 'pending' || t.paymentStatus === 'claimed';
+        return <Row key={t.orderId} center title={t.ownerName} meta={<><span className="ltr">{t.ownerPhone}</span><span>{valid.length} {valid.length === 1 ? 'כרטיס' : 'כרטיסים'}</span>{t.status === 'cancelled' ? <Pill tone="rust">בוטל</Pill> : <Pill tone={pending ? 'ochre' : 'ok'}>{PAYMENT_LABELS[t.paymentStatus]}{pending ? ` · ${money(t.price * valid.length)}` : ''}</Pill>}<span>{entered ? `נכנסו ${entered}` : 'טרם הגיעו'}</span></>}
+          end={nextT && <Btn size="sm" kind={pending ? 'ghost' : 'primary'} onClick={() => s.evaluate(nextT)}>{pending ? 'פתיחה' : 'להכניס'}</Btn>} />; })}</div>
+      <p className="note">לא ברשימה? אפשר לרשום אותו כאורח חדש בדוכן ("לקוח מזדמן"), או לבקש ממנהל להוסיף כרטיס.</p>
+      <div className="actions"><Btn kind="ghost" icon="store" to={`/stall/${eventId}/pick`}>רישום אורח בלי כרטיס</Btn></div>
+      {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => s.setResult(null)} />}
     </>
   );
 }
 
-// ---------- the stall ----------
+// ---------- stall ----------
 function useStall(eventId: string) {
-  const { item: event, loading } = useEvent(eventId);
+  const { item: event } = useEvent(eventId);
   const tabs = useEventTabs(eventId, true);
   const products = useProducts(eventId, true);
   const tickets = useEventTickets(eventId, true);
-  const [currentId, setCurrentId] = useStored('farm-tab-' + eventId);
+  const [currentId, setCurrentId] = useLocal('farm-tab-' + eventId);
   const tab = tabs.items.find((t) => t.id === currentId && t.status === 'open') || null;
   const open = tabs.items.filter((t) => t.status === 'open');
-  return { event, loading, tabs, products: products.items.filter((p) => p.active), tickets: tickets.items, tab, setCurrentId, open };
+  const today = todayISO();
+  const soldToday = tabs.items.filter((t) => t.createdAt.slice(0, 10) === today).reduce((s, t) => s + t.total, 0);
+  return { event, tabs, products: products.items.filter((p) => p.active), tickets: tickets.items, tab, setCurrentId, open, soldToday };
 }
-const lineKey = (tabId: string, i: TabItem) => `${tabId}|${i.productId}|${i.at}`;
-
 export function StallScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
-  const st = useStall(eventId); const toast = useToast(); useHiddenVersion();
+  const st = useStall(eventId);
   const [cart, setCart] = useState<Record<string, number>>({});
-  const tabRef = useRef<Tab | null>(null); tabRef.current = st.tab;
-  if (st.loading) return <><Head backTo={`/events-staff/${eventId}`} backLabel="האירוע" title="" /><div className="r-empty">טוען…</div></>;
-  if (!st.event) return <><Head backTo="/events-staff" backLabel="אירועים" title="האירוע לא נמצא" /><Empty title="ייתכן שהוסר מפרסום" /></>;
-  if (!st.tab) return <Pick eventId={eventId} ctx={ctx} st={st} backTo={`/events-staff/${eventId}`} backLabel="האירוע" />;
+  const toast = useToast();
+  if (!st.event) return <Loading />;
+  if (!st.tab) return <StallPickScreen eventId={eventId} ctx={ctx} inline />;
   const tab = st.tab;
-  const step = (id: string, by: number) => setCart((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + by) }));
-  const picked = st.products.filter((p) => cart[p.id] > 0);
-  const total = picked.reduce((s, p) => s + p.price * cart[p.id], 0);
-  const lines = tab.items.filter((i) => !isHidden(lineKey(tab.id, i)));
-  const owed = Math.round(lines.reduce((s, i) => s + i.price * i.qty, 0) * 100) / 100;
-  const commit = () => {
-    if (!picked.length) return;
-    const items: TabItem[] = picked.map((p) => ({ productId: p.id, name: p.name, price: p.price, qty: cart[p.id], at: nowIso(), by: ctx.actor }));
-    setCart({});
-    addTabItems(ctx.actor, tab, items).then(() => toast({ text: `נרשמו ${money(total)} לחשבון של ${firstName(tab.guestName)}` }, 2500)).catch((e) => toast({ text: (e as Error).message || 'לא נשמר', kind: 'error' }));
-  };
-  const removeLine = (item: TabItem) => {
-    const undo = deferDelete(lineKey(tab.id, item), () => {
-      const cur = tabRef.current && tabRef.current.id === tab.id ? tabRef.current : tab;
-      const index = cur.items.findIndex((x) => x.productId === item.productId && x.at === item.at);
-      if (index >= 0) removeTabItem(ctx.actor, cur, index).catch(() => {});
-    });
-    toast({ text: `הוסר: ${item.name}`, actions: [{ label: 'ביטול', onClick: undo }] }, 6000);
-  };
-  const close = () => {
-    setTabStatus(ctx.actor, tab, 'paid').then(() => toast({ text: `${firstName(tab.guestName)}: שולם במקום, ${money(owed)}. החשבון נסגר.` }, 3500)).catch((e) => toast({ text: (e as Error).message || 'לא נשמר', kind: 'error' }));
-    st.setCurrentId('');
+  const total = Object.entries(cart).reduce((s, [id, q]) => s + (st.products.find((p) => p.id === id)?.price || 0) * q, 0);
+  const commit = async () => {
+    const items: TabItem[] = Object.entries(cart).filter(([, q]) => q > 0).map(([id, qty]) => { const p = st.products.find((x) => x.id === id)!; return { productId: id, name: p.name, price: p.price, qty, at: nowIso(), by: ctx.actor }; });
+    if (!items.length) return;
+    try { await addTabItems(ctx.actor, tab, items); setCart({}); toast({ text: `נרשם ${money(total)} לחשבון של ${firstName(tab.guestName)}` }, 2500); } catch { toast({ text: 'לא נשמר', kind: 'error' }); }
   };
   return (
     <>
-      <Head backTo={`/events-staff/${eventId}`} backLabel="האירוע" over={`דוכן החווה${!tab.guestUid ? ' · לקוח מזדמן' : ''}`} title={tab.guestName} end={<button type="button" className="r-textlink" onClick={() => st.setCurrentId('')}>קונה אחר</button>} />
-      {st.products.length === 0 ? <Empty title="אין מוצרים לאירוע הזה">מנהל מגדיר מוצרים ומחירים בניהול האירוע, תחת מוצרי הדוכן.</Empty>
-        : <div role="group" aria-label="מה לוקחים">
-          {st.products.map((p) => {
-            const n = cart[p.id] || 0;
-            return (
-              <div key={p.id} className={'r-ed-prod' + (n ? ' on' : '')}>
-                <button type="button" className="r-ed-prod-main" onClick={() => step(p.id, 1)} aria-label={`להוסיף ${p.name}, ${money(p.price)}`}><b>{p.name}</b><span>{money(p.price)}</span></button>
-                <button type="button" className="r-ed-step" onClick={() => step(p.id, -1)} disabled={!n} aria-label={`פחות ${p.name}`}><Icon name="minus" /></button>
-                <span className="r-ed-qtyn" aria-live="polite" aria-label={`${n} ${p.name}`}>{n || ''}</span>
-                <button type="button" className="r-ed-step" onClick={() => step(p.id, 1)} aria-label={`עוד ${p.name}`}><Icon name="plus" /></button>
-              </div>
-            );
-          })}
-        </div>}
-      <Sect title="בחשבון" n={lines.length ? money(owed) : undefined} />
-      {lines.length === 0 ? <p className="r-hint">עוד לא נרשם כלום.</p>
-        : [...lines].reverse().map((i) => (
-          <div key={lineKey(tab.id, i)} className="r-ed-tabline">
-            <div><b>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</b><span>{fmtTime(i.at)} · {firstName(i.by.name)}</span></div>
-            <span className="r-ed-sum">{money(i.price * i.qty)}</span>
-            <button type="button" className="r-ed-x" onClick={() => removeLine(i)} aria-label={`להסיר ${i.name}`}><Icon name="x" /></button>
-          </div>
-        ))}
-      {lines.length > 0 && total === 0 && <div className="r-actions"><Btn kind="ghost" onClick={close}>שילם/ה במקום · {money(owed)}</Btn><Btn kind="quiet" onClick={() => st.setCurrentId('')}>ישלמו אחר כך</Btn></div>}
-      {total > 0 && <div className="r-dock">
-        <Btn onClick={commit}>להוסיף לחשבון · {money(total)}</Btn>
-        <Btn kind="ghost" fit onClick={() => setCart({})}>ניקוי</Btn>
-      </div>}
+      <Top backTo={`/scan/${eventId}`} backLabel="כניסה" title="דוכן החווה" sub={<A to={`/stall/${eventId}/tabs`} style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>{st.open.length} חשבונות פתוחים</A>} />
+      <div className="row center" style={{ borderTop: '1px solid var(--line2)', marginTop: 8 }}><Avatar name={tab.guestName} /><div className="main"><div className="title">{tab.guestName}</div><div className="meta"><span>בחשבון עד עכשיו: {money(tab.total)} · {tab.items.length} פריטים</span></div></div><Btn kind="ghost" size="sm" onClick={() => st.setCurrentId('')}>החלפה</Btn></div>
+      <Sec title="מה לוקחים?" n="לחיצה מוסיפה 1" />
+      {!st.products.length && <Empty title="אין מוצרים לאירוע הזה" text="מנהל מגדיר מוצרים ומחירים בניהול ← האירוע ← מוצרי הדוכן." />}
+      <div className="products">{st.products.map((p) => <button type="button" key={p.id} className={'product ' + (cart[p.id] ? 'on' : '')} onClick={() => setCart({ ...cart, [p.id]: (cart[p.id] || 0) + 1 })} onContextMenu={(e) => { e.preventDefault(); setCart({ ...cart, [p.id]: Math.max(0, (cart[p.id] || 0) - 1) }); }}><b>{p.name}</b><span>{money(p.price)}</span>{cart[p.id] ? <i>{cart[p.id]}</i> : null}</button>)}</div>
+      {tab.items.length > 0 && <><Sec title="בחשבון" n={tab.items.length} /><div className="list">{[...tab.items].reverse().map((i, n) => { const idx = tab.items.length - 1 - n; return <Row key={idx} center title={<>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</>} meta={<span>{fmtTime(i.at)} · {firstName(i.by.name)}</span>} end={<><span className="amount">{money(i.price * i.qty)}</span><button type="button" className="iconbtn" aria-label="הסרה" onClick={() => removeTabItem(ctx.actor, tab, idx)}><Icon name="x" size={18} /></button></>} />; })}</div></>}
+      {total > 0 && <div className="cartbar"><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><div><b>{money(total)}</b><div className="sub">{Object.entries(cart).filter(([, q]) => q).map(([id, q]) => `${st.products.find((p) => p.id === id)?.name} ×${q}`).join(' · ')}</div></div><Btn kind="quiet" size="sm" style={{ color: '#e6dcc0' }} onClick={() => setCart({})}>ניקוי</Btn></div><Btn block size="big" style={{ marginTop: 12 }} onClick={commit}>רישום לחשבון של {firstName(tab.guestName)}</Btn></div>}
     </>
   );
 }
-
-export function StallPickScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
+export function StallPickScreen({ eventId, ctx, inline }: { eventId: string; ctx: TeamCtx; inline?: boolean }) {
   const st = useStall(eventId);
-  if (st.loading) return <><Head backTo={`/stall/${eventId}`} backLabel="דוכן" title="" /><div className="r-empty">טוען…</div></>;
-  if (!st.event) return <><Head backTo="/events-staff" backLabel="אירועים" title="האירוע לא נמצא" /><Empty title="ייתכן שהוסר מפרסום" /></>;
-  return <Pick eventId={eventId} ctx={ctx} st={st} backTo={`/events-staff/${eventId}`} backLabel="האירוע" />;
-}
-
-type Guest = { uid: string; name: string; phone: string; ticketId: string };
-function Pick({ eventId, ctx, st, backTo, backLabel }: { eventId: string; ctx: TeamCtx; st: ReturnType<typeof useStall>; backTo: string; backLabel: string }) {
-  const toast = useToast();
   const [scanning, setScanning] = useState(false);
   const [q, setQ] = useState('');
-  const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [err, setErr] = useState('');
-  const live = useRef(st); live.current = st;
-  const matches = useMemo(() => {
-    const t = q.trim().toLowerCase(); if (t.length < 2) return [];
-    const d = digits(t); const seen = new Set<string>();
-    return st.tickets.filter((x) => x.status === 'valid' && (x.ownerName.toLowerCase().includes(t) || x.holderName.toLowerCase().includes(t) || (d.length >= 4 && digits(x.ownerPhone).includes(d))))
-      .filter((x) => { const k = who(x) + x.ownerUid; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6);
-  }, [q, st.tickets]);
-  const start = (guest: Guest) => {
-    const cur = live.current; if (!cur.event) return;
-    const same = (t: Tab) => (guest.uid ? t.guestUid === guest.uid && t.guestName === guest.name : !t.guestUid && t.guestName.trim() === guest.name && digits(t.guestPhone) === digits(guest.phone));
-    const existing = cur.open.find(same);
-    if (existing) { cur.setCurrentId(existing.id); navigate(`/stall/${eventId}`, true); return; }
-    openTab(ctx.actor, cur.event, guest).then((id) => { live.current.setCurrentId(id); navigate(`/stall/${eventId}`, true); }).catch((e) => toast({ text: (e as Error).message || 'לא הצלחנו לפתוח חשבון', kind: 'error' }));
+  const [walk, setWalk] = useState({ name: '', phone: '' });
+  const toast = useToast();
+  const matches = useMemo(() => { const t = q.trim().toLowerCase(); if (t.length < 2) return []; const d = t.replace(/\D/g, ''); const seen = new Set<string>(); return st.tickets.filter((x) => x.status === 'valid' && (x.ownerName.toLowerCase().includes(t) || x.holderName.toLowerCase().includes(t) || (d.length >= 4 && x.ownerPhone.replace(/\D/g, '').includes(d)))).filter((x) => { const k = (x.holderName || x.ownerName) + x.ownerUid; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6); }, [q, st.tickets]);
+  const start = async (guest: { uid: string; name: string; phone: string; ticketId: string }) => {
+    if (!st.event) return;
+    const existing = st.open.find((t) => (guest.uid && t.guestUid === guest.uid) || (!guest.uid && guest.phone && t.guestPhone === guest.phone));
+    try { const id = existing?.id || await openTab(ctx.actor, st.event, guest); st.setCurrentId(id); navigate(`/stall/${eventId}`, true); } catch { toast({ text: 'לא הצלחנו לפתוח חשבון', kind: 'error' }); }
   };
-  const onCode = (code: string) => {
-    const p = parseQr(code); const t = p && live.current.tickets.find((x) => x.id === p.id);
-    if (!p || !t || t.secret !== p.secret) { toast({ text: 'זה לא כרטיס של האירוע הזה', kind: 'error' }, 3000); return; }
-    if (t.status !== 'valid') { toast({ text: 'הכרטיס הזה בוטל. אפשר לרשום את האורח כלקוח מזדמן.', kind: 'error' }, 4000); return; }
-    setScanning(false); start({ uid: t.ownerUid, name: who(t), phone: t.ownerPhone, ticketId: t.id });
-  };
-  const lastCode = useRef({ code: '', at: 0 });
-  const onCodeOnce = (code: string) => { const now = Date.now(); if (lastCode.current.code === code && now - lastCode.current.at < 3000) return; lastCode.current = { code, at: now }; onCode(code); };
-  const walkIn = () => {
-    const n = name.trim();
-    if (!n) { setErr('צריך שם, כדי לדעת של מי החשבון'); return; }
-    start({ uid: '', name: n, phone: phone.trim(), ticketId: '' });
-  };
+  const onCode = (code: string) => { const p = parseQr(code); const t = p && st.tickets.find((x) => x.id === p.id && x.secret === p.secret); if (!t) return; setScanning(false); start({ uid: t.ownerUid, name: t.holderName || t.ownerName, phone: t.ownerPhone, ticketId: t.id }); };
+  if (!st.event) return <Loading />;
   return (
     <>
-      <Head backTo={backTo} backLabel={backLabel} over={`דוכן החווה · ${st.event?.title || ''}`} title="מי קונה?" end={<A className="r-textlink" to={`/stall/${eventId}/tabs`}>חשבונות · {st.open.length}</A>} />
-      {scanning ? <div className="r-form" style={{ paddingTop: 0 }}><div className="r-ed-cambox"><Camera onCode={onCodeOnce} /></div><Btn kind="ghost" onClick={() => setScanning(false)}>סגירת המצלמה</Btn></div>
-        : <div className="r-form" style={{ paddingTop: 0 }}><Btn className="r-ed-huge" onClick={() => setScanning(true)}>לסרוק את הכרטיס<small>אותו ברקוד של הכניסה</small></Btn></div>}
-      <Form onSubmit={() => {}} className="r-addline"><input className="r-input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="או לחפש בשם או טלפון" aria-label="חיפוש קונה לפי שם או טלפון" enterKeyHint="search" autoComplete="off" /></Form>
-      {q.trim().length >= 2 && matches.length === 0 && <p className="r-hint">אין כרטיס על השם הזה. אפשר לרשום כלקוח מזדמן, למטה.</p>}
-      {matches.map((t) => <button key={t.id} type="button" className="r-ed-pickrow" onClick={() => start({ uid: t.ownerUid, name: who(t), phone: t.ownerPhone, ticketId: t.id })}><div><b>{who(t)}</b><span>{t.holderName ? `בהזמנה של ${t.ownerName} · ` : ''}<span dir="ltr">{t.ownerPhone}</span></span></div><Icon name="chev" /></button>)}
-      {st.open.length > 0 && <>
-        <Sect title="חשבונות פתוחים" n={st.open.length} more="לכולם" to={`/stall/${eventId}/tabs`} />
-        {st.open.slice(0, 6).map((t) => <button key={t.id} type="button" className="r-ed-pickrow" onClick={() => { st.setCurrentId(t.id); navigate(`/stall/${eventId}`, true); }}><div><b>{t.guestName}</b><span>{!t.guestUid ? 'לקוח מזדמן · ' : ''}{t.items.length} פריטים · {relTime(t.updatedAt)}</span></div><span className="r-ed-sum">{money(t.total)}</span></button>)}
-      </>}
-      <Sect title="בלי כרטיס: לקוח מזדמן" />
-      <Form onSubmit={walkIn}>
-        <div className="r-field"><label htmlFor="walk-name">שם</label><input id="walk-name" className="r-input" value={name} onChange={(e) => { setName(e.target.value); setErr(''); }} maxLength={80} autoComplete="off" /></div>
-        <div className="r-field"><label htmlFor="walk-phone">טלפון</label><input id="walk-phone" className="r-input" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} autoComplete="off" style={{ textAlign: 'start' }} /><span className="r-help">לא חובה. עוזר לשלוח תזכורת אם לא שילמו.</span></div>
-        {err && <p className="r-err" role="alert">{err}</p>}
-        <Btn type="submit" kind="ghost">לפתוח חשבון</Btn>
-      </Form>
+      <Top backTo={inline ? `/scan/${eventId}` : `/stall/${eventId}`} backLabel={inline ? 'כניסה' : 'דוכן'} title="מי קונה?" sub={<A to={`/stall/${eventId}/tabs`} style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>{st.open.length} חשבונות פתוחים</A>} />
+      {scanning ? <><Camera active onCode={onCode} hint="אותו QR של הכניסה. החשבון נפתח על שם בעל הכרטיס." /><div className="actions"><Btn kind="ghost" onClick={() => setScanning(false)}>סגירת המצלמה</Btn></div></>
+        : <div className="actions" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" onClick={() => setScanning(true)}>סריקת הכרטיס של האורח</Btn><p className="lead" style={{ padding: 0, fontSize: 14 }}>אותו QR של הכניסה. החשבון נפתח על שם בעל הכרטיס.</p></div>}
+      <Field><Input placeholder="חיפוש בשם או טלפון" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+      {matches.length > 0 && <div className="list" style={{ marginTop: 8 }}>{matches.map((t) => <Row key={t.id} center onClick={() => start({ uid: t.ownerUid, name: t.holderName || t.ownerName, phone: t.ownerPhone, ticketId: t.id })} start={<Avatar name={t.holderName || t.ownerName} />} title={t.holderName || t.ownerName} meta={<><span className="ltr">{t.ownerPhone}</span><span>{t.total} כרטיסים</span></>} chev />)}</div>}
+      {st.open.length > 0 && <><Sec title="פתוחים עכשיו" n={st.open.length} link="הכל" linkTo={`/stall/${eventId}/tabs`} /><div className="list">{st.open.map((t) => <Row key={t.id} center onClick={() => { st.setCurrentId(t.id); navigate(`/stall/${eventId}`, true); }} start={<Avatar name={t.guestName} />} title={<>{t.guestName}{!t.guestUid && t.guestPhone && <span className="muted ltr" style={{ fontWeight: 400, fontSize: 14 }}> · {t.guestPhone}</span>}</>} meta={<span>{!t.guestUid ? 'לקוח מזדמן · ' : ''}{t.items.length} פריטים · {relTime(t.updatedAt)}</span>} end={<span className="amount">{money(t.total)}</span>} />)}</div></>}
+      <Sec title="בלי כרטיס? לקוח מזדמן" />
+      <Field><Input placeholder="שם" value={walk.name} onChange={(e) => setWalk({ ...walk, name: e.target.value })} /></Field>
+      <Field><Input placeholder="טלפון" dir="ltr" inputMode="tel" value={walk.phone} onChange={(e) => setWalk({ ...walk, phone: e.target.value })} /></Field>
+      <div className="actions"><Btn kind="ghost" disabled={!walk.name.trim()} onClick={() => start({ uid: '', name: walk.name.trim(), phone: walk.phone.trim(), ticketId: '' })}>פתיחת חשבון · נרשם כאורח חדש</Btn></div>
+    </>
+  );
+}
+export function StallTabsScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
+  const st = useStall(eventId);
+  const toast = useToast();
+  const today = todayISO();
+  const closed = st.tabs.items.filter((t) => t.status !== 'open' && t.updatedAt.slice(0, 10) === today);
+  if (!st.event) return <Loading />;
+  const openTotal = st.open.reduce((s, t) => s + t.total, 0);
+  return (
+    <>
+      <Top backTo={`/stall/${eventId}`} backLabel="דוכן" title="חשבונות הדוכן" sub={`${st.event.title} · על בסיס אמון, משלמים בסוף או בבית`} />
+      <Ledger items={[{ n: money(openTotal), label: 'פתוחים', tone: openTotal ? 'ochre' : undefined }, { n: st.open.length, label: 'חשבונות' }, { n: money(st.soldToday), label: 'נמכרו היום' }]} small />
+      <Sec title="פתוחים" n={st.open.length} />
+      <div className="list">{st.open.map((t) => <div key={t.id} className="row"><Avatar name={t.guestName} /><div className="main"><div className="title">{t.guestName}{!t.guestUid && t.guestPhone && <span className="muted ltr" style={{ fontWeight: 400, fontSize: 14 }}> · {t.guestPhone}</span>}</div><div className="meta"><span>{t.items.map((i) => i.name + (i.qty > 1 ? ` ×${i.qty}` : '')).join(' · ') || 'עוד אין פריטים'} · {relTime(t.updatedAt)}</span></div><div className="inline" style={{ marginTop: 8 }}><Btn size="sm" onClick={() => setTabStatus(ctx.actor, t, 'paid').then(() => toast({ text: `${firstName(t.guestName)} · שולם במקום` }, 2500))}>שילם/ה במקום</Btn><Btn size="sm" kind="ghost" onClick={() => { st.setCurrentId(t.id); navigate(`/stall/${eventId}`); }}>הוספת פריטים</Btn></div></div><span className="amount">{money(t.total)}</span></div>)}{!st.open.length && <p className="lead">אין חשבונות פתוחים.</p>}</div>
+      {closed.length > 0 && <><Sec title="נסגרו היום" n={closed.length} /><div className="list">{closed.map((t) => <Row key={t.id} center title={t.guestName} meta={<span>{t.status === 'paid' ? 'שולם במקום' : t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'waived' ? 'נמחל' : 'ישלמו בבית · תזכורת תישלח'} · {fmtTime(t.updatedAt)}</span>} end={<span className="amount">{money(t.total)}</span>} />)}</div></>}
     </>
   );
 }
 
-export function StallTabsScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
-  const st = useStall(eventId); const toast = useToast();
-  const today = todayISO();
-  if (st.loading) return <><Head backTo={`/stall/${eventId}`} backLabel="דוכן" title="" /><div className="r-empty">טוען…</div></>;
-  if (!st.event) return <><Head backTo="/events-staff" backLabel="אירועים" title="האירוע לא נמצא" /><Empty title="ייתכן שהוסר מפרסום" /></>;
-  const closed = st.tabs.items.filter((t) => t.status !== 'open' && dayOf(t.updatedAt) === today);
-  const openTotal = st.open.reduce((s, t) => s + t.total, 0);
-  const pay = (t: Tab) => setTabStatus(ctx.actor, t, 'paid').then(() => toast({ text: `${firstName(t.guestName)}: שולם במקום, ${money(t.total)}` }, 3000)).catch((e) => toast({ text: (e as Error).message || 'לא נשמר', kind: 'error' }));
-  const closedText = (t: Tab) => (t.status === 'paid' ? 'שולם' : t.status === 'claimed' ? 'סימן/ה שהעביר/ה' : 'נמחל');
-  return (
-    <>
-      <Head backTo={`/stall/${eventId}`} backLabel="דוכן" over={st.event.title} title="חשבונות הדוכן" />
-      <p className="r-hint" style={{ fontSize: 17, color: 'var(--r-ink)' }}>{st.open.length === 0 ? 'אין חשבונות פתוחים.' : <><b>{st.open.length === 1 ? 'חשבון אחד פתוח' : `${st.open.length} חשבונות פתוחים`}</b>, יחד {money(openTotal)}. מי שלא שילם כאן ישלם אחר כך; החוב נשאר רשום.</>}</p>
-      {st.open.map((t) => (
-        <section key={t.id} className="r-ed-order">
-          <header><h2>{t.guestName}</h2><span className="r-ed-sum">{money(t.total)}</span></header>
-          <p className="r-ed-items">{!t.guestUid ? 'לקוח מזדמן · ' : ''}{t.items.map((i) => i.name + (i.qty > 1 ? ` ×${i.qty}` : '')).join(' · ') || 'עוד אין פריטים'} · {relTime(t.updatedAt)}</p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-            <Btn small onClick={() => { st.setCurrentId(t.id); navigate(`/stall/${eventId}`); }}>להוסיף פריטים</Btn>
-            {t.total > 0 && <Btn small kind="ghost" onClick={() => pay(t)}>שילם/ה במקום</Btn>}
-          </div>
-        </section>
-      ))}
-      {closed.length > 0 && <>
-        <Sect title="נסגרו היום" n={closed.length} />
-        {closed.map((t) => <div key={t.id} className="r-doneline"><s style={{ textDecoration: 'none', color: 'var(--r-ink)' }}>{t.guestName}</s><b>{closedText(t)}</b><span>{money(t.total)}</span></div>)}
-      </>}
-      <div className="r-actions"><Btn kind="ghost" to={`/stall/${eventId}/pick`}>קונה חדש</Btn></div>
-    </>
-  );
-}
