@@ -57,6 +57,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     }
     log.actor = caller.actor.id;
     log.credential = caller.credentialId;
+    if (caller.keyVersion === 'previous') log.keyVersion = 'previous'; // shows when a client still uses a rotated key
     // one key in a loop (a confused assistant) must not burn the farm's daily Firestore quota
     if (env.RATE_LIMITER && !(await env.RATE_LIMITER.limit({ key: 'cred:' + caller.credentialId })).success) {
       throw new ApiError('RATE_LIMITED', 'too many requests for this key', { credential: caller.credentialId }, { 'retry-after': '60' });

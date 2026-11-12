@@ -398,6 +398,8 @@ def('tabs.addItem', 'tabs:write', 'רישום מוצר שאורח לקח מהד�
   const tab = await mustGet(c.fs, 'tabs', c.input.tabId, c.tx, 'tab');
   fresh(tab, c.input.ifUpdatedAt);
   const p = await mustGet(c.fs, `events/${tab.data.eventId}/products`, c.input.productId, c.tx, 'product');
+  // the stall screen only offers active products; an inactive one is not for sale
+  if (p.data.active === false) throw invalid('productId', 'this product is not active (not for sale)');
   const item: TabItem = { productId: p.id, name: String(p.data.name), price: Number(p.data.price), qty: c.input.qty, at: nowIso(), by: c.me };
   const items = [...((tab.data.items as TabItem[]) || []), item];
   return {
