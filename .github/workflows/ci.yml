@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit -p .
 
+      - name: Typecheck API Worker
+        run: npm run typecheck:api
+
       - name: Build
         run: npm run build
 
@@ -55,3 +58,6 @@ jobs:
 
       - name: Firestore rules tests
         run: npm run test:rules
+
+      - name: API Worker gate A (wrangler dev + Firestore emulator, synthetic data)
+        run: npm run test:api

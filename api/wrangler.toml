@@ -1,0 +1,33 @@
+# Havat Ravve API. Deploys to <name>.<account>.workers.dev on the free plan.
+# Secrets (never in this file or in git): `npx wrangler secret put API_CREDENTIALS` and `GCP_SERVICE_ACCOUNT`.
+# Local values go in api/.dev.vars (git-ignored); see api/.dev.vars.example.
+name = "havat-ravve-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+# Stage B runs against the production project: Meni approved access and writes on 2026-11-12, while the
+# app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
+FIRESTORE_PROJECT_ID = "havat-ravve"
+PRODUCTION_APPROVED = "havat-ravve"
+
+# Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
+[[kv_namespaces]]
+binding = "TOKEN_KV"
+id = "d275887525684d4b896d982838dad120"
+
+# Rate limits (Workers Rate Limiting, free): per credential, and failed authentications per client IP.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 240, period = 60 }
+
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
+[observability]
+enabled = true

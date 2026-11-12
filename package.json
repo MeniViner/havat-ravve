@@ -8,6 +8,10 @@
     "deploy": "npm run build && firebase deploy --only hosting,firestore --project havat-ravve",
     "emulators": "npm run build && firebase emulators:start --project demo-havat-ravve",
     "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs\"",
+    "test:api": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/api.mjs\"",
+    "test:api:remote": "node tests/api-remote.mjs",
+    "typecheck:api": "tsc --noEmit -p api",
+    "api:dev": "wrangler dev --config api/wrangler.toml",
     "dev": "npm run build && firebase emulators:start --only hosting,firestore,auth --project demo-havat-ravve",
     "seed": "FIRESTORE_EMULATOR_HOST=localhost:8080 node tests/seed.mjs havat-ravve"
   },
@@ -26,7 +30,8 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "0.25.12",
     "firebase-tools": "^14.0.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "^4.160.1"
   },
   "engines": {
     "node": ">=22"

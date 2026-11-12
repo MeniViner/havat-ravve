@@ -9,3 +9,12 @@ service-account*.json
 .emulator-data/
 .DS_Store
 .dev
+
+# Cloudflare Worker (api/)
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/
+
+# API key registry (hashes and metadata only)
+api/.keys*.json
