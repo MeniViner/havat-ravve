@@ -7,6 +7,7 @@ import { navigate } from '../router';
 import { signOutUser } from '../firebase';
 import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
 import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
+import { Sheet, Btn as RBtn } from '../kit';
 
 const PREF_KEY = 'farm-prefs';
 const readPrefs = () => { try { return { assigned: true, urgent: true, eventDay: true, newEvents: true, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') } as Record<string, boolean>; } catch { return { assigned: true, urgent: true, eventDay: true, newEvents: true }; } };
@@ -71,10 +72,18 @@ export function NotificationsSection({ team }: { team: boolean }) {
   );
 }
 export function InstallHint() {
+  const [open, setOpen] = useState(false);
   const standalone = matchMedia('(display-mode: standalone)').matches;
   if (standalone) return null;
   const ios = /iP(hone|ad)/.test(navigator.userAgent);
-  return <button type="button" onClick={() => alert(ios ? 'בספארי: כפתור שיתוף (הריבוע עם החץ) ← "הוספה למסך הבית".' : 'בתפריט הדפדפן (⋮) ← "התקנת אפליקציה" או "הוספה למסך הבית".')}><Icon name="download" />להתקין על מסך הבית<span className="s">{ios ? 'שיתוף ← הוספה למסך הבית' : 'מהתפריט של הדפדפן'}</span><Icon name="chev" className="chev" size={18} /></button>;
+  const steps = ios
+    ? [['לוחצים על כפתור השיתוף', 'הריבוע עם החץ, בתחתית ספארי'], ['בוחרים "הוספה למסך הבית"', 'נוצר סמל של חוות רווה'], ['פותחים מהסמל', 'מעכשיו האפליקציה נפתחת במסך מלא, וההתראות יעבדו']]
+    : [['פותחים את תפריט הדפדפן', 'שלוש הנקודות (⋮) למעלה'], ['בוחרים "התקנת אפליקציה" או "הוספה למסך הבית"', 'נוצר סמל של חוות רווה'], ['פותחים מהסמל', 'מעכשיו האפליקציה נפתחת במסך מלא']];
+  return <><button type="button" onClick={() => setOpen(true)}><Icon name="download" />להתקין על מסך הבית<span className="s">{ios ? 'שיתוף ← הוספה למסך הבית' : 'מהתפריט של הדפדפן'}</span><Icon name="chev" className="chev" size={18} /></button>
+    <Sheet open={open} title="להתקין על מסך הבית" onClose={() => setOpen(false)}>
+      <ol className="r-steps">{steps.map(([t, m]) => <li key={t}><b>{t}</b><span>{m}</span></li>)}</ol>
+      <div className="r-sheet-acts"><RBtn block onClick={() => setOpen(false)}>הבנתי</RBtn></div>
+    </Sheet></>;
 }
 export function SignOut() {
   const demo = useDemo();

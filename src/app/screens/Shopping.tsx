@@ -82,6 +82,8 @@ export function ShoppingScreen({ ctx, open, recent, loading, selectedId }: { ctx
   const [saved, setTab] = useSticky<ShoppingCategory | ''>('shop-tab', '');
   const tab = saved || firstFull;
   const toggle = (i: ShoppingItem) => (i.bought ? act.back(i) : leave(i.id, () => act.bought(i)));
+  // an urgent item in another tab would otherwise stay hidden until someone opens that tab
+  const elsewhere = CATS.filter((c) => c.id !== tab).map((c) => ({ c: c.id, items: byCat(c.id).filter((i) => i.urgent) })).find((x) => x.items.length);
   const fresh = (i: ShoppingItem) => Date.now() - new Date(i.createdAt).getTime() < 4000;
   const list = (c: ShoppingCategory) => {
     const rows = byCat(c); const done = recent.filter((i) => i.category === c);
@@ -101,6 +103,7 @@ export function ShoppingScreen({ ctx, open, recent, loading, selectedId }: { ctx
         ? <div className="r-shopcols">{CATS.map((c) => <section key={c.id}><Sect title={c.label} n={byCat(c.id).length} />{list(c.id)}</section>)}</div>
         : <>
           <Tabs label="רשימה" value={tab} onChange={setTab} items={CATS.map((c) => ({ id: c.id, label: c.label, n: byCat(c.id).length }))} />
+          {elsewhere && <button type="button" className="r-elsewhere" onClick={() => setTab(elsewhere.c)}><b>דחוף ב{catOf(elsewhere.c).label}:</b><span>{elsewhere.items.map((i) => i.title).join(', ')}</span><u>למעבר</u></button>}
           {list(tab)}
         </>}
     </>

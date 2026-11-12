@@ -6,7 +6,7 @@ import { PAYMENT_LABELS, VISIT_LABELS, TAB_LABELS } from '../types';
 import type { GuestCtx } from '../ctx';
 import { Top, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chip, Stepper, SwitchRow, Avatar, Loading, useToast, fmtDateShort, fmtWeekday, fmtDayLong, fmtRange, firstName, money, todayISO, dateKey, fmtMonthYear, relTime, useDesktop } from '../ui';
 import { navigate } from '../router';
-import { useUpcomingEvents, useEvent, useEventTickets, useMyTickets, orderTickets, qrPayload, claimOrderPaid, useMyVisits, createVisit, cancelVisit, useMyDonations, createDonation, claimDonationPaid, useMyTabs, claimTabPaid, waLink } from '../data';
+import { useUpcomingEvents, useEvent, useMyTickets, orderTickets, qrPayload, claimOrderPaid, useMyVisits, createVisit, cancelVisit, useMyDonations, createDonation, claimDonationPaid, useMyTabs, claimTabPaid, waLink } from '../data';
 import { signIn, authErrorMessage } from '../firebase';
 import { createProfile } from '../store';
 import { useDemo, setDemo } from '../demo/store';
@@ -45,11 +45,8 @@ export function GuestHome({ ctx }: { ctx: GuestCtx }) {
 // ---------- event page ----------
 export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
   const { item: e, loading } = useEvent(id);
-  const tickets = useEventTickets(id, !!e);
   if (loading) return <Loading />;
   if (!e || !e.published) return <><Top backTo="/" title="האירוע לא נמצא" /><Empty title="אולי הוסר מפרסום" action={<Btn kind="ghost" to="/">לדף הבית</Btn>} /></>;
-  const valid = tickets.items.filter((t) => t.status === 'valid');
-  const names = [...new Set(valid.map((t) => t.ownerName))].slice(0, 3);
   const past = e.end < new Date().toISOString();
   return (
     <>
@@ -62,7 +59,6 @@ export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
       </dl>
       {e.description && <p className="lead ink" style={{ paddingTop: 10, fontSize: 17 }}>{e.description}</p>}
       <p className="note">כל כרטיס מקבל ברקוד נפרד, שנשמר בטלפון ועובד בשער גם בלי קליטה.{e.price ? ' תשלום בביט, PayBox או במזומן בכניסה.' : ''}</p>
-      {valid.length > 0 && !tickets.error && <><Sec title="מי כבר בא" /><div className="inline pad"><div style={{ display: 'flex' }}>{names.map((n, i) => <span key={n} style={{ marginInlineStart: i ? -8 : 0 }}><Avatar name={n} size="sm" light /></span>)}</div><span className="muted">{valid.length} נרשמו עד עכשיו</span></div></>}
       <div className="actions sticky">
         {past ? <Btn kind="ghost" disabled>האירוע הסתיים</Btn> : !e.open ? <Btn kind="ghost" disabled>ההרשמה עוד לא נפתחה</Btn> : <Btn size="big" icon="ticket" to={`/events/${e.id}/order`}>{e.price ? 'הזמנת כרטיסים' : 'הרשמה'}</Btn>}
         <div className="actions row2" style={{ padding: 0 }}><Btn kind="ghost" icon="calendar" onClick={() => downloadIcs(e)}>ליומן</Btn><Btn kind="ghost" icon="share" onClick={() => navigator.share?.({ title: e.title, text: `${e.title} בחוות רווה · ${fmtDayLong(e.start)}`, url: location.href }).catch(() => {})}>שיתוף</Btn></div>

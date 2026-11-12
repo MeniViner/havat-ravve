@@ -3,14 +3,18 @@ import { useState } from 'react';
 import type { AppNotification, FarmEvent, Visit, Donation, CalendarItem, Profile } from '../types';
 import type { TeamCtx } from '../ctx';
 import { Top, Sec, Btn, A, Icon, Avatar, Empty, Chips, Loading, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, useDesktop, useOpenSections, inText } from '../ui';
-import { useHandledNotifications, handleNotification } from '../data';
+import { useHandledNotifications, handleNotification, handleNotificationsFor, decideVisit, setDonation, waLink, fillTemplate } from '../data';
+import { Btn as RBtn } from '../kit';
 
 type Props = { ctx: TeamCtx; inbox: AppNotification[]; events: FarmEvent[]; visits: Visit[]; donations: Donation[]; people: Profile[]; calendar: CalendarItem[]; templatesCount: number; placesCount: number; vendorsCount: number };
 
 export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people, calendar, templatesCount, placesCount, vendorsCount }: Props) {
   const today = todayISO();
   const desktop = useDesktop();
-  const { isOpen, toggle } = useOpenSections(['inbox', 'topics'], 'manage');
+  const { isOpen, toggle } = useOpenSections(['topics'], 'manage');
+  const [inboxClosed, setInboxClosed] = useState(() => { try { return localStorage.getItem('farm-inbox-closed') === '1'; } catch { return false; } });
+  const foldInbox = () => setInboxClosed((c) => { try { localStorage.setItem('farm-inbox-closed', c ? '0' : '1'); } catch { /* private mode */ } return !c; });
+  const shown = desktop ? 8 : 3;
   const next = events.filter((e) => e.published && e.end >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start))[0];
   const monthStart = today.slice(0, 8) + '01';
   const paidMonth = donations.filter((d) => d.createdAt >= monthStart && (d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite')).reduce((s, d) => s + d.amount, 0);
@@ -30,8 +34,14 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
   return (
     <>
       <Top date={fmtDayLong(today)} title="ניהול" end={<A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
-      <Sec title="לטיפול" n={inbox.length} link="הכל, גם מה שטופל" linkTo="/manage/inbox" open={isOpen('inbox')} onToggle={() => toggle('inbox')} />
-      {isOpen('inbox') && (inbox.length ? <div className="list">{inbox.slice(0, desktop ? 10 : 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} />)}</div> : <p className="lead">אין כלום שמחכה להחלטה. יופי.</p>)}
+      <div className="r-fold">
+        <button type="button" className="r-tog" aria-expanded={!inboxClosed} aria-controls="manage-inbox" onClick={foldInbox}><Icon name={inboxClosed ? 'chev' : 'down'} size={18} /><h2>לטיפול</h2>{inbox.length > 0 && <span className="r-count">{inbox.length}</span>}</button>
+        <A className="r-more" to="/manage/inbox">הכל</A>
+      </div>
+      {!inboxClosed && <div id="manage-inbox">
+        {inbox.length ? inbox.slice(0, shown).map((n) => <QuickRow key={n.id} n={n} ctx={ctx} inbox={inbox} visits={visits} donations={donations} people={people} />) : <p className="lead">אין כלום שמחכה להחלטה. יופי.</p>}
+        {inbox.length > shown && <A className="r-linkrow" to="/manage/inbox">עוד {inbox.length - shown}<Icon name="chev" /></A>}
+      </div>}
       <Sec title="הכל לפי נושא" open={isOpen('topics')} onToggle={() => toggle('topics')} />
       {isOpen('topics') && <>
         <div className="tiles">{topics.map((t) => <A key={t.to} to={t.to} className="tile"><div className="h"><Icon name={t.icon} />{t.title}{t.badge ? <span className="pill rust" style={{ marginInlineStart: 'auto' }}>{t.badge}</span> : null}</div><div className="s">{t.sub}</div></A>)}</div>
@@ -45,6 +55,40 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
         </div>
       </>}
     </>
+  );
+}
+
+/** One "לטיפול" item on the manage home: the decision itself in one tap, WhatsApp to the person, and an undo in the toast. */
+const KIND: Record<AppNotification['type'], string> = { visit: 'בקשת ביקור', donation: 'תרומה', join: 'הצטרפות', order: 'הזמנה', receipt: 'קבלה', tab: 'חוב בדוכן', claim: '"העברתי"' };
+function QuickRow({ n, ctx, inbox, visits, donations, people }: { n: AppNotification; ctx: TeamCtx; inbox: AppNotification[]; visits: Visit[]; donations: Donation[]; people: Profile[] }) {
+  const toast = useToast(); const [busy, setBusy] = useState(false);
+  const fail = () => toast({ text: 'לא נשמר', kind: 'error' });
+  const v = n.type === 'visit' ? visits.find((x) => x.id === n.refId) : undefined;
+  const d = n.type === 'donation' ? donations.find((x) => x.id === n.refId) : undefined;
+  const phone = v?.phone || d?.phone || (n.type === 'join' ? people.find((p) => p.uid === n.refId)?.phone : '') || '';
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); } catch { fail(); } finally { setBusy(false); } };
+  let label = 'טופל'; let act: () => Promise<unknown>;
+  if (v && v.status === 'new') {
+    label = 'אישור';
+    const time = v.managerNote.match(/\d{1,2}:\d{2}/)?.[0] || '';
+    act = () => decideVisit(v, ctx.actor, 'approved', v.managerNote, time, inbox).then(() => toast({ text: `${v.name} · אושר ונכנס ליומן`, actions: [
+      { label: 'ביטול', onClick: () => { decideVisit(v, ctx.actor, 'new', v.managerNote, time, [{ ...n, handled: true }]).catch(fail); } },
+      ...(v.phone ? [{ label: 'וואטסאפ', onClick: () => { window.open(waLink(v.phone, fillTemplate(ctx.settings.templates.visitApproved, { 'שם': firstName(v.name), 'תאריך': fmtDayLong(v.date), 'שעה': time })), '_blank', 'noopener'); } }] : []),
+    ] }, 7000));
+  } else if (d && (d.paymentStatus === 'claimed' || d.paymentStatus === 'pending')) {
+    label = 'שולם';
+    act = () => setDonation(ctx.actor, d, { paymentStatus: 'paid' }).then(() => handleNotificationsFor(inbox, d.id, ctx.actor)).then(() => toast({ text: `${d.name} · ${money(d.amount)} · סומן שולם`, actions: [
+      { label: 'ביטול', onClick: () => { setDonation(ctx.actor, d, { paymentStatus: d.paymentStatus }).then(() => handleNotification(n, ctx.actor, false)).catch(fail); } },
+    ] }, 7000));
+  } else {
+    act = () => handleNotification(n, ctx.actor, true).then(() => toast({ text: 'סומן טופל', actions: [{ label: 'ביטול', onClick: () => { handleNotification(n, ctx.actor, false).catch(fail); } }] }, 5000));
+  }
+  return (
+    <div className={'r-act' + (busy ? ' gone' : '')}>
+      <A to={n.link}><span className="r-m">{KIND[n.type] || 'עדכון'} · {relTime(n.createdAt)}</span><span className="r-t">{n.title}</span><span className="r-m">{n.text}</span></A>
+      <RBtn small disabled={busy} onClick={() => run(act)}>{label}</RBtn>
+      {phone ? <a className="r-ib" href={waLink(phone)} target="_blank" rel="noopener" aria-label={`וואטסאפ ל${n.title}`}><Icon name="whatsapp" /></a> : <span aria-hidden="true" style={{ width: 48 }} />}
+    </div>
   );
 }
 

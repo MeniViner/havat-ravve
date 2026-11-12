@@ -8,6 +8,7 @@ import { navigate } from '../router';
 import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, useDonations, downloadCsv, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
 import { PhotoPicker } from './legacy';
+import { useReasonSheet } from '../kit';
 import { nowIso } from '../firebase';
 
 const toLocal = (iso: string) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -170,7 +171,7 @@ type GuestFilter = 'all' | 'unpaid' | 'claimed' | 'arrived' | 'cancelled';
 export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const d = useEventData(id);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<GuestFilter>('all');
-  const desktop = useDesktop(); const toast = useToast();
+  const desktop = useDesktop(); const toast = useToast(); const [sheet, ask] = useReasonSheet();
   const { sort, toggle, apply } = useSort<Ticket[]>('createdAt', 'desc');
   const all = byOrder(d.tickets);
   const list = useMemo(() => { const s = q.trim().toLowerCase(); return all.filter((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); if (filter === 'unpaid') return valid.length && t.paymentStatus === 'pending'; if (filter === 'claimed') return t.paymentStatus === 'claimed'; if (filter === 'arrived') return o.some((x) => x.entries > 0); if (filter === 'cancelled') return !valid.length; return valid.length > 0; }).filter((o) => !s || o.some((t) => t.ownerName.toLowerCase().includes(s) || t.holderName.toLowerCase().includes(s) || t.ownerPhone.includes(s))); }, [all, q, filter]);
@@ -180,12 +181,18 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const csv = () => downloadCsv(`${e.title} - נרשמים.csv`, ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'], all.map((o) => [o[0].ownerName, o[0].ownerPhone, o.filter((x) => x.status === 'valid').length, PAYMENT_LABELS[o[0].paymentStatus], fmtDate(o[0].createdAt), o.reduce((s, x) => s + (x.entries > 0 ? 1 : 0), 0), Object.values(o[0].answers || {}).join(' / ')]));
   const remind = (o: Ticket[]) => waLink(o[0].ownerPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(o[0].ownerName), 'אירוע': e.title, 'סכום': o[0].price * o.filter((x) => x.status === 'valid').length }));
   const pay = (o: Ticket[], status: PaymentStatus) => setOrderPayment(ctx.actor, o.filter((x) => x.status === 'valid'), status).then(() => toast({ text: `${o[0].ownerName} · ${PAYMENT_LABELS[status]}`, action: { label: 'ביטול', onClick: () => setOrderPayment(ctx.actor, o, o[0].paymentStatus) } }, 5000));
-  const cancel = (o: Ticket[]) => { const reason = prompt('סיבת הביטול (תירשם בהיסטוריה):') ?? null; if (reason === null) return; cancelOrder(ctx.actor, o.filter((x) => x.status === 'valid'), reason).then(() => toast({ text: 'ההזמנה בוטלה' })); };
+  const cancel = async (o: Ticket[]) => {
+    const valid = o.filter((x) => x.status === 'valid');
+    const reason = await ask({ title: `לבטל את ההזמנה של ${o[0].ownerName}?`, text: `${valid.length === 1 ? 'הכרטיס יבוטל' : `${valid.length} הכרטיסים יבוטלו`}, והברקוד לא יכניס בשער. הביטול נרשם בהיסטוריה של ההזמנה.`, reasons: ['ביקש/ה לבטל', 'לא שילם/ה', 'הזמנה כפולה'], confirm: 'ביטול ההזמנה', danger: true });
+    if (reason === null) return;
+    cancelOrder(ctx.actor, valid, reason).then(() => toast({ text: 'ההזמנה בוטלה' }));
+  };
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: all.filter((o) => o.some((x) => x.status === 'valid')).length }, ...(e.price ? [{ value: 'unpaid' as GuestFilter, label: 'לא שולם', n: all.filter((o) => o[0].paymentStatus === 'pending' && o.some((x) => x.status === 'valid')).length }, { value: 'claimed' as GuestFilter, label: 'סימנו "העברתי"', n: all.filter((o) => o[0].paymentStatus === 'claimed').length }] : []), { value: 'arrived', label: 'הגיעו', n: all.filter((o) => o.some((x) => x.entries > 0)).length || undefined }, { value: 'cancelled', label: 'בוטלו', n: all.filter((o) => !o.some((x) => x.status === 'valid')).length || undefined }]} />;
   const payPill = (t: Ticket, n: number) => t.status === 'cancelled' ? <Pill tone="rust">בוטל</Pill> : <Pill tone={isPaid(t.paymentStatus) ? 'ok' : 'ochre'}>{PAYMENT_LABELS[t.paymentStatus]}{t.paymentStatus === 'pending' || t.paymentStatus === 'claimed' ? ` · ${money(t.price * n)}` : ''}</Pill>;
   const actions = (o: Ticket[]) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); if (!valid.length) return null; return <>{t.paymentStatus === 'claimed' && <Btn size="xs" onClick={() => pay(o, 'paid')}>אישור תשלום</Btn>}{t.paymentStatus === 'pending' && <><a className="btn ghost xs" href={remind(o)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a><Btn size="xs" kind="ghost" onClick={() => pay(o, 'paid')}>סימון שולם</Btn></>}<a className="btn quiet xs" href={telLink(t.ownerPhone)}><Icon name="phone" size={14} /></a><Btn size="xs" kind="quiet" onClick={() => cancel(o)}>ביטול</Btn></>; };
   return (
     <EventFrame id={id} tab="guests" ctx={ctx} title={desktop ? e.title : 'נרשמים'} end={<Btn kind="ghost" size="sm" icon="download" onClick={csv}>אקסל</Btn>}>
+      {sheet}
       {!desktop && <p className="lead">{d.valid.length} כרטיסים · {d.orders.length} הזמנות{e.price ? ` · ${d.unpaid.length} ממתינים לתשלום` : ''}</p>}
       <div className="inline pad" style={{ paddingTop: 10 }}><Input placeholder="חיפוש נרשמים" value={q} onChange={(ev) => setQ(ev.target.value)} style={{ minHeight: 44, flex: 1, minWidth: 180 }} />{desktop && chips}</div>
       {!desktop && <div style={{ paddingTop: 10 }}>{chips}</div>}
@@ -338,8 +345,9 @@ export function ProductEditor({ eventId, pid, ctx }: { eventId: string; pid?: st
 
 // ---------- tabs (stall accounts) ----------
 type TabFilter = 'all' | 'open' | 'claimed' | 'paid' | 'waived';
+const waiveAsk = (t: Tab) => ({ title: `מחילה על החוב של ${firstName(t.guestName)}`, text: `${money(t.total)} לא ייגבו, והחשבון יסומן "נמחל". נרשם בהיסטוריה.`, reasons: ['מתנדב/ת', 'מתנה מהחווה', 'טעות ברישום'], confirm: `למחול על ${money(t.total)}` });
 export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
-  const d = useEventData(id); const desktop = useDesktop(); const toast = useToast();
+  const d = useEventData(id); const desktop = useDesktop(); const toast = useToast(); const [sheet, ask] = useReasonSheet();
   const [filter, setFilter] = useState<TabFilter>('all');
   if (!d.e) return <EventFrame id={id} tab="tabs" ctx={ctx}>{null}</EventFrame>;
   const e = d.e;
@@ -347,11 +355,12 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const list = d.tabs.filter((t) => filter === 'all' || t.status === filter).sort((a, b) => (a.status === 'open' || a.status === 'claimed' ? 0 : 1) - (b.status === 'open' || b.status === 'claimed' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt));
   const remind = (t: Tab) => waLink(t.guestPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(t.guestName), 'אירוע': e.title, 'סכום': t.total }));
   const set = (t: Tab, s: Tab['status'], note?: string) => setTabStatus(ctx.actor, t, s, note).then(() => toast({ text: `${t.guestName} · ${TAB_LABELS[s]}`, action: { label: 'ביטול', onClick: () => setTabStatus(ctx.actor, t, t.status) } }, 5000));
-  const waive = (t: Tab) => { const r = prompt('סיבת המחילה (לא חובה):'); if (r === null) return; set(t, 'waived', r); };
+  const waive = async (t: Tab) => { const r = await ask(waiveAsk(t)); if (r === null) return; set(t, 'waived', r); };
   const statusPill = (t: Tab) => <Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'open' ? `לא שולם · ${Math.max(0, Math.round((Date.now() - new Date(t.createdAt).getTime()) / 86400_000))} ימים` : TAB_LABELS[t.status]}</Pill>;
   const acts = (t: Tab) => <>{t.status === 'claimed' && <Btn size="xs" onClick={() => set(t, 'paid')}>אישור · שולם</Btn>}{t.status === 'open' && <>{t.guestPhone && <a className="btn ghost xs" href={remind(t)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a>}<Btn size="xs" kind="ghost" onClick={() => set(t, 'paid')}>שולם</Btn></>}{(t.status === 'open' || t.status === 'claimed') && <Btn size="xs" kind="quiet" onClick={() => waive(t)}>מחילה</Btn>}</>;
   return (
     <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv(`${e.title} - חשבונות.csv`, ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'], d.tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), t.total, TAB_LABELS[t.status], fmtDate(t.updatedAt)]))}>אקסל</Btn>{d.tabs.some((t) => t.status === 'open' && t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
+      {sheet}
       {!desktop && <p className="lead">דוכן החווה · {fmtDate(e.start)} · על בסיס אמון</p>}
       <Ledger small items={[{ n: d.tabs.length, label: 'חשבונות' }, { n: money(sum(['open', 'claimed', 'paid', 'waived'])), label: 'נמכרו' }, { n: money(sum(['paid'])), label: 'שולמו' }, { n: money(sum(['open', 'claimed'])), label: `פתוחים · ${d.tabs.filter((t) => t.status === 'open' || t.status === 'claimed').length}`, tone: sum(['open', 'claimed']) ? 'ochre' : undefined }]} />
       <div style={{ paddingTop: 10 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: d.tabs.length }, { value: 'open', label: 'פתוחים', n: d.tabs.filter((t) => t.status === 'open').length }, { value: 'claimed', label: 'סימנו "העברתי"', n: d.tabs.filter((t) => t.status === 'claimed').length }, { value: 'paid', label: 'שולמו', n: d.tabs.filter((t) => t.status === 'paid').length }, { value: 'waived', label: 'נמחלו', n: d.tabs.filter((t) => t.status === 'waived').length || undefined }]} /></div>
@@ -362,7 +371,7 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   );
 }
 export function TabDetailScreen({ eventId, tid, ctx }: { eventId: string; tid: string; ctx: TeamCtx }) {
-  const { item: t, loading } = useTab(tid); const toast = useToast();
+  const { item: t, loading } = useTab(tid); const toast = useToast(); const [sheet, ask] = useReasonSheet();
   const log = useActivityForEvent(eventId, true);
   if (loading) return <Loading />;
   if (!t) return <Empty title="החשבון לא נמצא" />;
@@ -373,14 +382,15 @@ export function TabDetailScreen({ eventId, tid, ctx }: { eventId: string; tid: s
     <>
       <Top backTo={`/manage/events/${eventId}/tabs`} backLabel="חשבונות" title={t.guestName} sub={`${t.eventTitle} · ${fmtDate(t.createdAt)} · נפתח על ידי ${firstName(t.createdBy.name)}`} end={<Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : TAB_LABELS[t.status]}</Pill>} />
       <div className={'paybox ' + (t.status === 'paid' ? 'ok' : t.status === 'waived' ? '' : '')}><b>{money(t.total)}</b>{t.status === 'open' || t.status === 'claimed' ? 'לתשלום' : TAB_LABELS[t.status]}</div>
+      {sheet}
       <Sec title="פריטים" n={t.items.length} />
-      <div className="list">{t.items.map((i, idx) => <Row key={idx} center title={<>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</>} meta={<span>{fmtTime(i.at)} · {firstName(i.by.name)}</span>} end={<><span className="amount">{money(i.price * i.qty)}</span>{t.status !== 'paid' && <button type="button" className="iconbtn" aria-label="הסרה" onClick={() => { const r = prompt('למה מסירים? (לא חובה)'); if (r !== null) removeTabItem(ctx.actor, t, idx, r); }}><Icon name="x" size={18} /></button>}</>} />)}</div>
+      <div className="list">{t.items.map((i, idx) => <Row key={idx} center title={<>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</>} meta={<span>{fmtTime(i.at)} · {firstName(i.by.name)}</span>} end={<><span className="amount">{money(i.price * i.qty)}</span>{t.status !== 'paid' && <button type="button" className="iconbtn" aria-label="הסרה" onClick={async () => { const r = await ask({ title: `להסיר "${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''} · ${money(i.price * i.qty)}"?`, text: `הסכום בחשבון של ${firstName(t.guestName)} ירד ל־${money(t.total - i.price * i.qty)}.`, reasons: ['נרשם בטעות', 'הוחזר'], confirm: 'להסיר מהחשבון', danger: true }); if (r !== null) removeTabItem(ctx.actor, t, idx, r); }}><Icon name="x" size={18} /></button>}</>} />)}</div>
       <Sec title="תשלום והיסטוריה" />
       <div className="list">{mine.map((a) => <Row key={a.id} center title={<span style={{ fontSize: 15, fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={<span>{a.text} · {whenText(a.at)}</span>} />)}{!mine.length && <p className="lead">נפתח {whenText(t.createdAt)}</p>}</div>
       <div className="actions sticky">
         {(t.status === 'open' || t.status === 'claimed') && <Btn size="big" icon="check" onClick={() => set('paid')}>אישור · שולם</Btn>}
         <div className="actions row2" style={{ padding: 0 }}>{t.guestPhone && t.status !== 'paid' && <a className="btn ghost" href={remind} target="_blank" rel="noopener"><Icon name="whatsapp" size={20} />תזכורת</a>}{t.guestUid && <Btn kind="ghost" to={`/manage/people/${t.guestUid}`}>התיק של {firstName(t.guestName)}</Btn>}</div>
-        {(t.status === 'open' || t.status === 'claimed') && <Btn kind="quiet" size="sm" onClick={() => { const r = prompt('סיבת המחילה (לא חובה):'); if (r !== null) set('waived', r); }}>מחילה</Btn>}
+        {(t.status === 'open' || t.status === 'claimed') && <Btn kind="quiet" size="sm" onClick={async () => { const r = await ask(waiveAsk(t)); if (r !== null) set('waived', r); }}>מחילה</Btn>}
         {t.status === 'paid' && <Btn kind="quiet" size="sm" onClick={() => set('open')}>להחזיר לפתוח</Btn>}
       </div>
     </>

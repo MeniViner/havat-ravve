@@ -25,8 +25,16 @@ import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen,
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
 const isCurrent = (i: NavItem, route: string) => i.match ? i.match(route) : i.path === '/' ? route === '/' : route.startsWith(i.path);
 
-function BottomNav({ route, items }: { route: string; items: NavItem[] }) {
-  return <nav className="bottom" aria-label="ניווט ראשי"><div className="nav">{items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''} aria-current={isCurrent(i, route) ? 'page' : undefined}><span className="ico"><Icon name={i.icon} /></span>{i.label}{i.badge ? <span className="badge">{i.badge > 99 ? '99+' : i.badge}</span> : null}</A>)}</div></nav>;
+/** Words, not icons. The team gets a green "+" in the middle: adding is one tap from every screen. */
+function BottomNav({ route, items, plus }: { route: string; items: NavItem[]; plus?: boolean }) {
+  const link = (i: NavItem) => <A key={i.path} to={i.path} aria-current={isCurrent(i, route) ? 'page' : undefined}>{i.label}{i.badge ? <span className="r-n">{i.badge > 99 ? '99+' : i.badge}</span> : null}</A>;
+  const add = route.startsWith('/shopping') ? '/shopping/new' : '/new';
+  const mid = Math.ceil(items.length / 2);
+  return (
+    <div className="r-bar"><nav aria-label="ניווט ראשי">
+      {plus ? <>{items.slice(0, mid).map(link)}<A to={add} className="r-plus" aria-label="הוספה" aria-current={route === add || route === '/tasks/new' ? 'page' : undefined}><span><Icon name="plus" /></span></A>{items.slice(mid).map(link)}</> : items.map(link)}
+    </nav></div>
+  );
 }
 function Rail({ route, items, manage, profile, role }: { route: string; items: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string }) {
   const meTo = profile && profile.role === 'guest' && !manage && items[0]?.label === 'בית' ? '/me/account' : '/more';
@@ -61,7 +69,7 @@ export function DemoStrip() {
 }
 
 /** Phone: one screen at a time. Desktop: rail + content, and a detail page opens as a side panel next to its list. */
-function Shell({ nav, manage, profile, role, online, master, detail, narrow, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; narrow?: boolean; center?: boolean }) {
+function Shell({ nav, manage, profile, role, online, master, detail, narrow, center, plus }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; narrow?: boolean; center?: boolean; plus?: boolean }) {
   const route = useRoute(); const desktop = useDesktop();
   const content = (
     <>
@@ -80,7 +88,7 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
         <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><Guard resetKey={route}><div ref={pageRef} className="page">{content}</div></Guard></main></div>
         {desktop && detail && <aside className="panel"><Guard resetKey={route}><div className="screen page-in" key={route}>{detail}</div></Guard></aside>}
       </div>
-      {!desktop && <BottomNav route={route} items={nav} />}
+      {!desktop && <BottomNav route={route} items={nav} plus={plus} />}
     </div>
   );
 }
@@ -214,7 +222,7 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else master = mh;
   }
   const banner = open.error ? <div className="strip rust"><Icon name="info" size={18} />{open.error.includes('index') ? 'המערכת עדיין מתכוננת (אינדקסים). נסו שוב בעוד דקה.' : open.error}</div> : null;
-  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} narrow={NARROW.test(r)} />;
+  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} narrow={NARROW.test(r)} plus />;
 }
 
 function Splash() {
