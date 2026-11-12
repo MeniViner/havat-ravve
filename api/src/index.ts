@@ -4,10 +4,15 @@ import { CATALOG, CATALOG_VERSION } from './catalog';
 import { authenticate } from './auth';
 import { ApiError, type Meta, fail, ok } from './http';
 import { type Env, Firestore, toApiError } from './firestore';
-import { assignTask, createTask, getTask, listTasks, searchPeople } from './ops';
+import { addShopping, assignTask, completeTask, createTask, getTask, listShopping, listTasks, reopenTask, searchPeople, setBought } from './ops';
 import { autoId } from './util';
 
 const MAX_BODY = 16 * 1024;
+
+const WRITES: Record<string, typeof createTask> = {
+  'tasks.create': createTask, 'tasks.assign': assignTask, 'tasks.complete': completeTask, 'tasks.reopen': reopenTask,
+  'shopping.add': addShopping, 'shopping.setBought': setBought,
+};
 
 async function readBody(req: Request): Promise<Record<string, unknown>> {
   const text = await req.text();
@@ -31,20 +36,22 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
   if (m === 'GET' && path === '/v1/health') return { data: { status: 'ok', catalogVersion: CATALOG_VERSION } };
   if (m === 'GET' && path === '/v1/catalog') return { data: CATALOG };
 
-  const caller = await authenticate(req, env.API_CREDENTIALS);
-  log.actor = caller.actor.id;
-  log.credential = caller.credentialId;
   const fs = new Firestore(env, faultsOf(req, env));
   try {
+    // a real person's role and name come from their profile in the app
+    const caller = await authenticate(req, env.API_CREDENTIALS, async (uid) => (await fs.get('users', uid))?.data ?? null);
+    log.actor = caller.actor.id;
+    log.credential = caller.credentialId;
     if (m === 'GET' && path === '/v1/tasks') return { data: await listTasks(fs, caller, url.searchParams) };
     const one = /^\/v1\/tasks\/([^/]+)$/.exec(path);
     if (m === 'GET' && one) { if ([...url.searchParams].length) throw new ApiError('VALIDATION_FAILED', 'tasks.get takes no query parameters', { field: [...url.searchParams.keys()][0] }); return { data: await getTask(fs, caller, decodeURIComponent(one[1])) }; }
     if (m === 'GET' && path === '/v1/people') return { data: await searchPeople(fs, caller, url.searchParams) };
-    const action = /^\/v1\/actions\/([a-z.]+)$/.exec(path);
+    if (m === 'GET' && path === '/v1/shopping') return { data: await listShopping(fs, caller, url.searchParams) };
+    const action = /^\/v1\/actions\/([A-Za-z.]+)$/.exec(path);
     if (m === 'POST' && action) {
       const key = req.headers.get('idempotency-key');
       const body = await readBody(req);
-      const run = action[1] === 'tasks.create' ? createTask : action[1] === 'tasks.assign' ? assignTask : null;
+      const run = Object.hasOwn(WRITES, action[1]) ? WRITES[action[1]] : null;
       if (!run) throw new ApiError('NOT_FOUND', `no such operation: ${action[1]}`);
       log.op = action[1];
       const r = await run(fs, caller, body, key);

@@ -49,6 +49,10 @@ export function validate(spec: Record<string, Param>, raw: Record<string, unknow
         if (typeof v !== 'boolean') throw invalid(k, `"${k}" must be a boolean`);
         out[k] = v;
         break;
+      case 'enum':
+        if (typeof v !== 'string' || !p.values.includes(v)) throw invalid(k, `"${k}" must be one of: ${p.values.join(', ')}`);
+        out[k] = v;
+        break;
       case 'int': {
         const n = fromQuery && typeof v === 'string' && /^-?\d+$/.test(v) ? Number(v) : v;
         if (typeof n !== 'number' || !Number.isInteger(n)) throw invalid(k, `"${k}" must be an integer`);

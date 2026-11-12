@@ -223,8 +223,8 @@ async function resolveAssignee(fs: Firestore, uid: string, tx: string): Promise<
   return { uid: u.id, name: String(u.data.displayName || '').slice(0, 80) };
 }
 
-function activity(fs: Firestore, caller: Caller, refId: string, action: string, text: string, subjectUid = ''): Write {
-  return fs.create('activity', autoId(), { kind: 'task', refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '' });
+function activity(fs: Firestore, caller: Caller, refId: string, action: string, text: string, subjectUid = '', kind: 'task' | 'shopping' = 'task'): Write {
+  return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '' });
 }
 
 /**
@@ -290,4 +290,110 @@ export async function assignTask(fs: Firestore, caller: Caller, body: Record<str
     ];
     return { writes, data: { taskId: t.id, changed: true, expected } };
   }, readBackTask(fs, caller));
+}
+
+/** tasks.complete and tasks.reopen: exactly what setTaskDone() in src/app/store.ts writes, plus its activity. */
+async function setTaskDone(fs: Firestore, caller: Caller, op: 'tasks.complete' | 'tasks.reopen', body: Record<string, unknown>, key: string | null) {
+  requireScope(caller, 'tasks:complete');
+  const input = validate(operation(op)!.body!, body) as { taskId: string };
+  const done = op === 'tasks.complete';
+  return idempotent(fs, caller, op, key, input, async (tx) => {
+    const t = await fs.get('tasks', input.taskId, tx);
+    if (!t || !visible(t.data, caller)) throw new ApiError('NOT_FOUND', 'task not found');
+    const data = t.data as TaskData;
+    if (!!data.done === done) return { writes: [], data: { taskId: t.id, changed: false, expected: { done } } };
+    const now = nowIso();
+    const patch = done
+      ? { done: true, doneBy: caller.actor.person, doneAt: now, updatedAt: now }
+      : { done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', updatedAt: now };
+    const writes = [
+      fs.patch('tasks', t.id, patch, t.updateTime),
+      activity(fs, caller, t.id, done ? 'done' : 'undone', activityText(data), (data.assignee as Person | null)?.uid || ''),
+    ];
+    return { writes, data: { taskId: t.id, changed: true, expected: done ? { done: true, doneBy: caller.actor.person } : { done: false, doneBy: null } } };
+  }, readBackTask(fs, caller));
+}
+export const completeTask = (fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) => setTaskDone(fs, caller, 'tasks.complete', body, key);
+export const reopenTask = (fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) => setTaskDone(fs, caller, 'tasks.reopen', body, key);
+
+// ---------- shopping ----------
+
+export const SHOPPING_CATEGORIES = ['super', 'building', 'online', 'giveaway'] as const;
+type Category = (typeof SHOPPING_CATEGORIES)[number];
+/** Same labels as CATEGORY_LABELS in src/app/types.ts, used in the activity text. */
+const CATEGORY_HE: Record<Category, string> = { super: 'סופר', building: 'חומרי בניין', online: 'אינטרנט', giveaway: 'מוצרי מסירה' };
+const itemText = (d: Record<string, unknown>) => `${d.title}${d.qty ? ' · ' + d.qty : ''}`;
+
+function publicItem(id: string, d: Record<string, unknown>) {
+  return {
+    id, title: d.title, qty: d.qty || '', note: d.note || '', link: d.link || '', category: d.category, urgent: !!d.urgent,
+    bought: !!d.bought, boughtBy: d.boughtBy ?? null, boughtAt: d.boughtAt ?? null,
+    createdBy: d.createdBy ?? null, createdAt: d.createdAt, updatedAt: d.updatedAt,
+  };
+}
+
+export async function listShopping(fs: Firestore, caller: Caller, query: URLSearchParams) {
+  requireScope(caller, 'shopping:read');
+  const raw: Record<string, string> = {};
+  for (const [k, v] of query) { if (k in raw) throw invalid(k, `"${k}" given twice`); raw[k] = v; }
+  const p = validate(operation('shopping.list')!.params!, raw, true) as { bought: boolean; category: Category | null; limit: number };
+  const filters: Record<string, unknown>[] = [{ fieldFilter: { field: { fieldPath: 'bought' }, op: 'EQUAL', value: enc(p.bought) } }];
+  if (p.category) filters.push({ fieldFilter: { field: { fieldPath: 'category' }, op: 'EQUAL', value: enc(p.category) } });
+  const docs = await fs.query({
+    from: [{ collectionId: 'shopping' }],
+    where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } },
+    orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'DESCENDING' }],
+    limit: p.limit + 1,
+  });
+  return { items: docs.slice(0, p.limit).map((d) => publicItem(d.id, d.data)), hasMore: docs.length > p.limit };
+}
+
+const readBackItem = (fs: Firestore) => async (data: Record<string, unknown>) => {
+  const id = String(data.itemId);
+  let d: Doc | null;
+  try { d = await fs.get('shopping', id); } catch {
+    const { expected: _unchecked, ...stored } = data;
+    return { ...stored, item: null, verified: false, readBack: 'unavailable' };
+  }
+  if (!d) return { ...data, item: null, verified: false };
+  const item = publicItem(d.id, d.data);
+  const expected = data.expected as Record<string, unknown> | undefined;
+  const verified = !expected || Object.entries(expected).every(([k, v]) => canonical((item as Record<string, unknown>)[k]) === canonical(v));
+  const { expected: _drop, ...rest } = data;
+  return { ...rest, item, verified };
+};
+
+/** shopping.add: exactly the shape addShopping() in src/app/store.ts writes, plus its activity. */
+export async function addShopping(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
+  requireScope(caller, 'shopping:write');
+  const input = validate(operation('shopping.add')!.body!, body) as { title: string; qty: string | null; category: Category; urgent: boolean; note: string | null };
+  return idempotent(fs, caller, 'shopping.add', key, input, async () => {
+    const id = autoId();
+    const now = nowIso();
+    const item = {
+      title: input.title, qty: input.qty || '', note: input.note || '', link: '', category: input.category, urgent: input.urgent,
+      createdBy: caller.actor.person, createdAt: now, bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now,
+    };
+    const writes = [fs.create('shopping', id, item), activity(fs, caller, id, 'added', `${itemText(item)} (${CATEGORY_HE[input.category]})`, '', 'shopping')];
+    const expected = { title: item.title, qty: item.qty, category: item.category, urgent: item.urgent, bought: false };
+    return { status: 201, writes, data: { itemId: id, expected } };
+  }, readBackItem(fs));
+}
+
+/** shopping.setBought: what setBought() in src/app/store.ts writes, including the 24-hour expireAt. */
+export async function setBought(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
+  requireScope(caller, 'shopping:write');
+  const input = validate(operation('shopping.setBought')!.body!, body) as { itemId: string; bought: boolean };
+  return idempotent(fs, caller, 'shopping.setBought', key, input, async (tx) => {
+    const it = await fs.get('shopping', input.itemId, tx);
+    if (!it) throw new ApiError('NOT_FOUND', 'shopping item not found');
+    if (!!it.data.bought === input.bought) return { writes: [], data: { itemId: it.id, changed: false, expected: { bought: input.bought } } };
+    const now = nowIso();
+    const patch = input.bought
+      ? { bought: true, boughtBy: caller.actor.person, boughtAt: now, expireAt: new Date(Date.now() + 24 * 3600_000).toISOString(), updatedAt: now }
+      : { bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now };
+    const action = input.bought ? (it.data.category === 'giveaway' ? 'found' : 'bought') : 'unbought';
+    const writes = [fs.patch('shopping', it.id, patch, it.updateTime), activity(fs, caller, it.id, action, itemText(it.data), '', 'shopping')];
+    return { writes, data: { itemId: it.id, changed: true, expected: input.bought ? { bought: true, boughtBy: caller.actor.person } : { bought: false, boughtBy: null } } };
+  }, readBackItem(fs));
 }

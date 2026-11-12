@@ -44,11 +44,13 @@ const countTitled = async (title) => (await where('tasks', 'title', title)).leng
 // ---------- synthetic credentials and service account ----------
 const newKey = () => 'hr_' + randomBytes(32).toString('base64url');
 const sha = (s) => createHash('sha256').update(s).digest('hex');
-const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey() };
+const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey(), users: newKey() };
 const CREDENTIALS = [
   { id: 'cred-assistant', sha256: sha(KEYS.assistant), actors: ['actor-demo-owner'] },
   { id: 'cred-test-owner', sha256: sha(KEYS.owner), actors: ['actor-demo-owner'] },
   { id: 'cred-test-staff', sha256: sha(KEYS.staff), actors: ['actor-demo-staff'] },
+  // real-person actors: name and role come from users/<uid>
+  { id: 'cred-test-users', sha256: sha(KEYS.users), actors: ['user:syn-dani-l', 'user:syn-ronit', 'user:syn-blocked', 'user:syn-dana-guest', 'user:syn-missing'] },
 ];
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const SA = { type: 'service_account', client_email: 'api-test@synthetic.iam.gserviceaccount.com', private_key_id: 'synthetic', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) };
@@ -158,12 +160,12 @@ try {
   section('health and catalog');
   {
     const h = await api('GET', '/v1/health', { label: 'health' });
-    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '1.0.0', 'GET /v1/health → 200 with catalog version');
+    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '1.1.0', 'GET /v1/health → 200 with catalog version');
     const c = await api('GET', '/v1/catalog', { label: 'catalog' });
     const ops = c.json?.data?.operations || [];
     const valid = ops.length >= 5 && ops.every((o) => typeof o.name === 'string' && ['read', 'write'].includes(o.kind) && ['GET', 'POST'].includes(o.method) && o.path.startsWith('/v1/') && /^[a-z]+:[a-z]+$/.test(o.requiredScope) && typeof o.he === 'string' && (o.kind === 'read' || o.idempotency === 'required'));
-    check(c.status === 200 && c.json.data.version === '1.0.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
-    check(['people.search', 'tasks.list', 'tasks.get', 'tasks.create', 'tasks.assign'].every((n) => ops.some((o) => o.name === n)), 'catalog has the five stage-1 operations');
+    check(c.status === 200 && c.json.data.version === '1.1.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
+    check(['people.search', 'tasks.list', 'tasks.get', 'tasks.create', 'tasks.assign', 'tasks.complete', 'tasks.reopen', 'shopping.list', 'shopping.add', 'shopping.setBought'].every((n) => ops.some((o) => o.name === n)), 'catalog has all ten operations');
   }
 
   section('authentication and permissions');
@@ -354,6 +356,79 @@ try {
     check(ql.status === 429, 'quota on reads → 429 too');
   }
 
+  section('real people as actors (name and role from their profile)');
+  {
+    const as = (uid) => ({ key: KEYS.users, headers: { 'x-actor-id': 'user:' + uid } });
+    const dani = await api('POST', '/v1/actions/tasks.create', { ...as('syn-dani-l'), idem: randomUUID(), body: { title: 'משימה של מנהל אמיתי', assignee: 'syn-ronit' } });
+    check(dani.status === 201 && dani.json.data.task.createdBy.uid === 'syn-dani-l' && dani.json.data.task.createdBy.name === 'דני לוי', 'a manager profile acts as itself: createdBy is the real uid and name', dani.json);
+    const acts = await where('activity', 'refId', dani.json.data.taskId);
+    check(acts.length === 2 && acts.every((a) => a.by.uid === 'syn-dani-l' && a.by.name === 'דני לוי'), 'activity is written in the real person\'s name', acts.map((a) => a.by));
+    const ronitAssign = await api('POST', '/v1/actions/tasks.create', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'לשייך לאחר', assignee: 'syn-dani-c' } });
+    check(ronitAssign.status === 403, 'a staff profile gets staff scopes: assigning someone else → 403');
+    const ronitSelf = await api('POST', '/v1/actions/tasks.create', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'משימה לעצמי', assignee: 'syn-ronit' } });
+    check(ronitSelf.status === 201, 'a staff profile may create a task for itself');
+    check((await api('GET', '/v1/people?q=דני', as('syn-ronit'))).status === 403, 'a staff profile cannot search people');
+    for (const [uid, why] of [['syn-blocked', 'blocked profile'], ['syn-dana-guest', 'guest profile'], ['syn-missing', 'missing profile']]) {
+      const r = await api('GET', '/v1/tasks', as(uid));
+      check(r.status === 403 && r.json.error.code === 'FORBIDDEN', `${why} → 403`, r.json);
+    }
+    check((await api('GET', '/v1/tasks/syn-managers-only', as('syn-ronit'))).status === 404, 'a staff profile does not see manager-only tasks');
+    check((await api('GET', '/v1/tasks/syn-managers-only', as('syn-dani-l'))).status === 200, 'a manager profile does');
+  }
+
+  section('tasks.complete and tasks.reopen');
+  {
+    const as = (uid) => ({ key: KEYS.users, headers: { 'x-actor-id': 'user:' + uid } });
+    const t = (await create(KEYS.owner, { title: 'לסמן כבוצע', assignee: 'syn-ronit' })).json.data.taskId;
+    const key = randomUUID();
+    const c = await api('POST', '/v1/actions/tasks.complete', { ...as('syn-ronit'), idem: key, body: { taskId: t }, label: 'tasks.complete' });
+    check(c.status === 200 && c.json.data.changed && c.json.data.verified && c.json.data.task.done === true && c.json.data.task.doneBy.uid === 'syn-ronit', 'staff completes a task: done by them, verified', c.json);
+    const again = await api('POST', '/v1/actions/tasks.complete', { ...as('syn-ronit'), idem: key, body: { taskId: t } });
+    check(again.status === 200 && again.json.data.replayed === true, 'same key → replay');
+    const noop = await api('POST', '/v1/actions/tasks.complete', { ...as('syn-ronit'), idem: randomUUID(), body: { taskId: t } });
+    check(noop.json.data.changed === false, 'completing a done task → no-op');
+    const r = await api('POST', '/v1/actions/tasks.reopen', { ...as('syn-dani-l'), idem: randomUUID(), body: { taskId: t } });
+    check(r.status === 200 && r.json.data.changed && r.json.data.task.done === false && r.json.data.task.doneBy === null && r.json.data.verified, 'reopen clears done, doneBy, doneAt');
+    const acts = (await where('activity', 'refId', t)).map((a) => a.action).sort();
+    check(acts.join() === 'assigned,created,done,undone', 'done and undone activity entries, one each', acts);
+    const hidden = await api('POST', '/v1/actions/tasks.complete', { ...as('syn-ronit'), idem: randomUUID(), body: { taskId: 'syn-managers-only' } });
+    check(hidden.status === 404, 'staff cannot complete a manager-only task (404, looks missing)');
+    const stored = (await fetch(`${DOCS}/tasks/syn-managers-only`, { headers: admin }).then((x) => x.json())).fields.done.booleanValue;
+    check(stored === false, 'and it stays open');
+  }
+
+  section('shopping');
+  let shopId;
+  {
+    const as = (uid) => ({ key: KEYS.users, headers: { 'x-actor-id': 'user:' + uid } });
+    const a = await api('POST', '/v1/actions/shopping.add', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'מלט', qty: '3 שקים', category: 'building' }, label: 'shopping.add' });
+    check(a.status === 201 && a.json.data.verified && a.json.data.item.category === 'building' && a.json.data.item.createdBy.uid === 'syn-ronit', 'staff adds a shopping item, verified', a.json);
+    shopId = a.json.data.itemId;
+    const d = await api('POST', '/v1/actions/shopping.add', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'חלב' } });
+    check(d.json.data.item.category === 'super' && d.json.data.item.qty === '' && d.json.data.item.urgent === false, 'defaults: category super, empty qty, not urgent');
+    const bad = await api('POST', '/v1/actions/shopping.add', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'x', category: 'food' } });
+    check(bad.status === 400 && bad.json.error.details.field === 'category', 'unknown category → 400');
+    const stored = (await where('shopping', 'title', 'מלט'))[0];
+    const appKeys = ['title', 'note', 'link', 'category', 'createdBy', 'createdAt', 'bought', 'boughtBy', 'boughtAt', 'expireAt', 'updatedAt', 'qty', 'urgent'];
+    check(JSON.stringify(Object.keys(stored).filter((k) => k !== 'id').sort()) === JSON.stringify([...appKeys].sort()), 'stored item has exactly the fields the app writes');
+    const added = await where('activity', 'refId', shopId);
+    check(added.length === 1 && added[0].kind === 'shopping' && added[0].action === 'added' && added[0].text === 'מלט · 3 שקים (חומרי בניין)', 'activity "added" with the app\'s text', added);
+    const open = await api('GET', '/v1/shopping', { ...as('syn-ronit'), label: 'shopping.list' });
+    check(open.status === 200 && open.json.data.items.some((i) => i.id === shopId), 'shopping.list shows the open item');
+    const onlyBuilding = await api('GET', '/v1/shopping?category=building', as('syn-ronit'));
+    check(onlyBuilding.json.data.items.every((i) => i.category === 'building') && onlyBuilding.json.data.items.length >= 1, 'category filter');
+    const b = await api('POST', '/v1/actions/shopping.setBought', { ...as('syn-dani-l'), idem: randomUUID(), body: { itemId: shopId } });
+    check(b.status === 200 && b.json.data.changed && b.json.data.item.bought && b.json.data.item.boughtBy.uid === 'syn-dani-l' && b.json.data.verified, 'setBought marks it bought by the caller');
+    const exp = (await where('shopping', 'title', 'מלט'))[0].expireAt;
+    check(Math.abs(Date.parse(exp) - Date.now() - 24 * 3600_000) < 120_000, 'expireAt is 24 hours ahead, as in the app');
+    check(!(await api('GET', '/v1/shopping', as('syn-ronit'))).json.data.items.some((i) => i.id === shopId), 'a bought item leaves the open list');
+    check((await api('GET', '/v1/shopping?bought=true', as('syn-ronit'))).json.data.items.some((i) => i.id === shopId), 'and shows with bought=true');
+    const g = await api('POST', '/v1/actions/shopping.add', { ...as('syn-ronit'), idem: randomUUID(), body: { title: 'ספה', category: 'giveaway' } });
+    await api('POST', '/v1/actions/shopping.setBought', { ...as('syn-ronit'), idem: randomUUID(), body: { itemId: g.json.data.itemId } });
+    check((await where('activity', 'refId', g.json.data.itemId)).some((x) => x.action === 'found'), 'a giveaway item logs "found", as in the app');
+    check((await api('POST', '/v1/actions/shopping.setBought', { ...as('syn-ronit'), idem: randomUUID(), body: { itemId: 'no-such-item' } })).status === 404, 'unknown item → 404');
+  }
+
   section('compatibility with the app and its Rules');
   {
     const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
@@ -371,6 +446,8 @@ try {
     check(true, 'app clients cannot read api_idempotency (no rule → denied)');
     const after = await api('GET', '/v1/tasks/' + taskId, { key: KEYS.owner });
     check(after.json.data.task.done === true && after.json.data.task.doneBy.uid === 'syn-ronit', 'the API reads back the change made in the app');
+    await assertSucceeds(updateDoc(doc(ronit, 'shopping', shopId), { bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: n }));
+    check(true, 'a team member can un-buy an API-created shopping item through the app\'s Rules');
   }
 
   section('service-account token path (WebCrypto RS256 → mock token endpoint)');

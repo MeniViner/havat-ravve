@@ -2,14 +2,15 @@
 // an operation that is not listed here does not exist. The same specs drive request validation, so the
 // catalog and the server can never disagree about a parameter.
 
-export const CATALOG_VERSION = '1.0.0';
+export const CATALOG_VERSION = '1.1.0';
 
 export type Param =
   | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
   | { type: 'uid' | 'id'; required?: boolean; he?: string }
   | { type: 'date'; format: 'YYYY-MM-DD'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
   | { type: 'bool'; required?: boolean; default?: boolean; he?: string }
-  | { type: 'int'; min: number; max: number; default: number; he?: string };
+  | { type: 'int'; min: number; max: number; default: number; he?: string }
+  | { type: 'enum'; values: readonly string[]; required?: boolean; default?: string; he?: string };
 
 export type Operation = {
   name: string;
@@ -104,6 +105,76 @@ export const OPERATIONS: Operation[] = [
       '"readBack": "unavailable" (with "task": null, "verified": false) means the change was stored but could not be read back. Do not send it again with a new key.',
     ],
   },
+  {
+    name: 'tasks.complete',
+    kind: 'write',
+    idempotency: 'required',
+    he: 'סימון משימה כבוצעה, בשם מי שקורא',
+    method: 'POST',
+    path: '/v1/actions/tasks.complete',
+    body: { taskId: { type: 'id', required: true } },
+    requiredScope: 'tasks:complete',
+    notes: [
+      'Marks the task done by the calling actor, as the app does. An already-done task returns "changed": false.',
+      'The response is a read-back of the stored task. "readBack": "unavailable" means it was stored but could not be read back.',
+    ],
+  },
+  {
+    name: 'tasks.reopen',
+    kind: 'write',
+    idempotency: 'required',
+    he: 'החזרת משימה שבוצעה למצב פתוח',
+    method: 'POST',
+    path: '/v1/actions/tasks.reopen',
+    body: { taskId: { type: 'id', required: true } },
+    requiredScope: 'tasks:complete',
+    notes: ['Clears done, doneBy, doneAt and the done photo and note, as the app does. An open task returns "changed": false.'],
+  },
+  {
+    name: 'shopping.list',
+    kind: 'read',
+    he: 'רשימת הקניות. ברירת מחדל: מה שעוד לא נקנה',
+    method: 'GET',
+    path: '/v1/shopping',
+    params: {
+      bought: { type: 'bool', default: false, he: 'false לרשימה הפתוחה, true למה שנקנה (נעלם מהאפליקציה אחרי 24 שעות)' },
+      category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], he: 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה' },
+      limit: { type: 'int', min: 1, max: 100, default: 50 },
+    },
+    requiredScope: 'shopping:read',
+    notes: ['Newest first. Response has "items" and "hasMore".'],
+  },
+  {
+    name: 'shopping.add',
+    kind: 'write',
+    idempotency: 'required',
+    he: 'הוספת פריט לרשימת הקניות',
+    method: 'POST',
+    path: '/v1/actions/shopping.add',
+    body: {
+      title: { type: 'string', required: true, min: 1, max: 200, he: 'מה לקנות' },
+      qty: { type: 'string', max: 40, he: 'כמות, טקסט חופשי, למשל "2 שקים"' },
+      category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], default: 'super', he: 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה' },
+      urgent: { type: 'bool', default: false },
+      note: { type: 'string', max: 1000 },
+    },
+    requiredScope: 'shopping:write',
+    notes: ['Check shopping.list first: if the same item is already open, ask before adding it again.', 'The response is a read-back of the stored item.'],
+  },
+  {
+    name: 'shopping.setBought',
+    kind: 'write',
+    idempotency: 'required',
+    he: 'סימון פריט כנקנה (או ביטול הסימון)',
+    method: 'POST',
+    path: '/v1/actions/shopping.setBought',
+    body: {
+      itemId: { type: 'id', required: true },
+      bought: { type: 'bool', default: true, he: 'false מחזיר את הפריט לרשימה הפתוחה' },
+    },
+    requiredScope: 'shopping:write',
+    notes: ['Bought items leave the app\'s open list and disappear after 24 hours, as when marked in the app. No change returns "changed": false.'],
+  },
 ];
 
 export const CATALOG = {
@@ -111,7 +182,8 @@ export const CATALOG = {
   generatedAt: '2026-11-12T00:00:00+02:00',
   service: 'havat-ravve-api',
   conventions: {
-    auth: 'Authorization: Bearer <api-key>. Each key is bound to one actor; X-Actor-Id may only pick among that key\'s own actors and never raises permissions.',
+    auth: 'Authorization: Bearer <api-key>. Each key is bound to its own actors; X-Actor-Id may only pick among them and never raises permissions. A real person acts with the name and role of their profile in the app, and only while that profile is an active team member.',
+    scopes: 'owner and manager: every operation. staff: tasks.list/get/create (for themselves)/complete/reopen and the shopping list; not people.search or assigning to others.',
     idempotency: 'Every write needs an Idempotency-Key header (UUID). Same key + same body returns the stored result with "replayed": true. Same key + different body is 409. After a timeout or OUTCOME_UNKNOWN, resend with the same key.',
     dates: 'Absolute dates only, YYYY-MM-DD in Asia/Jerusalem. Resolve "today" / "tomorrow" before calling; the server does not parse natural language.',
     envelope: 'Success: { ok: true, data, meta }. Failure: { ok: false, error: { code, message, he, details }, meta }.',

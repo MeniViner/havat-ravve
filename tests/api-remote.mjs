@@ -6,10 +6,11 @@
 //   KEY_STAGEB    a key whose credential allows actor-demo-owner and actor-demo-staff
 //   GOOGLE_TOKEN  an access token with read/write on the project (for direct reads and cleanup)
 //   PROJECT       the Firestore project id
+//   MENI_ACTOR    optional, "user:<uid>" of the real owner, also allowed by KEY_STAGEB
 // Usage: set -a; . api/.dev.vars.stage-b; set +a; GOOGLE_TOKEN=$(gcloud auth print-access-token) PROJECT=havat-ravve node tests/api-remote.mjs
 import { randomUUID } from 'node:crypto';
 
-const { API_BASE, KEY_STAGEB, GOOGLE_TOKEN, PROJECT } = process.env;
+const { API_BASE, KEY_STAGEB, GOOGLE_TOKEN, PROJECT, MENI_ACTOR } = process.env;
 if (!API_BASE || !KEY_STAGEB || !GOOGLE_TOKEN || !PROJECT) { console.error('API_BASE, KEY_STAGEB, GOOGLE_TOKEN and PROJECT are required'); process.exit(2); }
 const FS = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
 const TAG = '[בדיקת API]';
@@ -20,6 +21,7 @@ const check = (cond, label, extra) => { if (cond) { passes++; console.log('  ✓
 const section = (s) => console.log('\n' + s);
 const timings = {};
 const created = new Set();
+const createdItems = new Set();
 
 async function api(method, path, { body, key = KEY_STAGEB, actor, idem, label } = {}) {
   const headers = {};
@@ -33,6 +35,7 @@ async function api(method, path, { body, key = KEY_STAGEB, actor, idem, label } 
   if (label) (timings[label] ||= []).push(ms);
   const j = await r.json();
   if (j?.data?.taskId) created.add(j.data.taskId);
+  if (j?.data?.itemId) createdItems.add(j.data.itemId);
   return { status: r.status, j };
 }
 async function fsReq(method, path, body) {
@@ -124,6 +127,32 @@ try {
     check(sg.status === 200 && !('managersOnly' in sg.j.data.task), 'staff sees a team task, without the managersOnly flag');
   }
 
+  section('real person as actor, complete/reopen, shopping');
+  if (!MENI_ACTOR) console.log('  (skipped: MENI_ACTOR not set)');
+  else {
+    const me = { actor: MENI_ACTOR };
+    const c = await api('POST', '/v1/actions/tasks.create', { ...me, body: { title: `${TAG} בשם הבעלים` }, idem: randomUUID(), label: 'tasks.create' });
+    check(c.status === 201 && c.j.data.task.createdBy.uid === owner.uid && c.j.data.task.createdBy.name === owner.displayName, 'a task created as the real owner carries their uid and name', c.j.error);
+    const acts = await queryEq('activity', 'refId', c.j.data.taskId);
+    check(acts.length === 1 && acts[0].by.uid === owner.uid, 'activity in the owner\'s name');
+    const done = await api('POST', '/v1/actions/tasks.complete', { ...me, body: { taskId: c.j.data.taskId }, idem: randomUUID(), label: 'tasks.complete' });
+    check(done.status === 200 && done.j.data.task.done && done.j.data.task.doneBy.uid === owner.uid && done.j.data.verified, 'complete → done by the owner, verified', done.j.error);
+    const re = await api('POST', '/v1/actions/tasks.reopen', { ...me, body: { taskId: c.j.data.taskId }, idem: randomUUID() });
+    check(re.status === 200 && re.j.data.task.done === false && re.j.data.verified, 'reopen → open again');
+    const add = await api('POST', '/v1/actions/shopping.add', { ...me, body: { title: `${TAG} פריט`, qty: '2', category: 'building' }, idem: randomUUID(), label: 'shopping.add' });
+    check(add.status === 201 && add.j.data.verified && add.j.data.item.createdBy.uid === owner.uid, 'shopping.add as the owner, verified', add.j.error);
+    const list = await api('GET', '/v1/shopping', { ...me, label: 'shopping.list' });
+    check(list.status === 200 && list.j.data.items.some((i) => i.id === add.j.data.itemId), 'shopping.list shows it', list.j.error);
+    const cat = await api('GET', '/v1/shopping?category=building', { ...me, label: 'shopping.list' });
+    check(cat.status === 200 && cat.j.data.items.some((i) => i.id === add.j.data.itemId), 'shopping.list by category (index merge)', cat.j.error);
+    const b = await api('POST', '/v1/actions/shopping.setBought', { ...me, body: { itemId: add.j.data.itemId }, idem: randomUUID(), label: 'shopping.setBought' });
+    check(b.status === 200 && b.j.data.item.bought && b.j.data.verified, 'setBought → bought, verified', b.j.error);
+    const bl = await api('GET', '/v1/shopping?bought=true', me);
+    check(bl.status === 200 && bl.j.data.items.some((i) => i.id === add.j.data.itemId), 'listed under bought=true', bl.j.error);
+    const staffAs = await api('GET', '/v1/people?q=x', { actor: 'actor-demo-staff' });
+    check(staffAs.status === 403, 'staff actor still cannot search people');
+  }
+
   section('pagination');
   {
     for (let i = 0; i < 5; i++) await api('POST', '/v1/actions/tasks.create', { body: { title: `${TAG} דף ${i + 1}` }, idem: randomUUID(), label: 'tasks.create' });
@@ -175,10 +204,17 @@ try {
     for (const a of await queryEq('activity', 'refId', id)) if (await fsReq('DELETE', `/activity/${a.id}`)) acts++;
     if (await fsReq('DELETE', `/tasks/${id}`)) tasks++;
   }
+  let items = 0;
+  for (const id of createdItems) {
+    for (const a of await queryEq('activity', 'refId', id)) if (await fsReq('DELETE', `/activity/${a.id}`)) acts++;
+    if (await fsReq('DELETE', `/shopping/${id}`)) items++;
+  }
   for (const r of await queryEq('api_idempotency', 'credential', 'cred-stageb')) if (await fsReq('DELETE', `/api_idempotency/${r.id}`)) recs++;
-  console.log(`  deleted ${tasks} tasks, ${acts} activity entries, ${recs} idempotency records`);
+  console.log(`  deleted ${tasks} tasks, ${items} shopping items, ${acts} activity entries, ${recs} idempotency records`);
   const left = (await fsReq('POST', ':runQuery', { structuredQuery: { from: [{ collectionId: 'tasks' }] } })).filter((r) => r.document && fields(r.document).title?.startsWith(TAG));
   check(left.length === 0, 'no tagged test task left in the project', left.length);
+  const leftItems = (await fsReq('POST', ':runQuery', { structuredQuery: { from: [{ collectionId: 'shopping' }] } })).filter((r) => r.document && fields(r.document).title?.startsWith(TAG));
+  check(leftItems.length === 0, 'no tagged shopping item left', leftItems.length);
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

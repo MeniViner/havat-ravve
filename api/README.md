@@ -2,7 +2,9 @@
 
 A Cloudflare Worker that lets Meni's personal assistant read and write farm tasks over HTTPS. It's a thin
 gateway: a static catalog describes the operations, the Worker checks permissions, and Firestore is reached
-through its REST API. Actors are still **synthetic** (they write as "בעלים (סינתטי)"). The production
+through its REST API. A key acts as a **real person** (`user:<uid>`): name and role come from that
+person's profile in the app on every request (cached 60 s), and only an active owner, manager or staff
+member can act. Synthetic actors remain for tests. The production
 project (`havat-ravve`) is served only when `PRODUCTION_APPROVED` names it too. Meni approved that on
 2026-11-12, while the app is still being built.
 
@@ -23,6 +25,11 @@ assistant ──GET /v1/catalog──▶ Worker ──Firestore REST──▶ Fi
 | GET | `/v1/tasks/{id}` | `tasks.get` | `tasks:read` |
 | POST | `/v1/actions/tasks.create` | `tasks.create` (Idempotency-Key) | `tasks:create` (+`tasks:assign` to assign someone else) |
 | POST | `/v1/actions/tasks.assign` | `tasks.assign` (Idempotency-Key) | `tasks:assign` |
+| POST | `/v1/actions/tasks.complete` | `tasks.complete`: done by the caller (Idempotency-Key) | `tasks:complete` |
+| POST | `/v1/actions/tasks.reopen` | `tasks.reopen` (Idempotency-Key) | `tasks:complete` |
+| GET | `/v1/shopping?bought=&category=&limit=` | `shopping.list`, open items by default | `shopping:read` |
+| POST | `/v1/actions/shopping.add` | `shopping.add` (Idempotency-Key) | `shopping:write` |
+| POST | `/v1/actions/shopping.setBought` | `shopping.setBought` (Idempotency-Key) | `shopping:write` |
 
 The catalog in [src/catalog.ts](src/catalog.ts) is the source of truth. The same specs validate requests,
 so the catalog can't drift from the server.
@@ -167,6 +174,22 @@ Combinations use Firestore index merging with the existing `done` + `createdAt` 
 **IAM propagation.** For roughly the first 20 minutes after the role binding, some requests got
 `PERMISSION_DENIED` intermittently. It then cleared by itself.
 
+## Catalog 1.1.0 (2026-11-12)
+
+- **Real person:** the assistant's key is bound to Meni's own profile (`user:<uid>`, kept in the
+  `API_CREDENTIALS` secret, not in git).
+- **New operations:**
+  - `tasks.complete` and `tasks.reopen` write what `setTaskDone()` writes.
+  - `shopping.list`, `shopping.add` and `shopping.setBought` write what `addShopping()` / `setBought()`
+    write, including the activity text and the 24-hour `expireAt`.
+- **Staff:** can complete, reopen and use the shopping list. They can't search people or assign others.
+- **Tests:**
+  - Gate A: **111 passed**. It covers user actors (manager, staff, blocked, guest, missing), completion,
+    shopping, and the Rules accepting the API's shopping items.
+  - Live against production: **44 passed** twice, with full cleanup.
+- **Index:** a new `shopping` index, `category` + `createdAt` desc, built in production. It needed a few
+  minutes after READY before merged queries stopped failing.
+
 ## Gate B: the assistant calls the API (proven 2026-11-12)
 
 Instinct holds the key in its own vault (the "Agent's computer" item, scoped to this host) and calls the
@@ -184,5 +207,5 @@ themselves.
 
 ## Not proven yet
 
-- **Real actors**: writes still show as the synthetic owner. Binding Meni's own account (and later
-  managers and staff) is the next step, each with their own key.
+- **Managers and staff**: each needs their own key bound to `user:<their uid>`, and their own assistant.
+  Only Meni's key exists so far.
