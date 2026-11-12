@@ -76,7 +76,7 @@ function Status({ online }: { online: boolean }) {
 /** Routes of the rebuilt screens. Everything else still renders with the previous interface inside the new frame. */
 const REBUILT = /^\//; // every route now; the legacy frame classes go away with the last old screen
 /** Single-column pages keep a readable width on a wide screen. */
-const NARROW = /^\/(more|new|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
+const NARROW = /^\/(more|new|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings\/[^/]+$|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 /** Phone: one screen at a time. Desktop: rail + content, and a detail page opens as a side panel next to its list. */
 function Shell({ nav, manage, profile, role, online, master, detail, plus, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; plus?: string; center?: boolean }) {
