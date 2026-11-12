@@ -3,6 +3,8 @@ import {createRequire} from 'node:module';const require=createRequire(import.met
 import fs from 'node:fs';
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
 const {doc,setDoc,getDoc,getDocs,collection,updateDoc,deleteDoc,query,where}=require('firebase/firestore');
+import {build} from 'esbuild';
+await build({entryPoints:['src/app/calendarRef.ts'],bundle:true,platform:'node',format:'esm',outfile:'.build/calendar-ref-test.mjs',logLevel:'silent'});const {eventCalendarFields}=await import('../.build/calendar-ref-test.mjs');
 
 const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
 const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
@@ -248,6 +250,15 @@ try{
  await assertFails(setDoc(doc(vol,'calendar','c1'),{ownerUid:'vol',ownerName:'v',title:'x',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now}));
  await assertSucceeds(setDoc(doc(beni,'calendar','c1'),{ownerUid:'beni',ownerName:'b',title:'x',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now}));
  await assertSucceeds(setDoc(doc(beni,'calendar','c2'),{ownerUid:'beni',ownerName:'b',title:'x',date:'2030-01-01',time:'18:00–21:00',kind:'event',refId:'e1',createdAt:now}));   // a time range fits
+ // regression: publishing an event writes the entry the app builds (ManageEvents save -> upsertCalendarRef), and the Rules accept it
+ const evRef=(id,start,end)=>({...eventCalendarFields({title:'ערב שירה בחווה',start,end}),ownerUid:'beni',ownerName:'b',kind:'event',refId:id,createdAt:now});
+ const evening=evRef('e2','2030-05-01T07:00:00.000Z','2030-05-01T11:00:00.000Z');
+ if(evening.time!=='10:00–14:00'||evening.date!=='2030-05-01')throw new Error('event calendar fields: '+JSON.stringify(evening));
+ await assertSucceeds(setDoc(doc(beni,'calendar','event_e2'),evening));
+ const night=evRef('e3','2030-05-01T21:30:00.000Z','2030-05-02T01:00:00.000Z');   // 00:30 farm time: the entry is on May 2, not the UTC day
+ if(night.time!=='00:30–04:00'||night.date!=='2030-05-02')throw new Error('event calendar fields: '+JSON.stringify(night));
+ await assertSucceeds(setDoc(doc(beni,'calendar','event_e3'),night));
+ await assertFails(setDoc(doc(beni,'calendar','event_e4'),{...evening,refId:'e4',time:'10:00–14:00 extra'}));   // still bounded
  // the team list: a volunteer may list team members by role, never everyone
  await assertSucceeds(getDocs(query(collection(vol,'users'),where('role','in',['owner','manager','staff']))));
  await assertFails(getDocs(collection(vol,'users')));
