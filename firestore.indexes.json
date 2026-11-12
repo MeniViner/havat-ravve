@@ -191,6 +191,10 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "refId",
           "order": "ASCENDING"
         },

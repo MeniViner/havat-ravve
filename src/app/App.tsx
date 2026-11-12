@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useOnline, usePeople } from './store';
+import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
 import { useRoute, match, navigate } from './router';
 import { Icon, ToastProvider, A, Avatar, useDesktop, usePageEnter, todayISO, addDays } from './ui';
@@ -9,8 +9,10 @@ import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
 import { useDemo, setDemo, PERSONA_LABELS, type Persona } from './demo/store';
 import { TodayScreen } from './screens/Today';
-import { TasksScreen, TaskDetail, TaskForm, TaskEditPage, HistoryScreen } from './screens/Tasks';
-import { ShoppingScreen, ShopItemPage, ShopForm } from './screens/Shopping';
+import { TasksScreen, TaskDetail, HistoryScreen } from './screens/Tasks';
+import { NewScreen, TaskEditScreen } from './screens/New';
+import { ShoppingScreen, ShopItemScreen } from './screens/Shopping';
+import { Guard, isHidden, useHiddenVersion } from './kit';
 import { MoreScreen } from './screens/More';
 import { StaffEventsScreen, ScanScreen, ScanSearchScreen, StallScreen, StallPickScreen, StallTabsScreen } from './screens/EventDay';
 import { GuestHome, EventPage, OrderPage, LoginPage, OnboardingPage, BlockedPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage } from './screens/Guest';
@@ -75,8 +77,8 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
     <div className="app">
       <Rail route={route} items={nav} manage={manage} profile={profile} role={role} />
       <div className="shellmain" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: desktop ? 'row' : 'column' }}>
-        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><div ref={pageRef} className="page">{content}</div></main></div>
-        {desktop && detail && <aside className="panel"><div className="screen page-in" key={route}>{detail}</div></aside>}
+        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><Guard resetKey={route}><div ref={pageRef} className="page">{content}</div></Guard></main></div>
+        {desktop && detail && <aside className="panel"><Guard resetKey={route}><div className="screen page-in" key={route}>{detail}</div></Guard></aside>}
       </div>
       {!desktop && <BottomNav route={route} items={nav} />}
     </div>
@@ -113,21 +115,23 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   const route = useRoute(); const online = useOnline(); const desktop = useDesktop();
   const manager = canManage(profile, user.email); const owner = isOwner(profile, user.email);
   const actor = useMemo(() => actorOf(user, profile), [user.uid, profile.displayName]);
-  const open = useOpenTasks(true, manager); const recent = useRecentDoneTasks(true, manager);
-  const shopping = useOpenShopping(true); const bought = useRecentBought(true);
+  const today = useToday(); useHiddenVersion();
+  const openAll = useOpenTasks(true, manager); const recent = useRecentDoneTasks(true, manager);
+  const shoppingAll = useOpenShopping(true); const bought = useRecentBought(true);
+  // yesterday's unticked chores are not today's work; rows waiting out their undo window are already gone for the user
+  const open = useMemo(() => ({ ...openAll, items: openAll.items.filter((t) => !isHidden(t.id) && !(t.templateId && t.dateKey && t.dateKey < today)) }), [openAll, today, isHidden]);
+  const shopping = { ...shoppingAll, items: shoppingAll.items.filter((i) => !isHidden(i.id)) };
+  const team = useTeam(true); const instances = useTodayInstances(true, manager, today);
   const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
-  const inbox = useNotifications(manager); const people = usePeople(true); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
-  const today = todayISO(); const calendar = useCalendar(manager, today, addDays(today, 14));
-  const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, settings, places: places.items, templates: templates.items, team: people.items }), [user, actor, profile, manager, owner, settings, places.items, templates.items, people.items]);
+  const inbox = useNotifications(manager); const people = usePeople(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
+  const calendar = useCalendar(manager, today, addDays(today, 14));
+  const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, settings, places: places.items, templates: templates.items, team: team.items }), [user, actor, profile, manager, owner, settings, places.items, templates.items, team.items]);
   const guestCtx: GuestCtx = { user, profile, settings };
 
-  const materialized = useRef('');
   useEffect(() => {
-    if (templates.loading || !templates.items.length) return;
-    const key = today + templates.items.map((t) => t.id + t.updatedAt).join();
-    if (materialized.current === key) return; materialized.current = key;
-    materializeToday(templates.items, actor);
-  }, [templates.items, templates.loading, actor]);
+    if (templates.loading || instances.loading || instances.error || !templates.items.length) return;
+    materializeToday(templates.items, instances.items, actor, today);
+  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor]);
 
   const myOpen = open.items.filter((t) => t.assignee?.uid === actor.uid).length;
   const nav: NavItem[] = [
@@ -151,13 +155,13 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   let master: ReactNode = today_; let detail: ReactNode | undefined;
   if (r === '/') master = today_;
   else if (r === '/tasks') master = tasks();
-  else if (r === '/tasks/new') { master = tasks(); detail = <TaskForm ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditPage key={m.id} id={m.id} ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-  else if ((m = match(r, '/history/:tab')) || r === '/history') master = <HistoryScreen ctx={ctx} tab={((m?.tab as 'tasks' | 'shopping' | 'all') || 'tasks')} />;
+  else if (r === '/tasks/new' || r === '/new') { master = tasks(); detail = <NewScreen ctx={ctx} />; }
+  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditScreen key={m.id} id={m.id} ctx={ctx} />; }
+  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail key={m.id} id={m.id} ctx={ctx} />; }
+  else if ((m = match(r, '/history/:tab')) || r === '/history') master = <HistoryScreen ctx={ctx} tab={m?.tab === 'shopping' ? 'shopping' : 'tasks'} />;
   else if (r === '/shopping') master = shop();
-  else if (r === '/shopping/new') { master = shop(); detail = <ShopForm ctx={ctx} />; }
-  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemPage key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
+  else if (r === '/shopping/new') { master = shop(); detail = <NewScreen ctx={ctx} initial="shop" />; }
+  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemScreen key={m.id} id={m.id} ctx={ctx} />; }
   else if (r === '/more') master = <MoreScreen ctx={ctx} />;
   else if (r === '/events-staff') master = <StaffEventsScreen ctx={ctx} events={events.items} />;
   else if ((m = match(r, '/events-staff/:id'))) master = <StaffEventsScreen ctx={ctx} events={events.items} id={m.id} />;
@@ -221,7 +225,7 @@ function Splash() {
 
 export default function App() {
   const { user, loading } = useAuth();
-  const { profile, loading: profileLoading, missing } = useProfile(user);
+  const { profile, loading: profileLoading, missing, error: profileError } = useProfile(user);
   const { settings } = useSettings();
   const demo = useDemo();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
@@ -233,6 +237,7 @@ export default function App() {
     } catch { /* private mode */ }
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
   if (loading || (user && profileLoading)) return <Splash />;
+  if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   if (user && (missing || !profile)) return <ToastProvider><DemoStrip /><OnboardingPage user={user} /></ToastProvider>;
   if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} /></ToastProvider>;
   if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;

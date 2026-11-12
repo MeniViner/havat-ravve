@@ -140,7 +140,7 @@ export function TemplateEditor({ id, ctx, panel }: { id?: string; ctx: TeamCtx; 
   if (id && !existing && !ctx.templates.length) return <Loading />;
   if (id && !existing) return <Empty title="המשימה החוזרת לא נמצאה" />;
   const grid = Array.from({ length: 30 }, (_, i) => { const k = addDays(todayISO(), -29 + i); const d = new Date(k + 'T12:00:00').getDay(); const t = tasks.items.find((x) => x.dateKey === k); return { k, sat: d === 6 || (f.days.length > 0 && !f.days.includes(d)), done: !!t?.done, by: t?.doneBy?.name }; });
-  const who = useMemo(() => { const m = new Map<string, number>(); for (const x of tasks.items) if (x.done && x.doneBy) m.set(firstName(x.doneBy.name), (m.get(firstName(x.doneBy.name)) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [tasks.items]);
+  const who = (() => { const m = new Map<string, number>(); for (const x of tasks.items) if (x.done && x.doneBy) m.set(firstName(x.doneBy.name), (m.get(firstName(x.doneBy.name)) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); })(); // computed after the early return above, so it cannot be a hook
   return (
     <>
       <Top backTo={panel ? undefined : '/manage/templates'} back={panel} backLabel={panel ? 'סגירה' : 'משימות חוזרות'} title={existing ? existing.title : 'משימה חוזרת'} end={<Btn kind="quiet" size="sm" onClick={() => navigate('/manage/templates', true)}>ביטול</Btn>} />

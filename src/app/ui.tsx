@@ -61,8 +61,8 @@ export const Icon = ({ name, size, className = '' }: { name: string; size?: numb
 );
 
 // ---------- link that uses the in-app router ----------
-export function A({ to, children, className, replace, ...rest }: { to: string; children?: ReactNode; className?: string; replace?: boolean } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
-  return <a {...rest} className={className} href={href(to)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.button === 1) return; e.preventDefault(); navigate(to, replace); }}>{children}</a>;
+export function A({ to, children, className, replace, keep, ...rest }: { to: string; children?: ReactNode; className?: string; replace?: boolean; keep?: boolean } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+  return <a {...rest} className={className} href={href(to)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.button === 1) return; e.preventDefault(); navigate(to, replace, keep); }}>{children}</a>;
 }
 
 // ---------- media ----------
@@ -82,7 +82,7 @@ export function Top({ title, date, sub, end, back, backTo, backLabel, tight, ser
   );
 }
 export const Back = ({ to, label = 'חזרה' }: { to?: string; label?: string }) => (
-  <button type="button" className="back" onClick={() => (to ? navigate(to) : goBack('/'))}><Icon name="back" />{label}</button>
+  <button type="button" className="back" onClick={() => goBack(to || '/')}><Icon name="back" />{label}</button>
 );
 
 // ---------- numbers strip ----------
@@ -219,7 +219,8 @@ export const Empty = ({ title, text, action }: { title: string; text?: string; a
 export const Loading = () => <div style={{ padding: '20px 20px' }}><div className="skeleton" style={{ width: '70%' }} /><div className="skeleton" style={{ width: '45%', marginTop: 10 }} /><div className="skeleton" style={{ width: '60%', marginTop: 10 }} /></div>;
 
 // ---------- toast (with undo) ----------
-type ToastItem = { id: number; text: string; action?: { label: string; onClick: () => void }; kind?: 'ok' | 'error' };
+type ToastAction = { label: string; onClick: () => void };
+type ToastItem = { id: number; text: string; action?: ToastAction; actions?: ToastAction[]; kind?: 'ok' | 'error' };
 const ToastCtx = createContext<(t: Omit<ToastItem, 'id'>, ms?: number) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -233,7 +234,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastCtx.Provider value={show}>
       {children}
       <div className="toasts" aria-live="polite">
-        {items.map((t) => <div key={t.id} className={'toast ' + (t.kind || '')}><span>{t.text}</span>{t.action && <button type="button" onClick={() => { t.action!.onClick(); setItems((s) => s.filter((i) => i.id !== t.id)); }}>{t.action.label}</button>}</div>)}
+        {items.map((t) => <div key={t.id} className={'toast ' + (t.kind || '')}><span>{t.text}</span>{[...(t.action ? [t.action] : []), ...(t.actions || [])].map((x) => <button key={x.label} type="button" onClick={() => { x.onClick(); setItems((s) => s.filter((i) => i.id !== t.id)); }}>{x.label}</button>)}</div>)}
       </div>
     </ToastCtx.Provider>
   );

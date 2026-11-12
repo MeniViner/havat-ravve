@@ -7,7 +7,7 @@ import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textare
 import { navigate } from '../router';
 import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, useDonations, downloadCsv, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
-import { PhotoPicker } from './Tasks';
+import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
 
 const toLocal = (iso: string) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -205,7 +205,7 @@ export function EventEntryScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const scans = d.valid.flatMap((t) => t.scans.map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at));
   const notYet = d.orders.filter((o) => o.every((t) => t.entries === 0));
   const scanners = new Set(scans.map((x) => x.s.by.uid)).size;
-  const byHour = useMemo(() => { const m = new Map<string, number>(); for (const x of scans) { const h = fmtTime(x.s.at).slice(0, 2) + ':' + (Number(fmtTime(x.s.at).slice(3, 4)) < 3 ? '00' : '30'); m.set(h, (m.get(h) || 0) + 1); } return [...m.entries()].sort(); }, [scans]);
+  const byHour = (() => { const m = new Map<string, number>(); for (const x of scans) { const h = fmtTime(x.s.at).slice(0, 2) + ':' + (Number(fmtTime(x.s.at).slice(3, 4)) < 3 ? '00' : '30'); m.set(h, (m.get(h) || 0) + 1); } return [...m.entries()].sort(); })(); // computed after the early return above, so it cannot be a hook
   const max = Math.max(1, ...byHour.map(([, n]) => n));
   return (
     <EventFrame id={id} tab="entry" ctx={ctx} title={desktop ? d.e.title : 'כניסה חיה'} end={<Btn size="sm" icon="qr" to={`/scan/${id}`}>לסרוק מהטלפון</Btn>}>
@@ -399,7 +399,7 @@ export function EventReportScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const waived = d.tabs.filter((t) => t.status === 'waived').reduce((s, t) => s + t.total, 0);
   const dayDon = donations.items.filter((x) => x.createdAt.slice(0, 10) === day && isPaid(x.paymentStatus));
   const donMoney = dayDon.reduce((s, x) => s + x.amount, 0);
-  const top = useMemo(() => { const m = new Map<string, { name: string; units: number; rev: number }>(); for (const t of d.tabs) for (const i of t.items) { const c = m.get(i.productId) || { name: i.name, units: 0, rev: 0 }; c.units += i.qty; c.rev += i.qty * i.price; m.set(i.productId, c); } return [...m.values()].sort((a, b) => b.units - a.units); }, [d.tabs]);
+  const top = (() => { const m = new Map<string, { name: string; units: number; rev: number }>(); for (const t of d.tabs) for (const i of t.items) { const c = m.get(i.productId) || { name: i.name, units: 0, rev: 0 }; c.units += i.qty; c.rev += i.qty * i.price; m.set(i.productId, c); } return [...m.values()].sort((a, b) => b.units - a.units); })(); // computed after the early return above, so it cannot be a hook
   const pct = d.valid.length ? Math.round((d.arrived.length / d.valid.length) * 100) : 0;
   const csv = () => downloadCsv(`${e.title} - דוח.csv`, ['מדד', 'ערך'], [['כרטיסים', d.valid.length], ['הזמנות', d.orders.length], ['הגיעו', d.arrived.length], ['אחוז הגעה', pct + '%'], ['כרטיסים ששולמו ₪', ticketMoney], ['מכירות דוכן ₪', stall], ['תרומות ביום האירוע ₪', donMoney], ['פתוח ₪', openSum], ['נמחל ₪', waived], ...top.map((t) => [t.name, `${t.units} יח׳ · ${t.rev} ₪`])]);
   return (
@@ -450,7 +450,7 @@ export function EventActivityScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const [filter, setFilter] = useState<'all' | 'orders' | 'payments' | 'stall' | 'edits'>('all');
   if (!d.e) return <EventFrame id={id} tab="activity" ctx={ctx}>{null}</EventFrame>;
   const list = d.acts.filter((a) => filter === 'all' ? true : filter === 'orders' ? a.action === 'ordered' || a.action === 'cancelled' : filter === 'payments' ? ['paid', 'claimed'].includes(a.action) : filter === 'stall' ? a.kind === 'tab' : a.kind === 'event');
-  const byDay = useMemo(() => { const m = new Map<string, typeof list>(); for (const a of list) m.set(a.at.slice(0, 10), [...(m.get(a.at.slice(0, 10)) || []), a]); return [...m.entries()]; }, [list]);
+  const byDay = (() => { const m = new Map<string, typeof list>(); for (const a of list) m.set(a.at.slice(0, 10), [...(m.get(a.at.slice(0, 10)) || []), a]); return [...m.entries()]; })(); // computed after the early return above, so it cannot be a hook
   return (
     <EventFrame id={id} tab="activity" ctx={ctx} title="היסטוריית האירוע">
       <p className="lead">{d.acts.length} פעולות · כל שינוי, הזמנה וסריקה, לפי זמן</p>

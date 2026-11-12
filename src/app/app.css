@@ -452,9 +452,10 @@ dialog.sheet[open]::backdrop{animation:fade .2s}
   .rail a.me.on .who b,.rail a.me.on .who small{color:var(--paper)}
   .bottom{display:none}
   .screen{max-width:none;padding:0 0 40px;--nav-h:0px}
-  .content{flex:1;min-width:0;padding:8px 40px 40px;max-width:1240px}
-  .content.narrow{max-width:800px}
-  .content.center{margin-inline:auto}
+  /* the page uses the full width of the screen; forms sit in a readable column centred in the free space */
+  .content{flex:1;min-width:0;padding:8px 40px 40px;max-width:none}
+  .content.narrow{max-width:none;padding-inline:max(40px, calc((100% - 880px) / 2))}
+  .content.center{margin-inline:0}
   .content>.top{padding-top:24px}
   .top>div:first-child{flex-basis:300px}
   .panel{width:420px;flex-shrink:0;border-inline-start:1px solid var(--line);background:var(--paper2);min-height:100dvh;position:sticky;top:0;height:100dvh;overflow:auto}
@@ -509,3 +510,6 @@ dialog.sheet[open]::backdrop{animation:fade .2s}
   .row .end .btn.sm{min-height:38px}
 }
 @media (max-width:1023px){.deskonly{display:none !important}}
+
+/* the new tasks and shopping screens inside this shell: their bottom bar of actions sits above this shell's bottom navigation */
+.screen .r-dock{bottom:calc(var(--nav-h) + var(--safe-b))}

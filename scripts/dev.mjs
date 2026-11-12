@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 const out = '.dev';
+const port = Number(process.env.PORT) || 5173; // a second worktree can run next to the first: PORT=5183 node scripts/dev.mjs
 fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out, { recursive: true });
 fs.cpSync('public', out, { recursive: true });
 const ctx = await context({ entryPoints: ['src/app-entry.tsx'], bundle: true, format: 'esm', outfile: `${out}/app.js`, jsx: 'automatic', external: ['/assets/*'], sourcemap: true, define: { 'process.env.NODE_ENV': '"development"' }, logLevel: 'info' });
@@ -18,4 +19,4 @@ http.createServer((req, res) => {
   const file = path.join(out, url.pathname === '/' ? '/index.html' : url.pathname);
   if (fs.existsSync(file) && fs.statSync(file).isFile()) { res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' }); return fs.createReadStream(file).pipe(res); }
   res.writeHead(404); res.end('not found');
-}).listen(5173, () => console.log('dev: http://localhost:5173/app?demo=owner'));
+}).listen(port, () => console.log(`dev: http://localhost:${port}/app?demo=owner`));

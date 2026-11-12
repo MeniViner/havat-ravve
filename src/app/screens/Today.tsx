@@ -2,8 +2,7 @@ import type { Task, FarmEvent, CalendarItem, AppNotification, ShoppingItem } fro
 import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, fmtDayLong, fmtTime, firstName, greeting, inText, fmtDateShort, fmtWeekday, todayISO, useDesktop, useOpenSections, useToast, relTime, money } from '../ui';
 import { setTaskDone, editTask } from '../store';
-import { ShopLine, useMarkBought } from './Shopping';
-import { taskMeta } from './Tasks';
+import { ShopLine, useMarkBought, taskMeta } from './legacy';
 
 type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingItem[]; events: FarmEvent[]; calendar: CalendarItem[]; inbox: AppNotification[]; loading: boolean };
 

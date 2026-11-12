@@ -33,7 +33,7 @@ export function VisitDetailScreen({ id, ctx, panel }: { id: string; ctx: TeamCtx
   const { item: v, loading } = useVisit(id); const toast = useToast();
   const requester = usePerson(v?.uid || '', !!v?.uid);
   const sameDay = useCalendar(!!v, v?.date || '2000-01-01', v?.date || '2000-01-01');
-  const log = useActivityFor(id);
+  const log = useActivityFor('visit', id);
   const inbox = useNotifications(true);
   const [note, setNote] = useState<string | null>(null);
   if (loading) return <Loading />;
@@ -103,7 +103,7 @@ export function DonationsScreen({ ctx, donations, selectedId }: { ctx: TeamCtx; 
 }
 export function DonationDetailScreen({ id, ctx, panel }: { id: string; ctx: TeamCtx; panel?: boolean }) {
   const { item: d, loading } = useDonation(id); const toast = useToast();
-  const donor = usePerson(d?.uid || '', !!d?.uid); const all = useDonations(true); const log = useActivityFor(id); const inbox = useNotifications(true);
+  const donor = usePerson(d?.uid || '', !!d?.uid); const all = useDonations(true); const log = useActivityFor('donation', id); const inbox = useNotifications(true);
   if (loading) return <Loading />;
   if (!d) return <Empty title="התרומה לא נמצאה" />;
   const paid = d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite';

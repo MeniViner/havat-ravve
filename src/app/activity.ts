@@ -7,7 +7,8 @@ export function logActivity(by: Actor, kind: ActivityKind, refId: string, action
   return write.set('activity', newId('activity'), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' }).catch(() => {});
 }
 
-export const useActivityFor = (refId: string, enabled = true) => useList<Activity>('activity', { where: [['refId', '==', refId]], orderBy: [['at', 'desc']], limit: 100 }, enabled && !!refId);
+/** History of one record. The kind is part of the query because the rules let volunteers read only team kinds. */
+export const useActivityFor = (kind: ActivityKind, refId: string, enabled = true) => useList<Activity>('activity', { where: [['kind', '==', kind], ['refId', '==', refId]], orderBy: [['at', 'desc']], limit: 100 }, enabled && !!refId);
 export const useActivityByKind = (kind: ActivityKind | 'all', enabled: boolean, max = 200) => useList<Activity>('activity', { where: kind === 'all' ? [] : [['kind', '==', kind]], orderBy: [['at', 'desc']], limit: max }, enabled);
 export const useActivityForUser = (uid: string, enabled: boolean) => useList<Activity>('activity', { where: [['subjectUid', '==', uid]], orderBy: [['at', 'desc']], limit: 100 }, enabled && !!uid);
 export const useActivityForEvent = (eventId: string, enabled: boolean) => useList<Activity>('activity', { where: [['eventId', '==', eventId]], orderBy: [['at', 'desc']], limit: 200 }, enabled && !!eventId);

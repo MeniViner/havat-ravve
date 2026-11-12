@@ -20,6 +20,14 @@
         "dist"
       ],
       "port": 8766
+    },
+    {
+      "name": "app-dev-b",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/dev.mjs"
+      ],
+      "port": 5183
     }
   ]
 }

@@ -1,5 +1,5 @@
 // Data access for events, tickets, visits, donations, stalls, settings, notifications and calendar.
-import { useList, useDoc, write, newId } from './db';
+import { useList, useDoc, write, newId, push, pull, inc } from './db';
 import { nowIso } from './firebase';
 import { logActivity } from './activity';
 import type {
@@ -19,6 +19,13 @@ export function useSettings() {
   return { settings: { ...DEFAULT_SETTINGS, ...(item || {}), payment: { ...DEFAULT_SETTINGS.payment, ...(item?.payment || {}) }, templates: { ...DEFAULT_SETTINGS.templates, ...(item?.templates || {}) } } as Settings, loading };
 }
 export async function saveSettings(actor: Actor, s: Settings) { const { ...data } = s as Settings & { id?: string }; delete (data as { id?: string }).id; await write.set('settings', 'app', data); logActivity(actor, 'settings', 'app', 'saved', 'ההגדרות עודכנו'); }
+
+/** Saves one part of the settings and nothing else, so a page opened before the settings loaded, or a second manager on
+ *  another page, can never overwrite the rest with defaults. `exists` = the settings document is already on the server. */
+export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, exists: boolean, what: string) {
+  if (exists) await write.update('settings', 'app', patch as Record<string, unknown>); else await write.set('settings', 'app', patch as Record<string, unknown>);
+  logActivity(actor, 'settings', 'app', 'saved', what);
+}
 
 // ---------- events ----------
 export const useUpcomingEvents = () => useList<FarmEvent>('events', { where: [['published', '==', true]], orderBy: [['start', 'asc']] }, true);
@@ -42,6 +49,15 @@ export async function deleteEvent(actor: Actor, event: FarmEvent) { await write.
 // ---------- tickets ----------
 export const useMyTickets = (uid: string, enabled: boolean) => useList<Ticket>('tickets', { where: [['ownerUid', '==', uid]], orderBy: [['createdAt', 'desc']] }, enabled && !!uid);
 export const useEventTickets = (eventId: string, enabled: boolean) => useList<Ticket>('tickets', { where: [['eventId', '==', eventId]], orderBy: [['createdAt', 'desc']] }, enabled && !!eventId);
+/** Tickets of several events in one listener (the events list). Firestore allows up to 30 ids in one query. */
+export const useTicketsOfEvents = (eventIds: string[], enabled: boolean) => useList<Ticket>('tickets', { where: [['eventId', 'in', eventIds.slice(0, 30)]] }, enabled && eventIds.length > 0);
+/** Puts every ticket of an order back exactly as it was (undo of "paid" or of a cancellation). */
+export async function restoreOrder(actor: Actor, before: Ticket[]) {
+  const now = nowIso();
+  await write.batch(before.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: t.paymentStatus, status: t.status, updatedAt: now } })));
+  const t = before[0];
+  if (t) logActivity(actor, 'ticket', t.orderId, 'edited', `בוטלה הפעולה האחרונה · ${t.ownerName} · ${t.eventTitle}`, { subjectUid: t.ownerUid, eventId: t.eventId });
+}
 export const useOpenTickets = (enabled: boolean) => useList<Ticket>('tickets', { where: [['paymentStatus', 'in', ['pending', 'claimed']]], orderBy: [['createdAt', 'desc']], limit: 500 }, enabled);
 export async function orderTickets(profile: Profile, event: FarmEvent, count: number, holders: string[], answers: Record<string, string>) {
   const orderId = newId('tickets');
@@ -69,7 +85,8 @@ export function parseQr(s: string): { id: string; secret: string } | null {
 }
 export async function recordScan(ticket: Ticket, actor: Actor, paidOnsite = false) {
   const now = nowIso();
-  await write.update('tickets', ticket.id, { scans: [...ticket.scans, { at: now, by: actor }], entries: ticket.entries + 1, paymentStatus: paidOnsite ? 'paid_onsite' : ticket.paymentStatus, updatedAt: now });
+  // increments on the server's copy: two gates scanning the same ticket both count, and nothing is refused
+  await write.update('tickets', ticket.id, { scans: push({ at: now, by: actor }), entries: inc(1), ...(paidOnsite ? { paymentStatus: 'paid_onsite' } : {}), updatedAt: now });
   logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticket.holderName || ticket.ownerName} · כניסה ${ticket.entries + 1}${paidOnsite ? ' · שולם במקום' : ''}`, { subjectUid: ticket.ownerUid, eventId: ticket.eventId });
 }
 export async function setTicketPayment(actor: Actor, ticket: Ticket, paymentStatus: PaymentStatus) {
@@ -83,6 +100,16 @@ export async function setOrderPayment(actor: Actor, tickets: Ticket[], paymentSt
   const t = tickets[0];
   if (t) logActivity(actor, 'ticket', t.orderId, 'paid', `${t.ownerName} · ${t.eventTitle} · ${t.price * tickets.length} ₪ · ${tickets.length} כרטיסים`, { subjectUid: t.ownerUid, eventId: t.eventId });
 }
+/** Paid at the gate or found by name: marks the unpaid tickets of an order as paid on site, without counting an entry.
+ *  The rules let a volunteer change exactly this (pending/claimed -> paid_onsite). */
+export async function payOrderOnsite(actor: Actor, tickets: Ticket[]) {
+  const owing = tickets.filter((t) => t.status === 'valid' && (t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'));
+  if (!owing.length) return;
+  const now = nowIso();
+  await write.batch(owing.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: 'paid_onsite', updatedAt: now } })));
+  const t = owing[0];
+  logActivity(actor, 'ticket', t.orderId, 'paid', `${t.ownerName} · ${t.eventTitle} · ${t.price * owing.length} ₪ · שולם במקום`, { subjectUid: t.ownerUid, eventId: t.eventId });
+}
 export async function claimOrderPaid(tickets: Ticket[]) {
   const now = nowIso();
   await write.batch(tickets.filter((t) => t.paymentStatus === 'pending').map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: 'claimed', updatedAt: now } })));
@@ -93,6 +120,14 @@ export async function claimOrderPaid(tickets: Ticket[]) {
 export async function cancelTicket(actor: Actor, ticket: Ticket, reason = '') {
   await write.update('tickets', ticket.id, { status: 'cancelled', paymentStatus: 'cancelled', updatedAt: nowIso() });
   logActivity(actor, 'ticket', ticket.id, 'cancelled', `${ticket.ownerName} · כרטיס ${ticket.index}/${ticket.total} · ${ticket.eventTitle}${reason ? ' · "' + reason + '"' : ''}`, { subjectUid: ticket.ownerUid, eventId: ticket.eventId });
+}
+/** A guest cancels their own order. The rules allow it only for tickets that were never scanned, and only the status may change. */
+export async function cancelOwnOrder(tickets: Ticket[]) {
+  const live = tickets.filter((t) => t.status === 'valid'); const t = live[0]; if (!t) return;
+  const now = nowIso();
+  await write.batch(live.map((x) => ({ op: 'update' as const, col: 'tickets', id: x.id, data: { status: 'cancelled', updatedAt: now } })));
+  logActivity({ uid: t.ownerUid, name: t.ownerName }, 'ticket', t.orderId, 'cancelled', `${t.ownerName} ביטל/ה ${live.length} כרטיסים · ${t.eventTitle}`, { subjectUid: t.ownerUid, eventId: t.eventId });
+  await notify('order', `הזמנה בוטלה: ${t.eventTitle}`, `${t.ownerName} ביטל/ה ${live.length} ${live.length === 1 ? 'כרטיס' : 'כרטיסים'}`, `/manage/events/${t.eventId}/guests`, t.orderId).catch(() => {});
 }
 export async function cancelOrder(actor: Actor, tickets: Ticket[], reason = '') {
   const now = nowIso();
@@ -116,6 +151,18 @@ export async function setVisitStatus(v: Visit, actor: Actor, status: VisitStatus
   await write.update('visits', v.id, { status, managerNote, handledBy: actor, updatedAt: nowIso() });
   logActivity(actor, 'visit', v.id, status, `${v.name} · ${v.date}${managerNote ? ' · ' + managerNote : ''}`, { subjectUid: v.uid });
 }
+/** A manager's decision on a visit, as one write: the status, the calendar entry and the open "לטיפול" items land together or not at all. */
+export async function decideVisit(v: Visit, actor: Actor, status: VisitStatus, managerNote: string, time: string, open: AppNotification[]) {
+  const now = nowIso();
+  await write.batch([
+    { op: 'update', col: 'visits', id: v.id, data: { status, managerNote, handledBy: actor, updatedAt: now } },
+    status === 'approved'
+      ? { op: 'set', col: 'calendar', id: `visit_${v.id}`, data: { title: `ביקור: ${v.name} · ${v.people}`, date: v.date, time, ownerUid: actor.uid, ownerName: actor.name, kind: 'visit', refId: v.id, createdAt: now } }
+      : { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
+    ...open.filter((n) => n.refId === v.id).map((n) => ({ op: 'update' as const, col: 'notifications', id: n.id, data: status === 'new' ? { handled: false, handledBy: null, handledAt: null } : { handled: true, handledBy: actor, handledAt: now } })),
+  ]);
+  logActivity(actor, 'visit', v.id, status, `${v.name} · ${v.date}${time ? ' · ' + time : ''}${managerNote ? ' · ' + managerNote : ''}`, { subjectUid: v.uid });
+}
 export async function cancelVisit(v: Visit) {
   await write.update('visits', v.id, { status: 'cancelled', updatedAt: nowIso() });
   logActivity({ uid: v.uid, name: v.name }, 'visit', v.id, 'cancelled', `${v.name} · ${v.date}`, { subjectUid: v.uid });
@@ -136,6 +183,7 @@ export async function createDonation(profile: Profile, data: { amount: number; l
 export async function claimDonationPaid(d: Donation) {
   await write.update('donations', d.id, { paymentStatus: 'claimed', updatedAt: nowIso() });
   logActivity({ uid: d.uid, name: d.name }, 'donation', d.id, 'claimed', `${d.amount} ₪`, { subjectUid: d.uid });
+  await notify('claim', 'תרומה הועברה', `${d.name} סימן/ה שהעביר/ה ${d.amount} ₪`, `/manage/donations/${d.id}`, d.id).catch(() => {});
 }
 export async function setDonation(actor: Actor, d: Donation, patch: Partial<Pick<Donation, 'paymentStatus' | 'receiptSent'>>) {
   await write.update('donations', d.id, { ...patch, updatedAt: nowIso() });
@@ -161,8 +209,31 @@ export async function saveProduct(eventId: string, data: Omit<Product, 'id'>, ex
   return id;
 }
 export const deleteProduct = (eventId: string, id: string) => write.remove(`events/${eventId}/products`, id);
-export async function copyProducts(_fromEventId: string, toEventId: string, products: Product[]) {
-  await write.batch(products.map((p) => { const { id, ...rest } = p; return { op: 'set' as const, col: `events/${toEventId}/products`, id, data: rest }; }));
+/** Copies products into another event as new documents, placed after the ones that event already has. */
+export async function copyProducts(_fromEventId: string, toEventId: string, products: Product[], after = 0) {
+  const sorted = [...products].sort((x, y) => x.sort - y.sort);
+  await write.batch(sorted.map((p, i) => ({ op: 'set' as const, col: `events/${toEventId}/products`, id: newId('products'), data: { name: p.name, price: p.price, active: p.active, sort: after + i + 1 } })));
+}
+/** Saves the whole order in one write, so two taps can never leave two products with the same place. */
+export async function setProductOrder(eventId: string, ordered: Product[]) {
+  await write.batch(ordered.map((p, i) => ({ op: 'update' as const, col: `events/${eventId}/products`, id: p.id, data: { sort: i + 1 } })));
+}
+
+// ---------- event files (links to documents; managers only, kept out of the public event document) ----------
+export type EventFileDoc = import('./types').EventFile & { id: string };
+export const useEventFiles = (eventId: string, enabled: boolean) => useList<EventFileDoc>(`events/${eventId || '_'}/files`, {}, enabled && !!eventId);
+export async function addEventFile(eventId: string, file: import('./types').EventFile) {
+  const id = newId('files'); await write.set(`events/${eventId}/files`, id, { ...file }); return id;
+}
+export const removeEventFile = (eventId: string, fileId: string) => write.remove(`events/${eventId}/files`, fileId);
+/** Older events kept their file links inside the event document, which every guest can read. Moves them out, once. */
+export async function migrateEventFiles(actor: Actor, event: FarmEvent) {
+  const old = event.files || []; if (!old.length) return;
+  await write.batch([
+    ...old.map((f) => ({ op: 'set' as const, col: `events/${event.id}/files`, id: newId('files'), data: { ...f } })),
+    { op: 'update' as const, col: 'events', id: event.id, data: { files: [], updatedAt: nowIso() } },
+  ]);
+  logActivity(actor, 'event', event.id, 'edited', `${event.title}: קישורי הקבצים הועברו למקום שרק מנהלים רואים`, { eventId: event.id });
 }
 
 // ---------- tabs (open accounts at the farm stall) ----------
@@ -177,18 +248,19 @@ export async function openTab(actor: Actor, event: FarmEvent, guest: { uid: stri
   return id;
 }
 const sum = (items: TabItem[]) => Math.round(items.reduce((s, i) => s + i.price * i.qty, 0) * 100) / 100;
+/** Adds to the tab without reading it first: works without reception, and two volunteers can add to the same tab at once. */
 export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[]) {
+  // each line gets its own moment, so two identical products added together stay two lines
+  const base = Date.now();
+  const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString() }));
+  await write.update('tabs', tab.id, { items: push(...stamped), total: inc(sum(stamped)), updatedAt: nowIso() });
   logActivity(actor, 'tab', tab.id, 'item', `${tab.guestName}: ${items.map((i) => `${i.name}${i.qty > 1 ? ' ×' + i.qty : ''}`).join(', ')} · ${sum(items)} ₪`, { subjectUid: tab.guestUid, eventId: tab.eventId });
-  await write.tx('tabs', tab.id, (cur) => {
-    if (!cur) throw Error('החשבון לא נמצא');
-    const next = [...((cur.items as TabItem[]) || []), ...items];
-    return { ...cur, items: next, total: sum(next), updatedAt: nowIso() };
-  });
 }
+/** Removes exactly that line, whatever the other phones added meanwhile. */
 export async function removeTabItem(actor: Actor, tab: Tab, index: number, reason = '') {
-  const next = tab.items.filter((_, i) => i !== index);
-  await write.update('tabs', tab.id, { items: next, total: sum(next), updatedAt: nowIso() });
-  logActivity(actor, 'tab', tab.id, 'removed', `${tab.guestName}: ${tab.items[index]?.name || ''}${reason ? ' · "' + reason + '"' : ''}`, { subjectUid: tab.guestUid, eventId: tab.eventId });
+  const item = tab.items[index]; if (!item) return;
+  await write.update('tabs', tab.id, { items: pull(item), total: inc(-sum([item])), updatedAt: nowIso() });
+  logActivity(actor, 'tab', tab.id, 'removed', `${tab.guestName}: ${item.name}${reason ? ' · "' + reason + '"' : ''}`, { subjectUid: tab.guestUid, eventId: tab.eventId });
 }
 export async function setTabStatus(actor: Actor, tab: Tab, status: TabStatus, note = '') {
   await write.update('tabs', tab.id, { status, updatedAt: nowIso() });
