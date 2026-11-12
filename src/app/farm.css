@@ -266,9 +266,13 @@ select.r-input{padding-inline-end:38px;background-image:url("data:image/svg+xml,
   .r-rail .r-foot a{min-height:36px;display:flex;align-items:center;color:var(--r-soft)}
   .r-rail .r-foot a b{color:var(--r-ink);font-weight:700;margin-inline-end:6px}
   .r-work{display:flex;min-width:0;align-items:flex-start}
-  .r-main{flex:1;min-width:0;max-width:1120px;margin:0;padding:8px 20px 60px}
-  .r-main.narrow{max-width:760px}
+  /* lists, tables and dashboards use the whole width of the screen */
+  .r-main{flex:1;min-width:0;max-width:none;margin:0;padding:8px 24px 60px}
+  /* forms and reading pages: a readable column in the middle of the free space, never stuck to one side */
+  .r-main.narrow{max-width:none;padding-inline:max(24px, calc((100% - 960px) / 2))}
   .r-main.bare{padding-bottom:60px}
+  /* a filter or search form on a wide page keeps a sensible width instead of running across the screen */
+  .r-main:not(.narrow)>.r-page>.r-form{max-width:760px}
   .r-side{flex:none;width:440px;position:sticky;top:0;height:100dvh;overflow-y:auto;border-inline-start:1.5px solid var(--r-ink);background:var(--r-card);padding-bottom:40px}
   .r-head h1{font-size:44px}
   .r-dock{bottom:0;background:var(--r-card)}
