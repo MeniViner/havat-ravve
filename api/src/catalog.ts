@@ -116,6 +116,7 @@ export const CATALOG = {
     dates: 'Absolute dates only, YYYY-MM-DD in Asia/Jerusalem. Resolve "today" / "tomorrow" before calling; the server does not parse natural language.',
     envelope: 'Success: { ok: true, data, meta }. Failure: { ok: false, error: { code, message, he, details }, meta }.',
     unknownParams: 'Unknown query or body fields are rejected with 400.',
+    userAgent: 'Send a User-Agent header that names your client, e.g. "Instinct-HavatRavve/1.0". Cloudflare blocks Python urllib\'s default User-Agent before the request reaches this API: a plain-text 403 "error code: 1010" means it never arrived and nothing was written.',
   },
   errors: {
     VALIDATION_FAILED: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, NOT_FOUND: 404, IDEMPOTENCY_CONFLICT: 409,
