@@ -92,14 +92,48 @@ export async function listTasks(fs: Firestore, caller: Caller, query: URLSearchP
   };
 }
 
-async function teamMembers(fs: Firestore): Promise<Doc[]> {
-  const docs = await fs.query({
-    from: [{ collectionId: 'users' }],
-    select: { fields: [{ fieldPath: 'displayName' }, { fieldPath: 'role' }, { fieldPath: 'status' }] },
-    where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'active' } } },
-    limit: 1000,
-  });
-  return docs.filter((d) => TEAM_ROLES.has(String(d.data.role)) && typeof d.data.displayName === 'string');
+/** Documents per Firestore round trip when reading the team. */
+const PEOPLE_PAGE = 500;
+/** The most active profiles one search reads per team role. Past this the answer says it is incomplete. */
+const PEOPLE_MAX_PER_ROLE = 2000;
+
+/**
+ * Every active profile with this role, read in pages by document name. `complete` is false when the role
+ * has more profiles than one search is allowed to read; the caller must then say so, not guess.
+ */
+async function activeWithRole(fs: Firestore, role: string): Promise<{ docs: Doc[]; complete: boolean }> {
+  const eq = (field: string, value: string) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value } } });
+  const docs: Doc[] = [];
+  for (;;) {
+    const want = Math.min(PEOPLE_PAGE, PEOPLE_MAX_PER_ROLE - docs.length);
+    const last = docs[docs.length - 1];
+    const page = await fs.query({
+      from: [{ collectionId: 'users' }],
+      select: { fields: [{ fieldPath: 'displayName' }, { fieldPath: 'role' }] },
+      // The role is filtered in Firestore, so guests (most profiles) are never read and never use up the
+      // scan. Equality filters ordered by document name need no composite index.
+      where: { compositeFilter: { op: 'AND', filters: [eq('status', 'active'), eq('role', role)] } },
+      orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+      ...(last ? { startAt: { values: [{ referenceValue: last.name }], before: false } } : {}),
+      // one more than wanted: tells whether anything is left without another round trip
+      limit: want + 1,
+    });
+    docs.push(...page.slice(0, want));
+    if (page.length <= want) return { docs, complete: true };
+    if (docs.length >= PEOPLE_MAX_PER_ROLE) return { docs, complete: false };
+  }
+}
+
+/** One role after the other: a cold start then signs a single Google token, not one per parallel query. */
+async function teamMembers(fs: Firestore): Promise<{ docs: Doc[]; complete: boolean }> {
+  const docs: Doc[] = [];
+  let complete = true;
+  for (const role of TEAM_ROLES) {
+    const r = await activeWithRole(fs, role);
+    docs.push(...r.docs.filter((d) => typeof d.data.displayName === 'string'));
+    complete &&= r.complete;
+  }
+  return { docs, complete };
 }
 
 export async function searchPeople(fs: Firestore, caller: Caller, query: URLSearchParams) {
@@ -107,14 +141,17 @@ export async function searchPeople(fs: Firestore, caller: Caller, query: URLSear
   const raw = Object.fromEntries(query);
   const { q } = validate(operation('people.search')!.params!, raw, true) as { q: string };
   const nq = normName(q);
-  const people = (await teamMembers(fs)).map((d) => ({ uid: d.id, name: String(d.data.displayName), role: String(d.data.role), n: normName(String(d.data.displayName)) }));
+  const team = await teamMembers(fs);
+  const people = team.docs.map((d) => ({ uid: d.id, name: String(d.data.displayName), role: String(d.data.role), n: normName(String(d.data.displayName)) }));
   const exact = people.filter((p) => p.n === nq);
   const prefix = exact.length ? [] : people.filter((p) => p.n.startsWith(nq) || p.n.split(' ').some((w) => w.startsWith(nq)));
   const hits = (exact.length ? exact : prefix).sort((a, b) => a.name.localeCompare(b.name, 'he')).slice(0, 10);
   return {
     query: q,
     match: exact.length ? 'exact' : prefix.length ? 'prefix' : 'none',
-    ambiguous: hits.length > 1,
+    // an incomplete search cannot rule out a second person with the same name
+    ambiguous: hits.length > 1 || (!team.complete && hits.length > 0),
+    complete: team.complete,
     candidates: hits.map(({ uid, name, role }) => ({ uid, name, role })),
   };
 }
@@ -160,6 +197,7 @@ async function idempotent(
       });
       committing = true;
       await fs.commit([record, ...r.writes], tx);
+      // acknowledged: from here on the write is stored, and readBack reports a failed read without throwing
       return { ...result, data: await readBack(result.data), replayed: false };
     } catch (e) {
       // also after an uncertain commit: frees the transaction's locks, and is a no-op if it did commit
@@ -167,7 +205,9 @@ async function idempotent(
       if (e instanceof ApiError) throw e;
       if (isContention(e) && attempt < 6) { await backoff(attempt); continue; }
       if (committing && isUncertain(e)) {
-        // the commit may have landed: look before deciding
+        // The commit was sent and may have landed (no answer, a 5xx, or a 2xx whose body never arrived).
+        // It is never sent again from here. The idempotency record, written in the same commit, says
+        // whether it landed; if the record is missing or cannot be read, the honest answer is "unknown".
         const rec = await fs.get('api_idempotency', recordId).catch(() => null);
         if (rec) return await replay(rec);
         throw new ApiError('OUTCOME_UNKNOWN', 'the write was not acknowledged; resend with the same Idempotency-Key', { operation: op });
@@ -187,9 +227,21 @@ function activity(fs: Firestore, caller: Caller, refId: string, action: string, 
   return fs.create('activity', autoId(), { kind: 'task', refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '' });
 }
 
+/**
+ * Reads the task back after a write. It runs only once the write is known to be stored (the commit was
+ * acknowledged, or its idempotency record was found), so it never throws: a read that fails here must not
+ * turn a stored write into an error or into "outcome unknown". The caller gets the stored result with
+ * "verified": false and "readBack": "unavailable" instead.
+ */
 const readBackTask = (fs: Firestore, caller: Caller) => async (data: Record<string, unknown>) => {
   const id = String(data.taskId);
-  const d = await fs.get('tasks', id);
+  let d: Doc | null;
+  try {
+    d = await fs.get('tasks', id);
+  } catch {
+    const { expected: _unchecked, ...stored } = data;
+    return { ...stored, task: null, verified: false, readBack: 'unavailable' };
+  }
   if (!d || !visible(d.data, caller)) return { ...data, task: null, verified: false };
   const task = publicTask(d.id, d.data, caller);
   const expected = data.expected as Record<string, unknown> | undefined;

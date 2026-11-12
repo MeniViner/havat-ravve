@@ -39,9 +39,17 @@ so the catalog can't drift from the server.
   payload hash and the response.
   - Same key and payload: replay.
   - Same key, different payload: 409.
-  - Unknown commit outcome: the record is read back before anything is retried, and if it's missing the
-    call returns `OUTCOME_UNKNOWN`.
+  - Unknown commit outcome (no answer, a 5xx, or a 2xx whose body never arrived): the commit is not sent
+    again. The record is read back, and if it's missing or can't be read the call returns
+    `OUTCOME_UNKNOWN`, which claims neither success nor failure. Resending with the same key is safe.
   - Every write ends with a read-back, and `verified` says whether the stored task matches what was sent.
+    If the write is stored but the read-back itself fails, the call still succeeds, with `task: null`,
+    `verified: false` and `readBack: "unavailable"`.
+- **People search** ([src/ops.ts](src/ops.ts)): names are compared after normalization, so the team is
+  read and matched in the Worker. The query filters `status` and `role` in Firestore, one team role at a
+  time, in pages of 500 by document name, so guests are never read. One search reads at most 2,000 active
+  profiles per role. Past that the response has `complete: false`, and a single candidate is reported as
+  ambiguous.
 - **Same shape as the app**: a created task has exactly the fields `addTask()` in `src/app/store.ts`
   writes, so the app and its Rules accept it. The test suite checks this with the real Rules.
 - **Manager-only tasks**: they are invisible (404) to staff. Their titles never go into `activity`, which
@@ -66,7 +74,7 @@ For manual work: copy `.dev.vars.example` to `.dev.vars` (git-ignored), create k
 
 ## Gate A results (local, 2026-11-12)
 
-`npm run test:api`: **66 passed, 0 failed.** The suite covers:
+`npm run test:api`: **80 passed, 0 failed.** The suite covers:
 
 - health and catalog
 - auth: 401, scope 403, `X-Actor-Id` spoof 403 with no write, unknown actor
@@ -78,11 +86,17 @@ For manual work: copy `.dev.vars.example` to `.dev.vars` (git-ignored), create k
 - 5 parallel identical requests: one task
 - lost acknowledgement: reconciled
 - commit that never arrived: `OUTCOME_UNKNOWN`, and a retry writes once
+- commit applied but the response body lost mid-read: reconciled, and `OUTCOME_UNKNOWN` when the record
+  can't be read either
+- commit acknowledged but the read-back failed: reported as stored and unverified, not as an error
+- people search with 1,100 guests ahead of the team, staff across two pages, and more staff than one
+  search reads (`complete: false`)
 - simulated quota: 429 with `Retry-After`
 - app compatibility through the Rules, and `api_idempotency` unreadable by clients
 - JWT signature verified by a mock token endpoint: one exchange, then cache
 - no secrets in logs
-- production project locked
+- production project locked unless `PRODUCTION_APPROVED` names it; each case runs on its own port and must
+  be answered by its own worker
 
 Wall time measured from the client, local `wrangler dev` plus emulator, 20 sequential calls each:
 

@@ -148,7 +148,7 @@ export class Firestore {
 
   private fault(name: string) { return this.testMode && this.faults.has(name); }
 
-  private async call<T>(method: string, path: string, body?: unknown, timeoutMs = 8000): Promise<T> {
+  private async call<T>(method: string, path: string, body?: unknown, timeoutMs = 8000, breakBody = false): Promise<T> {
     if (this.fault('quota')) throw new FsError(429, 'RESOURCE_EXHAUSTED', 'simulated quota exhaustion');
     let res: Response;
     try {
@@ -162,7 +162,18 @@ export class Firestore {
       if (e instanceof ApiError) throw e;
       throw new FsError(0, 'DEADLINE_EXCEEDED', 'Firestore request failed: ' + (e instanceof Error ? e.name + ' ' + e.message : String(e)).slice(0, 160));
     }
-    if (res.ok) return (await res.json()) as T;
+    if (res.ok) {
+      // Test fault: the success headers arrived, then the connection dropped while the body was read.
+      if (breakBody) res = new Response(new ReadableStream({ start(c) { c.error(new TypeError('simulated dropped connection')); } }), { status: res.status });
+      // Firestore answered 2xx, so the request was applied, but the body can still fail to arrive (dropped
+      // connection, or the timeout firing mid-read). That must surface as an FsError the caller can reason
+      // about (isUncertain), not as a bare TypeError that looks like a bug in the Worker.
+      try {
+        return (await res.json()) as T;
+      } catch (e) {
+        throw new FsError(0, 'UNAVAILABLE', 'Firestore response body could not be read: ' + (e instanceof Error ? e.name + ' ' + e.message : String(e)).slice(0, 160));
+      }
+    }
     let status = 'UNKNOWN', message = `HTTP ${res.status}`;
     try {
       // :runQuery returns errors as a one-element array, everything else as an object
@@ -174,8 +185,13 @@ export class Firestore {
     throw new FsError(res.status, status, message);
   }
 
-  /** Reads one document. Inside a transaction this goes through :batchGet, which locks it for the commit. */
+  /**
+   * Reads one document. Inside a transaction this goes through :batchGet, which locks it for the commit.
+   * Test fault "read-lost:<collection>" fails the reads of that collection made outside a transaction (the
+   * read-back after a write, the idempotency lookup after an uncertain commit) like a dropped connection.
+   */
   async get(col: string, id: string, transaction?: string): Promise<Doc | null> {
+    if (!transaction && this.fault('read-lost:' + col)) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated read that never returned');
     if (transaction) {
       const rows = await this.call<{ found?: { name: string; fields?: Record<string, V>; updateTime?: string }; missing?: string }[]>('POST', ':batchGet', { documents: [this.name(col, id)], transaction });
       const found = rows.find((r) => r.found)?.found;
@@ -197,10 +213,13 @@ export class Firestore {
     await this.call('POST', ':rollback', { transaction }).catch(() => {});
   }
 
-  /** Commits atomically. Test faults: "commit-timeout" applies the commit, then loses the acknowledgement; "commit-lost" never sends it. */
+  /**
+   * Commits atomically. Test faults: "commit-timeout" applies the commit, then loses the acknowledgement;
+   * "commit-lost" never sends it; "commit-body-lost" applies it and breaks the response body mid-read.
+   */
   async commit(writes: Write[], transaction?: string) {
     if (this.fault('commit-lost')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated commit that never arrived');
-    const r = await this.call('POST', ':commit', { writes, ...(transaction ? { transaction } : {}) }, 10000);
+    const r = await this.call('POST', ':commit', { writes, ...(transaction ? { transaction } : {}) }, 10000, this.fault('commit-body-lost'));
     if (this.fault('commit-timeout')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated lost commit acknowledgement');
     return r;
   }

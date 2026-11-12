@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, createVerify } from 'node:crypto';
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -24,6 +25,15 @@ const admin = { authorization: 'Bearer owner', 'content-type': 'application/json
 async function seed(col, id, data) {
   const r = await fetch(`${DOCS}/${col}/${id}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, enc(v)])) }) });
   if (!r.ok) throw new Error('seed failed ' + (await r.text()));
+}
+/** Synthetic active profiles, written 500 per commit. */
+async function seedPeople(people) {
+  const now = new Date().toISOString();
+  for (let i = 0; i < people.length; i += 500) {
+    const writes = people.slice(i, i + 500).map((p) => ({ update: { name: `projects/${PROJECT}/databases/(default)/documents/users/${p.uid}`, fields: Object.fromEntries(Object.entries({ uid: p.uid, email: `${p.uid}@synthetic.invalid`, displayName: p.displayName, phone: '0500000000', role: p.role, status: 'active', customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now }).map(([k, v]) => [k, enc(v)])) } }));
+    const r = await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes }) });
+    if (!r.ok) throw new Error('bulk seed failed ' + (await r.text()).slice(0, 300));
+  }
 }
 async function where(col, field, value) {
   const r = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: enc(value) } } } }) });
@@ -65,13 +75,41 @@ const tokenUrl = `http://127.0.0.1:${mock.address().port}/token`;
 
 // ---------- Worker under wrangler dev ----------
 const logs = [];
+const workers = new Set();
+/** True while something accepts TCP connections on the port. */
+const listening = (port) => new Promise((resolve) => {
+  const s = net.connect({ host: '127.0.0.1', port });
+  s.once('connect', () => { s.destroy(); resolve(true); });
+  s.once('error', () => resolve(false));
+});
 function startWorker(port, vars) {
   const args = ['wrangler', 'dev', '--config', 'api/wrangler.toml', '--ip', '127.0.0.1', '--port', String(port), '--inspector-port', String(port + 1000), '--show-interactive-dev-session=false', '--log-level', 'log'];
   for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
-  const p = spawn('npx', args, { env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
-  const onData = (d) => { for (const line of String(d).split('\n')) { const i = line.indexOf('{"requestId"'); if (i >= 0) { try { logs.push(JSON.parse(line.slice(i))); } catch { /* partial */ } } } };
+  // detached: npx, wrangler and workerd share one process group, so stopWorker can end all of them
+  const p = spawn('npx', args, { env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  p.port = port;
+  p.logs = [];
+  const onData = (d) => { for (const line of String(d).split('\n')) { const i = line.indexOf('{"requestId"'); if (i >= 0) { try { const l = JSON.parse(line.slice(i)); logs.push(l); p.logs.push(l); } catch { /* partial */ } } } };
   p.stdout.on('data', (d) => { onData(d); if (process.env.API_TEST_DEBUG) process.stderr.write(d); }); p.stderr.on('data', (d) => { onData(d); if (process.env.API_TEST_DEBUG) process.stderr.write(d); });
+  workers.add(p);
   return p;
+}
+const signalGroup = (p, signal) => { try { process.kill(-p.pid, signal); } catch { /* already gone */ } };
+/**
+ * Stops a worker and returns only once its port is closed. Killing `npx` alone can leave workerd serving
+ * the port for a while, and the next worker's health check would then be answered by the old one.
+ */
+async function stopWorker(p) {
+  signalGroup(p, 'SIGTERM');
+  for (let i = 0; i < 100 && (await listening(p.port)); i++) { if (i === 50) signalGroup(p, 'SIGKILL'); await new Promise((r) => setTimeout(r, 100)); }
+  workers.delete(p);
+  if (await listening(p.port)) throw new Error(`worker on port ${p.port} did not stop`);
+}
+process.on('exit', () => { for (const p of workers) signalGroup(p, 'SIGKILL'); });
+/** Whether this worker process logged the request, which proves it is the one that answered. */
+async function servedBy(p, requestId) {
+  for (let i = 0; i < 50; i++) { if (p.logs.some((l) => l.requestId === requestId)) return true; await new Promise((r) => setTimeout(r, 100)); }
+  return false;
 }
 async function waitUp(base) {
   for (let i = 0; i < 120; i++) { try { const r = await fetch(base + '/v1/health'); if (r.ok) return; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
@@ -287,6 +325,28 @@ try {
     const again = await create(KEYS.assistant, b3, k3);
     check(again.status === 201 && (await countTitled(b3.title)) === 1, 'resend with same key → written once');
 
+    // review finding: Firestore answers 2xx to the commit, then the body fails to arrive
+    const k4 = randomUUID(); const b4 = { title: 'תשובה שנקטעה באמצע' };
+    const cut = await create(KEYS.assistant, b4, k4, { 'x-test-fault': 'commit-body-lost' });
+    check(cut.status === 200 && cut.json.data.replayed === true && cut.json.data.verified === true && (await countTitled(b4.title)) === 1, 'commit applied, response body lost mid-read → reconciled from the idempotency record, not a 500', cut.json);
+    const cutAgain = await create(KEYS.assistant, b4, k4);
+    check(cutAgain.status === 200 && cutAgain.json.data.replayed === true && cutAgain.json.data.taskId === cut.json?.data?.taskId && (await countTitled(b4.title)) === 1, 'resend after the lost body → same task, no duplicate', cutAgain.json);
+
+    // the commit landed, but neither its answer nor the idempotency record can be read: the API cannot know
+    const k5 = randomUUID(); const b5 = { title: 'נכתב ואי אפשר לדעת' };
+    const blind = await create(KEYS.assistant, b5, k5, { 'x-test-fault': 'commit-body-lost,read-lost:api_idempotency' });
+    check(blind.status === 503 && blind.json.error.code === 'OUTCOME_UNKNOWN' && (await countTitled(b5.title)) === 1, 'commit applied, body and lookup both lost → 503 OUTCOME_UNKNOWN: neither success nor failure is claimed', blind.json);
+    const blindAgain = await create(KEYS.assistant, b5, k5);
+    check(blindAgain.status === 200 && blindAgain.json.data.replayed === true && blindAgain.json.data.verified === true && (await countTitled(b5.title)) === 1, 'resend with the same key → replayed, the Worker did not write it a second time', blindAgain.json);
+
+    // the commit was acknowledged, then the read-back failed: the write is stored and must not be reported as failed
+    const k6 = randomUUID(); const b6 = { title: 'נשמר ולא נקרא בחזרה' };
+    const noRead = await create(KEYS.assistant, b6, k6, { 'x-test-fault': 'read-lost:tasks' });
+    const nd = noRead.json?.data || {};
+    check(noRead.status === 201 && noRead.json.ok === true && nd.replayed === false && nd.verified === false && nd.task === null && nd.readBack === 'unavailable' && typeof nd.taskId === 'string' && !('expected' in nd) && (await countTitled(b6.title)) === 1, 'commit acknowledged, read-back failed → reported as stored but unverified, not as an error', noRead.json);
+    const readAgain = await create(KEYS.assistant, b6, k6);
+    check(readAgain.status === 200 && readAgain.json.data.replayed === true && readAgain.json.data.verified === true && readAgain.json.data.taskId === nd.taskId && !('readBack' in readAgain.json.data) && (await countTitled(b6.title)) === 1, 'resend with the same key → replayed and verified, still one task', readAgain.json);
+
     const q = await create(KEYS.assistant, { title: 'מכסה נגמרה' }, randomUUID(), { 'x-test-fault': 'quota' });
     const ra = Number(q.headers.get('retry-after'));
     check(q.status === 429 && q.json.error.code === 'QUOTA_EXCEEDED' && ra >= 60 && ra <= 86400 && (await countTitled('מכסה נגמרה')) === 0, 'Firestore quota → clean 429 with Retry-After, nothing written', { status: q.status, ra });
@@ -336,29 +396,70 @@ try {
   console.log('  | operation | n | mean ms | p95 ms |');
   console.log('  |---|---|---|---|');
   for (const [k, a] of Object.entries(timings)) console.log(`  | ${k} | ${a.length} | ${(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1)} | ${pct(a, 95).toFixed(1)} |`);
+
+  // Runs last: it fills `users` with thousands of profiles, which would distort the timings above.
+  // Document ids are chosen so the bulk profiles sort before the named ones ("aaa-", "bulk-" < "syn-" < "zzz-").
+  section('people search beyond 1,000 profiles');
+  {
+    const search = async (q) => (await api('GET', '/v1/people?q=' + encodeURIComponent(q), { key: KEYS.owner })).json?.data || {};
+    const n4 = (i) => String(i).padStart(4, '0');
+
+    // review finding: 1,100 active guests used to fill the 1,000-document scan before any team member was read
+    await seedPeople(Array.from({ length: 1100 }, (_, i) => ({ uid: `aaa-guest-${n4(i)}`, displayName: `אורח ${n4(i)}`, role: 'guest' })));
+    const afterGuests = await search('דני כהן');
+    check(afterGuests.match === 'exact' && afterGuests.candidates?.length === 1 && afterGuests.candidates[0].uid === 'syn-dani-c' && afterGuests.ambiguous === false && afterGuests.complete === true, '1,100 active guests ahead of the team → the exact name is still found, search is complete', afterGuests);
+    const guestName = await search('אורח 0001');
+    check(guestName.match === 'none' && guestName.candidates?.length === 0, 'guests are still never candidates', guestName);
+
+    // more staff than one page (500): a member on a later page, and a duplicate name split across pages
+    await seedPeople([
+      { uid: 'aaa-noa', displayName: 'נועה שדה', role: 'staff' },
+      ...Array.from({ length: 600 }, (_, i) => ({ uid: `bulk-staff-${n4(i)}`, displayName: `עובד ${n4(i)}`, role: 'staff' })),
+      { uid: 'zzz-noa', displayName: 'נועה שדה', role: 'staff' },
+      { uid: 'zzz-tslil', displayName: 'צליל אחרון', role: 'staff' },
+    ]);
+    const lastPage = await search('צליל אחרון');
+    check(lastPage.match === 'exact' && lastPage.candidates?.[0]?.uid === 'zzz-tslil' && lastPage.ambiguous === false && lastPage.complete === true, '600+ staff → a member on the second page is found', lastPage);
+    const twins = await search('נועה שדה');
+    check(twins.match === 'exact' && twins.ambiguous === true && twins.complete === true && twins.candidates?.map((c) => c.uid).sort().join() === 'aaa-noa,zzz-noa', 'the same name on the first and the last page → both candidates, ambiguous', twins);
+
+    // more staff than one search reads (2,000 per role): the answer says it is partial instead of guessing
+    await seedPeople(Array.from({ length: 1500 }, (_, i) => ({ uid: `bulk-staff-${n4(600 + i)}`, displayName: `עובד ${n4(600 + i)}`, role: 'staff' })));
+    const partialOne = await search('נועה שדה');
+    check(partialOne.complete === false && partialOne.candidates?.length === 1 && partialOne.candidates[0].uid === 'aaa-noa' && partialOne.ambiguous === true, '2,100+ staff → "complete": false, and the one candidate found is not presented as unambiguous', partialOne);
+    const partialNone = await search('צליל אחרון');
+    check(partialNone.complete === false && partialNone.match === 'none', 'a member past the scan → no match, with "complete": false saying people may be missing', partialNone);
+  }
 } catch (e) {
   failures++;
   console.error(e);
 } finally {
-  worker.kill('SIGTERM');
+  await stopWorker(worker).catch((e) => { failures++; console.error(e); });
   mock.close();
   await rulesEnv?.cleanup().catch(() => {});
 }
 
 // production lock: a Worker pointed at the production project id (no emulator) refuses to serve data
-// unless PRODUCTION_APPROVED names that same project
+// unless PRODUCTION_APPROVED names that same project.
+// Each case gets its own port and must be answered by the worker started for it: on a shared port a
+// worker that is still shutting down answers the next case's request with the previous case's setting.
 section('production lock');
-for (const [approved, expectLocked] of [['', true], ['some-other-project', true], ['havat-ravve', false]]) {
-  const port = PORT + 7;
+for (const [i, [approved, expectLocked]] of [['', true], ['some-other-project', true], ['havat-ravve', false]].entries()) {
+  const port = PORT + 7 + i;
+  const label = expectLocked
+    ? `project "havat-ravve", PRODUCTION_APPROVED="${approved}" → 503 PRODUCTION_LOCKED, no Google call`
+    : 'project "havat-ravve", PRODUCTION_APPROVED="havat-ravve" → lock opens';
+  if (await listening(port)) { check(false, label, `port ${port} is already in use, so the answer would not come from this case's worker`); continue; }
   // a garbage service account: if the lock opens, the call fails at signing, before any network request
   const w = startWorker(port, { FIRESTORE_PROJECT_ID: 'havat-ravve', PRODUCTION_APPROVED: approved, API_CREDENTIALS: JSON.stringify(CREDENTIALS), GCP_SERVICE_ACCOUNT: JSON.stringify({ ...SA, private_key: 'not-a-key' }) });
   try {
     await waitUp(`http://127.0.0.1:${port}`);
     const r = await fetch(`http://127.0.0.1:${port}/v1/tasks`, { headers: { authorization: 'Bearer ' + KEYS.owner } });
     const j = await r.json();
-    if (expectLocked) check(r.status === 503 && j.error.code === 'PRODUCTION_LOCKED', `project "havat-ravve", PRODUCTION_APPROVED="${approved}" → 503 PRODUCTION_LOCKED, no Google call`, j);
-    else check(j.error?.code !== 'PRODUCTION_LOCKED', 'project "havat-ravve", PRODUCTION_APPROVED="havat-ravve" → lock opens', j);
-  } catch (e) { failures++; console.error(e); } finally { w.kill('SIGTERM'); await new Promise((r) => w.once('exit', r)); }
+    const own = await servedBy(w, j.meta?.requestId);
+    if (expectLocked) check(own && r.status === 503 && j.error.code === 'PRODUCTION_LOCKED', label, { answeredByThisWorker: own, ...j });
+    else check(own && j.ok === false && j.error?.code !== 'PRODUCTION_LOCKED', label, { answeredByThisWorker: own, ...j });
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); }
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

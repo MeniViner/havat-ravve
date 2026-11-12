@@ -40,6 +40,7 @@ export const OPERATIONS: Operation[] = [
       'Exact name matches come first; only if there are none, prefix matches on the full name or any word.',
       'When "ambiguous" is true, ask the user to pick one of "candidates" by uid. Never pick for them.',
       'Only team members (staff, manager, owner) are returned, without email or phone.',
+      '"complete" is false when the team is too large to search in full: people may be missing from "candidates", so a single candidate is reported as ambiguous. Confirm with the user before using it.',
     ],
   },
   {
@@ -81,7 +82,10 @@ export const OPERATIONS: Operation[] = [
       urgent: { type: 'bool', default: false },
     },
     requiredScope: 'tasks:create',
-    notes: ['The response is a read-back of the stored task ("verified": true when it matches what was sent).'],
+    notes: [
+      'The response is a read-back of the stored task ("verified": true when it matches what was sent).',
+      '"readBack": "unavailable" (with "task": null, "verified": false) means the task was stored but could not be read back. Do not create it again with a new Idempotency-Key; read it later with tasks.get.',
+    ],
   },
   {
     name: 'tasks.assign',
@@ -95,7 +99,10 @@ export const OPERATIONS: Operation[] = [
       assignee: { type: 'uid', required: true, he: 'uid מתוך people.search' },
     },
     requiredScope: 'tasks:assign',
-    notes: ['The response is a read-back of the stored task.'],
+    notes: [
+      'The response is a read-back of the stored task.',
+      '"readBack": "unavailable" (with "task": null, "verified": false) means the change was stored but could not be read back. Do not send it again with a new key.',
+    ],
   },
 ];
 
