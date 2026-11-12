@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Task, TaskLocation, ShoppingCategory } from '../types';
 import type { TeamCtx } from '../ctx';
 import { useToast, todayISO, addDays, fmtDayShort } from '../ui';
-import { Head, Seg, Field, Tick, Btn, Form, Empty, pickImage, deferDelete, useSticky } from '../kit';
+import { Head, Seg, Field, Tick, Btn, Form, Empty, pickImage, deferDelete, useSticky, markFresh } from '../kit';
 import { back, navigate, param } from '../router';
 import { addTask, editTask, deleteTask, useTask, compressPhoto, getPosition, addShopping, useBoughtHistory } from '../store';
 
@@ -75,10 +75,12 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
     setBusy(true); setErr('');
     try {
       if (existing) { await editTask(ctx.actor, existing, data); toast({ text: 'נשמר' }, 2000); back(`/tasks/${existing.id}`); return; }
-      await addTask(ctx.actor, data);
-      toast({ text: `נוספה: ${t}` }, 2500);
-      setTitle(''); setNote(''); setPhoto(''); setUrgent(false);
-      titleRef.current?.focus();
+      const id = await addTask(ctx.actor, data);
+      // back to the list, where the new row is marked; every field starts empty next time
+      markFresh(id);
+      toast({ text: `נוספה: ${t}`, actions: [{ label: 'ביטול', onClick: () => { deleteTask(ctx.actor, { id, ...data, createdBy: ctx.actor } as unknown as Task).catch(() => {}); } }] }, 6000);
+      setTitle(''); setNote(''); setPhoto(''); setUrgent(false); setWho(''); setWhere(''); setHere(null); setLocating(''); setWhen('none'); setManagersOnly(false);
+      navigate('/tasks', true);
     } catch (e) { setErr((e as Error).message || 'לא נשמר'); } finally { setBusy(false); }
   };
   const remove = () => {
@@ -88,15 +90,17 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
     navigate('/tasks', true);
   };
   const others = ctx.team.filter((p) => p.uid !== ctx.actor.uid);
+  // what the fixed button at the bottom will add, in one short line
+  const whoName = who === ctx.actor.uid ? 'עליי' : ctx.team.find((p) => p.uid === who)?.displayName.split(' ')[0] || '';
+  const whereName = where === 'here' ? 'כאן' : where === 'keep' ? existing?.location?.placeName || '' : ctx.places.find((x) => x.id === where)?.name || '';
+  const whenName = when === 'today' ? 'היום' : when === 'tomorrow' ? 'מחר' : when === 'date' ? fmtDayShort(date) : '';
+  const summary = [whenName, whereName, whoName || 'פנויה', urgent && 'דחוף', managersOnly && 'מנהלים בלבד'].filter(Boolean).join(' · ');
   return (
     <Form onSubmit={submit}>
       <Field label="מה צריך לעשות?">{(id) => <input id={id} ref={titleRef} className="r-input big" value={title} onChange={(e) => { setTitle(e.target.value); setErr(''); }} maxLength={200} enterKeyHint="done" autoComplete="off" />}</Field>
       {err && <p className="r-err" role="alert">{err}</p>}
       {photo && <div className="r-photo"><img src={photo} alt="התמונה שצורפה" /><button type="button" onClick={() => setPhoto('')}>הסרה</button></div>}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <Btn type="submit" disabled={busy} style={{ flex: 1 }}>{existing ? 'שמירה' : 'הוספה'}</Btn>
-        {!photo && <Btn kind="ghost" onClick={addPhoto} disabled={busy}>תמונה</Btn>}
-      </div>
+      {!photo && <Btn kind="ghost" onClick={addPhoto} disabled={busy} style={{ alignSelf: 'flex-start' }}>תמונה</Btn>}
       <h2 className="r-optional">{existing ? 'פרטים' : 'אפשר גם, לא חובה'}</h2>
       <Field label="על מי?">{(id) => <select id={id} className="r-input" value={who} onChange={(e) => setWho(e.target.value)}><option value="">פנויה, מי שיכול לוקח</option><option value={ctx.actor.uid}>עליי</option>{others.map((p) => <option key={p.uid} value={p.uid}>{p.displayName}</option>)}</select>}</Field>
       <Field label="איפה?" help={locating || undefined}>{(id) => <select id={id} className="r-input" value={where} onChange={(e) => pickWhere(e.target.value)}><option value="">בלי מקום</option><option value="here">כאן, איפה שאני עומד/ת</option>{where === 'keep' && <option value="keep">{existing?.location?.placeName || 'הנקודה שנשמרה'}</option>}{ctx.places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}</Field>
@@ -108,8 +112,8 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
         <summary>להוסיף הסבר</summary>
         <Field label="הסבר">{(id) => <textarea id={id} className="r-input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} placeholder="איפה הכלים, מה בדיוק, למי לפנות" />}</Field>
       </details>
-      {existing && <Btn type="submit" disabled={busy}>שמירה</Btn>}
       {existing && (ctx.manager || existing.createdBy.uid === ctx.actor.uid) && <Btn kind="danger" onClick={remove} style={{ alignSelf: 'flex-start' }}>מחיקת המשימה</Btn>}
+      <div className="r-dock"><span className="r-what">{summary}</span><Btn type="submit" fit disabled={busy}>{existing ? 'שמירה' : 'הוספה'}</Btn></div>
     </Form>
   );
 }
@@ -156,7 +160,6 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
       {!title && usual.length > 0 && <div className="r-sugg" style={{ padding: 0 }}><span>קונים בדרך כלל:</span>{usual.map((t) => <button key={t} type="button" onClick={() => { setTitle(t); ref.current?.focus(); }}>{t}</button>)}</div>}
       <Field label="כמה?" help="לא חובה. 6 קרטונים, 2 חבילות, 50 מטר">{(id) => <input id={id} className="r-input" value={qty} onChange={(e) => setQty(e.target.value)} maxLength={40} enterKeyHint="done" autoComplete="off" />}</Field>
       {err && <p className="r-err" role="alert">{err}</p>}
-      <Btn type="submit" disabled={busy}>הוספה</Btn>
       <h2 className="r-optional">אפשר גם, לא חובה</h2>
       <Tick on={urgent} onChange={setUrgent} help="עולה לראש הרשימה">דחוף</Tick>
       <details className="r-details">
@@ -166,6 +169,7 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
           <Field label="קישור למוצר">{(id) => <input id={id} className="r-input" dir="ltr" inputMode="url" value={link} onChange={(e) => setLink(e.target.value)} maxLength={2000} placeholder="https://" />}</Field>
         </div>
       </details>
+      <div className="r-dock"><span className="r-what">{[catOf(cat).label, qty.trim(), urgent && 'דחוף'].filter(Boolean).join(' · ')}</span><Btn type="submit" fit disabled={busy}>הוספה</Btn></div>
     </Form>
   );
 }

@@ -1,5 +1,6 @@
 // The rebuilt interface kit. Small on purpose: words instead of icons, real forms, one check mark, one row per kind of thing.
 import { Component, useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { A, Icon } from './ui';
 import { back } from './router';
 
@@ -120,6 +121,70 @@ export function deferDelete(id: string, run: () => void, ms = 6000) {
 /** Re-renders when the set of records waiting to be deleted changes; use `isHidden` to filter lists. */
 export const useHiddenVersion = () => useSyncExternalStore((l) => { hiddenListeners.add(l); return () => hiddenListeners.delete(l); }, () => hiddenVersion);
 export const isHidden = (id: string) => hidden.has(id);
+
+// ---------- the row that was just added ----------
+// After "הוספה" the list shows the new row in gold for a moment, so the eye finds it.
+let fresh: { id: string; at: number } | null = null;
+export const markFresh = (id: string) => { fresh = { id, at: Date.now() }; };
+export const isFresh = (id: string) => !!fresh && fresh.id === id && Date.now() - fresh.at < 4000;
+
+// ---------- a sheet from the bottom, instead of the browser's prompt() ----------
+/** In the app's own language, with big buttons. Esc and the backdrop close it. */
+export function Sheet({ open, title, onClose, children }: { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null); const titleId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>('textarea,input,button')?.focus();
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('keydown', key); prev?.focus?.(); };
+  }, [open]);
+  if (!open) return null;
+  // rendered on <body> so the styles of whatever list opened it (old .links, .row) never leak into the sheet
+  return createPortal(
+    <div className="r-sheet" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <h2 id={titleId}>{title}</h2>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+/** Pick one short reason, or write one. Returns the text through onChange. */
+export function Reasons({ options, value, onChange, label = 'למה? (לא חובה)' }: { options: string[]; value: string; onChange: (v: string) => void; label?: string }) {
+  const picked = options.includes(value) ? value : value ? 'אחר' : '';
+  return (
+    <div className="r-field">
+      <span className="r-label">{label}</span>
+      <div className="r-pick" role="group" aria-label={label}>{[...options, 'אחר'].map((o) => <button key={o} type="button" aria-pressed={picked === o} onClick={() => onChange(o === 'אחר' ? ' ' : o)}>{o}</button>)}</div>
+      {picked === 'אחר' && <textarea className="r-input" value={value.trim() ? value : ''} onChange={(e) => onChange(e.target.value || ' ')} maxLength={300} placeholder="כמה מילים" aria-label="סיבה" />}
+    </div>
+  );
+}
+
+type Ask = { title: string; text?: ReactNode; reasons: string[]; confirm: string; danger?: boolean; label?: string };
+/** Replaces prompt(): `const reason = await ask({...})` gives the reason (possibly '') or null when cancelled. Render `sheet` once in the screen. */
+export function useReasonSheet(): [ReactNode, (o: Ask) => Promise<string | null>] {
+  const [req, setReq] = useState<(Ask & { resolve: (v: string | null) => void }) | null>(null);
+  const [reason, setReason] = useState('');
+  const ask = (o: Ask) => new Promise<string | null>((resolve) => { setReason(''); setReq({ ...o, resolve }); });
+  const close = (v: string | null) => { req?.resolve(v); setReq(null); };
+  const sheet = (
+    <Sheet open={!!req} title={req?.title} onClose={() => close(null)}>
+      {req && <>
+        {req.text && <p className="r-sheet-text">{req.text}</p>}
+        <Reasons options={req.reasons} value={reason} onChange={setReason} label={req.label} />
+        <div className="r-sheet-acts">
+          <Btn block className={req.danger ? 'rust' : ''} onClick={() => close(reason.trim())}>{req.confirm}</Btn>
+          <Btn block kind="ghost" onClick={() => close(null)}>חזרה</Btn>
+        </div>
+      </>}
+    </Sheet>
+  );
+  return [sheet, ask];
+}
 
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="r-empty"><b>{title}</b>{children}</div>;
 

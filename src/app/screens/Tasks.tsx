@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Task, TaskLocation } from '../types';
 import type { TeamCtx } from '../ctx';
 import { A, Icon, useDesktop, useToast, fmtDate, fmtTime, dayLabel, whenText, firstName, todayISO, addDays, dateKey } from '../ui';
-import { Head, Sect, Tabs, Check, Btn, Form, Empty, useLeaving, useSticky, pickImage } from '../kit';
+import { Head, Sect, Tabs, Check, Btn, Form, Empty, useLeaving, useSticky, pickImage, isFresh } from '../kit';
 import { navigate } from '../router';
 import { useTask, setTaskDone, setTaskDoneDetails, editTask, addTask, compressPhoto, useHistoryTasks, useBoughtHistory, addShopping } from '../store';
 import { useActivityFor, ACTION_LABELS } from '../activity';
@@ -49,8 +49,8 @@ export function useTaskActions(ctx: TeamCtx) {
 }
 
 // ---------- row ----------
-type RowProps = { t: Task; ctx: TeamCtx; today: string; leaving?: boolean; onDone: (t: Task) => void; onTake?: (t: Task) => void; owner?: boolean; sel?: boolean; keep?: boolean };
-export function TaskRow({ t, ctx, today, leaving, onDone, onTake, owner = true, sel, keep }: RowProps) {
+type RowProps = { t: Task; ctx: TeamCtx; today: string; leaving?: boolean; onDone: (t: Task) => void; onTake?: (t: Task) => void; owner?: boolean; sel?: boolean; keep?: boolean; dashed?: boolean };
+export function TaskRow({ t, ctx, today, leaving, onDone, onTake, owner = true, sel, keep, dashed }: RowProps) {
   const due = dueText(t, today); const place = placeText(t); const routine = isRoutine(t);
   const time = routine ? ctx.templates.find((x) => x.id === t.templateId)?.time : '';
   const parts: { k: string; el: React.ReactNode }[] = [];
@@ -61,7 +61,7 @@ export function TaskRow({ t, ctx, today, leaving, onDone, onTake, owner = true, 
   if (t.managersOnly) parts.push({ k: 'm', el: 'מנהלים בלבד' });
   const mine = t.assignee?.uid === ctx.actor.uid;
   return (
-    <div className={['r-task', t.urgent ? 'urgent' : '', leaving ? 'leaving' : '', sel ? 'sel' : ''].filter(Boolean).join(' ')}>
+    <div className={['r-task', t.urgent ? 'urgent' : '', leaving ? 'leaving' : '', sel ? 'sel' : '', isFresh(t.id) ? 'fresh' : ''].filter(Boolean).join(' ')}>
       <Check on={!!leaving} onChange={() => onDone(t)} label={`בוצע: ${t.title}`} />
       <A to={`/tasks/${t.id}`} keep={keep}>
         <span className="r-t">{t.title}</span>
@@ -69,7 +69,7 @@ export function TaskRow({ t, ctx, today, leaving, onDone, onTake, owner = true, 
       </A>
       <div className="r-endcell">
         {t.photo && <img className="r-thumb" src={t.photo} alt="" />}
-        {owner && (t.assignee ? <span className="r-who">{mine ? 'שלך' : firstName(t.assignee.name)}</span> : !routine && onTake ? <button type="button" className="r-take" onClick={() => onTake(t)}>לקחת</button> : null)}
+        {owner && (t.assignee ? <span className="r-who">{mine ? 'שלך' : firstName(t.assignee.name)}</span> : !routine && onTake ? (dashed ? <button type="button" className="r-own" onClick={() => onTake(t)}>אני על זה</button> : <button type="button" className="r-take" onClick={() => onTake(t)}>לקחת</button>) : null)}
       </div>
     </div>
   );
