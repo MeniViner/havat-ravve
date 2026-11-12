@@ -167,15 +167,22 @@ Combinations use Firestore index merging with the existing `done` + `createdAt` 
 **IAM propagation.** For roughly the first 20 minutes after the role binding, some requests got
 `PERMISSION_DENIED` intermittently. It then cleared by itself.
 
+## Gate B: the assistant calls the API (proven 2026-11-12)
+
+Instinct holds the key in its own vault (the "Agent's computer" item, scoped to this host) and calls the
+API with `Authorization: Bearer`.
+
+- Read: `GET /v1/tasks` → 200.
+- Write: `tasks.create` → 201 with `verified: true`. Resending with the same Idempotency-Key → 200,
+  `replayed: true`, same `taskId`.
+- Firestore checked directly: exactly one task, written as the synthetic owner, with one `created`
+  activity entry and one idempotency record under `cred-assistant`. All three were deleted afterwards.
+
+Gotcha: Cloudflare blocks Python urllib's default User-Agent on `workers.dev` with a plain-text
+`403 error code: 1010` before the Worker runs. The catalog's `conventions.userAgent` tells clients to name
+themselves.
+
 ## Not proven yet
 
-- **Gate B (the assistant calling this API)**: not proven. No official Instinct documentation of custom
-  HTTP tools, webhooks or MCP servers was found. One developer reports the assistant saying it can't
-  connect a custom MCP server.
-  - The probe: ask the assistant to fetch `/v1/catalog`, then to call `GET /v1/tasks` with
-    `Authorization: Bearer <KEY_ASSISTANT>` (from `api/.dev.vars.stage-b`).
-  - If it can't send that header from a secret it holds, there's no authenticated channel, and this stays
-    blocked.
-  - No unverified bridge (a Sheet relay, browser automation) gets built in its place.
 - **Real actors**: writes still show as the synthetic owner. Binding Meni's own account (and later
   managers and staff) is the next step, each with their own key.
