@@ -555,7 +555,7 @@ try {
     const ev = await w(MGR, 'events.create', { title: 'יום פתוח', start: '2026-12-10T10:00', end: '2026-12-10T14:00', price: 30, published: true });
     ok(ev, 'events.create'); const eventId = ev.json.data.eventId;
     const cal = await docOf('calendar/event_' + eventId);
-    check(cal && cal.date === '2026-12-10' && cal.time === '10:00' && cal.kind === 'event', 'a published event gets its calendar entry (start time only: the Rules allow 5 characters)');
+    check(cal && cal.date === '2026-12-10' && cal.time === '10:00–14:00' && cal.kind === 'event', 'a published event gets its calendar entry, as the app makes it');
     check((await w(MGR, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-09T10:00' })).status === 400, 'end before start → 400');
     check((await w(STAFF, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-10T11:00' })).status === 403, 'staff cannot create events');
     ok(await w(MGR, 'events.update', { eventId, published: false }), 'events.update unpublish');

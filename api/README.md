@@ -252,11 +252,11 @@ Not exposed:
   time `HH:mm`, all Israel time.
 - Stored timestamps are ISO UTC.
 
-**Found in the app** (not fixed there, a separate change):
-- A published event's calendar entry is written with time `HH:mm–HH:mm`, which the Rules reject (5
-  characters max), so that write fails in the app. The API writes the start time only.
-- Some indexes in `firestore.indexes.json` were missing in production, for example
-  `activity` `refId` + `at`. They have now been created.
+**Found while merging:**
+- Some indexes the app uses were missing in production, for example `activity` `refId` + `at`. They have
+  now been created.
+- The deploy runs `firebase deploy --force`, which deletes production indexes missing from
+  `firestore.indexes.json`. Every index in production is now in the file.
 
 **Tests**
 - Gate A: **250 passed**. It covers every operation, a negative permission matrix for staff (14 reads

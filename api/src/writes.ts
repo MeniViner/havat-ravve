@@ -242,14 +242,10 @@ const eventFields = (required: boolean): Record<string, Param> => ({
   maxPerOrder: { type: 'int', min: 1, max: 20, default: 5, he: 'מקסימום כרטיסים להזמנה' }, capacity: { type: 'int', min: 0, max: 100000, default: 0, he: 'קיבולת, 0 ללא הגבלה' },
   open: bool('פתוח להרשמה'), published: bool('מפורסם לאורחים'),
 });
-/**
- * ManageEvents.tsx save(): a published event has a calendar entry "event_<id>", an unpublished one none.
- * The app writes time as "HH:mm–HH:mm", which firestore.rules rejects (time is at most 5 characters), so
- * that write fails in the app today. The API writes the start time only, which the Rules accept.
- */
+/** ManageEvents.tsx save(): a published event has a calendar entry "event_<id>" (time "HH:mm–HH:mm"), an unpublished one none. */
 function eventCalendar(c: Ctx, id: string, e: Record<string, unknown>): Write {
   if (!e.published) return c.fs.remove('calendar', `event_${id}`);
-  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: String(e.start).slice(0, 10), time: hhmm(String(e.start)), ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
+  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: String(e.start).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
 }
 // saveEvent() (new) + upsertCalendarRef
 def('events.create', 'events:write', 'יצירת אירוע', { ...eventFields(true), maxPerOrder: { type: 'int', min: 1, max: 20, default: 5, he: 'מקסימום כרטיסים להזמנה' } }, async (c) => {
