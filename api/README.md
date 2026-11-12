@@ -236,7 +236,13 @@ Not exposed:
 - The action and its activity entry are one commit.
 
 **Keys**
-- `api/scripts/keys.mjs` manages keys: `add`, `rotate`, `revoke`, `restore`, `--expires`, `push`.
+- `api/scripts/keys.mjs` manages keys: `add`, `rotate [--grace-minutes N]`, `end-grace`, `revoke`,
+  `restore`, `--expires`, `push`.
+- A new key is never printed. `--deliver clipboard` (for pasting into a vault) or
+  `--deliver env:<file>:<VAR>` (a git-ignored file, mode 600).
+- During a rotation's grace period the old key still works, and the log marks it
+  (`keyVersion: previous`), so you can see when the client switched. `end-grace` + `push` cuts it off.
+- `push` uploads the whole registry and refuses an empty one.
 - The registry holds hashes only, in `api/.keys.local.json`, which is git-ignored.
 - A revoked or expired key gets 401.
 
@@ -251,6 +257,9 @@ Not exposed:
 - Every parameter states its format and time zone: date `YYYY-MM-DD`, datetime `YYYY-MM-DDTHH:mm`,
   time `HH:mm`, all Israel time.
 - Stored timestamps are ISO UTC.
+
+**Test data:** `api/scripts/fixtures.mjs create|delete` makes marked tickets, a donation and an
+inactive join code (what only guests create in the app), then removes them along with their activity.
 
 **Found while merging:**
 - Some indexes the app uses were missing in production, for example `activity` `refId` + `at`. They have

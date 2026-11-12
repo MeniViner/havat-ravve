@@ -44,7 +44,7 @@ const countTitled = async (title) => (await where('tasks', 'title', title)).leng
 // ---------- synthetic credentials and service account ----------
 const newKey = () => 'hr_' + randomBytes(32).toString('base64url');
 const sha = (s) => createHash('sha256').update(s).digest('hex');
-const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey(), users: newKey(), revoked: newKey(), expired: newKey(), future: newKey(), rate: newKey() };
+const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey(), users: newKey(), revoked: newKey(), expired: newKey(), future: newKey(), rate: newKey(), rotNew: newKey(), rotOld: newKey(), rot2New: newKey(), rot2Old: newKey() };
 const CREDENTIALS = [
   { id: 'cred-assistant', sha256: sha(KEYS.assistant), actors: ['actor-demo-owner'] },
   { id: 'cred-test-owner', sha256: sha(KEYS.owner), actors: ['actor-demo-owner'] },
@@ -54,6 +54,9 @@ const CREDENTIALS = [
   { id: 'cred-test-expired', sha256: sha(KEYS.expired), actors: ['actor-demo-owner'], expiresAt: '2026-01-01T00:00:00Z' },
   { id: 'cred-test-future', sha256: sha(KEYS.future), actors: ['actor-demo-owner'], expiresAt: '2099-01-01T00:00:00Z' },
   { id: 'cred-test-rate', sha256: sha(KEYS.rate), actors: ['actor-demo-owner'] },
+  // rotations: the replaced key works only inside its grace period
+  { id: 'cred-test-rotating', sha256: sha(KEYS.rotNew), actors: ['actor-demo-owner'], previousSha256: sha(KEYS.rotOld), previousUntil: '2099-01-01T00:00:00Z' },
+  { id: 'cred-test-rotated', sha256: sha(KEYS.rot2New), actors: ['actor-demo-owner'], previousSha256: sha(KEYS.rot2Old), previousUntil: '2026-01-01T00:00:00Z' },
   { id: 'cred-test-users', sha256: sha(KEYS.users), actors: ['user:syn-dani-l', 'user:syn-ronit', 'user:syn-blocked', 'user:syn-dana-guest', 'user:syn-missing'] },
 ];
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -500,6 +503,8 @@ try {
     const taskId = tk.json.data.taskId;
     const stored = await docOf('tasks/' + taskId);
     check(stored.note === 'עם צינור' && stored.location.placeName === 'דיר' && stored.location.placeId === placeId, 'the task carries the note and the place, as the app stores them');
+    const readT = (await r(STAFF, '/v1/tasks/' + taskId)).json.data.task;
+    check(readT.note === 'עם צינור' && readT.location?.placeName === 'דיר' && readT.doneNote === '' && readT.hasDonePhoto === false, 'tasks.get returns note, location and done note (found by the assistant)', readT);
     check((await create(KEYS.users, { title: 'סודי', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 403, 'staff cannot create a manager-only task');
     const mo = await create(KEYS.users, { title: 'משימת הנהלה', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' });
     check(mo.status === 201 && (await r(STAFF, '/v1/tasks/' + mo.json.data.taskId)).status === 404, 'a manager-only task from the API is hidden from staff');
@@ -510,6 +515,7 @@ try {
     check((await w(STAFF, 'tasks.delete', { taskId: other })).status === 403, 'staff cannot delete someone else\'s task');
     ok(await w(MGR, 'tasks.edit', { taskId, urgent: true }), 'tasks.edit urgent only');
     ok(await w(STAFF, 'tasks.setDoneNote', { taskId, note: 'נוקה' }), 'tasks.setDoneNote');
+    check((await r(STAFF, '/v1/tasks/' + taskId)).json.data.task.doneNote === 'נוקה' && (await r(STAFF, '/v1/tasks?limit=50')).json.data.items.find((x) => x.id === taskId)?.doneNote === 'נוקה', 'the done note shows in tasks.get and tasks.list');
     check((await w(MGR, 'tasks.edit', { taskId })).status === 400, 'tasks.edit with nothing to change → 400');
     check((await actsOf(taskId)) === 'created,edited,note,urgent', 'edit / urgent / note activity, as the app logs them', await actsOf(taskId));
     const del = await w(MGR, 'tasks.delete', { taskId: other });
@@ -594,6 +600,9 @@ try {
     await w(STAFF, 'tabs.addItem', { tabId, productId });
     ok(await w(STAFF, 'tabs.removeItem', { tabId, index: 1, reason: 'טעות' }), 'tabs.removeItem');
     check((await w(STAFF, 'tabs.removeItem', { tabId, index: 5 })).status === 400, 'no item at that index → 400');
+    const off = (await w(MGR, 'events.saveProduct', { eventId, name: 'מיץ (לא במלאי)', price: 0, active: false })).json.data.productId;
+    const offAdd = await w(STAFF, 'tabs.addItem', { tabId, productId: off });
+    check(offAdd.status === 400 && offAdd.json.error.details.field === 'productId', 'an inactive product cannot be added to a tab (found by the assistant)');
     check((await w(STAFF, 'tabs.setStatus', { tabId, status: 'paid' })).status === 403, 'staff cannot settle a tab');
     ok(await w(MGR, 'tabs.setStatus', { tabId, status: 'paid' }), 'tabs.setStatus paid');
     check((await actsOf(tabId)) === 'item,item,opened,paid,removed', 'tab activity', await actsOf(tabId));
@@ -733,6 +742,12 @@ try {
     const exp = await api('GET', '/v1/tasks', { key: KEYS.expired });
     check(exp.status === 401 && exp.json.error.message.includes('expired'), 'an expired key → 401 "expired"');
     check((await api('GET', '/v1/tasks', { key: KEYS.future })).status === 200, 'a key that expires later still works');
+    check((await api('GET', '/v1/tasks', { key: KEYS.rotNew })).status === 200 && (await api('GET', '/v1/tasks', { key: KEYS.rotOld })).status === 200, 'during a rotation grace period both the new and the old key work');
+    check((await api('GET', '/v1/tasks', { key: KEYS.rot2New })).status === 200 && (await api('GET', '/v1/tasks', { key: KEYS.rot2Old })).status === 401, 'after the grace period the old key gets 401, the new one works');
+    const oldUse = await api('GET', '/v1/tasks?limit=1', { key: KEYS.rotOld });
+    await new Promise((res) => setTimeout(res, 300));
+    check(logs.some((l) => l.requestId === oldUse.json.meta.requestId && l.keyVersion === 'previous'), 'the log marks requests made with the old key, to see when the client switched');
+    check(oldUse.json.meta.keyVersion === 'previous' && (await api('GET', '/v1/tasks?limit=1', { key: KEYS.rotNew })).json.meta.keyVersion === 'current', 'the response itself says which key was used (meta.keyVersion), so the client can check');
 
     // rate limits and the failure log
     const burst = await Promise.all(Array.from({ length: 260 }, () => api('GET', '/v1/settings', { key: KEYS.rate })));
