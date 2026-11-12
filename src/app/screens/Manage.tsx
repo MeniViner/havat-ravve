@@ -1,87 +1,176 @@
-// Manager home ("ניהול") and the inbox of things waiting for a decision.
-import { useState } from 'react';
-import type { AppNotification, FarmEvent, Visit, Donation, CalendarItem, Profile } from '../types';
+// Manager home ("ניהול") and the queue of things waiting for a decision. Every item in the queue carries its own action:
+// the manager decides here, without opening the record first. Also the small pieces the other management screens share.
+import { useMemo, useState, type ReactNode } from 'react';
+import type { AppNotification, FarmEvent, Visit, Donation, CalendarItem, Profile, Tab, Ticket } from '../types';
 import type { TeamCtx } from '../ctx';
-import { Top, Sec, Btn, A, Icon, Avatar, Empty, Chips, Loading, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, useDesktop, useOpenSections, inText } from '../ui';
-import { useHandledNotifications, handleNotification } from '../data';
+import { A, Icon, useDesktop, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, inText, dateKey } from '../ui';
+import { Head, Sect, Tabs, Btn, Empty, useSticky } from '../kit';
+import { useHandledNotifications, handleNotification, handleNotificationsFor, decideVisit, setDonation, setTabStatus, setOrderPayment, useVisits, useDonations, useOpenTabs, useOpenTickets, downloadCsv } from '../data';
 
+// ---------- shared by the management screens ----------
+/** A row that leads somewhere: a title, one line of facts, an optional word or number at the end. */
+export function Line({ to, title, meta, end, num, sel, keep, href }: { to?: string; title: ReactNode; meta?: ReactNode; end?: ReactNode; num?: boolean; sel?: boolean; keep?: boolean; href?: string }) {
+  const body = <><span><span className="r-t">{title}</span>{meta && <span className="r-m">{meta}</span>}</span><span className={'r-e' + (num ? ' num' : '')}>{end}</span><Icon name="chev" /></>;
+  const cls = 'rm-line' + (sel ? ' sel' : '');
+  if (href) return <a className={cls} href={href} target="_blank" rel="noopener">{body}</a>;
+  return <A className={cls} to={to || '/'} keep={keep}>{body}</A>;
+}
+export const St = ({ tone, children }: { tone?: 'rust' | 'ok' | 'gold' | 'soft'; children: ReactNode }) => <span className={'rm-st ' + (tone || '')}>{children}</span>;
+export const Loading = () => <div className="r-empty">טוען…</div>;
+/** Day of an ISO moment in Israel, and a full date with the year (exports and tables must not be ambiguous). */
+export const dayOf = (iso: string) => dateKey(new Date(iso));
+export const fullDate = (iso?: string | null) => (iso ? new Date(iso.length === 10 ? iso + 'T12:00:00' : iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'Asia/Jerusalem' }) : '');
+/** Search that forgives dashes, spaces and letter case. */
+export const norm = (s: string) => s.toLowerCase().replace(/[\s\-־.()]/g, '');
+export const hit = (q: string, ...fields: (string | number | undefined | null)[]) => { const n = norm(q); return !n || fields.some((f) => norm(String(f ?? '')).includes(n)); };
+/** Wraps a phone so Excel keeps the leading zero. */
+export const asPhone = (v: string) => (v ? '\t' + v : '');
+/** CSV for Excel: guest-typed text can never run as a formula. */
+export function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const safe = (v: string | number) => (typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v);
+  downloadCsv(filename, headers, rows.map((r) => r.map(safe)));
+}
+/** Sorting for desktop tables, in Hebrew order. */
+export function useSorted<T>(initial: string, dir: 'asc' | 'desc' = 'asc') {
+  const [sort, setSort] = useState({ key: initial, dir });
+  const toggle = (key: string) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
+  const apply = (rows: T[], get: (r: T, key: string) => string | number) => [...rows].sort((a, b) => { const x = get(a, sort.key), y = get(b, sort.key); const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he'); return sort.dir === 'asc' ? c : -c; });
+  return { sort, toggle, apply };
+}
+export const SortTh = ({ k, sort, onSort, children }: { k: string; sort: { key: string; dir: 'asc' | 'desc' }; onSort: (k: string) => void; children: ReactNode }) => (
+  <th aria-sort={sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}><button type="button" onClick={() => onSort(k)}>{children}{sort.key === k ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
+);
+/** A table row that works without a mouse: Tab reaches it, Enter opens it. */
+export const rowKeys = (open: () => void) => ({ tabIndex: 0, onClick: open, onKeyDown: (e: React.KeyboardEvent) => { if (e.target === e.currentTarget && e.key === 'Enter') open(); } });
+export const isPaid = (s: string) => s === 'paid' || s === 'paid_onsite';
+
+// ---------- home ----------
 type Props = { ctx: TeamCtx; inbox: AppNotification[]; events: FarmEvent[]; visits: Visit[]; donations: Donation[]; people: Profile[]; calendar: CalendarItem[]; templatesCount: number; placesCount: number; vendorsCount: number };
-
 export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people, calendar, templatesCount, placesCount, vendorsCount }: Props) {
-  const today = todayISO();
-  const desktop = useDesktop();
-  const { isOpen, toggle } = useOpenSections(['inbox', 'topics'], 'manage');
+  const today = todayISO(); const monthStart = today.slice(0, 8) + '01';
   const next = events.filter((e) => e.published && e.end >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start))[0];
-  const monthStart = today.slice(0, 8) + '01';
-  const paidMonth = donations.filter((d) => d.createdAt >= monthStart && (d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite')).reduce((s, d) => s + d.amount, 0);
-  const pendingDon = donations.filter((d) => d.paymentStatus === 'claimed' || d.paymentStatus === 'pending').length;
+  const paidMonth = donations.filter((d) => dayOf(d.createdAt) >= monthStart && isPaid(d.paymentStatus)).reduce((s, d) => s + d.amount, 0);
+  const pendingDon = donations.filter((d) => d.paymentStatus === 'claimed').length;
   const newVisits = visits.filter((v) => v.status === 'new').length;
-  const approvedMonth = visits.filter((v) => v.status === 'approved' && v.date >= monthStart).length;
   const team = people.filter((p) => p.role !== 'guest' && p.status === 'active').length;
   const todayCal = calendar.filter((c) => c.date === today);
-  const topics: { to: string; icon: string; title: string; sub: string; badge?: number }[] = [
-    { to: '/manage/events', icon: 'ticket', title: 'אירועים', sub: next ? `${next.title} · ${fmtWeekday(next.start)} · ${inText(next.start)}` : 'אין אירוע קרוב' },
-    { to: '/manage/people', icon: 'people', title: 'אנשים', sub: `${people.length} נרשמים · ${team} בצוות` },
-    { to: '/manage/visits', icon: 'pin', title: 'ביקורים', sub: `${newVisits ? `${newVisits} חדשות · ` : ''}${approvedMonth} מאושרים החודש`, badge: newVisits || undefined },
-    { to: '/manage/donations', icon: 'heart', title: 'תרומות', sub: `${money(paidMonth)} החודש${pendingDon ? ` · ${pendingDon} ממתינה` : ''}` },
-    { to: '/manage/calendar', icon: 'calendar', title: 'יומן', sub: todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן' },
-    { to: '/manage/reports', icon: 'chart', title: 'דוחות', sub: 'משימות, תרומות, חובות פתוחים' },
-  ];
   return (
     <>
-      <Top date={fmtDayLong(today)} title="ניהול" end={<A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
-      <Sec title="לטיפול" n={inbox.length} link="הכל, גם מה שטופל" linkTo="/manage/inbox" open={isOpen('inbox')} onToggle={() => toggle('inbox')} />
-      {isOpen('inbox') && (inbox.length ? <div className="list">{inbox.slice(0, desktop ? 10 : 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} />)}</div> : <p className="lead">אין כלום שמחכה להחלטה. יופי.</p>)}
-      <Sec title="הכל לפי נושא" open={isOpen('topics')} onToggle={() => toggle('topics')} />
-      {isOpen('topics') && <>
-        <div className="tiles">{topics.map((t) => <A key={t.to} to={t.to} className="tile"><div className="h"><Icon name={t.icon} />{t.title}{t.badge ? <span className="pill rust" style={{ marginInlineStart: 'auto' }}>{t.badge}</span> : null}</div><div className="s">{t.sub}</div></A>)}</div>
-        <div className="links">
-          <A to="/manage/templates"><Icon name="repeat" />משימות חוזרות<span className="s">{templatesCount} פעילות</span><Icon name="chev" className="chev" size={18} /></A>
-          <A to="/manage/places"><Icon name="pin" />מקומות בחווה<span className="s">{placesCount}</span><Icon name="chev" className="chev" size={18} /></A>
-          <A to="/manage/vendors"><Icon name="store" />בעלי דוכנים<span className="s">{vendorsCount} ברשימה</span><Icon name="chev" className="chev" size={18} /></A>
-          <A to="/manage/activity"><Icon name="history" />כל הפעילות<span className="s">מי עשה מה</span><Icon name="chev" className="chev" size={18} /></A>
-          <A to="/manage/settings"><Icon name="sliders" />הגדרות<span className="s">תשלום, תרומות, הודעות</span><Icon name="chev" className="chev" size={18} /></A>
-          <a href="/admin" target="_blank" rel="noopener"><Icon name="external" />עריכת האתר<span className="s">נפתח בחלון נפרד</span><Icon name="chev" className="chev" size={18} /></a>
-        </div>
-      </>}
+      <Head over={fmtDayLong(today)} title="ניהול" end={<A className="r-textlink" to="/more">{firstName(ctx.profile.displayName)}</A>} />
+      <Sect title="מחכה להחלטה שלך" n={inbox.length || undefined} more={inbox.length > 4 ? 'לכל התור' : 'מה שטופל'} to="/manage/inbox" />
+      {inbox.length === 0 ? <Empty title="אין כלום שמחכה">בקשות ביקור, תרומות שהועברו וחשבונות דוכן יופיעו כאן.</Empty>
+        : <Queue ctx={ctx} items={inbox.slice(0, 4)} all={inbox} visits={visits} donations={donations} />}
+      <nav className="rm-areas" aria-label="תחומי הניהול" style={{ marginTop: 26 }}>
+        <Line to="/manage/events" title="אירועים" meta={next ? `${next.title} · ${fmtWeekday(next.start)}, ${inText(next.start)}` : 'אין אירוע קרוב'} />
+        <Line to="/events-staff" title="יום אירוע" meta="סריקה בשער ודוכן החווה" />
+        <Line to="/manage/people" title="אנשים" meta={`${people.length} נרשמו · ${team} בצוות`} />
+        <Line to="/manage/visits" title="ביקורים" meta={newVisits ? `${newVisits} בקשות חדשות` : 'אין בקשות חדשות'} end={newVisits ? <St tone="rust">{newVisits}</St> : undefined} />
+        <Line to="/manage/donations" title="תרומות" meta={`${money(paidMonth)} החודש${pendingDon ? ` · ${pendingDon} מחכות לאישור` : ''}`} />
+        <Line to="/manage/calendar" title="יומן" meta={todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום אין כלום ביומן'} />
+        <Line to="/manage/templates" title="משימות חוזרות" meta={`${templatesCount} פעילות`} />
+        <Line to="/manage/places" title="מקומות בחווה" meta={`${placesCount} נקודות שמורות`} />
+        <Line to="/manage/vendors" title="בעלי דוכנים" meta={`${vendorsCount} ברשימה`} />
+        <Line to="/manage/reports" title="דוחות" meta="משימות, כסף, אנשים" />
+        <Line to="/manage/activity" title="כל הפעילות" meta="מי עשה מה ומתי" />
+        <Line to="/manage/settings" title="הגדרות" meta="תשלום, תרומות, שאלות, הודעות" />
+        <Line href="/admin" title="עריכת האתר" meta="נפתח בחלון נפרד" />
+      </nav>
     </>
   );
 }
 
-const ICONS: Record<AppNotification['type'], string> = { visit: 'pin', donation: 'heart', join: 'user', order: 'ticket', receipt: 'file', tab: 'store', claim: 'ticket' };
-export function InboxRow({ n, ctx, handled }: { n: AppNotification; ctx: TeamCtx; handled?: boolean }) {
-  const toast = useToast(); const desktop = useDesktop();
-  const done = () => handleNotification(n, ctx.actor, !handled).then(() => toast({ text: handled ? 'חזר לתור' : 'סומן טופל', action: { label: 'ביטול', onClick: () => handleNotification(n, ctx.actor, !!handled) } }, 4000));
-  const acts = !handled && <><Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn><Btn size="sm" kind="quiet" onClick={done}>טופל</Btn></>;
+// ---------- queue ----------
+type Sources = { visits: Visit[]; donations: Donation[]; tabs?: Tab[]; tickets?: Ticket[] };
+/** What the manager can do about one item, right here. `null` action = nothing to decide, only to acknowledge. */
+function useDecide(ctx: TeamCtx, all: AppNotification[], src: Sources) {
+  const toast = useToast();
+  const fail = (e: unknown) => toast({ text: (e as Error)?.message || 'לא נשמר', kind: 'error' });
+  const reopen = (list: AppNotification[]) => list.forEach((n) => { handleNotification(n, ctx.actor, false).catch(fail); });
+  return (n: AppNotification): { label: string; run: () => void; note?: string } | null => {
+    if (n.type === 'visit') {
+      const v = src.visits.find((x) => x.id === n.refId);
+      if (!v || v.status !== 'new') return null;
+      return {
+        label: 'אישור ליומן', run: () => {
+          const mine = all.filter((x) => x.refId === v.id);
+          decideVisit(v, ctx.actor, 'approved', v.managerNote, '', all).then(() => toast({ text: `אושר ונכנס ליומן: ${v.name}`, actions: [{ label: 'ביטול', onClick: () => { decideVisit(v, ctx.actor, 'new', v.managerNote, '', mine).catch(fail); } }] }, 6000)).catch(fail);
+        },
+      };
+    }
+    if (n.type === 'donation' || n.type === 'receipt') {
+      const d = src.donations.find((x) => x.id === n.refId);
+      if (!d || d.paymentStatus === 'cancelled') return null;
+      if (!isPaid(d.paymentStatus)) {
+        if (n.type === 'receipt') return { label: '', run: () => {}, note: 'קודם מאשרים את התשלום, אחר כך שולחים קבלה' };
+        const mine = all.filter((x) => x.refId === d.id && x.type !== 'receipt'); // the receipt request stays in the queue until the receipt is sent
+        return { label: 'אישור תשלום', run: () => { setDonation(ctx.actor, d, { paymentStatus: 'paid' }).then(() => handleNotificationsFor(mine, d.id, ctx.actor)).then(() => toast({ text: `התשלום אושר: ${d.name}, ${money(d.amount)}`, actions: [{ label: 'ביטול', onClick: () => { setDonation(ctx.actor, d, { paymentStatus: d.paymentStatus }).catch(fail); reopen(mine); } }] }, 6000)).catch(fail); } };
+      }
+      if (n.type === 'receipt' && !d.receiptSent) return { label: 'הקבלה נשלחה', run: () => { setDonation(ctx.actor, d, { receiptSent: true }).then(() => handleNotification(n, ctx.actor)).then(() => toast({ text: `סומן: הקבלה נשלחה ל${d.receiptName || d.name}`, actions: [{ label: 'ביטול', onClick: () => { setDonation(ctx.actor, d, { receiptSent: false }).catch(fail); reopen([n]); } }] }, 6000)).catch(fail); } };
+      return null;
+    }
+    if (n.type === 'tab') {
+      const t = src.tabs?.find((x) => x.id === n.refId);
+      if (!t) return null;
+      const mine = all.filter((x) => x.refId === t.id);
+      return { label: 'אישור תשלום', run: () => { setTabStatus(ctx.actor, t, 'paid').then(() => handleNotificationsFor(mine, t.id, ctx.actor)).then(() => toast({ text: `החשבון נסגר: ${t.guestName}, ${money(t.total)}`, actions: [{ label: 'ביטול', onClick: () => { setTabStatus(ctx.actor, t, t.status).catch(fail); reopen(mine); } }] }, 6000)).catch(fail); } };
+    }
+    if (n.type === 'claim') {
+      const order = (src.tickets || []).filter((x) => x.orderId === n.refId && x.status === 'valid');
+      if (!order.length) return null;
+      const mine = all.filter((x) => x.refId === n.refId);
+      const prev = order[0].paymentStatus;
+      return { label: 'אישור תשלום', run: () => { setOrderPayment(ctx.actor, order, 'paid').then(() => handleNotificationsFor(mine, n.refId, ctx.actor)).then(() => toast({ text: `התשלום אושר: ${order[0].ownerName}, ${money(order.reduce((s, x) => s + x.price, 0))}`, actions: [{ label: 'ביטול', onClick: () => { setOrderPayment(ctx.actor, order, prev).catch(fail); reopen(mine); } }] }, 6000)).catch(fail); } };
+    }
+    return null;
+  };
+}
+function Queue({ ctx, items, all, visits, donations }: { ctx: TeamCtx; items: AppNotification[]; all: AppNotification[]; visits: Visit[]; donations: Donation[] }) {
+  const tabs = useOpenTabs(all.some((n) => n.type === 'tab')); const tickets = useOpenTickets(all.some((n) => n.type === 'claim'));
+  const decide = useDecide(ctx, all, { visits, donations, tabs: tabs.items, tickets: tickets.items });
+  const toast = useToast();
+  const seen = (n: AppNotification) => { handleNotification(n, ctx.actor).then(() => toast({ text: 'ירד מהתור', actions: [{ label: 'ביטול', onClick: () => { handleNotification(n, ctx.actor, false).catch(() => {}); } }] }, 4000)).catch(() => toast({ text: 'לא נשמר', kind: 'error' })); };
   return (
-    <div className={'row' + (desktop ? ' center' : '')} style={handled ? { color: 'var(--muted)' } : undefined}>
-      <span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={ICONS[n.type] || 'bell'} /></span>
-      <div className="main">
-        <A to={n.link} className="title" style={{ display: 'block' }}>{n.title}</A>
-        <div className="meta"><span>{n.text}</span><span>{relTime(n.createdAt)}</span>{handled && n.handledBy && <span>· {firstName(n.handledBy.name)}</span>}</div>
-        {!handled && !desktop && <div className="inline" style={{ marginTop: 8 }}>{acts}</div>}
-      </div>
-      {!handled && desktop && <div className="end">{acts}</div>}
-      {handled && <Btn size="xs" kind="quiet" onClick={done}>החזרה לתור</Btn>}
+    <div>
+      {items.map((n) => {
+        const act = decide(n);
+        return (
+          <div key={n.id} className="rm-q">
+            <div><A to={n.link}><span className="r-t">{n.title}</span></A><span className="r-m">{n.text} · {relTime(n.createdAt)}</span>{act?.note && <span className="r-m">{act.note}</span>}</div>
+            <div className="rm-do">
+              {act && act.label && <Btn small onClick={act.run}>{act.label}</Btn>}
+              <Btn small kind="ghost" to={n.link}>פרטים</Btn>
+              {(!act || !act.label) && !act?.note && <Btn small kind="quiet" onClick={() => seen(n)}>ראיתי, להוריד</Btn>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-type InboxFilter = 'all' | 'visit' | 'donation' | 'tab' | 'order' | 'handled';
+type QTab = 'open' | 'visits' | 'money' | 'orders' | 'handled';
+const inTab = (n: AppNotification, t: QTab) => t === 'open' || (t === 'visits' && n.type === 'visit') || (t === 'money' && ['donation', 'receipt', 'tab', 'claim'].includes(n.type)) || (t === 'orders' && (n.type === 'order' || n.type === 'join'));
 export function InboxScreen({ ctx, inbox }: { ctx: TeamCtx; inbox: AppNotification[] }) {
-  const [filter, setFilter] = useState<InboxFilter>('all');
-  const handled = useHandledNotifications(true);
-  const desktop = useDesktop();
-  const count = (t: AppNotification['type'][]) => inbox.filter((n) => t.includes(n.type)).length;
-  const list = filter === 'handled' ? handled.items : inbox.filter((n) => filter === 'all' ? true : filter === 'visit' ? n.type === 'visit' : filter === 'donation' ? n.type === 'donation' || n.type === 'receipt' : filter === 'tab' ? n.type === 'tab' : n.type === 'order' || n.type === 'claim');
+  const desktop = useDesktop(); const toast = useToast();
+  const [tab, setTab] = useSticky<QTab>('inbox-tab', 'open');
+  const handled = useHandledNotifications(tab === 'handled');
+  const visits = useVisits(true); const donations = useDonations(true);
+  const list = useMemo(() => inbox.filter((n) => inTab(n, tab)), [inbox, tab]);
+  const n = (t: QTab) => inbox.filter((x) => inTab(x, t)).length;
+  // "recently handled" means by the time it was handled, not by the time the request arrived
+  const done = useMemo(() => [...handled.items].sort((a, b) => (b.handledAt || '').localeCompare(a.handledAt || '')), [handled.items]);
+  const back = (x: AppNotification) => { handleNotification(x, ctx.actor, false).then(() => toast({ text: 'חזר לתור' }, 2500)).catch(() => toast({ text: 'לא נשמר', kind: 'error' })); };
   return (
     <>
-      <Top backTo="/manage" backLabel="ניהול" title={<>לטיפול <span className="muted" style={{ fontWeight: 500 }}>· {inbox.length}</span></>} sub='כל מה שמחכה להחלטה של מנהל. פריט נסגר כשעושים את הפעולה או לוחצים "טופל".' />
-      <div style={{ paddingTop: 8 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'פתוחים', n: inbox.length }, { value: 'visit', label: 'ביקורים', n: count(['visit']) }, { value: 'donation', label: 'תרומות', n: count(['donation', 'receipt']) }, { value: 'tab', label: 'דוכן', n: count(['tab']) }, { value: 'order', label: 'הזמנות', n: count(['order', 'claim']) }, { value: 'handled', label: 'טופלו', n: handled.items.length }]} /></div>
-      {filter === 'handled' && handled.loading && <Loading />}
-      {list.length ? <div className="list" style={{ marginTop: 8 }}>{list.map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled={filter === 'handled'} />)}</div> : <Empty title={filter === 'handled' ? 'עוד לא טופל כלום' : 'אין כלום שמחכה'} text={filter === 'handled' ? '' : 'בקשות ביקור, תרומות שהועברו וחשבונות דוכן יופיעו כאן.'} />}
-      {filter === 'all' && handled.items.length > 0 && <><Sec title="טופלו לאחרונה" n={handled.items.length} link="הכל" onLink={() => setFilter('handled')} /><div className="list">{handled.items.slice(0, 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled />)}</div></>}
+      <Head backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="לטיפול" over={inbox.length ? `${inbox.length} מחכים להחלטה` : 'התור ריק'} />
+      <Tabs label="מה להציג" value={tab} onChange={setTab} items={[{ id: 'open', label: 'הכל', n: n('open') }, { id: 'visits', label: 'ביקורים', n: n('visits') }, { id: 'money', label: 'כסף', n: n('money') }, { id: 'orders', label: 'הזמנות', n: n('orders') }, { id: 'handled', label: 'טופלו' }]} />
+      {tab === 'handled' ? (
+        handled.loading ? <Loading /> : done.length === 0 ? <Empty title="עוד לא טופל כלום" /> : <>
+          <p className="rm-lead" style={{ paddingTop: 12 }}>100 האחרונים, לפי מתי טופלו.</p>
+          {done.map((x) => <div key={x.id} className="rm-q handled"><div><A to={x.link}><span className="r-t">{x.title}</span></A><span className="r-m">{x.text} · טופל {relTime(x.handledAt)}{x.handledBy ? ` · ${firstName(x.handledBy.name)}` : ''}</span></div><Btn small kind="quiet" onClick={() => back(x)}>להחזיר לתור</Btn></div>)}
+        </>
+      ) : list.length === 0 ? <Empty title="אין כלום שמחכה">{tab === 'open' ? 'בקשות ביקור, תרומות שהועברו וחשבונות דוכן יופיעו כאן.' : 'בסוג הזה אין פריטים פתוחים.'}</Empty>
+        : <Queue ctx={ctx} items={list} all={inbox} visits={visits.items} donations={donations.items} />}
     </>
   );
 }
-
