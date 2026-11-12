@@ -109,7 +109,7 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
 
   return (
     <>
-      <Head title="משימות" end={<A className="r-textlink" to="/history">היסטוריה</A>} />
+      <Head title="משימות" end={<>{!desktop && <Btn small to="/tasks/new">הוספה</Btn>}<A className="r-textlink" to="/history">היסטוריה</A></>} />
       {desktop && <QuickTask ctx={ctx} />}
       <Tabs label="של מי המשימות" value={tab} onChange={setTab} items={tabs} />
       {loading ? <div className="r-empty">טוען…</div>
