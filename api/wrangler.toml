@@ -1,4 +1,4 @@
-# Havat Ravve API (stage 1: synthetic only). Deploys to <name>.<account>.workers.dev on the free plan.
+# Havat Ravve API. Deploys to <name>.<account>.workers.dev on the free plan.
 # Secrets (never in this file or in git): `npx wrangler secret put API_CREDENTIALS` and `GCP_SERVICE_ACCOUNT`.
 # Local values go in api/.dev.vars (git-ignored); see api/.dev.vars.example.
 name = "havat-ravve-api"
@@ -8,8 +8,10 @@ workers_dev = true
 preview_urls = false
 
 [vars]
-# Stage B: the separate Spark test project. The production project id is refused by the code.
-FIRESTORE_PROJECT_ID = ""
+# Stage B runs against the production project: Meni approved access and writes on 2026-11-12, while the
+# app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
+FIRESTORE_PROJECT_ID = "havat-ravve"
+PRODUCTION_APPROVED = "havat-ravve"
 
 [observability]
 enabled = true

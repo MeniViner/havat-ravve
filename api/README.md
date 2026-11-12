@@ -1,9 +1,12 @@
-# Havat Ravve API (stage 1)
+# Havat Ravve API
 
 A Cloudflare Worker that lets Meni's personal assistant read and write farm tasks over HTTPS. It's a thin
 gateway: a static catalog describes the operations, the Worker checks permissions, and Firestore is reached
-through its REST API. Stage 1 uses **synthetic actors and data only**, and the code refuses the production
-project id (`havat-ravve`) outside the emulator.
+through its REST API. Actors are still **synthetic** (they write as "בעלים (סינתטי)"). The production
+project (`havat-ravve`) is served only when `PRODUCTION_APPROVED` names it too. Meni approved that on
+2026-11-12, while the app is still being built.
+
+Live: `https://havat-ravve-api.meniviner.workers.dev` (Workers Free).
 
 ```
 assistant ──GET /v1/catalog──▶ Worker ──Firestore REST──▶ Firestore (emulator or a separate test project)
@@ -96,23 +99,69 @@ These numbers prove the logic, not production latency. The emulator is local, an
 same-key races slow (around 4 s, then all five resolve to one task). Real CPU time can't be measured
 locally. That needs Stage B.
 
+## Stage B results (deployed, real Firestore, 2026-11-12)
+
+The Worker runs on `workers.dev` against the `havat-ravve` Firestore with service account
+`api-worker@havat-ravve.iam.gserviceaccount.com`, which has only `roles/datastore.user`.
+
+- Its JSON key went straight from `gcloud` into `wrangler secret put GCP_SERVICE_ACCOUNT` and the local
+  file was deleted.
+- The plain API keys live only in `api/.dev.vars.stage-b`, which is git-ignored. The Worker holds only their
+  hashes.
+
+`tests/api-remote.mjs` (`npm run test:api:remote`, env in its header): **33 passed, 0 failed.**
+
+- Auth: 401 and 403.
+- Real Google OAuth: JWT signed in the Worker, then the token is cached.
+- People search finds the real owner and never guesses.
+- Create covers the exact app shape, `created`/`assigned` activity in the same commit, replay, 409 with no
+  extra task, and a real assignee.
+- Unknown assignee: 400.
+- Assign and no-op assign. Staff can't assign and doesn't see `managersOnly`.
+- Pagination, and every filter combination.
+- Cleanup: every tagged task, its activity and this credential's idempotency records are deleted, and the
+  run checks none are left.
+
+Client wall time from Tel Aviv (Cloudflare LHR → Firestore):
+
+| operation | p50 ms | max ms |
+|---|---|---|
+| tasks.get | 151 | 219 |
+| tasks.list | 156 | 226 |
+| tasks.list, filtered | 153 | 161 |
+| people.search | 180 | |
+| tasks.create (transaction + read-back) | 393 | 845 |
+| tasks.assign | 529 | |
+| first call of an isolate (fresh Google token) | 533 | |
+
+Worker CPU from `wrangler tail` (sampled):
+
+| request | CPU |
+|---|---|
+| health, catalog | 0–1 ms |
+| reads with a cached token | 1–2 ms |
+| create, assign | about 5 ms, one at 11 ms |
+| first request of an isolate (RS256 signing for a fresh token) | **7–9 ms** |
+
+The fresh-token case is close to the Free plan's 10 ms limit. It happens once per isolate per hour. If
+it starts to trip, share the token between isolates (Workers KV, about 24 writes a day).
+
+**Indexes.** Production needed three composite indexes, now in `firestore.indexes.json` and built:
+`assignee.uid` + `createdAt` desc, `dueDate` + `createdAt` desc, `managersOnly` + `createdAt` desc.
+Combinations use Firestore index merging with the existing `done` + `createdAt` index.
+
+**IAM propagation.** For roughly the first 20 minutes after the role binding, some requests got
+`PERMISSION_DENIED` intermittently. It then cleared by itself.
+
 ## Not proven yet
 
-- **Stage B** (real Google OAuth, real CPU against the 10 ms limit, a deployed `workers.dev` URL) is
-  blocked on two steps that are Meni's:
-  1. `npx wrangler login` with a Cloudflare account. Then `npx wrangler deploy --config api/wrangler.toml`.
-  2. A separate Spark test project (not `havat-ravve`) with Firestore enabled and a service account with
-     only `roles/datastore.user`. Its JSON key goes in with `npx wrangler secret put GCP_SERVICE_ACCOUNT`,
-     its project id goes in `FIRESTORE_PROJECT_ID`, and `API_CREDENTIALS` is set with
-     `wrangler secret put`.
-
-  After that, measure cold (fresh token) against warm (cache) with `npx wrangler tail` and the
-  dashboard's CPU metrics.
 - **Gate B (the assistant calling this API)**: not proven. No official Instinct documentation of custom
   HTTP tools, webhooks or MCP servers was found. One developer reports the assistant saying it can't
-  connect a custom MCP server. The probe, once there's a deployed URL: ask the assistant to fetch
-  `/v1/catalog`, then to call `GET /v1/tasks` with an `Authorization` header holding a synthetic key. If it
-  can't send that header from a secret it holds, there's no authenticated channel, and this stays blocked.
-  No unverified bridge (a Sheet relay, browser automation) gets built in its place.
-- Composite indexes for `tasks.list` filters on a real project (the emulator doesn't need them). Stage B
-  will show which ones Firestore asks for.
+  connect a custom MCP server.
+  - The probe: ask the assistant to fetch `/v1/catalog`, then to call `GET /v1/tasks` with
+    `Authorization: Bearer <KEY_ASSISTANT>` (from `api/.dev.vars.stage-b`).
+  - If it can't send that header from a secret it holds, there's no authenticated channel, and this stays
+    blocked.
+  - No unverified bridge (a Sheet relay, browser automation) gets built in its place.
+- **Real actors**: writes still show as the synthetic owner. Binding Meni's own account (and later
+  managers and staff) is the next step, each with their own key.

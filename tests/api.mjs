@@ -346,16 +346,19 @@ try {
 }
 
 // production lock: a Worker pointed at the production project id (no emulator) refuses to serve data
+// unless PRODUCTION_APPROVED names that same project
 section('production lock');
-{
+for (const [approved, expectLocked] of [['', true], ['some-other-project', true], ['havat-ravve', false]]) {
   const port = PORT + 7;
-  const w = startWorker(port, { FIRESTORE_PROJECT_ID: 'havat-ravve', API_CREDENTIALS: JSON.stringify(CREDENTIALS), GCP_SERVICE_ACCOUNT: JSON.stringify(SA) });
+  // a garbage service account: if the lock opens, the call fails at signing, before any network request
+  const w = startWorker(port, { FIRESTORE_PROJECT_ID: 'havat-ravve', PRODUCTION_APPROVED: approved, API_CREDENTIALS: JSON.stringify(CREDENTIALS), GCP_SERVICE_ACCOUNT: JSON.stringify({ ...SA, private_key: 'not-a-key' }) });
   try {
     await waitUp(`http://127.0.0.1:${port}`);
     const r = await fetch(`http://127.0.0.1:${port}/v1/tasks`, { headers: { authorization: 'Bearer ' + KEYS.owner } });
     const j = await r.json();
-    check(r.status === 503 && j.error.code === 'PRODUCTION_LOCKED', 'project "havat-ravve" outside the emulator → 503 PRODUCTION_LOCKED, no Google call', j);
-  } catch (e) { failures++; console.error(e); } finally { w.kill('SIGTERM'); }
+    if (expectLocked) check(r.status === 503 && j.error.code === 'PRODUCTION_LOCKED', `project "havat-ravve", PRODUCTION_APPROVED="${approved}" → 503 PRODUCTION_LOCKED, no Google call`, j);
+    else check(j.error?.code !== 'PRODUCTION_LOCKED', 'project "havat-ravve", PRODUCTION_APPROVED="havat-ravve" → lock opens', j);
+  } catch (e) { failures++; console.error(e); } finally { w.kill('SIGTERM'); await new Promise((r) => w.once('exit', r)); }
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

@@ -68,7 +68,7 @@ export default {
       res = ok(meta, r.data, r.status ?? 200);
     } catch (e) {
       const err = toApiError(e);
-      if (!(e instanceof ApiError)) log.internal = e instanceof Error ? e.message.slice(0, 200) : String(e);
+      if (!(e instanceof ApiError)) log.internal = e instanceof Error ? e.message.slice(0, 600) : String(e);
       log.code = err.code;
       res = fail(meta, err);
     }

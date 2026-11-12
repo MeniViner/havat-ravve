@@ -16,9 +16,11 @@ export type Env = {
   /** "1" enables X-Test-Fault and GOOGLE_TOKEN_URL. Honored only in emulator mode. */
   TEST_FAULTS?: string;
   GOOGLE_TOKEN_URL?: string;
+  /** Must equal FIRESTORE_PROJECT_ID to serve a production project. Meni approved havat-ravve on 2026-11-12. */
+  PRODUCTION_APPROVED?: string;
 };
 
-/** Projects this build must never touch outside the emulator. Opening one is a separate, approved step. */
+/** Production projects. Served only when PRODUCTION_APPROVED names the same project (an explicit, approved step). */
 const LOCKED_PROJECTS = new Set(['havat-ravve']);
 
 export class FsError extends Error {
@@ -119,7 +121,7 @@ export class Firestore {
     this.emulator = !!env.FIRESTORE_EMULATOR_HOST;
     this.project = env.FIRESTORE_PROJECT_ID || '';
     if (!this.project) throw new ApiError('INTERNAL', 'FIRESTORE_PROJECT_ID is not configured');
-    if (!this.emulator && LOCKED_PROJECTS.has(this.project)) throw new ApiError('PRODUCTION_LOCKED', `project ${this.project} is locked for this build`);
+    if (!this.emulator && LOCKED_PROJECTS.has(this.project) && env.PRODUCTION_APPROVED !== this.project) throw new ApiError('PRODUCTION_LOCKED', `project ${this.project} is locked for this build`);
     if (!this.emulator && !env.GCP_SERVICE_ACCOUNT) throw new ApiError('INTERNAL', 'GCP_SERVICE_ACCOUNT is not configured');
     this.testMode = this.emulator && env.TEST_FAULTS === '1';
     this.base = (this.emulator ? `http://${env.FIRESTORE_EMULATOR_HOST}` : 'https://firestore.googleapis.com') + `/v1/projects/${this.project}/databases/(default)/documents`;
@@ -162,7 +164,13 @@ export class Firestore {
     }
     if (res.ok) return (await res.json()) as T;
     let status = 'UNKNOWN', message = `HTTP ${res.status}`;
-    try { const j = (await res.json()) as { error?: { status?: string; message?: string } }; status = j.error?.status || status; message = j.error?.message || message; } catch { /* not json */ }
+    try {
+      // :runQuery returns errors as a one-element array, everything else as an object
+      type E = { error?: { status?: string; message?: string } };
+      const raw = (await res.json()) as E | E[];
+      const j = Array.isArray(raw) ? raw[0] || {} : raw;
+      status = j.error?.status || status; message = j.error?.message || message;
+    } catch { /* not json */ }
     throw new FsError(res.status, status, message);
   }
 
