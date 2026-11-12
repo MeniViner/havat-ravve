@@ -4,7 +4,13 @@
 import { ApiError } from './http';
 import { sameHex, sha256hex } from './util';
 
-export type Scope = 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'people:read' | 'shopping:read' | 'shopping:write';
+export type Scope =
+  | 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'tasks:edit' | 'templates:read' | 'templates:write'
+  | 'people:read' | 'people:write' | 'shopping:read' | 'shopping:write' | 'places:read' | 'places:write'
+  | 'events:read' | 'events:write' | 'tickets:read' | 'tickets:write' | 'tabs:read' | 'tabs:write' | 'tabs:settle'
+  | 'vendors:read' | 'vendors:write' | 'visits:read' | 'visits:write' | 'donations:read' | 'donations:write'
+  | 'notifications:read' | 'notifications:write' | 'calendar:read' | 'calendar:write' | 'activity:read'
+  | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read';
 export type ActorRole = 'owner' | 'manager' | 'staff';
 
 export type ActorDef = {
@@ -16,11 +22,17 @@ export type ActorDef = {
 
 export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope> };
 
-const ROLE_SCOPES: Record<ActorRole, Scope[]> = {
-  owner: ['tasks:read', 'tasks:create', 'tasks:assign', 'tasks:complete', 'people:read', 'shopping:read', 'shopping:write'],
-  manager: ['tasks:read', 'tasks:create', 'tasks:assign', 'tasks:complete', 'people:read', 'shopping:read', 'shopping:write'],
-  staff: ['tasks:read', 'tasks:create', 'tasks:complete', 'shopping:read', 'shopping:write'],
-};
+/** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
+const STAFF: Scope[] = [
+  'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'templates:read', 'shopping:read', 'shopping:write', 'places:read',
+  'events:read', 'tickets:read', 'tabs:read', 'tabs:write', 'vendors:read', 'activity:read', 'settings:read', 'overview:read',
+];
+const MANAGER: Scope[] = [
+  ...STAFF, 'tasks:assign', 'templates:write', 'people:read', 'people:write', 'places:write', 'events:write', 'tickets:write', 'tabs:settle',
+  'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'notifications:read', 'notifications:write',
+  'calendar:read', 'calendar:write', 'settings:write', 'system:read',
+];
+const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
 
 /**
  * Synthetic actors, for tests. Real people are actors named "user:<uid>": a credential lists them, and
@@ -38,7 +50,11 @@ export const seesManagerTasks = (a: ActorDef) => a.role === 'owner' || a.role ==
  * API_CREDENTIALS (a secret) is a JSON array of { id, sha256, actors }. Only the SHA-256 of each key is
  * stored; `actors[0]` is the default actor for that key.
  */
-type CredentialDef = { id: string; sha256: string; actors: string[] };
+/**
+ * One key per person (or per assistant). Revoking sets "disabled"; rotating replaces "sha256" (same id,
+ * same actors); "expiresAt" (ISO time) ends a key on its own. Managed with api/scripts/keys.mjs.
+ */
+type CredentialDef = { id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string };
 
 function credentials(raw: string | undefined): CredentialDef[] {
   if (!raw) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
@@ -79,6 +95,8 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   let found: CredentialDef | null = null;
   for (const c of credentials(rawCredentials)) if (sameHex(presented, c.sha256) && !found) found = c;
   if (!found) throw new ApiError('UNAUTHENTICATED', 'unknown API key');
+  if (found.disabled) throw new ApiError('UNAUTHENTICATED', 'this API key was revoked', { credential: found.id });
+  if (found.expiresAt && !(Date.parse(found.expiresAt) > Date.now())) throw new ApiError('UNAUTHENTICATED', 'this API key has expired', { credential: found.id });
 
   const requested = req.headers.get('x-actor-id');
   const actorId = requested ?? found.actors[0];

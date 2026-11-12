@@ -174,6 +174,104 @@ Combinations use Firestore index merging with the existing `done` + `createdAt` 
 **IAM propagation.** For roughly the first 20 minutes after the role binding, some requests got
 `PERMISSION_DENIED` intermittently. It then cleared by itself.
 
+## Catalog 2.0.0 (2026-11-12): the whole app
+
+`GET /v1/catalog` lists **86 operations**. The assistant needs nothing else.
+
+**Reads**
+- `farm.overview`: one call for "what's going on". It covers open, urgent, today's, overdue and my tasks,
+  the shopping list and upcoming events. Managers also get new and approved visits, payments waiting
+  (donations, tickets, tabs), the notification queue, today's calendar and people waiting for approval.
+- `settings.get`.
+- `<resource>.list` / `<resource>.get` for every collection: templates, places, profiles, roleInvites,
+  joinCodes, events, eventVendors, eventProducts, tickets, visits, donations, vendors, tabs,
+  notifications, calendar, activity.
+  - Each takes filters, a date range where it fits, a cursor, and `countOnly`.
+  - Base64 images become `hasPhoto`/`hasImage`, and ticket QR secrets never leave the server.
+- Tasks, shopping and people search as before.
+
+**Writes**
+
+Every action the app has:
+
+| area | actions |
+|---|---|
+| tasks | edit, done note, delete; create gains note, place and manager-only |
+| recurring templates | create, update, delete |
+| shopping | edit, delete |
+| places | add, update, delete |
+| people | role, block/unblock, notes, pre-assign a role by email |
+| events | create, update/publish, delete, vendors, stall products |
+| tickets | order payment, cancel order, single ticket payment or cancel |
+| stall tabs | open, add item, remove item, settle |
+| visits | approve/reject (calendar entry + notifications closed) |
+| donations | payment (closes its notification), receipt sent |
+| vendors | create, update, delete |
+| other | notifications handled; calendar create, update, delete; settings update |
+
+Each write does exactly what the app's function does, including the activity text. The source names the
+function. It runs in one transaction, needs an Idempotency-Key, and is read back (`verified`).
+
+Not exposed:
+- QR scanning at the gate (that's on-site, in the app).
+- Uploading images and files.
+- Editing the website's content (cms).
+- Creating join codes.
+
+**Permissions** mirror `firestore.rules`, role by role:
+- Staff can't search people, assign others, or read visits, donations, profiles, notifications, the
+  calendar or failures.
+- Only managers settle tabs or mark payments.
+- Only the owner touches owners or makes managers.
+- Nobody changes their own role or blocks themselves through the API.
+
+**Leaks closed**
+- The app writes the real title of manager-only tasks into the activity log, which staff can read.
+  Through the API, staff get those entries with generic text.
+
+**Concurrent edits**
+- Every update and delete accepts `ifUpdatedAt`. If the record changed since it was read (for example
+  in the app), the answer is `409 STALE_WRITE` and nothing is overwritten.
+- Only the fields sent change, so the app's other changes are kept.
+- The action and its activity entry are one commit.
+
+**Keys**
+- `api/scripts/keys.mjs` manages keys: `add`, `rotate`, `revoke`, `restore`, `--expires`, `push`.
+- The registry holds hashes only, in `api/.keys.local.json`, which is git-ignored.
+- A revoked or expired key gets 401.
+
+**Limits**
+- Workers Rate Limiting: 240 requests a minute per key, and 30 failed authentications a minute per IP.
+
+**Failures**
+- 5xx, `OUTCOME_UNKNOWN`, rate-limit and quota events are written to `api_failures`.
+- `system.failures` (managers) lists them, so the assistant can check daily and alert on WhatsApp.
+
+**Formats**
+- Every parameter states its format and time zone: date `YYYY-MM-DD`, datetime `YYYY-MM-DDTHH:mm`,
+  time `HH:mm`, all Israel time.
+- Stored timestamps are ISO UTC.
+
+**Found in the app** (not fixed there, a separate change):
+- A published event's calendar entry is written with time `HH:mm–HH:mm`, which the Rules reject (5
+  characters max), so that write fails in the app. The API writes the start time only.
+- Some indexes in `firestore.indexes.json` were missing in production, for example
+  `activity` `refId` + `at`. They have now been created.
+
+**Tests**
+- Gate A: **250 passed**. It covers every operation, a negative permission matrix for staff (14 reads
+  and 17 actions refused, with nothing written), activity redaction, stale writes, failure consistency,
+  revoked and expired keys, rate limits, and `system.failures`.
+- The app's own Rules accept every document the API wrote, in 13 collections, plus 40 activity records.
+- Live against production: **93 passed**, twice. Cleanup left every collection empty again.
+
+**CPU (Free plan, 10 ms)**
+- The Google token is shared between isolates through KV (`TOKEN_KV`), so it's signed about once an
+  hour, not per request.
+- A read is about 5 ms. `farm.overview` (10 queries) is 5–19 ms, above 10 ms on a new isolate.
+- Cloudflare refused none of these. If it starts to (error 1102 in the dashboard), the options are
+  fewer overview queries or the paid plan, which needs Meni's approval.
+
 ## Catalog 1.1.0 (2026-11-12)
 
 - **Real person:** the assistant's key is bound to Meni's own profile (`user:<uid>`, kept in the

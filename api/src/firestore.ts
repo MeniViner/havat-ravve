@@ -16,6 +16,11 @@ export type Env = {
   /** "1" enables X-Test-Fault and GOOGLE_TOKEN_URL. Honored only in emulator mode. */
   TEST_FAULTS?: string;
   GOOGLE_TOKEN_URL?: string;
+  /** Workers Rate Limiting bindings (wrangler.toml [[ratelimits]]): per credential, and failed logins per IP. */
+  RATE_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  /** Shares the Google access token between isolates (production only; the emulator path never uses it). */
+  TOKEN_KV?: KV;
+  AUTH_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   /** Must equal FIRESTORE_PROJECT_ID to serve a production project. Meni approved havat-ravve on 2026-11-12. */
   PRODUCTION_APPROVED?: string;
 };
@@ -75,13 +80,50 @@ async function signingKey(pem: string): Promise<CryptoKey> {
   return key;
 }
 
-export type TokenSource = 'emulator' | 'cache' | 'fresh';
+export type TokenSource = 'emulator' | 'cache' | 'shared' | 'fresh';
+type KV = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> };
 
-async function googleToken(saJson: string, tokenUrl: string): Promise<{ token: string; source: TokenSource }> {
+let saCache: { json: string; sa: ServiceAccount } | null = null;
+/** One signing in flight per isolate: parallel queries on a cold isolate share it instead of each signing. */
+let inflight: { email: string; p: Promise<{ token: string; source: TokenSource }> } | null = null;
+
+/**
+ * A Google access token for the service account. In order: this isolate's memory, the token shared by all
+ * isolates in KV (signing RS256 costs most of a request's CPU budget, and at low traffic almost every
+ * request lands on a new isolate), and only then a fresh signature, which is shared through KV for the next.
+ */
+async function googleToken(saJson: string, tokenUrl: string, kv?: KV): Promise<{ token: string; source: TokenSource }> {
   let sa: ServiceAccount;
-  try { sa = JSON.parse(saJson); } catch { throw new ApiError('INTERNAL', 'GCP_SERVICE_ACCOUNT is not valid JSON'); }
-  if (!sa.client_email || !sa.private_key) throw new ApiError('INTERNAL', 'GCP_SERVICE_ACCOUNT is missing client_email or private_key');
+  if (saCache?.json === saJson) sa = saCache.sa;
+  else {
+    try { sa = JSON.parse(saJson); } catch { throw new ApiError('INTERNAL', 'GCP_SERVICE_ACCOUNT is not valid JSON'); }
+    if (!sa.client_email || !sa.private_key) throw new ApiError('INTERNAL', 'GCP_SERVICE_ACCOUNT is missing client_email or private_key');
+    saCache = { json: saJson, sa };
+  }
   if (tokenCache && tokenCache.email === sa.client_email && Date.now() < tokenCache.expiresAt) return { token: tokenCache.token, source: 'cache' };
+  if (inflight?.email === sa.client_email) return inflight.p;
+  const p = viaKv(sa, tokenUrl, kv).finally(() => { if (inflight?.p === p) inflight = null; });
+  inflight = { email: sa.client_email, p };
+  return p;
+}
+
+async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ token: string; source: TokenSource }> {
+  const key = 'gtoken:' + sa.client_email;
+  if (kv) {
+    try {
+      const hit = JSON.parse((await kv.get(key)) || 'null') as { token: string; expiresAt: number } | null;
+      if (hit && hit.expiresAt - Date.now() > 120_000) { tokenCache = { email: sa.client_email, token: hit.token, expiresAt: hit.expiresAt - 60_000 }; return { token: hit.token, source: 'shared' }; }
+    } catch { /* KV unavailable: sign */ }
+  }
+  const t = await signAndExchange(sa, tokenUrl);
+  if (kv && tokenCache) {
+    const ttl = Math.floor((tokenCache.expiresAt - Date.now()) / 1000);
+    if (ttl > 180) await kv.put(key, JSON.stringify({ token: t.token, expiresAt: tokenCache.expiresAt }), { expirationTtl: ttl }).catch(() => {});
+  }
+  return t;
+}
+
+async function signAndExchange(sa: ServiceAccount, tokenUrl: string): Promise<{ token: string; source: TokenSource }> {
 
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64urlJson({ alg: 'RS256', typ: 'JWT', ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) }) + '.' +
@@ -138,7 +180,7 @@ export class Firestore {
       else this.noteToken('emulator');
       return 'Bearer owner';
     }
-    const t = await googleToken(this.env.GCP_SERVICE_ACCOUNT!, 'https://oauth2.googleapis.com/token');
+    const t = await googleToken(this.env.GCP_SERVICE_ACCOUNT!, 'https://oauth2.googleapis.com/token', this.env.TOKEN_KV);
     this.noteToken(t.source);
     return 'Bearer ' + t.token;
   }
@@ -205,6 +247,13 @@ export class Firestore {
     }
   }
 
+  /** Reads several documents of one collection in one round trip (missing ones are left out). */
+  async getMany(col: string, ids: string[]): Promise<Doc[]> {
+    if (!ids.length) return [];
+    const rows = await this.call<{ found?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', ':batchGet', { documents: ids.map((id) => this.name(col, id)) });
+    return rows.filter((r) => r.found).map((r) => toDoc(r.found!));
+  }
+
   async begin(): Promise<string> {
     return (await this.call<{ transaction: string }>('POST', ':beginTransaction', { options: { readWrite: {} } })).transaction;
   }
@@ -224,14 +273,32 @@ export class Firestore {
     return r;
   }
 
-  async query(structuredQuery: Record<string, unknown>): Promise<Doc[]> {
-    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', ':runQuery', { structuredQuery });
+  /** Runs a query. `parent` is a document path ("events/abc") for a subcollection query. */
+  async query(structuredQuery: Record<string, unknown>, parent = ''): Promise<Doc[]> {
+    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery });
     return rows.filter((r) => r.document).map((r) => toDoc(r.document!));
+  }
+
+  /** Counts the documents a query matches (an aggregation: one read per 1,000 matches). */
+  async count(structuredQuery: Record<string, unknown>): Promise<number> {
+    const rows = await this.call<{ result?: { aggregateFields?: { n?: V } } }[]>('POST', ':runAggregationQuery', {
+      structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: 'n', count: {} }] },
+    });
+    const n = rows.find((r) => r.result)?.result?.aggregateFields?.n;
+    return n ? Number(dec(n)) : 0;
   }
 
   // write builders
   create(col: string, id: string, data: Record<string, unknown>): Write {
     return { update: { name: this.name(col, id), fields: encFields(data) }, currentDocument: { exists: false } };
+  }
+  /** Replaces the whole document (what the app's setDoc does). */
+  set(col: string, id: string, data: Record<string, unknown>): Write {
+    return { update: { name: this.name(col, id), fields: encFields(data) } };
+  }
+  /** Deletes; with updateTime, only if the document did not change since it was read. */
+  remove(col: string, id: string, updateTime?: string): Write {
+    return { delete: this.name(col, id), ...(updateTime ? { currentDocument: { updateTime } } : {}) };
   }
   patch(col: string, id: string, data: Record<string, unknown>, updateTime?: string): Write {
     return { update: { name: this.name(col, id), fields: encFields(data) }, updateMask: { fieldPaths: Object.keys(data) }, currentDocument: updateTime ? { updateTime } : { exists: true } };

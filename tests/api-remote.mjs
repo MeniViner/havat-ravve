@@ -22,6 +22,8 @@ const section = (s) => console.log('\n' + s);
 const timings = {};
 const created = new Set();
 const createdItems = new Set();
+const extraDocs = [];
+const extraRefs = [];
 
 async function api(method, path, { body, key = KEY_STAGEB, actor, idem, label } = {}) {
   const headers = {};
@@ -153,6 +155,65 @@ try {
     check(staffAs.status === 403, 'staff actor still cannot search people');
   }
 
+  section('catalog 2.0 against production');
+  if (MENI_ACTOR) {
+    const me = { actor: MENI_ACTOR }, staff = { actor: 'actor-demo-staff' };
+    const W = async (who, op, body, label = op) => { const r = await api('POST', '/v1/actions/' + op, { ...who, body, idem: randomUUID(), label }); const d = r.j?.data || {}; for (const k of ['placeId', 'templateId', 'eventId', 'vendorId', 'tabId']) if (d[k]) extraDocs.push(`${k.replace('Id', '') === 'template' ? 'task_templates' : k.replace('Id', '') + 's'}/${d[k]}`); if (op === 'calendar.create' && d.itemId) extraDocs.push('calendar/' + d.itemId); if (d.productId) extraDocs.push(`events/${body.eventId}/products/${d.productId}`); return r; };
+    const R = (who, path, label) => api('GET', path, { ...who, label });
+    const good = (r, label) => check(r.status >= 200 && r.status < 300 && (r.j?.data?.verified ?? true) !== false, label, r.j?.error);
+    const cat = await R(me, '/v1/catalog');
+    check(cat.j.data.version === '2.0.0' && cat.j.data.operations.length >= 80, `live catalog 2.0.0 with ${cat.j.data.operations.length} operations`);
+    const ov = await R(me, '/v1/overview', 'farm.overview');
+    good(ov, 'farm.overview (manager) against production');
+    check('payments' in (ov.j.data || {}) && 'notifications' in (ov.j.data || {}), 'manager overview has payments and notifications');
+    const ovs = await R(staff, '/v1/overview');
+    check(ovs.status === 200 && !('payments' in ovs.j.data), 'staff overview has no payments');
+    good(await R(me, '/v1/settings', 'settings.get'), 'settings.get');
+    for (const p of ['/v1/profiles?limit=5', '/v1/profiles?role=owner', '/v1/events?limit=5', '/v1/tickets?countOnly=true', '/v1/visits?status=new', '/v1/donations?paymentStatus=claimed', '/v1/tabs?status=open', '/v1/notifications?handled=false', '/v1/calendar?dateFrom=2026-01-01&dateTo=2026-12-31', '/v1/activity?limit=10', '/v1/activity?kind=task&limit=5', '/v1/templates', '/v1/places', '/v1/vendors', '/v1/role-invites', '/v1/join-codes', '/v1/system/failures?hours=24']) {
+      const r = await R(me, p, 'resource reads');
+      check(r.status === 200, `GET ${p} → 200`, r.j?.error);
+    }
+    const reads = ['/v1/profiles', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/calendar', '/v1/system/failures', '/v1/activity?kind=user'];
+    const codes = await Promise.all(reads.map((p) => R(staff, p).then((x) => x.status)));
+    check(codes.every((c) => c === 403), 'staff: manager-only reads → 403 in production', codes);
+
+    const pl = await W(me, 'places.add', { name: `${TAG} מקום`, lat: 31.4, lng: 34.6 }); good(pl, 'places.add');
+    const tk = await W(me, 'tasks.create', { title: `${TAG} עריכה`, placeId: pl.j.data.placeId, note: 'פירוט' });
+    good(tk, 'tasks.create with place and note');
+    const seen = tk.j.data.task.updatedAt;
+    good(await W(me, 'tasks.edit', { taskId: tk.j.data.taskId, urgent: true, ifUpdatedAt: seen }), 'tasks.edit with ifUpdatedAt');
+    const stale = await W(me, 'tasks.edit', { taskId: tk.j.data.taskId, title: `${TAG} דריסה`, ifUpdatedAt: seen });
+    check(stale.status === 409 && stale.j.error.code === 'STALE_WRITE', 'a stale ifUpdatedAt → 409 STALE_WRITE in production');
+    good(await W(me, 'tasks.setDoneNote', { taskId: tk.j.data.taskId, note: 'בוצע' }), 'tasks.setDoneNote');
+    const del = await W(me, 'tasks.delete', { taskId: tk.j.data.taskId });
+    check(del.status === 200 && del.j.data.verified, 'tasks.delete, verified gone');
+    created.delete(tk.j.data.taskId); // gone: its activity is cleaned through extraRefs
+    const tp = await W(me, 'templates.create', { title: `${TAG} קבועה`, active: false, days: [1] }); good(tp, 'templates.create (inactive, so the app makes no tasks from it)');
+    good(await W(me, 'templates.update', { templateId: tp.j.data.templateId, note: 'x' }), 'templates.update');
+    const vd = await W(me, 'vendors.create', { name: `${TAG} ספק` }); good(vd, 'vendors.create');
+    const ev = await W(me, 'events.create', { title: `${TAG} אירוע`, start: '2027-01-10T10:00', end: '2027-01-10T12:00', published: false }); good(ev, 'events.create (draft)');
+    const eventId = ev.j.data.eventId;
+    good(await W(me, 'events.setVendor', { eventId, vendorId: vd.j.data.vendorId }), 'events.setVendor');
+    extraDocs.push(`events/${eventId}/vendors/${vd.j.data.vendorId}`);
+    const pr = await W(me, 'events.saveProduct', { eventId, name: 'קפה', price: 10 }); good(pr, 'events.saveProduct');
+    const tab = await W(staff, 'tabs.open', { eventId, guestName: `${TAG} אורח` }); good(tab, 'tabs.open (staff)');
+    const it = await W(staff, 'tabs.addItem', { tabId: tab.j.data.tabId, productId: pr.j.data.productId, qty: 2 });
+    check(it.status === 200 && it.j.data.record.total === 20, 'tabs.addItem total from the product price');
+    check((await W(staff, 'tabs.setStatus', { tabId: tab.j.data.tabId, status: 'paid' })).status === 403, 'staff cannot settle a tab');
+    good(await W(me, 'tabs.setStatus', { tabId: tab.j.data.tabId, status: 'waived' }), 'tabs.setStatus (manager)');
+    good(await W(me, 'events.update', { eventId, capacity: 50 }), 'events.update');
+    const ci = await W(me, 'calendar.create', { title: `${TAG} יומן`, date: '2027-01-11', time: '09:00' }); good(ci, 'calendar.create');
+    good(await W(me, 'calendar.update', { itemId: ci.j.data.itemId, time: '09:30' }), 'calendar.update');
+    good(await W(me, 'events.deleteProduct', { eventId, productId: pr.j.data.productId }), 'events.deleteProduct');
+    good(await W(me, 'events.removeVendor', { eventId, vendorId: vd.j.data.vendorId }), 'events.removeVendor');
+    good(await W(me, 'events.delete', { eventId }), 'events.delete');
+    good(await W(me, 'vendors.delete', { vendorId: vd.j.data.vendorId }), 'vendors.delete');
+    good(await W(me, 'templates.delete', { templateId: tp.j.data.templateId }), 'templates.delete');
+    good(await W(me, 'calendar.delete', { itemId: ci.j.data.itemId }), 'calendar.delete');
+    good(await W(me, 'places.delete', { placeId: pl.j.data.placeId }), 'places.delete');
+    for (const id of [tk.j.data.taskId, pl.j.data.placeId, eventId, tab.j.data.tabId]) extraRefs.push(id);
+  }
+
   section('pagination');
   {
     for (let i = 0; i < 5; i++) await api('POST', '/v1/actions/tasks.create', { body: { title: `${TAG} דף ${i + 1}` }, idem: randomUUID(), label: 'tasks.create' });
@@ -209,6 +270,10 @@ try {
     for (const a of await queryEq('activity', 'refId', id)) if (await fsReq('DELETE', `/activity/${a.id}`)) acts++;
     if (await fsReq('DELETE', `/shopping/${id}`)) items++;
   }
+  let others = 0;
+  for (const p of extraDocs) if (await fsReq('DELETE', '/' + p)) others++;
+  for (const id of extraRefs) for (const a of await queryEq('activity', 'refId', id)) if (await fsReq('DELETE', `/activity/${a.id}`)) acts++;
+  console.log(`  deleted ${others} other test documents (places, templates, events, vendors, tabs, calendar)`);
   for (const r of await queryEq('api_idempotency', 'credential', 'cred-stageb')) if (await fsReq('DELETE', `/api_idempotency/${r.id}`)) recs++;
   console.log(`  deleted ${tasks} tasks, ${items} shopping items, ${acts} activity entries, ${recs} idempotency records`);
   const left = (await fsReq('POST', ':runQuery', { structuredQuery: { from: [{ collectionId: 'tasks' }] } })).filter((r) => r.document && fields(r.document).title?.startsWith(TAG));

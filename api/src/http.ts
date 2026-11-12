@@ -3,11 +3,11 @@ import { CATALOG_VERSION } from './catalog';
 
 export type ErrorCode =
   | 'VALIDATION_FAILED' | 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'IDEMPOTENCY_CONFLICT'
-  | 'QUOTA_EXCEEDED' | 'UPSTREAM_ERROR' | 'OUTCOME_UNKNOWN' | 'PRODUCTION_LOCKED' | 'INTERNAL';
+  | 'STALE_WRITE' | 'RATE_LIMITED' | 'QUOTA_EXCEEDED' | 'UPSTREAM_ERROR' | 'OUTCOME_UNKNOWN' | 'PRODUCTION_LOCKED' | 'INTERNAL';
 
 const STATUS: Record<ErrorCode, number> = {
-  VALIDATION_FAILED: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, NOT_FOUND: 404, IDEMPOTENCY_CONFLICT: 409,
-  QUOTA_EXCEEDED: 429, UPSTREAM_ERROR: 502, OUTCOME_UNKNOWN: 503, PRODUCTION_LOCKED: 503, INTERNAL: 500,
+  VALIDATION_FAILED: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, NOT_FOUND: 404, IDEMPOTENCY_CONFLICT: 409, STALE_WRITE: 409,
+  RATE_LIMITED: 429, QUOTA_EXCEEDED: 429, UPSTREAM_ERROR: 502, OUTCOME_UNKNOWN: 503, PRODUCTION_LOCKED: 503, INTERNAL: 500,
 };
 
 const HE: Record<ErrorCode, string> = {
@@ -16,6 +16,8 @@ const HE: Record<ErrorCode, string> = {
   FORBIDDEN: 'אין הרשאה לפעולה הזו',
   NOT_FOUND: 'לא נמצא',
   IDEMPOTENCY_CONFLICT: 'אותו מפתח פעולה כבר שימש לבקשה אחרת',
+  STALE_WRITE: 'הרשומה השתנתה מאז שנקראה (כנראה באפליקציה). קראו אותה שוב לפני השינוי',
+  RATE_LIMITED: 'יותר מדי בקשות בזמן קצר, נסו שוב בעוד דקה',
   QUOTA_EXCEEDED: 'המכסה היומית נגמרה, נסו שוב מאוחר יותר',
   UPSTREAM_ERROR: 'מסד הנתונים לא זמין כרגע',
   OUTCOME_UNKNOWN: 'לא ברור אם הפעולה נשמרה. שלחו שוב עם אותו מפתח פעולה, זה בטוח',

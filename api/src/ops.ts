@@ -3,8 +3,9 @@
 import { ApiError, invalid } from './http';
 import { type Caller, requireScope, seesManagerTasks } from './auth';
 import { operation } from './catalog';
-import { type Doc, Firestore, type Write, backoff, enc, isContention, isUncertain, toApiError } from './firestore';
-import { UUID_RE, autoId, b64url, canonical, normName, sha256hex, validate } from './util';
+import { type Doc, Firestore, type Write, enc } from './firestore';
+import { fresh, idempotent } from './core';
+import { autoId, b64url, canonical, normName, sha256hex, validate } from './util';
 
 type Person = { uid: string; name: string };
 type TaskData = Record<string, unknown> & { title: string; managersOnly: boolean; assignee: Person | null };
@@ -158,65 +159,6 @@ export async function searchPeople(fs: Firestore, caller: Caller, query: URLSear
 
 // ---------- writes ----------
 
-type WriteResult = { status: number; data: Record<string, unknown> };
-
-/**
- * Runs a write exactly once per (actor, operation, Idempotency-Key). The idempotency record, the entity
- * and its activity are committed in one transaction, with a create-precondition on the record, so two
- * racing requests with the same key cannot both write. After a commit whose outcome is unknown, the
- * record is read back before anything is retried.
- */
-async function idempotent(
-  fs: Firestore, caller: Caller, op: string, key: string | null, input: Record<string, unknown>,
-  run: (tx: string) => Promise<{ writes: Write[]; data: Record<string, unknown>; status?: number }>,
-  readBack: (data: Record<string, unknown>) => Promise<Record<string, unknown>>,
-): Promise<WriteResult & { replayed: boolean }> {
-  if (!key) throw invalid('Idempotency-Key', 'Idempotency-Key header is required for writes');
-  if (!UUID_RE.test(key)) throw invalid('Idempotency-Key', 'Idempotency-Key must be a UUID');
-  // namespaced by credential and actor: the same key from anyone else is a different key
-  const recordId = await sha256hex(`${caller.credentialId}\n${caller.actor.id}\n${op}\n${key.toLowerCase()}`);
-  const payloadHash = await sha256hex(canonical(input));
-
-  const replay = async (rec: Doc) => {
-    if (rec.data.payloadHash !== payloadHash) throw new ApiError('IDEMPOTENCY_CONFLICT', 'this Idempotency-Key was already used with a different payload', { operation: op });
-    const stored = JSON.parse(String(rec.data.response)) as WriteResult;
-    return { status: 200, data: await readBack(stored.data), replayed: true };
-  };
-
-  for (let attempt = 0; ; attempt++) {
-    const tx = await fs.begin();
-    let committing = false;
-    try {
-      const existing = await fs.get('api_idempotency', recordId, tx);
-      if (existing) { await fs.rollback(tx); return await replay(existing); }
-      const r = await run(tx);
-      const result: WriteResult = { status: r.status ?? 200, data: r.data };
-      const record = fs.create('api_idempotency', recordId, {
-        actor: caller.actor.id, credential: caller.credentialId, operation: op, payloadHash,
-        response: JSON.stringify(result), createdAt: nowIso(),
-      });
-      committing = true;
-      await fs.commit([record, ...r.writes], tx);
-      // acknowledged: from here on the write is stored, and readBack reports a failed read without throwing
-      return { ...result, data: await readBack(result.data), replayed: false };
-    } catch (e) {
-      // also after an uncertain commit: frees the transaction's locks, and is a no-op if it did commit
-      await fs.rollback(tx);
-      if (e instanceof ApiError) throw e;
-      if (isContention(e) && attempt < 6) { await backoff(attempt); continue; }
-      if (committing && isUncertain(e)) {
-        // The commit was sent and may have landed (no answer, a 5xx, or a 2xx whose body never arrived).
-        // It is never sent again from here. The idempotency record, written in the same commit, says
-        // whether it landed; if the record is missing or cannot be read, the honest answer is "unknown".
-        const rec = await fs.get('api_idempotency', recordId).catch(() => null);
-        if (rec) return await replay(rec);
-        throw new ApiError('OUTCOME_UNKNOWN', 'the write was not acknowledged; resend with the same Idempotency-Key', { operation: op });
-      }
-      throw toApiError(e);
-    }
-  }
-}
-
 async function resolveAssignee(fs: Firestore, uid: string, tx: string): Promise<Person> {
   const u = await fs.get('users', uid, tx);
   if (!u || u.data.status !== 'active' || !TEAM_ROLES.has(String(u.data.role))) throw invalid('assignee', 'assignee is not an active team member');
@@ -252,16 +194,23 @@ const readBackTask = (fs: Firestore, caller: Caller) => async (data: Record<stri
 
 export async function createTask(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'tasks:create');
-  const input = validate(operation('tasks.create')!.body!, body) as { title: string; assignee: string | null; dueDate: string | null; urgent: boolean };
+  const input = validate(operation('tasks.create')!.body!, body) as { title: string; assignee: string | null; dueDate: string | null; urgent: boolean; note: string | null; managersOnly: boolean; placeId: string | null };
+  if (input.managersOnly && !seesManagerTasks(caller.actor)) throw new ApiError('FORBIDDEN', 'only managers can create manager-only tasks', { requiredScope: 'tasks:assign' });
   if (input.assignee && input.assignee !== caller.actor.person.uid) requireScope(caller, 'tasks:assign');
 
   return idempotent(fs, caller, 'tasks.create', key, input, async (tx) => {
     const assignee = input.assignee ? await resolveAssignee(fs, input.assignee, tx) : null;
+    let location: Record<string, unknown> | null = null;
+    if (input.placeId) {
+      const p = await fs.get('places', input.placeId, tx);
+      if (!p) throw invalid('placeId', 'no such place');
+      location = { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
+    }
     const id = autoId();
     const now = nowIso();
     // exactly the shape addTask() in src/app/store.ts writes, so the app and the Rules accept it
     const task: TaskData = {
-      title: input.title, note: '', photo: '', location: null, dueDate: input.dueDate || '', managersOnly: false,
+      title: input.title, note: input.note || '', photo: '', location, dueDate: input.dueDate || '', managersOnly: input.managersOnly,
       templateId: null, dateKey: null, createdBy: caller.actor.person, createdAt: now, done: false, doneBy: null, doneAt: null,
       donePhoto: '', doneNote: '', assignee, urgent: input.urgent, updatedAt: now,
     };
@@ -274,11 +223,12 @@ export async function createTask(fs: Firestore, caller: Caller, body: Record<str
 
 export async function assignTask(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'tasks:assign');
-  const input = validate(operation('tasks.assign')!.body!, body) as { taskId: string; assignee: string };
+  const input = validate(operation('tasks.assign')!.body!, body) as { taskId: string; assignee: string; ifUpdatedAt: string | null };
 
   return idempotent(fs, caller, 'tasks.assign', key, input, async (tx) => {
     const t = await fs.get('tasks', input.taskId, tx);
     if (!t || !visible(t.data, caller)) throw new ApiError('NOT_FOUND', 'task not found');
+    fresh(t, input.ifUpdatedAt);
     const assignee = await resolveAssignee(fs, input.assignee, tx);
     const current = t.data.assignee as Person | null;
     const expected = { assignee };
@@ -295,11 +245,12 @@ export async function assignTask(fs: Firestore, caller: Caller, body: Record<str
 /** tasks.complete and tasks.reopen: exactly what setTaskDone() in src/app/store.ts writes, plus its activity. */
 async function setTaskDone(fs: Firestore, caller: Caller, op: 'tasks.complete' | 'tasks.reopen', body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'tasks:complete');
-  const input = validate(operation(op)!.body!, body) as { taskId: string };
+  const input = validate(operation(op)!.body!, body) as { taskId: string; ifUpdatedAt: string | null };
   const done = op === 'tasks.complete';
   return idempotent(fs, caller, op, key, input, async (tx) => {
     const t = await fs.get('tasks', input.taskId, tx);
     if (!t || !visible(t.data, caller)) throw new ApiError('NOT_FOUND', 'task not found');
+    fresh(t, input.ifUpdatedAt);
     const data = t.data as TaskData;
     if (!!data.done === done) return { writes: [], data: { taskId: t.id, changed: false, expected: { done } } };
     const now = nowIso();
@@ -383,10 +334,11 @@ export async function addShopping(fs: Firestore, caller: Caller, body: Record<st
 /** shopping.setBought: what setBought() in src/app/store.ts writes, including the 24-hour expireAt. */
 export async function setBought(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'shopping:write');
-  const input = validate(operation('shopping.setBought')!.body!, body) as { itemId: string; bought: boolean };
+  const input = validate(operation('shopping.setBought')!.body!, body) as { itemId: string; bought: boolean; ifUpdatedAt: string | null };
   return idempotent(fs, caller, 'shopping.setBought', key, input, async (tx) => {
     const it = await fs.get('shopping', input.itemId, tx);
     if (!it) throw new ApiError('NOT_FOUND', 'shopping item not found');
+    fresh(it, input.ifUpdatedAt);
     if (!!it.data.bought === input.bought) return { writes: [], data: { itemId: it.id, changed: false, expected: { bought: input.bought } } };
     const now = nowIso();
     const patch = input.bought

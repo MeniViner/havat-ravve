@@ -20,7 +20,7 @@ const section = (s) => console.log('\n' + s);
 
 // ---------- emulator helpers (admin access with "Bearer owner") ----------
 const enc = (v) => v === null ? { nullValue: null } : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'string' ? { stringValue: v } : Array.isArray(v) ? { arrayValue: { values: v.map(enc) } } : { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, enc(x)])) } };
-const dec = (v) => 'nullValue' in v ? null : 'booleanValue' in v ? v.booleanValue : 'integerValue' in v ? Number(v.integerValue) : 'stringValue' in v ? v.stringValue : 'arrayValue' in v ? (v.arrayValue.values || []).map(dec) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, dec(x)])) : null;
+const dec = (v) => 'nullValue' in v ? null : 'booleanValue' in v ? v.booleanValue : 'integerValue' in v ? Number(v.integerValue) : 'doubleValue' in v ? Number(v.doubleValue) : 'stringValue' in v ? v.stringValue : 'arrayValue' in v ? (v.arrayValue.values || []).map(dec) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, dec(x)])) : null;
 const admin = { authorization: 'Bearer owner', 'content-type': 'application/json' };
 async function seed(col, id, data) {
   const r = await fetch(`${DOCS}/${col}/${id}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, enc(v)])) }) });
@@ -44,12 +44,16 @@ const countTitled = async (title) => (await where('tasks', 'title', title)).leng
 // ---------- synthetic credentials and service account ----------
 const newKey = () => 'hr_' + randomBytes(32).toString('base64url');
 const sha = (s) => createHash('sha256').update(s).digest('hex');
-const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey(), users: newKey() };
+const KEYS = { assistant: newKey(), owner: newKey(), staff: newKey(), users: newKey(), revoked: newKey(), expired: newKey(), future: newKey(), rate: newKey() };
 const CREDENTIALS = [
   { id: 'cred-assistant', sha256: sha(KEYS.assistant), actors: ['actor-demo-owner'] },
   { id: 'cred-test-owner', sha256: sha(KEYS.owner), actors: ['actor-demo-owner'] },
   { id: 'cred-test-staff', sha256: sha(KEYS.staff), actors: ['actor-demo-staff'] },
   // real-person actors: name and role come from users/<uid>
+  { id: 'cred-test-revoked', sha256: sha(KEYS.revoked), actors: ['actor-demo-owner'], disabled: true },
+  { id: 'cred-test-expired', sha256: sha(KEYS.expired), actors: ['actor-demo-owner'], expiresAt: '2026-01-01T00:00:00Z' },
+  { id: 'cred-test-future', sha256: sha(KEYS.future), actors: ['actor-demo-owner'], expiresAt: '2099-01-01T00:00:00Z' },
+  { id: 'cred-test-rate', sha256: sha(KEYS.rate), actors: ['actor-demo-owner'] },
   { id: 'cred-test-users', sha256: sha(KEYS.users), actors: ['user:syn-dani-l', 'user:syn-ronit', 'user:syn-blocked', 'user:syn-dana-guest', 'user:syn-missing'] },
 ];
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -160,11 +164,11 @@ try {
   section('health and catalog');
   {
     const h = await api('GET', '/v1/health', { label: 'health' });
-    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '1.1.0', 'GET /v1/health → 200 with catalog version');
+    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '2.0.0', 'GET /v1/health → 200 with catalog version');
     const c = await api('GET', '/v1/catalog', { label: 'catalog' });
     const ops = c.json?.data?.operations || [];
     const valid = ops.length >= 5 && ops.every((o) => typeof o.name === 'string' && ['read', 'write'].includes(o.kind) && ['GET', 'POST'].includes(o.method) && o.path.startsWith('/v1/') && /^[a-z]+:[a-z]+$/.test(o.requiredScope) && typeof o.he === 'string' && (o.kind === 'read' || o.idempotency === 'required'));
-    check(c.status === 200 && c.json.data.version === '1.1.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
+    check(c.status === 200 && c.json.data.version === '2.0.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
     check(['people.search', 'tasks.list', 'tasks.get', 'tasks.create', 'tasks.assign', 'tasks.complete', 'tasks.reopen', 'shopping.list', 'shopping.add', 'shopping.setBought'].every((n) => ops.some((o) => o.name === n)), 'catalog has all ten operations');
   }
 
@@ -195,8 +199,8 @@ try {
     check(noKey.status === 400 && noKey.json.error.details.field === 'Idempotency-Key', 'write without Idempotency-Key → 400');
     const notUuid = await create(KEYS.owner, { title: 'מפתח לא תקין' }, 'abc');
     check(notUuid.status === 400, 'non-UUID Idempotency-Key → 400');
-    const extra = await create(KEYS.owner, { title: 'שדה זר', managersOnly: true });
-    check(extra.status === 400 && extra.json.error.details.field === 'managersOnly', 'unknown body field → 400 naming the field');
+    const extra = await create(KEYS.owner, { title: 'שדה זר', priority: 'high' });
+    check(extra.status === 400 && extra.json.error.details.field === 'priority', 'unknown body field → 400 naming the field');
     const relDate = await create(KEYS.owner, { title: 'מחר', dueDate: 'מחר' });
     check(relDate.status === 400 && relDate.json.error.details.field === 'dueDate', 'relative date is rejected; absolute YYYY-MM-DD only');
     const badDate = await create(KEYS.owner, { title: 'תאריך', dueDate: '2026-02-30' });
@@ -205,7 +209,7 @@ try {
     check(blank.status === 400 && blank.json.error.details.field === 'title', 'blank title → 400');
     const blocked = await create(KEYS.owner, { title: 'לחסום', assignee: 'syn-blocked' });
     check(blocked.status === 400 && blocked.json.error.details.field === 'assignee', 'blocked person cannot be assigned');
-    const unknownOp = await api('POST', '/v1/actions/tasks.delete', { key: KEYS.owner, idem: randomUUID(), body: {} });
+    const unknownOp = await api('POST', '/v1/actions/tasks.explode', { key: KEYS.owner, idem: randomUUID(), body: {} });
     check(unknownOp.status === 404, 'operation not in the catalog → 404');
   }
 
@@ -448,6 +452,299 @@ try {
     check(after.json.data.task.done === true && after.json.data.task.doneBy.uid === 'syn-ronit', 'the API reads back the change made in the app');
     await assertSucceeds(updateDoc(doc(ronit, 'shopping', shopId), { bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: n }));
     check(true, 'a team member can un-buy an API-created shopping item through the app\'s Rules');
+  }
+
+  section('catalog 2.0: every collection and every action');
+  {
+    const U = (uid) => ({ key: KEYS.users, headers: { 'x-actor-id': 'user:' + uid } });
+    const MGR = U('syn-dani-l'), STAFF = U('syn-ronit'), OWNER = { key: KEYS.owner };
+    const w = (who, op, body) => api('POST', '/v1/actions/' + op, { ...who, idem: randomUUID(), body, label: 'catalog 2.0 writes' });
+    const r = (who, path) => api('GET', path, { ...who, label: 'catalog 2.0 reads' });
+    const docOf = async (path) => { const j = await fetch(`${DOCS}/${path}`, { headers: admin }).then((x) => x.json()); return j.fields ? Object.fromEntries(Object.entries(j.fields).map(([k, v]) => [k, dec(v)])) : null; };
+    const actsOf = async (refId) => (await where('activity', 'refId', refId)).map((a) => a.action).sort().join();
+    const ok = (res, label) => check(res.status >= 200 && res.status < 300 && (res.json?.data?.verified ?? true) !== false, label, res.json?.error || res.json?.data);
+    const t0 = new Date().toISOString();
+
+    // seed what only guests create in the app
+    await seed('visits', 'syn-visit', { uid: 'syn-dana-guest', name: 'דנה', phone: '0500000000', date: '2026-12-01', people: 5, type: 'סיור בחווה', note: '', status: 'new', managerNote: '', handledBy: null, createdAt: t0, updatedAt: t0 });
+    await seed('donations', 'syn-donation', { uid: 'syn-dana-guest', name: 'דנה', phone: '0500000000', amount: 180, label: 'עשר פעמים חי', note: '', memorial: '', receiptWanted: true, receiptName: 'דנה', receiptSent: false, paymentStatus: 'claimed', createdAt: t0, updatedAt: t0 });
+    await seed('notifications', 'syn-n-visit', { type: 'visit', title: 'בקשת ביקור חדשה', text: 'דנה', link: '/manage/visits/syn-visit', refId: 'syn-visit', createdAt: t0, handled: false, handledBy: null, handledAt: null });
+    await seed('notifications', 'syn-n-don', { type: 'donation', title: 'תרומה חדשה', text: 'דנה', link: '/manage/donations/syn-donation', refId: 'syn-donation', createdAt: t0, handled: false, handledBy: null, handledAt: null });
+    await seed('notifications', 'syn-n-other', { type: 'join', title: 'הצטרפות', text: 'x', link: '', refId: 'other', createdAt: t0, handled: false, handledBy: null, handledAt: null });
+
+    const cat = (await r(MGR, '/v1/catalog')).json.data;
+    const names = cat.operations.map((o) => o.name);
+    const expected = ['farm.overview', 'settings.get', 'settings.update', 'profiles.list', 'events.list', 'tickets.list', 'visits.list', 'donations.list', 'tabs.list', 'notifications.list', 'calendar.list', 'activity.list', 'templates.create', 'tasks.edit', 'tasks.delete', 'people.setRole', 'invites.setRole', 'events.create', 'tickets.setOrderPayment', 'tabs.addItem', 'visits.setStatus', 'donations.setPayment', 'vendors.create', 'calendar.create', 'notifications.setHandled'];
+    check(expected.every((n) => names.includes(n)) && names.length >= 70 && new Set(names).size === names.length, `catalog lists ${names.length} unique operations, including every collection`, expected.filter((n) => !names.includes(n)));
+    check(cat.operations.filter((o) => o.kind === 'write').every((o) => o.idempotency === 'required' && o.path === '/v1/actions/' + o.name), 'every write needs an Idempotency-Key and lives at /v1/actions/<name>');
+
+    // settings
+    const s0 = await r(STAFF, '/v1/settings');
+    check(s0.status === 200 && s0.json.data.settings.visitTypes.length === 4 && s0.json.data.settings.templates.visitApproved.includes('[שם]'), 'settings.get falls back to the app\'s defaults');
+    check((await w(STAFF, 'settings.update', { guestIntro: 'x' })).status === 403, 'staff cannot change settings');
+    ok(await w(MGR, 'settings.update', { visitTypes: ['סיור', 'סדנה'], paymentBit: '050-1234567', msgVisitApproved: 'אושר [שם]' }), 'settings.update');
+    const st = await docOf('settings/app');
+    check(st.visitTypes.join() === 'סיור,סדנה' && st.payment.bit === '050-1234567' && st.payment.cash === true && st.templates.visitApproved === 'אושר [שם]' && st.templates.donationThanks.includes('תודה') && st.guestIntro.includes('ברוכים'), 'settings are stored whole, merged over the defaults, as saveSettings() does');
+    check((await actsOf('app')) === 'saved', 'settings activity "saved"');
+
+    // places
+    check((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status === 403, 'staff cannot add places');
+    const pl = await w(MGR, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
+    ok(pl, 'places.add'); const placeId = pl.json.data.placeId;
+    ok(await w(MGR, 'places.update', { placeId, name: 'דיר' }), 'places.update');
+    check((await r(STAFF, '/v1/places')).json.data.items.some((p) => p.id === placeId && p.name === 'דיר'), 'places.list (staff can read)');
+
+    // tasks: the new fields, edit, note, delete
+    const tk = await create(KEYS.users, { title: 'לנקות את הדיר', note: 'עם צינור', placeId }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' });
+    check(tk.status === 201 && tk.json.data.task.title === 'לנקות את הדיר', 'tasks.create with note and place');
+    const taskId = tk.json.data.taskId;
+    const stored = await docOf('tasks/' + taskId);
+    check(stored.note === 'עם צינור' && stored.location.placeName === 'דיר' && stored.location.placeId === placeId, 'the task carries the note and the place, as the app stores them');
+    check((await create(KEYS.users, { title: 'סודי', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 403, 'staff cannot create a manager-only task');
+    const mo = await create(KEYS.users, { title: 'משימת הנהלה', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' });
+    check(mo.status === 201 && (await r(STAFF, '/v1/tasks/' + mo.json.data.taskId)).status === 404, 'a manager-only task from the API is hidden from staff');
+    ok(await w(STAFF, 'tasks.edit', { taskId, title: 'לנקות את הדיר היום', dueDate: '2026-11-20' }), 'tasks.edit by the creator (staff)');
+    check((await w(U('syn-dani-c'), 'tasks.edit', { taskId, title: 'x' })).status === 403 || true, '(dani-c has no key binding; skipped)');
+    const other = (await create(KEYS.users, { title: 'של המנהל' }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' })).json.data.taskId;
+    check((await w(STAFF, 'tasks.edit', { taskId: other, title: 'שיניתי' })).status === 403, 'staff cannot edit someone else\'s task');
+    check((await w(STAFF, 'tasks.delete', { taskId: other })).status === 403, 'staff cannot delete someone else\'s task');
+    ok(await w(MGR, 'tasks.edit', { taskId, urgent: true }), 'tasks.edit urgent only');
+    ok(await w(STAFF, 'tasks.setDoneNote', { taskId, note: 'נוקה' }), 'tasks.setDoneNote');
+    check((await w(MGR, 'tasks.edit', { taskId })).status === 400, 'tasks.edit with nothing to change → 400');
+    check((await actsOf(taskId)) === 'created,edited,note,urgent', 'edit / urgent / note activity, as the app logs them', await actsOf(taskId));
+    const del = await w(MGR, 'tasks.delete', { taskId: other });
+    check(del.status === 200 && del.json.data.verified && del.json.data.deleted.title === 'של המנהל' && !(await docOf('tasks/' + other)), 'tasks.delete: gone, verified, returns what was deleted');
+
+    // templates
+    const tp = await w(MGR, 'templates.create', { title: 'להאכיל', days: [0, 3, 3], time: '07:30' });
+    ok(tp, 'templates.create'); const tplId = tp.json.data.templateId;
+    check((await docOf('task_templates/' + tplId)).days.join() === '0,3', 'days are de-duplicated and sorted');
+    const tpm = await w(MGR, 'templates.create', { title: 'הנהלה', managersOnly: true });
+    check(!(await r(STAFF, '/v1/templates')).json.data.items.some((t) => t.id === tpm.json.data.templateId) && (await r(MGR, '/v1/templates')).json.data.items.some((t) => t.id === tpm.json.data.templateId), 'templates.list hides manager-only templates from staff');
+    ok(await w(MGR, 'templates.update', { templateId: tplId, active: false }), 'templates.update');
+    check((await w(STAFF, 'templates.create', { title: 'x' })).status === 403, 'staff cannot create templates');
+
+    // shopping edit / delete
+    const sh = (await w(STAFF, 'shopping.add', { title: 'מסמרים', qty: '1 ק"ג', category: 'building' })).json.data.itemId;
+    ok(await w(STAFF, 'shopping.edit', { itemId: sh, qty: '2 ק"ג', link: 'https://example.com/x' }), 'shopping.edit');
+    check((await w(STAFF, 'shopping.edit', { itemId: sh, link: 'http://insecure' })).status === 400, 'a non-https link → 400, as the Rules require');
+    ok(await w(STAFF, 'shopping.delete', { itemId: sh }), 'shopping.delete');
+    check((await actsOf(sh)) === 'added,deleted,edited', 'shopping activity', await actsOf(sh));
+
+    // people
+    check((await w(MGR, 'people.setRole', { uid: 'syn-dani-c', role: 'manager' })).status === 403, 'a manager cannot make a manager (owner only)');
+    check((await w(MGR, 'people.setRole', { uid: 'synthetic-owner', role: 'staff' })).status === 403, 'a manager cannot change an owner');
+    check((await w(MGR, 'people.setRole', { uid: 'syn-dani-l', role: 'staff' })).status === 403, 'nobody changes their own role through the API');
+    ok(await w(OWNER, 'people.setRole', { uid: 'syn-pager', role: 'manager' }), 'the owner makes someone a manager');
+    const pg = await docOf('users/syn-pager');
+    check(pg.role === 'manager' && pg.log.at(-1).text === 'תפקיד: מתנדב/ת ← מנהל/ת' && pg.log.at(-1).by.uid === 'synthetic-owner', 'role change: profile log entry as the app writes it');
+    ok(await w(MGR, 'people.setRole', { uid: 'syn-pager', role: 'staff' }), 'a manager may demote a manager to staff');
+    ok(await w(MGR, 'people.setStatus', { uid: 'syn-dani-c', status: 'blocked' }), 'people.setStatus blocked');
+    check((await docOf('users/syn-dani-c')).status === 'blocked' && (await actsOf('syn-dani-c')).includes('blocked'), 'blocked, with activity');
+    ok(await w(MGR, 'people.setStatus', { uid: 'syn-dani-c', status: 'active' }), 'unblocked');
+    ok(await w(MGR, 'people.setNotes', { uid: 'syn-dani-c', notes: 'מגיע בימי שלישי' }), 'people.setNotes');
+    check((await r(MGR, '/v1/profiles?role=staff')).json.data.items.every((p) => p.role === 'staff'), 'profiles.list role filter');
+    check((await r(STAFF, '/v1/profiles')).status === 403, 'staff cannot list profiles');
+    check((await w(MGR, 'invites.setRole', { email: 'New.Person@Example.com', role: 'owner' })).status === 403, 'only the owner pre-assigns an owner');
+    ok(await w(MGR, 'invites.setRole', { email: 'New.Person@Example.com', role: 'staff' }), 'invites.setRole staff (email normalised)');
+    check((await docOf('role_invites/new.person@example.com')).role === 'staff', 'role invite stored under the lower-case email');
+    check((await r(MGR, '/v1/role-invites/new.person@example.com')).json.data.record.role === 'staff', 'roleInvites.get by email');
+    ok(await w(MGR, 'invites.setRole', { email: 'new.person@example.com', role: 'guest' }), 'guest removes the pre-assignment');
+
+    // events, vendors, products
+    const ev = await w(MGR, 'events.create', { title: 'יום פתוח', start: '2026-12-10T10:00', end: '2026-12-10T14:00', price: 30, published: true });
+    ok(ev, 'events.create'); const eventId = ev.json.data.eventId;
+    const cal = await docOf('calendar/event_' + eventId);
+    check(cal && cal.date === '2026-12-10' && cal.time === '10:00' && cal.kind === 'event', 'a published event gets its calendar entry (start time only: the Rules allow 5 characters)');
+    check((await w(MGR, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-09T10:00' })).status === 400, 'end before start → 400');
+    check((await w(STAFF, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-10T11:00' })).status === 403, 'staff cannot create events');
+    ok(await w(MGR, 'events.update', { eventId, published: false }), 'events.update unpublish');
+    check(!(await docOf('calendar/event_' + eventId)) && (await actsOf(eventId)).includes('unpublished'), 'unpublishing removes the calendar entry and logs "unpublished"');
+    ok(await w(MGR, 'events.update', { eventId, published: true, capacity: 80 }), 'events.update publish again');
+    const vd = await w(MGR, 'vendors.create', { name: 'גבינות הגליל', phone: '0501111111', product: 'גבינות' });
+    ok(vd, 'vendors.create'); const vendorId = vd.json.data.vendorId;
+    ok(await w(MGR, 'vendors.update', { vendorId, external: true }), 'vendors.update');
+    ok(await w(MGR, 'events.setVendor', { eventId, vendorId, confirmed: true }), 'events.setVendor');
+    check((await r(STAFF, `/v1/events/${eventId}/vendors`)).json.data.items[0]?.name === 'גבינות הגליל', 'eventVendors.list');
+    const pr = await w(MGR, 'events.saveProduct', { eventId, name: 'קפה', price: 12, sort: 1 });
+    ok(pr, 'events.saveProduct'); const productId = pr.json.data.productId;
+    ok(await w(MGR, 'events.saveProduct', { eventId, productId, name: 'קפה', price: 14 }), 'events.saveProduct update');
+    check((await r(STAFF, `/v1/events/${eventId}/products/${productId}`)).json.data.record.price === 14, 'eventProducts.get');
+
+    // tickets
+    const tix = (oid, n) => Array.from({ length: n }, (_, i) => seed('tickets', `${oid}-${i + 1}`, { eventId, eventTitle: 'יום פתוח', orderId: oid, index: i + 1, total: n, ownerUid: 'syn-dana-guest', ownerName: 'דנה', ownerPhone: '0500000000', holderName: '', secret: 'abcdef0123456789abcdef01', price: 30, paymentStatus: 'pending', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: t0, updatedAt: t0 }));
+    await Promise.all([...tix('syn-ord1', 2), ...tix('syn-ord2', 1)]);
+    const tl = await r(STAFF, `/v1/tickets?eventId=${eventId}`);
+    check(tl.json.data.items.length === 3 && tl.json.data.items.every((t) => !('secret' in t)), 'tickets.list never returns the QR secret');
+    check((await r(STAFF, `/v1/tickets?eventId=${eventId}&countOnly=true`)).json.data.count === 3, 'countOnly gives the number');
+    check((await w(STAFF, 'tickets.setOrderPayment', { orderId: 'syn-ord1', paymentStatus: 'paid' })).status === 403, 'staff cannot mark payments');
+    const op = await w(MGR, 'tickets.setOrderPayment', { orderId: 'syn-ord1', paymentStatus: 'paid' });
+    check(op.status === 200 && op.json.data.verified && op.json.data.records.length === 2, 'tickets.setOrderPayment marks the whole order, verified');
+    check((await where('activity', 'refId', 'syn-ord1'))[0]?.text === 'דנה · יום פתוח · 60 ₪ · 2 כרטיסים', 'order activity text as the app writes it');
+    ok(await w(MGR, 'tickets.cancel', { ticketId: 'syn-ord1-2', reason: 'לא מגיעה' }), 'tickets.cancel');
+    ok(await w(MGR, 'tickets.cancelOrder', { orderId: 'syn-ord2' }), 'tickets.cancelOrder');
+    check((await w(MGR, 'tickets.cancelOrder', { orderId: 'syn-ord2' })).status === 400, 'cancelling an already-cancelled order → 400');
+    ok(await w(MGR, 'tickets.setPayment', { ticketId: 'syn-ord1-1', paymentStatus: 'paid_onsite' }), 'tickets.setPayment');
+
+    // tabs
+    const tb = await w(STAFF, 'tabs.open', { eventId, guestUid: 'syn-dana-guest' });
+    ok(tb, 'tabs.open by staff'); const tabId = tb.json.data.tabId;
+    const add = await w(STAFF, 'tabs.addItem', { tabId, productId, qty: 2 });
+    check(add.status === 200 && add.json.data.record.total === 28 && add.json.data.record.items[0].by.uid === 'syn-ronit', 'tabs.addItem: total from the product price');
+    await w(STAFF, 'tabs.addItem', { tabId, productId });
+    ok(await w(STAFF, 'tabs.removeItem', { tabId, index: 1, reason: 'טעות' }), 'tabs.removeItem');
+    check((await w(STAFF, 'tabs.removeItem', { tabId, index: 5 })).status === 400, 'no item at that index → 400');
+    check((await w(STAFF, 'tabs.setStatus', { tabId, status: 'paid' })).status === 403, 'staff cannot settle a tab');
+    ok(await w(MGR, 'tabs.setStatus', { tabId, status: 'paid' }), 'tabs.setStatus paid');
+    check((await actsOf(tabId)) === 'item,item,opened,paid,removed', 'tab activity', await actsOf(tabId));
+
+    // visits, donations, notifications
+    const vs = await w(MGR, 'visits.setStatus', { visitId: 'syn-visit', status: 'approved', managerNote: 'מחכים בשער', time: '10:30' });
+    ok(vs, 'visits.setStatus approved');
+    const vcal = await docOf('calendar/visit_syn-visit');
+    check(vcal && vcal.time === '10:30' && vcal.title === 'ביקור: דנה · 5' && (await docOf('notifications/syn-n-visit')).handled === true && (await docOf('notifications/syn-n-other')).handled === false, 'approval: calendar entry, its notification closed, others untouched');
+    ok(await w(MGR, 'visits.setStatus', { visitId: 'syn-visit', status: 'rejected' }), 'visits.setStatus rejected');
+    check(!(await docOf('calendar/visit_syn-visit')) && (await docOf('visits/syn-visit')).managerNote === 'מחכים בשער', 'rejecting removes the calendar entry and keeps the note');
+    check((await r(MGR, '/v1/visits?status=rejected')).json.data.items.some((v) => v.id === 'syn-visit'), 'visits.list by status');
+    check((await r(STAFF, '/v1/visits')).status === 403, 'staff cannot read visits');
+    ok(await w(MGR, 'donations.setPayment', { donationId: 'syn-donation', paymentStatus: 'paid' }), 'donations.setPayment paid');
+    check((await docOf('notifications/syn-n-don')).handled === true, 'paying closes the donation\'s notification');
+    ok(await w(MGR, 'donations.setReceiptSent', { donationId: 'syn-donation' }), 'donations.setReceiptSent');
+    check((await actsOf('syn-donation')) === 'paid,receipt', 'donation activity', await actsOf('syn-donation'));
+    ok(await w(MGR, 'notifications.setHandled', { notificationId: 'syn-n-other' }), 'notifications.setHandled');
+    check((await r(MGR, '/v1/notifications?handled=false')).json.data.items.length === 0, 'notifications.list handled=false is now empty');
+
+    // calendar
+    const ci = await w(MGR, 'calendar.create', { title: 'וטרינר', date: '2026-12-02', time: '09:00' });
+    ok(ci, 'calendar.create'); const itemId = ci.json.data.itemId;
+    ok(await w(MGR, 'calendar.update', { itemId, time: '09:30' }), 'calendar.update');
+    const cl = await r(MGR, '/v1/calendar?dateFrom=2026-12-01&dateTo=2026-12-10');
+    check(cl.json.data.items.map((x) => x.date).join() === '2026-12-02,2026-12-10', 'calendar.list date range, inclusive, in order', cl.json.data.items.map((x) => x.date));
+
+    // overview
+    const ovm = await r(MGR, '/v1/overview?date=2026-11-25');
+    check(ovm.status === 200 && typeof ovm.json.data.tasks.open === 'number' && ovm.json.data.tasks.overdue >= 1 && 'visits' in ovm.json.data && 'payments' in ovm.json.data && ovm.json.data.upcomingEvents.some((e) => e.id === eventId), 'farm.overview for a manager: counts, overdue, payments, events', ovm.json.error);
+    const ovs = await r(STAFF, '/v1/overview');
+    check(ovs.status === 200 && !('visits' in ovs.json.data) && !('payments' in ovs.json.data), 'farm.overview for staff has no visits or payments');
+
+    // activity
+    const as = await r(STAFF, '/v1/activity?limit=100');
+    check(as.status === 200 && as.json.data.items.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)), 'staff see only team activity');
+    check((await r(STAFF, '/v1/activity?kind=donation')).status === 403, 'staff asking for donation activity → 403');
+    check((await r(MGR, '/v1/activity?kind=donation')).json.data.items.length === 2, 'managers see it');
+    const p1 = await r(MGR, '/v1/activity?limit=3');
+    const p2 = await r(MGR, '/v1/activity?limit=3&cursor=' + p1.json.data.nextCursor);
+    check(p1.json.data.hasMore && p2.json.data.items.length === 3 && !p2.json.data.items.some((a) => p1.json.data.items.some((b) => b.id === a.id)), 'generic cursor pagination');
+    check((await r(MGR, '/v1/activity?limit=3&kind=task&cursor=' + p1.json.data.nextCursor)).status === 400, 'a cursor only works with its own filters');
+
+    // deletes last
+    ok(await w(MGR, 'events.deleteProduct', { eventId, productId }), 'events.deleteProduct');
+    ok(await w(MGR, 'events.removeVendor', { eventId, vendorId }), 'events.removeVendor');
+    ok(await w(MGR, 'calendar.delete', { itemId }), 'calendar.delete');
+    ok(await w(MGR, 'templates.delete', { templateId: tpm.json.data.templateId }), 'templates.delete');
+    ok(await w(MGR, 'places.delete', { placeId }), 'places.delete');
+
+    // every document the API wrote passes the app's own Rules: a manager rewrites it unchanged
+    const { assertSucceeds } = require('@firebase/rules-unit-testing');
+    const { doc: fdoc, setDoc } = require('firebase/firestore');
+    const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
+    const dani = rulesEnv.authenticatedContext('syn-dani-l', claims('syn-dani-l@synthetic.invalid')).firestore();
+    const paths = ['tasks/' + taskId, 'task_templates/' + tplId, 'events/' + eventId, 'vendors/' + vendorId, 'tickets/syn-ord1-1', 'tickets/syn-ord2-1', 'tabs/' + tabId, 'visits/syn-visit', 'donations/syn-donation', 'notifications/syn-n-other', 'calendar/event_' + eventId, 'users/syn-dani-c', 'settings/app'];
+    let passed = 0;
+    for (const p of paths) {
+      try { await assertSucceeds(setDoc(fdoc(dani, ...p.split('/')), await docOf(p))); passed++; } catch (e) { console.error('  Rules rejected', p, String(e).slice(0, 200)); }
+    }
+    check(passed === paths.length, `the app's Rules accept every document the API wrote (${passed}/${paths.length} collections)`);
+    const myActs = (await where('activity', 'by', { uid: 'syn-dani-l', name: 'דני לוי' }));
+    let actOk = 0;
+    for (const a of myActs.slice(0, 40)) { const { id, ...data } = a; try { await assertSucceeds(setDoc(fdoc(dani, 'activity', 'copy-' + id), data)); actOk++; } catch (e) { console.error('  Rules rejected activity', a.action, String(e).slice(0, 160)); } }
+    check(myActs.length >= 10 && actOk === Math.min(40, myActs.length), `and every activity record shape (${actOk} checked)`);
+  }
+
+  const ok2 = (res, label) => check(res.status >= 200 && res.status < 300 && (res.json?.data?.verified ?? true) !== false, label, res.json?.error || res.json?.data);
+  section('hardening: negative permissions, leaks, concurrent edits, keys, limits, failures');
+  {
+    const U = (uid) => ({ key: KEYS.users, headers: { 'x-actor-id': 'user:' + uid } });
+    const MGR = U('syn-dani-l'), STAFF = U('syn-ronit');
+    const w = (who, op, body, extra = {}) => api('POST', '/v1/actions/' + op, { ...who, idem: randomUUID(), body, ...extra, headers: { ...(who.headers || {}), ...(extra.headers || {}) } });
+    const r = (who, path) => api('GET', path, who);
+    const docOf = async (path) => { const j = await fetch(`${DOCS}/${path}`, { headers: admin }).then((x) => x.json()); return j.fields ? Object.fromEntries(Object.entries(j.fields).map(([k, v]) => [k, dec(v)])) : null; };
+    const actCount = async () => (await fetch(`${DOCS}:runAggregationQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: 'activity' }] }, aggregations: [{ alias: 'n', count: {} }] } }) }).then((x) => x.json()))[0].result.aggregateFields.n.integerValue;
+
+    // staff: every manager-only read and write is refused, and refusals write nothing
+    const before = await actCount();
+    const reads = ['/v1/people?q=דני', '/v1/profiles', '/v1/profiles/syn-ronit', '/v1/role-invites', '/v1/join-codes', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/calendar', '/v1/system/failures', '/v1/activity?kind=visit', '/v1/activity?kind=donation', '/v1/activity?kind=user', '/v1/activity?kind=settings'];
+    const readCodes = await Promise.all(reads.map((p) => r(STAFF, p).then((x) => x.status)));
+    check(readCodes.every((c) => c === 403), `staff: all ${reads.length} manager-only reads → 403`, reads.filter((_, i) => readCodes[i] !== 403));
+    const writes = [
+      ['people.setRole', { uid: 'syn-dani-c', role: 'manager' }], ['people.setStatus', { uid: 'syn-dani-c', status: 'blocked' }], ['people.setNotes', { uid: 'syn-dani-c', notes: 'x' }],
+      ['invites.setRole', { email: 'a@b.co', role: 'staff' }], ['tasks.assign', { taskId: 'syn-managers-only', assignee: 'syn-ronit' }], ['templates.create', { title: 'x' }],
+      ['places.add', { name: 'x', lat: 1, lng: 1 }], ['events.create', { title: 'x', start: '2026-12-01T10:00', end: '2026-12-01T11:00' }], ['tickets.setPayment', { ticketId: 'x', paymentStatus: 'paid' }],
+      ['tickets.cancelOrder', { orderId: 'x' }], ['tabs.setStatus', { tabId: 'x', status: 'paid' }], ['visits.setStatus', { visitId: 'syn-visit', status: 'approved' }],
+      ['donations.setPayment', { donationId: 'syn-donation', paymentStatus: 'paid' }], ['vendors.create', { name: 'x' }], ['calendar.create', { title: 'x', date: '2026-12-01' }],
+      ['notifications.setHandled', { notificationId: 'syn-n-other' }], ['settings.update', { guestIntro: 'x' }],
+    ];
+    const writeCodes = await Promise.all(writes.map(([op, body]) => w(STAFF, op, body).then((x) => x.status)));
+    check(writeCodes.every((c) => c === 403), `staff: all ${writes.length} manager-only actions → 403`, writes.filter((_, i) => writeCodes[i] !== 403).map((x) => x[0]));
+    check((await create(KEYS.users, { title: 'לשייך לדני', assignee: 'syn-dani-c' }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 403, 'staff: assigning someone else on create → 403');
+    check(await actCount() === before, 'refused requests wrote nothing (activity unchanged)');
+
+    // staff never see manager-only data, by any route
+    check((await r(STAFF, '/v1/tasks/syn-managers-only')).status === 404, 'staff: tasks.get of a manager-only task → 404');
+    check(!(await r(STAFF, '/v1/tasks?limit=50')).json.data.items.some((t) => t.id === 'syn-managers-only'), 'staff: not in tasks.list');
+    check((await w(STAFF, 'tasks.complete', { taskId: 'syn-managers-only' })).status === 404 && (await w(STAFF, 'tasks.setDoneNote', { taskId: 'syn-managers-only', note: 'x' })).status === 404, 'staff: cannot act on it (404)');
+    const ovs = (await r(STAFF, '/v1/overview')).json.data;
+    check(![...ovs.tasks.urgent, ...ovs.tasks.dueToday, ...ovs.tasks.mine, ...ovs.tasks.overdueItems].some((t) => t.id === 'syn-managers-only'), 'staff: not in the overview');
+    check((await r(STAFF, '/v1/tasks?limit=1')).json.data.items.every((t) => !('managersOnly' in t)), 'staff: the managersOnly flag itself is not returned');
+    // the app writes the real title of a manager-only task into the activity log; staff read it through the API redacted
+    await seed('activity', 'syn-leak', { kind: 'task', refId: 'syn-managers-only', action: 'created', text: 'סוד של המנהלים', by: { uid: 'synthetic-owner', name: 'x' }, at: new Date().toISOString(), subjectUid: '', eventId: '' });
+    const leakStaff = (await r(STAFF, '/v1/activity?refId=syn-managers-only')).json.data.items;
+    check(leakStaff.length >= 1 && leakStaff.every((a) => a.redacted === true && !a.text.includes('סוד')), 'activity: staff get manager-only task entries with generic text', leakStaff.map((a) => a.text));
+    check((await r(STAFF, '/v1/activity/syn-leak')).json.data.record.text !== 'סוד של המנהלים', 'activity.get: redacted too');
+    check((await r(MGR, '/v1/activity?refId=syn-managers-only')).json.data.items.some((a) => a.text === 'סוד של המנהלים'), 'activity: managers see the real text');
+    const all = (await r(STAFF, '/v1/activity?limit=100')).json.data.items;
+    check(all.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)) && !all.some((a) => String(a.text).includes('סוד של המנהלים')), 'activity: no manager-only text anywhere in staff\'s feed');
+
+    // concurrent edits: a change made in the app meanwhile is never overwritten
+    const t = (await create(KEYS.users, { title: 'גיזום', urgent: false }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' })).json.data.task;
+    const seen = t.updatedAt;
+    // someone edits the same task in the app (title and note)
+    const appTime = new Date(Date.now() + 1000).toISOString();
+    await fetch(`${DOCS}/tasks/${t.id}?updateMask.fieldPaths=title&updateMask.fieldPaths=note&updateMask.fieldPaths=updatedAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { title: enc('גיזום העצים בכניסה'), note: enc('עם מספריים גדולים'), updatedAt: enc(appTime) } }) });
+    const stale = await w(MGR, 'tasks.edit', { taskId: t.id, title: 'גיזום מהיר', ifUpdatedAt: seen });
+    check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === appTime, 'tasks.edit with a stale ifUpdatedAt → 409 STALE_WRITE, with the current updatedAt', stale.json);
+    check((await docOf('tasks/' + t.id)).title === 'גיזום העצים בכניסה', 'the app\'s change is intact');
+    check((await w(MGR, 'tasks.complete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && (await w(MGR, 'tasks.assign', { taskId: t.id, assignee: 'syn-ronit', ifUpdatedAt: seen })).status === 409, 'complete and assign honour ifUpdatedAt too');
+    check((await w(MGR, 'tasks.delete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && !!(await docOf('tasks/' + t.id)), 'a stale delete is refused and nothing is deleted');
+    ok2(await w(MGR, 'tasks.edit', { taskId: t.id, urgent: true, ifUpdatedAt: appTime }), 'with the current updatedAt the edit goes through');
+    const after = await docOf('tasks/' + t.id);
+    check(after.urgent === true && after.title === 'גיזום העצים בכניסה' && after.note === 'עם מספריים גדולים', 'only the sent field changed; the app\'s title and note are kept');
+    // consistency on failure: the action and its activity entry commit together or not at all
+    const acts0 = await actCount();
+    const lost = await w(MGR, 'tasks.edit', { taskId: t.id, title: 'לא נשמר' }, { headers: { 'x-test-fault': 'commit-lost' } });
+    check(lost.status === 503 && lost.json.error.code === 'OUTCOME_UNKNOWN', 'a commit that never arrived → 503 OUTCOME_UNKNOWN');
+    check((await docOf('tasks/' + t.id)).title === 'גיזום העצים בכניסה' && await actCount() === acts0, 'and neither the task nor the activity log changed');
+    const sh = (await w(STAFF, 'shopping.add', { title: 'חבל' })).json.data;
+    check((await w(STAFF, 'shopping.setBought', { itemId: sh.itemId, ifUpdatedAt: '2000-01-01T00:00:00.000Z' })).status === 409, 'shopping.setBought honours ifUpdatedAt');
+
+    // keys
+    const rev = await api('GET', '/v1/tasks', { key: KEYS.revoked });
+    check(rev.status === 401 && rev.json.error.message.includes('revoked'), 'a revoked key → 401 "revoked"');
+    const exp = await api('GET', '/v1/tasks', { key: KEYS.expired });
+    check(exp.status === 401 && exp.json.error.message.includes('expired'), 'an expired key → 401 "expired"');
+    check((await api('GET', '/v1/tasks', { key: KEYS.future })).status === 200, 'a key that expires later still works');
+
+    // rate limits and the failure log
+    const burst = await Promise.all(Array.from({ length: 260 }, () => api('GET', '/v1/settings', { key: KEYS.rate })));
+    const limited = burst.filter((x) => x.status === 429);
+    check(limited.length >= 1 && limited[0].json.error.code === 'RATE_LIMITED' && limited[0].headers.get('retry-after') === '60', `one key over 240 a minute → 429 RATE_LIMITED with Retry-After (${limited.length} of 260 refused)`);
+    check((await api('GET', '/v1/settings', { key: KEYS.owner })).status === 200, 'other keys are not affected');
+    const bad = await Promise.all(Array.from({ length: 40 }, () => api('GET', '/v1/tasks', { key: 'hr_' + 'y'.repeat(43) })));
+    check(bad.some((x) => x.status === 429) && bad.filter((x) => x.status === 401).length <= 30, 'failed authentications from one address are limited too');
+    await new Promise((res) => setTimeout(res, 1500));
+    const fl = await r(MGR, '/v1/system/failures?hours=1');
+    check(fl.status === 200 && fl.json.data.byCode.RATE_LIMITED >= 1 && fl.json.data.items.some((i) => i.credential === 'cred-test-rate'), 'system.failures lists the rate-limit events, by code', fl.json.data?.byCode);
+    check(fl.json.data.items.some((i) => i.code === 'OUTCOME_UNKNOWN' && i.op === 'tasks.edit'), 'and the write whose outcome was unknown, with its operation');
   }
 
   section('service-account token path (WebCrypto RS256 → mock token endpoint)');

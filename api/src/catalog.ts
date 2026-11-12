@@ -2,15 +2,26 @@
 // an operation that is not listed here does not exist. The same specs drive request validation, so the
 // catalog and the server can never disagree about a parameter.
 
-export const CATALOG_VERSION = '1.1.0';
+import { resourceOperations } from './resources';
+import { WRITE_DEFS } from './writes';
+import { OVERVIEW_OPS } from './overview';
+import { FAILURE_OPS } from './failures';
+
+export const CATALOG_VERSION = '2.0.0';
 
 export type Param =
   | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
   | { type: 'uid' | 'id'; required?: boolean; he?: string }
   | { type: 'date'; format: 'YYYY-MM-DD'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
   | { type: 'bool'; required?: boolean; default?: boolean; he?: string }
-  | { type: 'int'; min: number; max: number; default: number; he?: string }
-  | { type: 'enum'; values: readonly string[]; required?: boolean; default?: string; he?: string };
+  | { type: 'int'; min: number; max: number; default?: number; required?: boolean; he?: string }
+  | { type: 'enum'; values: readonly string[]; required?: boolean; default?: string; he?: string }
+  | { type: 'number'; min: number; max: number; required?: boolean; default?: number; he?: string }
+  | { type: 'datetime'; format: 'YYYY-MM-DDTHH:mm'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
+  | { type: 'time'; format: 'HH:mm'; timezone?: 'Asia/Jerusalem'; required?: boolean; he?: string }
+  | { type: 'email'; required?: boolean; he?: string }
+  | { type: 'stringList'; maxItems: number; maxLength: number; required?: boolean; he?: string }
+  | { type: 'intList'; min: number; max: number; maxItems: number; required?: boolean; he?: string };
 
 export type Operation = {
   name: string;
@@ -81,6 +92,9 @@ export const OPERATIONS: Operation[] = [
       assignee: { type: 'uid', he: 'uid מתוך people.search. שיוך למישהו אחר דורש גם tasks:assign' },
       dueDate: date('תאריך יעד'),
       urgent: { type: 'bool', default: false },
+      note: { type: 'string', max: 4000, he: 'הערה / פירוט' },
+      managersOnly: { type: 'bool', default: false, he: 'למנהלים בלבד (רק מנהל)' },
+      placeId: { type: 'id', he: 'מקום מתוך places.list' },
     },
     requiredScope: 'tasks:create',
     notes: [
@@ -98,6 +112,7 @@ export const OPERATIONS: Operation[] = [
     body: {
       taskId: { type: 'id', required: true },
       assignee: { type: 'uid', required: true, he: 'uid מתוך people.search' },
+      ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' },
     },
     requiredScope: 'tasks:assign',
     notes: [
@@ -112,7 +127,7 @@ export const OPERATIONS: Operation[] = [
     he: 'סימון משימה כבוצעה, בשם מי שקורא',
     method: 'POST',
     path: '/v1/actions/tasks.complete',
-    body: { taskId: { type: 'id', required: true } },
+    body: { taskId: { type: 'id', required: true }, ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' }, },
     requiredScope: 'tasks:complete',
     notes: [
       'Marks the task done by the calling actor, as the app does. An already-done task returns "changed": false.',
@@ -126,7 +141,7 @@ export const OPERATIONS: Operation[] = [
     he: 'החזרת משימה שבוצעה למצב פתוח',
     method: 'POST',
     path: '/v1/actions/tasks.reopen',
-    body: { taskId: { type: 'id', required: true } },
+    body: { taskId: { type: 'id', required: true }, ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' }, },
     requiredScope: 'tasks:complete',
     notes: ['Clears done, doneBy, doneAt and the done photo and note, as the app does. An open task returns "changed": false.'],
   },
@@ -170,12 +185,16 @@ export const OPERATIONS: Operation[] = [
     path: '/v1/actions/shopping.setBought',
     body: {
       itemId: { type: 'id', required: true },
+      ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' },
       bought: { type: 'bool', default: true, he: 'false מחזיר את הפריט לרשימה הפתוחה' },
     },
     requiredScope: 'shopping:write',
     notes: ['Bought items leave the app\'s open list and disappear after 24 hours, as when marked in the app. No change returns "changed": false.'],
   },
 ];
+
+/** Every operation: the hand-written ones above, then the generated reads, the overview and every app action. */
+export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...OPERATIONS, ...FAILURE_OPS, ...resourceOperations(), ...WRITE_DEFS.map((d) => d.op)];
 
 export const CATALOG = {
   version: CATALOG_VERSION,
@@ -186,15 +205,19 @@ export const CATALOG = {
     scopes: 'owner and manager: every operation. staff: tasks.list/get/create (for themselves)/complete/reopen and the shopping list; not people.search or assigning to others.',
     idempotency: 'Every write needs an Idempotency-Key header (UUID). Same key + same body returns the stored result with "replayed": true. Same key + different body is 409. After a timeout or OUTCOME_UNKNOWN, resend with the same key.',
     dates: 'Absolute dates only, YYYY-MM-DD in Asia/Jerusalem. Resolve "today" / "tomorrow" before calling; the server does not parse natural language.',
+    datesAndTimes: 'Every parameter states its format and time zone. date: YYYY-MM-DD (Asia/Jerusalem). datetime: YYYY-MM-DDTHH:mm, local Israel time, no offset (event start/end). time: HH:mm, Israel time. Stored timestamps (createdAt, updatedAt, at, doneAt, boughtAt) are ISO 8601 in UTC with a Z; convert to Israel time before telling the user.',
+    concurrency: 'Writes run in a transaction and only change the fields sent, so other fields changed meanwhile in the app are kept. To avoid overwriting a change to the same record, send ifUpdatedAt = the record\'s updatedAt as you read it: if it changed since, the write is refused with 409 STALE_WRITE; read it again and ask the user. The action and its activity entry are one commit: both happen or neither.',
+    rateLimits: 'Per key: 240 requests a minute; failed authentications: 30 a minute per address. Over the limit: 429 RATE_LIMITED with Retry-After. A Firestore daily quota hit is 429 QUOTA_EXCEEDED.',
+    keys: 'One key per person or assistant, bound on the server to that person\'s profile. A key can be revoked, rotated or set to expire; a revoked or expired key gets 401.',
     envelope: 'Success: { ok: true, data, meta }. Failure: { ok: false, error: { code, message, he, details }, meta }.',
     unknownParams: 'Unknown query or body fields are rejected with 400.',
     userAgent: 'Send a User-Agent header that names your client, e.g. "Instinct-HavatRavve/1.0". Cloudflare blocks Python urllib\'s default User-Agent before the request reaches this API: a plain-text 403 "error code: 1010" means it never arrived and nothing was written.',
   },
   errors: {
     VALIDATION_FAILED: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, NOT_FOUND: 404, IDEMPOTENCY_CONFLICT: 409,
-    QUOTA_EXCEEDED: 429, UPSTREAM_ERROR: 502, OUTCOME_UNKNOWN: 503, PRODUCTION_LOCKED: 503, INTERNAL: 500,
+    STALE_WRITE: 409, RATE_LIMITED: 429, QUOTA_EXCEEDED: 429, UPSTREAM_ERROR: 502, OUTCOME_UNKNOWN: 503, PRODUCTION_LOCKED: 503, INTERNAL: 500,
   },
-  operations: OPERATIONS,
+  operations: ALL_OPERATIONS,
 };
 
-export const operation = (name: string) => OPERATIONS.find((o) => o.name === name);
+export const operation = (name: string) => ALL_OPERATIONS.find((o) => o.name === name);

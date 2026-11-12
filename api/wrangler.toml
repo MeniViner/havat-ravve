@@ -13,5 +13,21 @@ preview_urls = false
 FIRESTORE_PROJECT_ID = "havat-ravve"
 PRODUCTION_APPROVED = "havat-ravve"
 
+# Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
+[[kv_namespaces]]
+binding = "TOKEN_KV"
+id = "d275887525684d4b896d982838dad120"
+
+# Rate limits (Workers Rate Limiting, free): per credential, and failed authentications per client IP.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 240, period = 60 }
+
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
 [observability]
 enabled = true
