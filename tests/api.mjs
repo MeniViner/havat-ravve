@@ -500,6 +500,8 @@ try {
     const taskId = tk.json.data.taskId;
     const stored = await docOf('tasks/' + taskId);
     check(stored.note === 'עם צינור' && stored.location.placeName === 'דיר' && stored.location.placeId === placeId, 'the task carries the note and the place, as the app stores them');
+    const readT = (await r(STAFF, '/v1/tasks/' + taskId)).json.data.task;
+    check(readT.note === 'עם צינור' && readT.location?.placeName === 'דיר' && readT.doneNote === '' && readT.hasDonePhoto === false, 'tasks.get returns note, location and done note (found by the assistant)', readT);
     check((await create(KEYS.users, { title: 'סודי', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 403, 'staff cannot create a manager-only task');
     const mo = await create(KEYS.users, { title: 'משימת הנהלה', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' });
     check(mo.status === 201 && (await r(STAFF, '/v1/tasks/' + mo.json.data.taskId)).status === 404, 'a manager-only task from the API is hidden from staff');
@@ -510,6 +512,7 @@ try {
     check((await w(STAFF, 'tasks.delete', { taskId: other })).status === 403, 'staff cannot delete someone else\'s task');
     ok(await w(MGR, 'tasks.edit', { taskId, urgent: true }), 'tasks.edit urgent only');
     ok(await w(STAFF, 'tasks.setDoneNote', { taskId, note: 'נוקה' }), 'tasks.setDoneNote');
+    check((await r(STAFF, '/v1/tasks/' + taskId)).json.data.task.doneNote === 'נוקה' && (await r(STAFF, '/v1/tasks?limit=50')).json.data.items.find((x) => x.id === taskId)?.doneNote === 'נוקה', 'the done note shows in tasks.get and tasks.list');
     check((await w(MGR, 'tasks.edit', { taskId })).status === 400, 'tasks.edit with nothing to change → 400');
     check((await actsOf(taskId)) === 'created,edited,note,urgent', 'edit / urgent / note activity, as the app logs them', await actsOf(taskId));
     const del = await w(MGR, 'tasks.delete', { taskId: other });
