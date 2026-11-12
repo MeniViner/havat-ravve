@@ -1,0 +1,7 @@
+# Copy to api/.dev.vars for `npx wrangler dev`. api/.dev.vars is git-ignored; never commit real values.
+FIRESTORE_PROJECT_ID=demo-havat-ravve
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+# JSON array of { id, sha256, actors }. Generate with: node api/scripts/new-key.mjs <credential-id> <actor-id>
+API_CREDENTIALS=[]
+# Local fault injection (X-Test-Fault header). Ignored unless FIRESTORE_EMULATOR_HOST is set.
+TEST_FAULTS=1
