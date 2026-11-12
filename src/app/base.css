@@ -1,0 +1,18 @@
+/* חוות רווה · בסיס: גופנים, איפוס, ומה שכל מסך צריך. כל השאר ב־farm.css ובקבצי css/. */
+@font-face{font-family:'Heebo';font-style:normal;font-weight:400 700;font-display:swap;src:url('/assets/heebo-hebrew.woff2') format('woff2');unicode-range:U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:'Heebo';font-style:normal;font-weight:400 700;font-display:swap;src:url('/assets/heebo-latin.woff2') format('woff2');unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122}
+@font-face{font-family:'Frank Ruhl Libre';font-style:normal;font-weight:400 700;font-display:swap;src:url('/assets/frank-ruhl-libre-hebrew.woff2') format('woff2');unicode-range:U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:'Frank Ruhl Libre';font-style:normal;font-weight:400 700;font-display:swap;src:url('/assets/frank-ruhl-libre-latin.woff2') format('woff2');unicode-range:U+0000-00FF,U+2000-206F}
+*{box-sizing:border-box}
+html{color-scheme:light;-webkit-text-size-adjust:100%}
+body{margin:0;background:#f2eee2;color:#17201a;font-family:'Heebo',Arial,sans-serif;font-size:17px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer;text-align:start;-webkit-tap-highlight-color:transparent}
+button:disabled{cursor:default}
+input,textarea,select{font:inherit;color:inherit}
+h1,h2,h3,p,ul,dl,dd{margin:0}
+ul{padding:0;list-style:none}
+img{display:block;max-width:100%}
+svg.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.ltr{direction:ltr;text-align:right;unicode-bidi:isolate;white-space:nowrap}

@@ -1,6 +1,7 @@
-// Primitives of the "farm ledger" language: rows, check marks that answer back, number strips, pills, buttons, fields, page headers.
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { href, navigate, back as goBack } from './router';
+// The few things every screen shares: icons, the in-app link, the desktop breakpoint, toasts and date/number formatting.
+// Components live in kit.tsx.
+import { createContext, useCallback, useContext, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { href, navigate } from './router';
 
 // ---------- icons (stroke, inherit color) ----------
 const paths: Record<string, ReactNode> = {
@@ -61,165 +62,17 @@ export const Icon = ({ name, size, className = '' }: { name: string; size?: numb
 );
 
 // ---------- link that uses the in-app router ----------
-export function A({ to, children, className, replace, ...rest }: { to: string; children?: ReactNode; className?: string; replace?: boolean } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
-  return <a {...rest} className={className} href={href(to)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.button === 1) return; e.preventDefault(); navigate(to, replace); }}>{children}</a>;
+export function A({ to, children, className, replace, keep, ...rest }: { to: string; children?: ReactNode; className?: string; replace?: boolean; keep?: boolean } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+  return <a {...rest} className={className} href={href(to)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.button === 1) return; e.preventDefault(); navigate(to, replace, keep); }}>{children}</a>;
 }
 
 // ---------- media ----------
 export const useMedia = (q: string) => useSyncExternalStore((l) => { const m = matchMedia(q); m.addEventListener('change', l); return () => m.removeEventListener('change', l); }, () => matchMedia(q).matches);
 export const useDesktop = () => useMedia('(min-width: 1024px)');
 
-// ---------- page header ----------
-export function Top({ title, date, sub, end, back, backTo, backLabel, tight, serif }: { title: ReactNode; date?: ReactNode; sub?: ReactNode; end?: ReactNode; back?: boolean; backTo?: string; backLabel?: string; tight?: boolean; serif?: boolean }) {
-  return (
-    <>
-      {(back || backTo) && <div className="crumb"><Back to={backTo} label={backLabel} />{end && <div className="end">{end}</div>}</div>}
-      <header className={'top' + (tight || back || backTo ? ' tight' : '')}>
-        <div style={{ minWidth: 0 }}>{date && <div className="date">{date}</div>}<h1 className={serif ? 'serif' : ''}>{title}</h1>{sub && <div className="sub">{sub}</div>}</div>
-        {!(back || backTo) && end && <div className="end">{end}</div>}
-      </header>
-    </>
-  );
-}
-export const Back = ({ to, label = 'חזרה' }: { to?: string; label?: string }) => (
-  <button type="button" className="back" onClick={() => (to ? navigate(to) : goBack('/'))}><Icon name="back" />{label}</button>
-);
-
-// ---------- numbers strip ----------
-export const Ledger = ({ items, small }: { items: { n: ReactNode; label: string; tone?: 'rust' | 'ochre'; to?: string }[]; small?: boolean }) => (
-  <div className={'ledger' + (small ? ' sm' : '')}>{items.map((i, k) => i.to ? <A key={k} to={i.to}><b className={i.tone || ''}>{i.n}</b><span>{i.label}</span></A> : <div key={k}><b className={i.tone || ''}>{i.n}</b><span>{i.label}</span></div>)}</div>
-);
-
-// ---------- section header (optionally collapsible) ----------
-export function Sec({ title, n, link, linkTo, onLink, children, open, onToggle, serif, tone }: { title: ReactNode; n?: number | string; link?: string; linkTo?: string; onLink?: () => void; children?: ReactNode; open?: boolean; onToggle?: () => void; serif?: boolean; tone?: 'rust' }) {
-  return (
-    <div className={'sec' + (serif ? ' day' : '') + (tone ? ' ' + tone : '')}>
-      {onToggle ? <button type="button" className={'tog' + (open ? '' : ' closed')} onClick={onToggle} aria-expanded={open}><Icon name="down" />{title}{n !== undefined && <span className="n">· {n}</span>}</button>
-        : <span>{title}{n !== undefined && <span className="n">· {n}</span>}</span>}
-      {children}
-      {link && (linkTo ? <A to={linkTo}>{link}</A> : <button type="button" className="lnk" onClick={onLink}>{link}</button>)}
-    </div>
-  );
-}
-export function useOpenSections(keys: string[], storageKey: string, closed: string[] = []) {
-  const [state, setState] = useState<Record<string, boolean>>(() => { const base = Object.fromEntries(keys.map((k) => [k, !closed.includes(k)])); try { return { ...base, ...JSON.parse(localStorage.getItem('farm-sec-' + storageKey) || '{}') }; } catch { return base; } });
-  const toggle = (k: string) => setState((s) => { const n = { ...s, [k]: !s[k] }; try { localStorage.setItem('farm-sec-' + storageKey, JSON.stringify(n)); } catch {} return n; });
-  return { isOpen: (k: string) => state[k] !== false, toggle };
-}
-
-// ---------- rows ----------
-export function Row({ to, onClick, title, meta, start, end, done, thumb, chev, className = '', center }: { to?: string; onClick?: () => void; title: ReactNode; meta?: ReactNode; start?: ReactNode; end?: ReactNode; done?: boolean; thumb?: string; chev?: boolean; className?: string; center?: boolean }) {
-  const cls = `row ${done ? 'done' : ''} ${center ? 'center' : ''} ${className}`;
-  const inner = <>{thumb && <img className="thumb" src={thumb} alt="" />}<div className="main"><div className="title">{title}</div>{meta && <div className="meta">{meta}</div>}</div></>;
-  const tail = <>{end && <div className="end">{end}</div>}{chev && <Icon name="chev" className="chev" size={18} />}</>;
-  const body = <>{inner}{tail}</>;
-  if (start || (end && (to || onClick))) {
-    // a leading control (a check mark) or trailing actions are their own buttons; only the middle of the row is the link
-    const link = { className: 'main lnk', style: { display: 'flex', gap: 14, flex: 1, minWidth: 0 } as const };
-    return <div className={cls}>{start}{to ? <A to={to} {...link}>{inner}</A> : onClick ? <button type="button" {...link} onClick={onClick}>{inner}</button> : <div className="main" style={link.style}>{inner}</div>}{tail}</div>;
-  }
-  if (to) return <A to={to} className={cls}>{body}</A>;
-  if (onClick) return <button type="button" className={cls} onClick={onClick}>{body}</button>;
-  return <div className={cls}>{body}</div>;
-}
-const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-/**
- * The "done" mark. Round for tasks, a small box for the shopping note.
- * Checking answers back before the item leaves: the mark fills and the tick draws, the line is struck, then the row folds away.
- * Only then is the change written, so the list never just jumps.
- */
-export function Chk({ on, onChange, label, rust, small, round }: { on: boolean; onChange: (v: boolean) => void; label: string; rust?: boolean; small?: boolean; round?: boolean }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const [busy, setBusy] = useState(false);
-  const reset = useRef(0);
-  useEffect(() => () => clearTimeout(reset.current), []);
-  const click = (e: React.MouseEvent) => {
-    e.stopPropagation(); e.preventDefault();
-    if (busy) return;
-    if (on || reducedMotion()) { onChange(!on); return; }
-    setBusy(true);
-    const row = ref.current?.closest<HTMLElement>('.row, .line, tr') || null;
-    const tr = row?.tagName === 'TR';
-    row?.classList.add('checking');
-    let fold: Animation | undefined;
-    if (row && !tr && typeof row.animate === 'function') {
-      row.style.overflow = 'hidden';
-      fold = row.animate([{ height: row.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px', minHeight: '0px' }], { duration: 260, delay: 380, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
-    }
-    // not cleared on unmount: the user did check it, even if they navigate away in the next half second
-    setTimeout(() => onChange(true), tr ? 460 : 640);
-    // still here a moment later (the write failed, or this list keeps done items)? put the row back
-    reset.current = window.setTimeout(() => { fold?.cancel(); if (row) { row.classList.remove('checking'); row.style.overflow = ''; } setBusy(false); }, 1700);
-  };
-  const checked = on || busy;
-  return (
-    <button ref={ref} type="button" role="checkbox" aria-checked={checked} aria-label={label} className={`chk ${round ? 'round' : ''} ${checked ? 'on' : ''} ${busy ? 'pop' : ''} ${rust && !checked ? 'rust' : ''} ${small ? 'sm' : ''}`} onClick={click}>
-      <span className="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg></span>
-    </button>
-  );
-}
-/** Replays the page-enter motion whenever `key` changes, without remounting the screen (filters and scroll survive). */
-export function usePageEnter<T extends HTMLElement>(key: string) {
-  const ref = useRef<T>(null);
-  useLayoutEffect(() => {
-    const el = ref.current; if (!el) return;
-    el.classList.remove('page-in'); void el.offsetWidth; el.classList.add('page-in');
-  }, [key]);
-  return ref;
-}
-export const Pill = ({ tone, children }: { tone?: 'rust' | 'ochre' | 'ok' | 'gold' | 'green'; children: ReactNode }) => <span className={'pill ' + (tone || '')}>{children}</span>;
-export const Dot = () => <span aria-hidden="true">·</span>;
-
-// ---------- buttons ----------
-type BtnProps = { kind?: 'primary' | 'ghost' | 'quiet' | 'danger' | 'gold' | 'rustfill' | 'google'; size?: 'big' | 'sm' | 'xs'; block?: boolean; icon?: string; to?: string; children?: ReactNode; className?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>;
-export function Btn({ kind = 'primary', size, block, icon, to, children, className = '', ...rest }: BtnProps) {
-  const cls = `btn ${kind} ${size || ''} ${block ? 'block' : ''} ${className}`;
-  if (to) return <A to={to} className={cls}>{icon && <Icon name={icon} size={20} />}{children}</A>;
-  return <button type="button" {...rest} className={cls}>{icon && <Icon name={icon} size={20} />}{children}</button>;
-}
-export const IconBtn = ({ icon, label, onClick, to, ghost, href: ext }: { icon: string; label: string; onClick?: () => void; to?: string; ghost?: boolean; href?: string }) =>
-  to ? <A to={to} className={'iconbtn ' + (ghost ? 'ghost' : '')} aria-label={label}><Icon name={icon} /></A>
-    : ext ? <a href={ext} target="_blank" rel="noopener" className={'iconbtn ' + (ghost ? 'ghost' : '')} aria-label={label}><Icon name={icon} /></a>
-      : <button type="button" className={'iconbtn ' + (ghost ? 'ghost' : '')} aria-label={label} onClick={onClick}><Icon name={icon} /></button>;
-export const Fab = ({ items }: { items: { icon: string; label: string; to?: string; onClick?: () => void }[] }) => (
-  <div className="fab">{items.map((i) => i.to ? <A key={i.label} to={i.to} aria-label={i.label} title={i.label}><Icon name={i.icon} /></A> : <button key={i.label} type="button" aria-label={i.label} title={i.label} onClick={i.onClick}><Icon name={i.icon} /></button>)}</div>
-);
-
-// ---------- forms ----------
-export const Field = ({ label, hint, children, className = '' }: { label?: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) => (
-  <label className={'field ' + className}>{label && <span>{label}</span>}{children}{hint && <span className="hint">{hint}</span>}</label>
-);
-export const Input = ({ big, className = '', ...rest }: { big?: boolean } & React.InputHTMLAttributes<HTMLInputElement>) => <input {...rest} className={`input ${big ? 'big' : ''} ${className}`} />;
-export const Textarea = (rest: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...rest} className="input" />;
-export const Select = ({ children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...rest} className="input">{children}</select>;
-export function Chips<T extends string>({ value, onChange, options, scroll, rust }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; n?: number }[]; scroll?: boolean; rust?: boolean }) {
-  return <div className={'chips' + (scroll ? ' scroll' : '')} role="tablist">{options.map((o) => <button key={o.value} type="button" role="tab" aria-selected={value === o.value} className={`chip ${value === o.value ? 'on' : ''} ${rust ? 'rust' : ''}`} onClick={() => onChange(o.value)}>{o.label}{o.n !== undefined && <span className="n">· {o.n}</span>}</button>)}</div>;
-}
-export const Chip = ({ on, onClick, children }: { on?: boolean; onClick?: () => void; children: ReactNode }) => <button type="button" className={'chip ' + (on ? 'on' : '')} aria-pressed={on} onClick={onClick}>{children}</button>;
-export const Switch = ({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) => <button type="button" role="switch" aria-checked={on} aria-label={label} className={'switch ' + (on ? 'on' : '')} onClick={() => onChange(!on)} />;
-export const SwitchRow = ({ on, onChange, title, meta }: { on: boolean; onChange: (v: boolean) => void; title: string; meta?: ReactNode }) => (
-  <div className="switchrow"><div className="main"><div className="title">{title}</div>{meta && <div className="meta">{meta}</div>}</div><Switch on={on} onChange={onChange} label={title} /></div>
-);
-export const Stepper = ({ value, onChange, min = 1, max = 99 }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) => (
-  <div className="stepper"><button type="button" aria-label="פחות" disabled={value <= min} onClick={() => onChange(value - 1)}><Icon name="minus" /></button><b key={value} className="pop">{value}</b><button type="button" aria-label="עוד" disabled={value >= max} onClick={() => onChange(value + 1)}><Icon name="plus" /></button></div>
-);
-export const DAY_SHORT = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-export const Days = ({ value, onChange, disabled = [] }: { value: number[]; onChange: (v: number[]) => void; disabled?: number[] }) => (
-  <div className="days">{DAY_SHORT.map((d, i) => <button key={i} type="button" className={(value.includes(i) ? 'on' : '') + (disabled.includes(i) ? ' off' : '')} aria-pressed={value.includes(i)} onClick={() => onChange(value.includes(i) ? value.filter((x) => x !== i) : [...value, i].sort())}>{d}</button>)}</div>
-);
-
-// ---------- people ----------
-export const Avatar = ({ name, size, light, me }: { name: string; size?: 'xs' | 'sm' | 'lg'; light?: boolean; me?: boolean }) => {
-  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('');
-  return <span className={`avatar ${size || ''} ${light ? 'light' : ''} ${me ? 'me' : ''}`} aria-hidden="true">{initials}</span>;
-};
-
-// ---------- empty / loading ----------
-export const Empty = ({ title, text, action }: { title: string; text?: string; action?: ReactNode }) => <div className="empty"><b>{title}</b>{text}{action && <div style={{ marginTop: 14 }}>{action}</div>}</div>;
-export const Loading = () => <div style={{ padding: '20px 20px' }}><div className="skeleton" style={{ width: '70%' }} /><div className="skeleton" style={{ width: '45%', marginTop: 10 }} /><div className="skeleton" style={{ width: '60%', marginTop: 10 }} /></div>;
-
 // ---------- toast (with undo) ----------
-type ToastItem = { id: number; text: string; action?: { label: string; onClick: () => void }; kind?: 'ok' | 'error' };
+type ToastAction = { label: string; onClick: () => void };
+type ToastItem = { id: number; text: string; action?: ToastAction; actions?: ToastAction[]; kind?: 'ok' | 'error' };
 const ToastCtx = createContext<(t: Omit<ToastItem, 'id'>, ms?: number) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -232,45 +85,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      <div className="toasts" aria-live="polite">
-        {items.map((t) => <div key={t.id} className={'toast ' + (t.kind || '')}><span>{t.text}</span>{t.action && <button type="button" onClick={() => { t.action!.onClick(); setItems((s) => s.filter((i) => i.id !== t.id)); }}>{t.action.label}</button>}</div>)}
+      <div className="r-toasts" aria-live="polite">
+        {items.map((t) => <div key={t.id} className={'r-toast ' + (t.kind || '')}><span>{t.text}</span>{[...(t.action ? [t.action] : []), ...(t.actions || [])].map((x) => <button key={x.label} type="button" onClick={() => { x.onClick(); setItems((s) => s.filter((i) => i.id !== t.id)); }}>{x.label}</button>)}</div>)}
       </div>
     </ToastCtx.Provider>
   );
 }
-/** Delete with a 6-second undo instead of a confirm() dialog. */
-export function useUndoable() {
-  const toast = useToast();
-  return async (text: string, doIt: () => Promise<unknown>, undo: () => Promise<unknown>) => {
-    try { await doIt(); toast({ text, action: { label: 'ביטול', onClick: () => { undo().catch(() => {}); } } }, 6000); }
-    catch { toast({ text: 'לא הצלחנו. נסו שוב.', kind: 'error' }); }
-  };
-}
-
-// ---------- bottom sheet (only for short confirmations and pickers) ----------
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const d = ref.current; if (!d) return; if (open && !d.open) d.showModal(); if (!open && d.open) d.close(); }, [open]);
-  useEffect(() => {
-    const d = ref.current; if (!d) return;
-    const onCancel = (e: Event) => { e.preventDefault(); onClose(); };
-    const onClick = (e: MouseEvent) => { if (e.target === d) onClose(); };
-    d.addEventListener('cancel', onCancel); d.addEventListener('click', onClick);
-    return () => { d.removeEventListener('cancel', onCancel); d.removeEventListener('click', onClick); };
-  }, [onClose]);
-  return <dialog ref={ref} className="sheet"><div className="sheet-inner"><div className="sheet-grip" aria-hidden="true" />{title && <header className="sheet-head"><h2>{title}</h2><button type="button" className="iconbtn" onClick={onClose} aria-label="סגירה"><Icon name="x" /></button></header>}{open && children}</div></dialog>;
-}
-
-// ---------- desktop table helpers ----------
-export function useSort<T>(initial: string, dir: 'asc' | 'desc' = 'asc') {
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: initial, dir });
-  const toggle = (key: string) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
-  const apply = (rows: T[], get: (r: T, key: string) => string | number | null | undefined) => [...rows].sort((a, b) => { const x = get(a, sort.key) ?? '', y = get(b, sort.key) ?? ''; const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he'); return sort.dir === 'asc' ? c : -c; });
-  return { sort, toggle, apply };
-}
-export const Th = ({ k, sort, onSort, children, end }: { k?: string; sort?: { key: string; dir: 'asc' | 'desc' }; onSort?: (k: string) => void; children?: ReactNode; end?: boolean }) => (
-  <th className={sort && k === sort.key ? 'sort' : ''} style={end ? { textAlign: 'end' } : undefined}>{k && onSort ? <button type="button" onClick={() => onSort(k)}>{children}{sort?.key === k && (sort.dir === 'asc' ? ' ↑' : ' ↓')}</button> : children}</th>
-);
 
 // ---------- formatting ----------
 const TZ = 'Asia/Jerusalem';

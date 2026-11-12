@@ -129,7 +129,7 @@ try{
 const env2=await initializeTestEnvironment({projectId:'demo-havat-ravve-2',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
 try{
  const ctx2=(uid,email)=>env2.authenticatedContext(uid,claims(email)).firestore();
- const owner=ctx2('owner','meniviner@gmail.com'), beni=ctx2('beni','beni@example.com'), vol=ctx2('vol','vol@example.com'), guest=ctx2('guest','guest@example.com'), other=ctx2('other','other@example.com');
+ const owner=ctx2('owner','meniviner@gmail.com'), beni=ctx2('beni','beni@example.com'), vol=ctx2('vol','vol@example.com'), guest=ctx2('guest','guest@example.com'), other=ctx2('other','other@example.com'), blockedUser=ctx2('blk','blk@example.com');
  const anon=env2.unauthenticatedContext().firestore();
  await setDoc(doc(owner,'users','owner'),profile('owner','meniviner@gmail.com','owner','active'));
  await setDoc(doc(beni,'users','beni'),profile('beni','beni@example.com','guest','active'));
@@ -143,6 +143,9 @@ try{
  await assertFails(setDoc(doc(guest,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(setDoc(doc(beni,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(getDoc(doc(anon,'settings','app')));
+ await assertFails(updateDoc(doc(beni,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));   // a manager cannot change where the money goes
+ await assertSucceeds(updateDoc(doc(beni,'settings','app'),{visitTypes:['סיור']}));
+ await assertSucceeds(updateDoc(doc(owner,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));
 
  // events: published readable by anyone, drafts only by staff
  const ev=(extra={})=>({title:'פסטיבל',description:'',image:'',location:'',start:'2030-01-01T18:00:00.000Z',end:'2030-01-01T22:00:00.000Z',price:50,maxPerOrder:5,capacity:0,open:true,published:true,questions:[],createdBy:actor('beni'),createdAt:now,updatedAt:now,...extra});
@@ -159,6 +162,12 @@ try{
  await assertFails(setDoc(doc(vol,'events','e1','products','p2'),{name:'בירה',price:20,active:true,sort:1}));
  await assertSucceeds(getDocs(collection(vol,'events','e1','products')));
  await assertFails(getDocs(collection(guest,'events','e1','products')));
+ // event files: managers only, never the volunteers or the guests
+ await assertSucceeds(setDoc(doc(beni,'events','e1','files','f1'),{name:'אישור משטרה',url:'https://drive.google.com/x',kind:'doc',by:actor('beni'),at:now}));
+ await assertFails(setDoc(doc(beni,'events','e1','files','f2'),{name:'x',url:'http://insecure',kind:'doc',by:actor('beni'),at:now}));
+ await assertFails(getDocs(collection(vol,'events','e1','files')));
+ await assertFails(getDocs(collection(guest,'events','e1','files')));
+ await assertSucceeds(getDocs(collection(beni,'events','e1','files')));
 
  // tickets
  const tk=(uid,extra={})=>({eventId:'e1',eventTitle:'פסטיבל',orderId:'o1',index:1,total:2,ownerUid:uid,ownerName:'אורח',ownerPhone:'0500000000',holderName:'',secret:'abcdef0123456789abcdef00',price:50,paymentStatus:'pending',status:'valid',scans:[],entries:0,answers:{},createdAt:now,updatedAt:now,...extra});
@@ -170,6 +179,15 @@ try{
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('guest',{total:9,index:9})));                 // over maxPerOrder
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('guest',{eventId:'draft'})));                 // unpublished
  await assertSucceeds(setDoc(doc(guest,'tickets','tf'),tk('guest',{eventId:'free',price:0,paymentStatus:'free'})));
+ // paying at the gate covers the whole order: a volunteer may mark a sibling ticket paid on site without scanning it, and nothing else
+ await assertSucceeds(setDoc(doc(guest,'tickets','t9'),tk('guest')));
+ await assertFails(updateDoc(doc(vol,'tickets','t9'),{paymentStatus:'paid',updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'tickets','t9'),{paymentStatus:'paid_onsite',updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(vol,'tickets','t9'),{paymentStatus:'paid_onsite',updatedAt:now}));
+ // a blocked account is no longer "signed": it cannot order
+ await setDoc(doc(blockedUser,'users','blk'),profile('blk','blk@example.com','guest','active'));
+ await updateDoc(doc(beni,'users','blk'),{role:'guest',status:'blocked',notes:'',updatedAt:now});
+ await assertFails(setDoc(doc(blockedUser,'tickets','tb'),tk('blk')));
  await assertSucceeds(getDoc(doc(guest,'tickets','t1')));
  await assertFails(getDoc(doc(other,'tickets','t1')));
  await assertSucceeds(getDoc(doc(vol,'tickets','t1')));
@@ -213,9 +231,11 @@ try{
  await assertFails(setDoc(doc(guest,'tabs','tb1'),{...tb,createdBy:actor('guest')}));
  await assertSucceeds(setDoc(doc(vol,'tabs','tb1'),tb));
  await assertSucceeds(updateDoc(doc(vol,'tabs','tb1'),{items:[{productId:'p1',name:'יין',price:20,qty:2,at:now,by:actor('vol')}],total:40,updatedAt:now}));
- await assertFails(updateDoc(doc(vol,'tabs','tb1'),{status:'paid',updatedAt:now}));              // staff cannot close
+ await assertFails(updateDoc(doc(vol,'tabs','tb1'),{status:'waived',updatedAt:now}));            // staff cannot waive a debt
+ await assertFails(updateDoc(doc(guest,'tabs','tb1'),{status:'paid',updatedAt:now}));              // a guest cannot mark their own tab paid
  await assertFails(updateDoc(doc(guest,'tabs','tb1'),{items:[],total:0,updatedAt:now}));          // guest cannot edit items
  await assertSucceeds(updateDoc(doc(guest,'tabs','tb1'),{status:'claimed',updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(vol,'tabs','tb1'),{status:'paid',updatedAt:now}));             // paid on the spot: a volunteer closes the tab
  await assertSucceeds(updateDoc(doc(beni,'tabs','tb1'),{status:'paid',updatedAt:now}));
  await assertSucceeds(getDoc(doc(guest,'tabs','tb1')));
  await assertFails(getDoc(doc(other,'tabs','tb1')));
@@ -227,5 +247,13 @@ try{
  await assertSucceeds(updateDoc(doc(beni,'notifications','n1'),{handled:true,handledBy:actor('beni'),handledAt:now}));
  await assertFails(setDoc(doc(vol,'calendar','c1'),{ownerUid:'vol',ownerName:'v',title:'x',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now}));
  await assertSucceeds(setDoc(doc(beni,'calendar','c1'),{ownerUid:'beni',ownerName:'b',title:'x',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now}));
+ await assertSucceeds(setDoc(doc(beni,'calendar','c2'),{ownerUid:'beni',ownerName:'b',title:'x',date:'2030-01-01',time:'18:00–21:00',kind:'event',refId:'e1',createdAt:now}));   // a time range fits
+ // the team list: a volunteer may list team members by role, never everyone
+ await assertSucceeds(getDocs(query(collection(vol,'users'),where('role','in',['owner','manager','staff']))));
+ await assertFails(getDocs(collection(vol,'users')));
+ await assertFails(getDocs(query(collection(guest,'users'),where('role','in',['owner','manager','staff']))));
+ // item history: the kind is part of the query, so a volunteer can read it for a task
+ await assertSucceeds(getDocs(query(collection(vol,'activity'),where('kind','==','task'),where('refId','==','t1'))));
+ await assertFails(getDocs(query(collection(vol,'activity'),where('refId','==','t1'))));
  console.log('PASS: guest side rules — settings, published events, ticket ownership/payment/scan rules, visits, donations, stall tabs, notifications, calendar.');
 }finally{await env2.cleanup();}

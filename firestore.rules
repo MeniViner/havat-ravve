@@ -39,7 +39,7 @@ service cloud.firestore {
   function isStaff(){return google() && (bootstrapOwner() || activeRole() in ['owner','manager','staff']);}
   function str(v, max){return v is string && v.size() <= max;}
   function actorOk(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid == uid() && str(a.name, 80);}
-  function photoOk(v){return v == '' || (v is string && v.size() <= 400000 && v.matches('data:image/webp;base64,[A-Za-z0-9+/=]+'));}
+  function photoOk(v){return v == '' || (v is string && v.size() <= 400000 && v.matches('data:image/(webp|jpeg);base64,[A-Za-z0-9+/=]+'));}
   function inviteValid(code){return code is string && exists(/databases/$(database)/documents/invites/$(code)) && get(/databases/$(database)/documents/invites/$(code)).data.active == true && get(/databases/$(database)/documents/invites/$(code)).data.role == 'staff';}
   function incoming(){return request.resource.data;}
   function changed(){return request.resource.data.diff(resource.data).affectedKeys();}
@@ -52,7 +52,8 @@ service cloud.firestore {
    function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
    function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && incoming().role in ['guest','staff','manager','owner'] && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
    allow get: if self(id) || isManager();
-   allow list: if isManager();
+   // volunteers need the names of the team (who a task is on), never the guests
+   allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
    allow create: if self(id) && profileShape() && incoming().email == request.auth.token.email && createRole();
    allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit()) || (isManager() && managerEdit()));
    allow delete: if isOwner();
@@ -100,7 +101,7 @@ service cloud.firestore {
   match /activity/{id} {
    function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}
    allow read: if isManager() || (isStaff() && teamKind()) || mine('subjectUid');
-   allow create: if google() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   allow create: if signed() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
    allow update, delete: if false;
   }
   match /places/{id} {
@@ -110,12 +111,15 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   // ---------- Guest side: events, tickets, visits, donations, stalls ----------
-  function signed(){return google() && exists(userPath());}
+  function signed(){return google() && exists(userPath()) && get(userPath()).data.status != 'blocked';}
   function mine(field){return google() && resource.data[field] == uid();}
   function actorOf(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid is string && a.name is string;}
   match /settings/{name} {
    allow read: if true;
-   allow write: if isManager() && name == 'app';
+   // where guests send money is the owners' decision; every other part of the settings is any manager's
+   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming()));
+   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment']));
+   allow delete: if isOwner() && name == 'app';
   }
   match /events/{id} {
    function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','questions','files','createdBy','createdAt','updatedAt']) && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10;}
@@ -126,6 +130,11 @@ service cloud.firestore {
    match /vendors/{vid} {
     allow read: if isStaff();
     allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['vendorId','name','confirmed','notes']) && str(incoming().name, 200) && incoming().confirmed is bool && str(incoming().notes, 1000)));
+   }
+   // links to permits, layout maps and lists: managers only (they used to sit in the public event document)
+   match /files/{fid} {
+    allow read: if isManager();
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','url','kind','by','at']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().url, 2000) && incoming().url.matches('https://.*') && incoming().kind in ['doc','image'] && actorOf(incoming().by) && str(incoming().at, 40)));
    }
    match /products/{pid} {
     allow read: if isStaff();
@@ -140,6 +149,7 @@ service cloud.firestore {
    allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && (
      isManager()
      || (isStaff() && changed().hasOnly(['scans','entries','paymentStatus','updatedAt']) && incoming().entries == resource.data.entries + 1 && incoming().scans.size() == resource.data.scans.size() + 1 && actorOk(incoming().scans[resource.data.scans.size()].by) && (incoming().paymentStatus == resource.data.paymentStatus || incoming().paymentStatus == 'paid_onsite'))
+     || (isStaff() && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus in ['pending','claimed'] && incoming().paymentStatus == 'paid_onsite')
      || (mine('ownerUid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed')
      || (mine('ownerUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'valid' && resource.data.entries == 0 && incoming().status == 'cancelled'));
    allow delete: if isManager();
@@ -166,18 +176,18 @@ service cloud.firestore {
    function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isStaff() || mine('guestUid');
    allow create: if isStaff() && tabShape() && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0;
-   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && ((isManager()) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && ((isManager()) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (isStaff() && changed().hasOnly(['status','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid') || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
   match /notifications/{id} {
    allow read: if isManager();
-   allow create: if google() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
+   allow create: if signed() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
    allow update: if isManager() && changed().hasOnly(['handled','handledBy','handledAt']);
    allow delete: if isManager();
   }
   match /calendar/{id} {
    allow read: if isManager();
-   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 5) && incoming().kind in ['manual','visit','event']));
+   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event']));
   }
  }
 }

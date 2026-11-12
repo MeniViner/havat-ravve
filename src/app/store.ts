@@ -32,8 +32,9 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
 
 // ---------- profile ----------
 export function useProfile(user: Session | null) {
-  const { item, loading } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user);
-  return { profile: item ? { ...item, uid: user!.uid } : null, loading, missing: !!user && !loading && !item };
+  const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user);
+  // a profile that could not be read is not a missing profile: never send an existing member to registration because of a network error
+  return { profile: item ? { ...item, uid: user!.uid } : null, loading, error: error || '', missing: !!user && !loading && !item && !error };
 }
 
 export const isOwnerEmail = (email?: string | null) => !!email && email.toLowerCase() === ownerEmail.toLowerCase();
@@ -70,6 +71,11 @@ export const updateOwnProfile = (uid: string, data: { displayName?: string; phon
 
 // ---------- people (managers) ----------
 export const usePeople = (enabled: boolean) => useList<Profile>('users', { orderBy: [['displayName', 'asc']] }, enabled);
+/** Team members only (names for "who is it on"). Volunteers may read this list; the full people list is for managers. */
+export function useTeam(enabled: boolean) {
+  const r = useList<Profile>('users', { where: [['role', 'in', ['owner', 'manager', 'staff']]] }, enabled);
+  return useMemo(() => ({ ...r, items: r.items.filter((p) => p.status === 'active').sort((a, b) => a.displayName.localeCompare(b.displayName, 'he')) }), [r]);
+}
 export const usePerson = (uid: string, enabled = true) => useDoc<Profile>('users/' + (uid || '_'), enabled && !!uid);
 export async function setUserRole(actor: Actor, p: Profile, role: Role, status: Status, notes = p.notes || '') {
   const entry = { at: nowIso(), by: actor, text: role !== p.role ? `תפקיד: ${ROLE_LABELS[p.role]} ← ${ROLE_LABELS[role]}` : status !== p.status ? `מצב: ${status === 'blocked' ? 'נחסם' : 'שוחרר'}` : 'עודכן' };
@@ -125,7 +131,7 @@ export async function editTask(actor: Actor, task: Task, data: Partial<NewTask>)
 }
 export async function setTaskDone(actor: Actor, task: Task, done: boolean) {
   const now = nowIso();
-  await write.update('tasks', task.id, done ? { done: true, doneBy: actor, doneAt: now, updatedAt: now } : { done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', updatedAt: now });
+  await write.update('tasks', task.id, done ? { done: true, doneBy: actor, doneAt: now, updatedAt: now } : { done: false, doneBy: null, doneAt: null, updatedAt: now }); // the result photo and note stay: un-ticking by mistake must not destroy them
   logActivity(actor, 'task', task.id, done ? 'done' : 'undone', taskText(task), { subjectUid: task.assignee?.uid });
 }
 export async function setTaskDoneDetails(actor: Actor, task: Task, data: { donePhoto?: string; doneNote?: string }) {
@@ -149,20 +155,31 @@ export async function saveTemplate(actor: Actor, data: NewTemplate, existing?: T
 }
 export const deleteTemplate = (id: string) => write.remove('task_templates', id);
 
-/** Creates today's instances of due recurring templates (idempotent: id = templateId_date). */
-export async function materializeToday(templates: Template[], actor: Actor) {
-  const key = todayKey();
+/** Today's instances of recurring tasks, done or not. The shell uses it to know which ones still have to be created. */
+export const useTodayInstances = (enabled: boolean, manager: boolean, key: string) => useList<Task>('tasks', { where: [...staffOnly(manager)!, ['dateKey', '==', key]] }, enabled);
+/** Creates today's missing instances of due recurring templates (id = templateId_date, so two phones create the same document).
+ *  No transaction: it has to work without reception. If the document already exists on the server the rules refuse the second write, quietly. */
+export function materializeToday(templates: Template[], existing: Task[], actor: Actor, key: string) {
   const weekday = new Date(key + 'T12:00:00').getDay();
-  const due = templates.filter((t) => t.active && (t.days.length === 0 || t.days.includes(weekday)));
-  for (const t of due) {
-    try {
-      await write.tx('tasks', `${t.id}_${key}`, (cur) => {
-        if (cur) return undefined;
-        const now = nowIso();
-        return { title: t.title, note: t.note, photo: '', location: null, dueDate: key, managersOnly: t.managersOnly, templateId: t.id, dateKey: key, createdBy: actor, createdAt: now, done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', assignee: null, urgent: false, updatedAt: now };
-      });
-    } catch { /* another device created it first, or offline: ignore */ }
+  const have = new Set(existing.map((t) => t.id));
+  for (const t of templates) {
+    if (!t.active || !(t.days.length === 0 || t.days.includes(weekday))) continue;
+    const id = `${t.id}_${key}`;
+    if (have.has(id)) continue;
+    const now = nowIso();
+    write.set('tasks', id, { title: t.title, note: t.note, photo: '', location: null, dueDate: key, managersOnly: t.managersOnly, templateId: t.id, dateKey: key, createdBy: actor, createdAt: now, done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', assignee: null, urgent: false, updatedAt: now }, { quiet: true }).catch(() => {});
   }
+}
+/** The calendar day in Israel, kept current while the app stays open overnight or comes back from the background. */
+export function useToday() {
+  const [key, setKey] = useState(todayKey());
+  useEffect(() => {
+    const tick = () => setKey(todayKey());
+    const t = setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
+  }, []);
+  return key;
 }
 
 // ---------- shopping ----------
@@ -221,8 +238,10 @@ export async function compressPhoto(file: File, maxDim = 1280, maxChars = 380_00
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
       canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const url = canvas.toDataURL('image/webp', 0.78);
-      if (url.startsWith('data:image/webp;') && url.length <= maxChars) return url;
+      for (const type of ['image/webp', 'image/jpeg']) {
+        const url = canvas.toDataURL(type, 0.78);
+        if (url.startsWith(`data:${type};`) && url.length <= maxChars) return url; // Safari answers PNG when asked for WebP
+      }
     }
     throw Error('התמונה גדולה מדי גם אחרי דחיסה');
   } finally { bitmap.close(); }

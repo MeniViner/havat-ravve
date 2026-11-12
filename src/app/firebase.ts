@@ -19,11 +19,20 @@ export { config };
 export const authReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
 
 
+/** Browsers inside other apps (a link opened from WhatsApp, Instagram, Facebook). Google refuses to sign in there, so the screen says so instead of offering a button that cannot work. */
+export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|MicroMessenger|Snapchat|; wv\)/i.test(navigator.userAgent);
+
+const POPUP_UNAVAILABLE = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request', 'auth/web-storage-unsupported'];
+/** Popup first (the page and a half-filled form stay as they are). Where a popup cannot open, an installed app on iPhone for one, the whole page goes to Google and comes back. */
 export async function signIn() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  if (useEmulator) await signInWithRedirect(auth, provider);
-  else await signInWithPopup(auth, provider);
+  if (useEmulator) { await signInWithRedirect(auth, provider); return; }
+  try { await signInWithPopup(auth, provider); }
+  catch (e) {
+    if (!POPUP_UNAVAILABLE.includes((e as { code?: string })?.code || '')) throw e;
+    await signInWithRedirect(auth, provider);
+  }
 }
 
 export async function signOutUser() {
