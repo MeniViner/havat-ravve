@@ -100,6 +100,7 @@ export type FarmEvent = {
   id: string; title: string; description: string; image: string; location: string;
   start: string; end: string; price: number; maxPerOrder: number; capacity: number;
   open: boolean; published: boolean; questions: EventQuestion[];
+  entry?: boolean; stall?: boolean;
   files?: EventFile[];
   createdBy: Actor; createdAt: string; updatedAt: string;
 };

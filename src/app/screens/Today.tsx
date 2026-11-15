@@ -32,6 +32,7 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
   const upcoming = events.filter((e) => e.end >= new Date().toISOString() && e.published).sort((a, b) => a.start.localeCompare(b.start));
   const next = upcoming[0];
   const eventToday = next && next.start.slice(0, 10) <= today && next.end.slice(0, 10) >= today ? next : null;
+  const eventModules = eventToday ? [eventToday.entry !== false && 'כניסה', eventToday.stall !== false && 'דוכן'].filter(Boolean).join(' ו') : '';
   const urgentShop = shopping.filter((i) => i.urgent).length;
   const myToday = todays.filter((t) => t.assignee?.uid === ctx.actor.uid);
   const free = todays.filter((t) => !t.assignee);
@@ -60,7 +61,7 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
         ...(ctx.manager && desktop ? [{ n: shopping.length, label: 'פריטי קניות', to: '/shopping' }, { n: inbox.length, label: 'לטיפול', tone: inbox.length ? 'ochre' as const : undefined, to: '/manage/inbox' }] : []),
       ]} />
 
-      {eventToday && <A to={`/events-staff/${eventToday.id}`} className="paybox ok" style={{ display: 'block', marginTop: 14 }}><b>היום: {eventToday.title}</b>{fmtTime(eventToday.start)}–{fmtTime(eventToday.end)} · כניסה ודוכן מהטלפון</A>}
+      {eventToday && <A to={`/events-staff/${eventToday.id}`} className="paybox ok" style={{ display: 'block', marginTop: 14 }}><b>היום: {eventToday.title}</b>{fmtTime(eventToday.start)}–{fmtTime(eventToday.end)}{eventModules && ` · ${eventModules} מהטלפון`}</A>}
       {!eventToday && next && !desktop && <EventTeaser e={next} to={`/events-staff/${next.id}`} />}
 
       <div className={desktop ? 'cols' : ''}>

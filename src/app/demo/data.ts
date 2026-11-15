@@ -164,8 +164,8 @@ const ev = (id: string, title: string, o: Partial<FarmEvent>): FarmEvent => ({
 });
 export const E = { fall: 'demo-e-fall', tour: 'demo-e-tour', hanukkah: 'demo-e-hanukkah', oct: 'demo-e-oct', rosh: 'demo-e-rosh', summer: 'demo-e-summer', shavuot: 'demo-e-shavuot' };
 export const events: FarmEvent[] = [
-  ev(E.fall, 'פסטיבל הסתיו', { description: 'אחר צהריים של סתיו בחווה: דוכני תוצרת ואומנות, סיורים מודרכים בין העצים, פינת חי לילדים ומוזיקה חיה עם השקיעה. דוכן החווה פתוח כל הערב.', image: '/assets/rava-sunset.webp', start: at(SAT1, '16:00'), end: at(SAT1, '21:00'), price: 50, maxPerOrder: 5, capacity: 300, questions: [{ id: 'kids', label: 'מגיעים עם ילדים?', required: false }] }),
-  ev(E.tour, 'סיור שבת בחווה', { description: 'סיור מודרך של שעתיים בין העצים, הדיר והחממה. מתאים למשפחות. נפגשים בשער.', start: at(SAT2, '10:00'), end: at(SAT2, '12:00'), price: 0, maxPerOrder: 6, capacity: 60 }),
+  ev(E.fall, 'פסטיבל הסתיו', { description: 'אחר צהריים של סתיו בחווה: דוכני תוצרת ואומנות, סיורים מודרכים בין העצים, פינת חי לילדים ומוזיקה חיה עם השקיעה. דוכן החווה פתוח כל הערב.', image: '/assets/rava-sunset.webp', start: at(SAT1, '16:00'), end: at(SAT1, '21:00'), price: 50, maxPerOrder: 5, capacity: 300, questions: [{ id: 'kids', label: 'מגיעים עם ילדים?', required: false }], entry: true, stall: true }),
+  ev(E.tour, 'סיור שבת בחווה', { description: 'סיור מודרך של שעתיים בין העצים, הדיר והחממה. מתאים למשפחות. נפגשים בשער.', start: at(SAT2, '10:00'), end: at(SAT2, '12:00'), price: 0, maxPerOrder: 6, capacity: 60, entry: false, stall: false }),
   ev(E.hanukkah, 'יריד חנוכה', { description: '', start: at(SAT3, '16:00'), end: at(SAT3, '20:00'), price: 40, published: false, open: false }),
   ev(E.oct, 'יריד אוקטובר', { description: 'יריד תוצרת של סתיו.', start: at(-24, '16:00'), end: at(-24, '21:00'), price: 40, capacity: 200, open: false }),
   ev(E.rosh, 'סיור ראש השנה', { start: at(-51, '10:00'), end: at(-51, '12:00'), price: 0, open: false }),

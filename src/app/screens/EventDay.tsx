@@ -1,5 +1,5 @@
 // Event day for the team: entry scanning and the farm stall. Works offline once the ticket list is on the device.
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import jsQR from 'jsqr';
 import type { FarmEvent, Product, Tab, Ticket, TabItem } from '../types';
 import { PAYMENT_LABELS } from '../types';
@@ -94,28 +94,60 @@ function Camera({ onCode, hint }: { onCode: (s: string) => void; hint: string })
 }
 
 // ---------- event hub for staff ----------
+export function EventModuleGate({ eventId, module, children }: { eventId: string; module: 'entry' | 'stall'; children: (event: FarmEvent) => ReactNode }) {
+  const { item: event, loading } = useEvent(eventId);
+  if (loading) return <Loading />;
+  if (!event) return <Empty title="האירוע לא זמין" action={<Btn kind="ghost" to="/events-staff">לאירועים</Btn>} />;
+  if (event[module] !== false) return children(event);
+
+  const message = module === 'entry' ? 'סריקת כניסה כבויה באירוע הזה' : 'דוכן המכירות כבוי באירוע הזה';
+  return <><Top title={event.title} /><Empty title={message} action={<Btn kind="ghost" to={`/events-staff/${eventId}`}>לחזרה לאירוע</Btn>} /></>;
+}
+
 export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: FarmEvent[]; id?: string }) {
   const today = todayISO();
   const published = events.filter((e) => e.published).sort((a, b) => a.start.localeCompare(b.start));
   const live = published.find((e) => isToday(e, today));
   const chosen = (id ? events.find((e) => e.id === id) : null) || live || published.find((e) => e.end >= new Date().toISOString()) || null;
-  const tickets = useEventTickets(chosen?.id || '', !!chosen);
-  const tabs = useEventTabs(chosen?.id || '', !!chosen);
-  const products = useProducts(chosen?.id || '', !!chosen);
+  const entry = !!chosen && chosen.entry !== false;
+  const stall = !!chosen && chosen.stall !== false;
+  // The stall also needs the ticket list on the device to look up a guest.
+  const tickets = useEventTickets(chosen?.id || '', entry || stall);
+  const tabs = useEventTabs(chosen?.id || '', stall);
+  const products = useProducts(chosen?.id || '', stall);
   const valid = tickets.items.filter((t) => t.status === 'valid');
   const arrived = valid.filter((t) => t.entries > 0).length;
   const scans = useMemo(() => valid.flatMap((t) => t.scans.map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at)).slice(0, 6), [valid]);
   const openTabs = tabs.items.filter(isOpenTab);
   const upcoming = published.filter((e) => e.end >= new Date().toISOString() && e.id !== chosen?.id);
-  if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'כשמנהל יפרסם אירוע, הכניסה והדוכן יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
+  if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'אירועים שיפורסמו יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
   const isLive = isToday(chosen, today);
+  const timing = isLive ? (entry ? ' · השער נפתח חצי שעה לפני' : '') : ` · ${inText(chosen.start)}`;
+  const ledger = [
+    ...(entry ? [{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }] : []),
+    ...(stall ? [{ n: openTabs.length, label: 'חשבונות פתוחים', tone: openTabs.length ? 'ochre' as const : undefined }] : []),
+  ];
+  const cached = [
+    entry && `${valid.length} כרטיסים`,
+    stall && `${products.items.filter((p) => p.active).length} מוצרים`,
+  ].filter(Boolean).join(' ו־');
+  const offline = entry && stall ? 'הסריקה והדוכן עובדים' : entry ? 'הסריקה עובדת' : 'הדוכן עובד';
   return (
     <div className="event-hub">
-      <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${isLive ? ' · השער נפתח חצי שעה לפני' : ' · ' + inText(chosen.start)}`} end={!id ? <A className="iconbtn" to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
-      <Ledger items={[{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }, { n: openTabs.length, label: 'חשבונות פתוחים', tone: openTabs.length ? 'ochre' : undefined }]} />
-      <div className="actions row2" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" to={`/scan/${chosen.id}`}>כניסה</Btn><Btn size="big" kind="ghost" icon="store" to={`/stall/${chosen.id}`}>דוכן</Btn></div>
-      <div className="strip ok"><Icon name="download" size={18} />{tickets.loading ? 'מוריד את רשימת הכרטיסים…' : `${valid.length} כרטיסים ו־${products.items.filter((p) => p.active).length} מוצרים במכשיר. הסריקה והדוכן עובדים בלי קליטה.`}</div>
-      {scans.length > 0 && <><Sec title="סריקות אחרונות" link="חיפוש אורח" linkTo={`/scan/${chosen.id}/search`} /><div className="list">{scans.map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}</div></>}
+      <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${timing}`} end={!id ? <A className="iconbtn" to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
+      {entry || stall ? <>
+        <Ledger items={ledger} />
+        <div className="actions row2" style={{ paddingBottom: 0 }}>
+          {entry && <Btn size="big" icon="qr" to={`/scan/${chosen.id}`}>כניסה</Btn>}
+          {stall && <Btn size="big" kind={entry ? 'ghost' : 'primary'} icon="store" to={`/stall/${chosen.id}`}>דוכן</Btn>}
+        </div>
+        <div className="strip ok"><Icon name="download" size={18} />{tickets.loading || products.loading ? 'מוריד את הנתונים למכשיר…' : `${cached} במכשיר. ${offline} בלי קליטה.`}</div>
+      </> : <>
+        {chosen.location && <div className="list"><Row center title={chosen.location} start={<Icon name="pin" />} /></div>}
+        {chosen.description && <p className="lead">{chosen.description}</p>}
+        <div className="actions"><Btn size="big" icon="list" to="/tasks">למשימות</Btn></div>
+      </>}
+      {entry && scans.length > 0 && <><Sec title="סריקות אחרונות" link="חיפוש אורח" linkTo={`/scan/${chosen.id}/search`} /><div className="list">{scans.map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}</div></>}
       {upcoming.length > 0 && <><Sec title="אירועים קרובים" />{upcoming.slice(0, 4).map((e) => <EventTeaser key={e.id} e={e} to={`/events-staff/${e.id}`} />)}</>}
     </div>
   );
@@ -156,7 +188,6 @@ function ticketSearch(query: string) {
 
 type Result = { kind: 'ok' | 'pay' | 'bad'; title: string; name?: string; sub?: string; ticket?: Ticket; order?: Ticket[] };
 function useScanner(eventId: string, ctx: TeamCtx) {
-  const { item: event } = useEvent(eventId);
   const tickets = useEventTickets(eventId, true);
   const [result, setResult] = useState<Result | null>(null);
   const toast = useToast();
@@ -185,7 +216,7 @@ function useScanner(eventId: string, ctx: TeamCtx) {
     if (t && t.eventId !== eventId) return setResult({ kind: 'bad', title: 'שייך לאירוע אחר', name: t.eventTitle });
     evaluate(t, p.secret);
   };
-  return { event, tickets, valid, stats, result, setResult, admit, evaluate, onCode };
+  return { tickets, valid, stats, result, setResult, admit, evaluate, onCode };
 }
 
 function ResultOverlay({ r, stats, settings, origin, onPaid, onAdmitAnyway, onClose, onSearch }: { r: Result; stats: { arrived: number; total: number }; settings: TeamCtx['settings']; origin: 'scan' | 'search'; onPaid: () => void; onAdmitAnyway: () => void; onClose: () => void; onSearch: () => void }) {
@@ -218,12 +249,12 @@ function ResultOverlay({ r, stats, settings, origin, onPaid, onAdmitAnyway, onCl
   );
 }
 
-export function ScanScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
+export function ScanScreen({ event, ctx }: { event: FarmEvent; ctx: TeamCtx }) {
+  const eventId = event.id;
   const s = useScanner(eventId, ctx);
-  if (!s.event) return <Loading />;
   return (
     <>
-      <Top backTo={`/events-staff/${eventId}`} backLabel="אירוע" title={`${s.event.title} · כניסה`} sub={`${s.stats.arrived} נכנסו מתוך ${s.stats.total} · ${s.stats.scans} סריקות · עובד בלי קליטה`} end={<Btn kind="quiet" size="sm" icon="store" to={`/stall/${eventId}`}>לדוכן</Btn>} />
+      <Top backTo={`/events-staff/${eventId}`} backLabel="אירוע" title={`${event.title} · כניסה`} sub={`${s.stats.arrived} נכנסו מתוך ${s.stats.total} · ${s.stats.scans} סריקות · עובד בלי קליטה`} end={event.stall !== false && <Btn kind="quiet" size="sm" icon="store" to={`/stall/${eventId}`}>לדוכן</Btn>} />
       {!s.result && <Camera onCode={s.onCode} hint="מכוונים את הברקוד למסגרת. הזיהוי אוטומטי." />}
       <div className="actions"><Btn kind="ghost" size="big" icon="search" to={`/scan/${eventId}/search`}>חיפוש בשם או טלפון</Btn></div>
       {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} origin="scan" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => { s.setResult(null); navigate(`/scan/${eventId}/search`); }} />}
@@ -231,16 +262,16 @@ export function ScanScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) 
   );
 }
 
-export function ScanSearchScreen({ eventId, ctx }: { eventId: string; ctx: TeamCtx }) {
+export function ScanSearchScreen({ event, ctx }: { event: FarmEvent; ctx: TeamCtx }) {
+  const eventId = event.id;
   const s = useScanner(eventId, ctx);
   const [q, setQ] = useState('');
   const groupedOrders = useMemo(() => groupEventTickets(s.tickets.items).orders, [s.tickets.items]);
   const matches = ticketSearch(q);
   const orders = groupedOrders.filter((order) => order.some(matches)).slice(0, 8);
-  if (!s.event) return <Loading />;
   return (
     <>
-      <Top backTo={`/scan/${eventId}`} backLabel="למצלמה" title="מי בכניסה?" sub={`${s.event.title} · ${s.stats.arrived} מתוך ${s.stats.total}`} />
+      <Top backTo={`/scan/${eventId}`} backLabel="למצלמה" title="מי בכניסה?" sub={`${event.title} · ${s.stats.arrived} מתוך ${s.stats.total}`} />
       <Field hint="שם או טלפון. מראים רק התאמות קרובות, לא את כל הרשימה."><Input big autoFocus placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
       {q.trim() && <Sec title={orders.length ? `${orders.length} התאמות` : 'לא נמצא'} />}
       {orders.length > 0 && <div className="list">{orders.map((order) => {
@@ -262,8 +293,8 @@ export function ScanSearchScreen({ eventId, ctx }: { eventId: string; ctx: TeamC
           </>} end={nextTicket && <Btn size="sm" kind={pending ? 'ghost' : 'primary'} onClick={() => s.evaluate(nextTicket)}>{pending ? 'פתיחה' : 'להכניס'}</Btn>} />
         );
       })}</div>}
-      <p className="note">לא ברשימה? אפשר לרשום אותו כאורח חדש בדוכן ("לקוח מזדמן"), או לבקש ממנהל להוסיף כרטיס.</p>
-      <div className="actions"><Btn kind="ghost" icon="store" to={`/stall/${eventId}/pick`}>רישום אורח בלי כרטיס</Btn></div>
+      <p className="note">{event.stall !== false ? 'לא ברשימה? אפשר לרשום אותו כאורח חדש בדוכן ("לקוח מזדמן"), או לבקש ממנהל להוסיף כרטיס.' : 'לא ברשימה? אפשר לבקש ממנהל להוסיף כרטיס.'}</p>
+      {event.stall !== false && <div className="actions"><Btn kind="ghost" icon="store" to={`/stall/${eventId}/pick`}>רישום אורח בלי כרטיס</Btn></div>}
       {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} origin="search" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => s.setResult(null)} />}
     </>
   );
@@ -286,8 +317,9 @@ function findOpenAccount(tabs: Tab[], guest: StallGuest) {
   return matching.find(hasTabPurchases) || matching[0];
 }
 
-export function StallScreen({ eventId, ctx, mode = 'sell' }: { eventId: string; ctx: TeamCtx; mode?: 'sell' | 'pick' | 'tabs' }) {
-  const { item: event } = useEvent(eventId);
+export function StallScreen({ event, ctx, mode = 'sell' }: { event: FarmEvent; ctx: TeamCtx; mode?: 'sell' | 'pick' | 'tabs' }) {
+  const eventId = event.id;
+  const entry = event.entry !== false;
   const tabs = useEventTabs(eventId, true);
   const products = useProducts(eventId, true);
   const tickets = useEventTickets(eventId, true);
@@ -331,7 +363,6 @@ export function StallScreen({ eventId, ctx, mode = 'sell' }: { eventId: string; 
     else select({ kind: 'guest', guest });
   };
 
-  if (!event) return <Loading />;
   const open = tabs.items.filter(isOpenTab);
   if (mode === 'tabs') return <StallAccounts event={event} ctx={ctx} tabs={tabs.items} open={open} onAccount={chooseAccount} saving={saving} />;
 
@@ -339,7 +370,7 @@ export function StallScreen({ eventId, ctx, mode = 'sell' }: { eventId: string; 
   const guest = selection?.kind === 'guest' ? selection.guest : undefined;
   if (mode === 'sell' && selection?.kind === 'tab' && !tab && (tabs.loading || saving)) return <Loading />;
   if (mode === 'pick' || (!tab && !guest)) {
-    return <StallPicker eventId={eventId} tickets={tickets.items} open={open} inline={mode === 'sell'} onGuest={chooseGuest} onAccount={chooseAccount} />;
+    return <StallPicker eventId={eventId} tickets={tickets.items} open={open} entry={entry} inline={mode === 'sell'} onGuest={chooseGuest} onAccount={chooseAccount} />;
   }
 
   const activeProducts = products.items.filter((product) => product.active);
@@ -394,7 +425,7 @@ export function StallScreen({ eventId, ctx, mode = 'sell' }: { eventId: string; 
   };
   return (
     <>
-      <Top backTo={`/scan/${eventId}`} backLabel="כניסה" title="דוכן החווה" sub={<A to={accountsPath} className="stall-account-link">{open.length} חשבונות פתוחים</A>} />
+      <Top backTo={entry ? `/scan/${eventId}` : `/events-staff/${eventId}`} backLabel={entry ? 'כניסה' : 'אירוע'} title="דוכן החווה" sub={<A to={accountsPath} className="stall-account-link">{open.length} חשבונות פתוחים</A>} />
       <div className="row center" style={{ borderTop: '1px solid var(--line2)', marginTop: 8 }}>
         <Avatar name={name} />
         <div className="main"><div className="title">{tab && isOpenTab(tab) ? <A to={accountsPath} className="stall-account-link">{name}</A> : name}</div>
@@ -443,13 +474,16 @@ function StallProduct({ product, qty, disabled, onAdjust }: { product: Product; 
   );
 }
 
-function StallPicker({ eventId, tickets, open, inline, onGuest, onAccount }: { eventId: string; tickets: Ticket[]; open: Tab[]; inline: boolean; onGuest: (guest: StallGuest) => void; onAccount: (tab: Tab) => void }) {
+function StallPicker({ eventId, tickets, open, entry, inline, onGuest, onAccount }: { eventId: string; tickets: Ticket[]; open: Tab[]; entry: boolean; inline: boolean; onGuest: (guest: StallGuest) => void; onAccount: (tab: Tab) => void }) {
   const [scanning, setScanning] = useState(false);
   const [q, setQ] = useState('');
   const [walk, setWalk] = useState({ name: '', phone: '' });
   const people = useMemo(() => groupEventTickets(tickets).people, [tickets]);
   const search = ticketSearch(q);
   const matches = people.filter((group) => group.some(search)).slice(0, 6);
+  const backTo = !inline ? `/stall/${eventId}` : entry ? `/scan/${eventId}` : `/events-staff/${eventId}`;
+  const backLabel = !inline ? 'דוכן' : entry ? 'כניסה' : 'אירוע';
+  const cameraHint = entry ? 'אותו QR של הכניסה. החשבון נפתח על שם בעל הכרטיס.' : 'סרקו את הברקוד שעל הכרטיס של האורח.';
   const onCode = (code: string) => {
     const parsed = parseQr(code);
     const ticket = parsed && tickets.find((t) => t.id === parsed.id && t.secret === parsed.secret && t.status === 'valid');
@@ -459,9 +493,9 @@ function StallPicker({ eventId, tickets, open, inline, onGuest, onAccount }: { e
   };
   return (
     <>
-      <Top backTo={inline ? `/scan/${eventId}` : `/stall/${eventId}`} backLabel={inline ? 'כניסה' : 'דוכן'} title="מי קונה?" sub={<A to={`/stall/${eventId}/tabs`} className="stall-account-link">{open.length} חשבונות פתוחים</A>} />
-      {scanning ? <><Camera onCode={onCode} hint="אותו QR של הכניסה. החשבון נפתח על שם בעל הכרטיס." /><div className="actions"><Btn kind="ghost" onClick={() => setScanning(false)}>סגירת המצלמה</Btn></div></>
-        : <div className="actions" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" onClick={() => setScanning(true)}>סריקת הכרטיס של האורח</Btn><p className="lead" style={{ padding: 0, fontSize: 14 }}>אותו QR של הכניסה. החשבון נפתח על שם בעל הכרטיס.</p></div>}
+      <Top backTo={backTo} backLabel={backLabel} title="מי קונה?" sub={<A to={`/stall/${eventId}/tabs`} className="stall-account-link">{open.length} חשבונות פתוחים</A>} />
+      {scanning ? <><Camera onCode={onCode} hint={cameraHint} /><div className="actions"><Btn kind="ghost" onClick={() => setScanning(false)}>סגירת המצלמה</Btn></div></>
+        : <div className="actions" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" onClick={() => setScanning(true)}>סריקת הכרטיס של האורח</Btn><p className="lead" style={{ padding: 0, fontSize: 14 }}>{cameraHint}</p></div>}
       <Field><Input placeholder="חיפוש בשם או טלפון" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
       {matches.length > 0 && <div className="list" style={{ marginTop: 8 }}>{matches.map((group) => {
         const guest = ticketGuest(group[0]);

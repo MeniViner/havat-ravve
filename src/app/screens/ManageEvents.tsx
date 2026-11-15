@@ -66,8 +66,8 @@ export function EventEditor({ id, ctx }: { id?: string; ctx: TeamCtx }) {
 }
 function EventForm({ ctx, existing }: { ctx: TeamCtx; existing?: FarmEvent }) {
   const toast = useToast();
-  const [f, setF] = useState<EventInput>(() => existing ? { title: existing.title, description: existing.description, image: existing.image, location: existing.location, start: existing.start, end: existing.end, price: existing.price, maxPerOrder: existing.maxPerOrder, capacity: existing.capacity, open: existing.open, published: existing.published, questions: existing.questions, files: existing.files || [] }
-    : { title: '', description: '', image: '', location: 'חוות רווה, ליד טנא עומרים', start: '', end: '', price: 0, maxPerOrder: 5, capacity: 0, open: true, published: false, questions: [], files: [] });
+  const [f, setF] = useState<EventInput>(() => existing ? { title: existing.title, description: existing.description, image: existing.image, location: existing.location, start: existing.start, end: existing.end, price: existing.price, maxPerOrder: existing.maxPerOrder, capacity: existing.capacity, open: existing.open, published: existing.published, questions: existing.questions, files: existing.files || [], entry: existing.entry !== false, stall: existing.stall !== false }
+    : { title: '', description: '', image: '', location: 'חוות רווה, ליד טנא עומרים', start: '', end: '', price: 0, maxPerOrder: 5, capacity: 0, open: true, published: false, questions: [], files: [], entry: true, stall: true });
   const [busy, setBusy] = useState(false); const [confirmDel, setConfirmDel] = useState(false);
   const set = (p: Partial<EventInput>) => setF((s) => ({ ...s, ...p }));
   const ok = f.title.trim() && f.start && f.end && f.end > f.start;
@@ -94,6 +94,9 @@ function EventForm({ ctx, existing }: { ctx: TeamCtx; existing?: FarmEvent }) {
         <Field label="מקומות (0 = בלי הגבלה)"><Input type="number" dir="ltr" inputMode="numeric" min={0} value={f.capacity} onChange={(e) => set({ capacity: Math.max(0, Number(e.target.value) || 0) })} /></Field>
       </div>
       <Field label="תיאור לאורחים"><Textarea rows={4} value={f.description} onChange={(e) => set({ description: e.target.value })} placeholder="מה יהיה, למי זה מתאים, מה להביא" /></Field>
+      <Sec title="ביום האירוע" />
+      <SwitchRow on={f.entry !== false} onChange={(entry) => set({ entry })} title="סריקת כניסה" meta="סריקה וחיפוש של כרטיסים בשער" />
+      <SwitchRow on={f.stall !== false} onChange={(stall) => set({ stall })} title="דוכן מכירות" meta="מוצרים וחשבונות בדוכן החווה" />
       <Sec title="שאלות נוספות בהרשמה" n={q.length || 'לא חובה'} link="+ שאלה" onLink={() => set({ questions: [...q, { id: 'q' + Date.now().toString(36), label: '', required: false }] })} />
       {q.map((x, i) => <div key={x.id} className="field" style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}><Input placeholder="שאלה" value={x.label} onChange={(e) => set({ questions: q.map((y) => y.id === x.id ? { ...y, label: e.target.value } : y) })} /><Chip on={x.required} onClick={() => set({ questions: q.map((y) => y.id === x.id ? { ...y, required: !y.required } : y) })}>חובה</Chip><button type="button" className="iconbtn" aria-label="הסרה" onClick={() => set({ questions: q.filter((y) => y.id !== x.id) })}><Icon name="x" size={18} /></button>{i < 0 && null}</div>)}
       <div style={{ marginTop: 18 }}>
@@ -108,6 +111,13 @@ function EventForm({ ctx, existing }: { ctx: TeamCtx; existing?: FarmEvent }) {
 // ---------- hub + frame ----------
 type EventTab = 'hub' | 'guests' | 'entry' | 'vendors' | 'products' | 'tabs' | 'report' | 'files' | 'activity';
 const TABS: { key: EventTab; label: string; icon: string }[] = [{ key: 'guests', label: 'נרשמים', icon: 'people' }, { key: 'entry', label: 'כניסה חיה', icon: 'qr' }, { key: 'vendors', label: 'בעלי דוכנים', icon: 'store' }, { key: 'products', label: 'מוצרי הדוכן', icon: 'list' }, { key: 'tabs', label: 'חשבונות וחובות', icon: 'ticket' }, { key: 'report', label: 'דוח האירוע', icon: 'chart' }, { key: 'files', label: 'קבצים', icon: 'file' }, { key: 'activity', label: 'היסטוריה', icon: 'history' }];
+function tabsForEvent(event: FarmEvent) {
+  return TABS.filter(({ key }) => {
+    if (key === 'entry') return event.entry !== false;
+    if (key === 'products' || key === 'tabs') return event.stall !== false;
+    return true;
+  });
+}
 function useEventData(id: string) {
   const { item: e, loading } = useEvent(id);
   const tickets = useEventTickets(id, true); const tabs = useEventTabs(id, true); const vendors = useEventVendors(id, true); const products = useProducts(id, true); const acts = useActivityForEvent(id, true);
@@ -129,7 +139,7 @@ export function EventFrame({ id, tab, ctx, children, title, end }: { id: string;
     <>{head}
       <nav className="subnav" aria-label="חלקי האירוע">
         <A to={`/manage/events/${id}`} className={tab === 'hub' ? 'on' : ''} aria-current={tab === 'hub' ? 'page' : undefined}>מרכז האירוע</A>
-        {TABS.map((t) => <A key={t.key} to={`/manage/events/${id}/${t.key}`} className={tab === t.key ? 'on' : ''} aria-current={tab === t.key ? 'page' : undefined}>{t.label}{counts[t.key] ? <span className="n">{counts[t.key]}</span> : null}</A>)}
+        {tabsForEvent(e).map((t) => <A key={t.key} to={`/manage/events/${id}/${t.key}`} className={tab === t.key ? 'on' : ''} aria-current={tab === t.key ? 'page' : undefined}>{t.label}{counts[t.key] ? <span className="n">{counts[t.key]}</span> : null}</A>)}
       </nav>
       {children}
     </>
@@ -144,13 +154,15 @@ export function EventHubScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const confirmed = d.vendors.filter((v) => v.confirmed).length;
   const activeTabs = d.tabs.filter((t) => t.status !== 'open' || isOpenTab(t));
   const openTabs = activeTabs.filter(isOpenTab);
+  const tabs = tabsForEvent(e);
   const subs: Record<EventTab, string> = {
     hub: '', guests: `${d.valid.length} כרטיסים · ${d.orders.length} הזמנות${e.price ? ` · ${d.unpaid.length} ממתינים לתשלום` : ''}`,
     entry: d.arrived.length ? `${d.arrived.length} נכנסו מתוך ${d.valid.length}` : 'מתחיל ביום האירוע · הצוות סורק מהטלפון',
     vendors: d.vendors.length ? `${d.vendors.length} הוזמנו · ${confirmed} אישרו הגעה${d.vendors.length - confirmed ? ` · ${d.vendors.length - confirmed} עוד לא ענו` : ''}` : 'עוד לא הוזמנו',
     products: d.products.length ? `${d.products.filter((p) => p.active).length} מוצרים${d.products.some((p) => !p.active) ? ` · ${d.products.filter((p) => !p.active).length} מוסתר` : ''}` : 'אין מוצרים · אפשר להעתיק מאירוע קודם',
     tabs: activeTabs.length ? `${activeTabs.length} חשבונות · ${money(activeTabs.reduce((s, t) => s + t.total, 0))} נמכרו · ${openTabs.length} פתוחים` : 'נפתחים ביום האירוע',
-    report: 'נרשמו · הגיעו · הכנסות · מה נמכר', files: e.files?.length ? `${e.files.length} קבצים` : 'אישורים, מפת הצבה, רשימות',
+    report: ['נרשמו', e.entry !== false && 'הגיעו', 'הכנסות', e.stall !== false && 'מה נמכר'].filter(Boolean).join(' · '),
+    files: e.files?.length ? `${e.files.length} קבצים` : 'אישורים, מפת הצבה, רשימות',
     activity: d.acts.length ? `${d.acts.length} פעולות · אחרונה: ${d.acts[0].text.slice(0, 40)} · ${relTime(d.acts[0].at)}` : 'אין עדיין',
   };
   const share = () => { const url = `${location.origin}/app/events/${id}`; navigator.share?.({ title: e.title, url }).catch(() => {}) || navigator.clipboard?.writeText(url).then(() => toast({ text: 'הקישור הועתק' }, 2500)); };
@@ -158,10 +170,15 @@ export function EventHubScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   return (
     <EventFrame id={id} tab="hub" ctx={ctx}>
       <div className="inline pad">{e.published ? <Pill tone="ok">מפורסם</Pill> : <Pill>טיוטה · לא מוצג לאורחים</Pill>}{e.open ? <Pill tone="gold">פתוח להרשמה</Pill> : <Pill>ההרשמה סגורה</Pill>}</div>
-      <Ledger items={[{ n: d.valid.length, label: e.price ? 'כרטיסים' : 'נרשמו' }, { n: d.orders.length, label: 'הזמנות' }, ...(e.price ? [{ n: d.paid.length, label: 'שולמו' }, { n: money(unpaidSum), label: 'לא שולם', tone: unpaidSum ? 'ochre' as const : undefined }] : [{ n: d.arrived.length, label: 'הגיעו' }])]} small />
+      <Ledger items={[
+        { n: d.valid.length, label: e.price ? 'כרטיסים' : 'נרשמו' },
+        { n: d.orders.length, label: 'הזמנות' },
+        ...(e.price ? [{ n: d.paid.length, label: 'שולמו' }, { n: money(unpaidSum), label: 'לא שולם', tone: unpaidSum ? 'ochre' as const : undefined }] : []),
+        ...(!e.price && e.entry !== false ? [{ n: d.arrived.length, label: 'הגיעו' }] : []),
+      ]} small />
       {desktop
-        ? <div className="tiles four" style={{ paddingTop: 16 }}>{TABS.map((t) => <A key={t.key} to={`/manage/events/${id}/${t.key}`} className="tile"><span className="h"><Icon name={t.icon} />{t.label}</span><span className="s">{subs[t.key]}</span></A>)}</div>
-        : <div className="list" style={{ marginTop: 14 }}>{TABS.map((t) => <Row key={t.key} to={`/manage/events/${id}/${t.key}`} center start={<span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={t.icon} /></span>} title={t.label} meta={<span>{subs[t.key]}</span>} chev />)}</div>}
+        ? <div className="tiles four" style={{ paddingTop: 16 }}>{tabs.map((t) => <A key={t.key} to={`/manage/events/${id}/${t.key}`} className="tile"><span className="h"><Icon name={t.icon} />{t.label}</span><span className="s">{subs[t.key]}</span></A>)}</div>
+        : <div className="list" style={{ marginTop: 14 }}>{tabs.map((t) => <Row key={t.key} to={`/manage/events/${id}/${t.key}`} center start={<span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={t.icon} /></span>} title={t.label} meta={<span>{subs[t.key]}</span>} chev />)}</div>}
       <div className="actions row2"><Btn kind="ghost" icon="share" onClick={share}>שיתוף הקישור</Btn><Btn kind="ghost" icon="whatsapp" onClick={remind}>תזכורת לנרשמים</Btn></div>
     </EventFrame>
   );
@@ -221,13 +238,13 @@ export function EventEntryScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const byHour = (() => { const m = new Map<string, number>(); for (const x of scans) { const h = fmtTime(x.s.at).slice(0, 2) + ':' + (Number(fmtTime(x.s.at).slice(3, 4)) < 3 ? '00' : '30'); m.set(h, (m.get(h) || 0) + 1); } return [...m.entries()].sort(); })(); // computed after the early return above, so it cannot be a hook
   const max = Math.max(1, ...byHour.map(([, n]) => n));
   return (
-    <EventFrame id={id} tab="entry" ctx={ctx} title={desktop ? d.e.title : 'כניסה חיה'} end={<Btn size="sm" icon="qr" to={`/scan/${id}`}>לסרוק מהטלפון</Btn>}>
+    <EventFrame id={id} tab="entry" ctx={ctx} title={desktop ? d.e.title : 'כניסה חיה'} end={d.e.entry !== false ? <Btn size="sm" icon="qr" to={`/scan/${id}`}>לסרוק מהטלפון</Btn> : undefined}>
       <Ledger items={[{ n: `${d.arrived.length}`, label: `מתוך ${d.valid.length} נכנסו${d.valid.length ? ` · ${Math.round((d.arrived.length / d.valid.length) * 100)}%` : ''}` }, { n: scans.length, label: 'סריקות' }, { n: d.valid.filter((t) => t.entries > 1).length, label: 'יצאו וחזרו' }, { n: d.valid.filter((t) => t.paymentStatus === 'paid_onsite').length, label: 'שילמו במקום' }, ...(desktop ? [{ n: scanners, label: 'סורקים' }] : [])]} small />
       <div className={desktop ? 'cols' : ''}>
         <div>
           <Sec title="סריקות אחרונות" n={scans.length || undefined} />
           {desktop ? <div className="tablewrap"><table><thead><tr><th>שעה</th><th>מי</th><th>כרטיס</th><th>כניסה</th><th>סרק/ה</th><th>תשלום</th></tr></thead><tbody>{scans.slice(0, 30).map(({ t, s, n }) => <tr key={t.id + s.at}><td className="muted">{fmtTime(s.at)}</td><td style={{ fontWeight: 600 }}>{t.holderName || t.ownerName}</td><td>{t.index}/{t.total}</td><td>{n}{n > 1 ? ' · יצא וחזר' : ''}</td><td>{firstName(s.by.name)}</td><td><Pill tone={isPaid(t.paymentStatus) ? 'ok' : 'ochre'}>{PAYMENT_LABELS[t.paymentStatus]}</Pill></td></tr>)}</tbody></table></div>
-            : <div className="list">{scans.slice(0, 20).map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}{!scans.length && <p className="lead">עוד לא נסרק אף כרטיס. ביום האירוע הצוות סורק מהטלפון וכאן רואים בזמן אמת.</p>}</div>}
+            : <div className="list">{scans.slice(0, 20).map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}{!scans.length && <p className="lead">{d.e.entry !== false ? 'עוד לא נסרק אף כרטיס. ביום האירוע הצוות סורק מהטלפון וכאן רואים בזמן אמת.' : 'אין סריקות באירוע הזה.'}</p>}</div>}
         </div>
         <div>
           {desktop && byHour.length > 0 && <><Sec title="לפי שעה" /><div className="bars">{byHour.map(([h, n]) => <div className="bar" key={h}><span className="ltr">{h}</span><i style={{ width: `${(n / max) * 100}%` }} /><b>{n}</b></div>)}</div></>}
@@ -255,11 +272,11 @@ export function EventVendorsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
       <Ledger small items={[{ n: invited.length, label: 'הוזמנו' }, { n: confirmed, label: 'אישרו' }, { n: invited.length - confirmed, label: 'לא ענו', tone: invited.length - confirmed ? 'ochre' : undefined }, ...(desktop ? [{ n: rest.length, label: 'לא הוזמנו' }] : [])]} />
       <Sec title="מוזמנים לאירוע הזה" n={invited.length} />
       {desktop ? <div className="tablewrap"><table><thead><tr><th>מוזמן</th><th>שם</th><th>מה מוכרים</th><th>טלפון</th><th>מצב</th><th></th></tr></thead><tbody>
-        {invited.map((ev) => { const r = row(ev); return <tr key={ev.id}><td><Pill tone="ok">✓</Pill></td><td style={{ fontWeight: 600 }}><A to={`/manage/vendors/${ev.vendorId}`}>{ev.name}</A></td><td className="muted wrap">{r.v?.product}</td><td className="ltr">{r.v?.phone}</td><td>{r.v && !r.v.external ? <Pill tone="gold">של החווה</Pill> : ev.confirmed ? <Pill tone="ok">אישרו הגעה</Pill> : <Pill tone="ochre">לא ענו{ev.notes ? ` · ${ev.notes}` : ''}</Pill>}</td><td><div className="acts">{r.v && !r.v.external ? <Btn size="xs" kind="ghost" to={`/manage/events/${id}/products`}>מוצרים</Btn> : ev.confirmed ? (r.v?.phone && <a className="btn ghost xs" href={waLink(r.v.phone)} target="_blank" rel="noopener">וואטסאפ</a>) : <><Btn size="xs" kind="ghost" onClick={r.again}>הזמנה שוב</Btn><Btn size="xs" onClick={r.confirm}>אישרו</Btn></>}<Btn size="xs" kind="quiet" onClick={r.remove}>הסרה</Btn></div></td></tr>; })}
+        {invited.map((ev) => { const r = row(ev); return <tr key={ev.id}><td><Pill tone="ok">✓</Pill></td><td style={{ fontWeight: 600 }}><A to={`/manage/vendors/${ev.vendorId}`}>{ev.name}</A></td><td className="muted wrap">{r.v?.product}</td><td className="ltr">{r.v?.phone}</td><td>{r.v && !r.v.external ? <Pill tone="gold">של החווה</Pill> : ev.confirmed ? <Pill tone="ok">אישרו הגעה</Pill> : <Pill tone="ochre">לא ענו{ev.notes ? ` · ${ev.notes}` : ''}</Pill>}</td><td><div className="acts">{r.v && !r.v.external ? (e.stall !== false && <Btn size="xs" kind="ghost" to={`/manage/events/${id}/products`}>מוצרים</Btn>) : ev.confirmed ? (r.v?.phone && <a className="btn ghost xs" href={waLink(r.v.phone)} target="_blank" rel="noopener">וואטסאפ</a>) : <><Btn size="xs" kind="ghost" onClick={r.again}>הזמנה שוב</Btn><Btn size="xs" onClick={r.confirm}>אישרו</Btn></>}<Btn size="xs" kind="quiet" onClick={r.remove}>הסרה</Btn></div></td></tr>; })}
         {rest.map((v) => <tr key={v.id} className="sub"><td></td><td style={{ fontWeight: 600 }}><A to={`/manage/vendors/${v.id}`}>{v.name}</A></td><td className="wrap">{v.product}</td><td className="ltr">{v.phone}</td><td>לא מוזמנים</td><td><div className="acts"><Btn size="xs" kind="ghost" onClick={() => invite(v)}>להזמין</Btn></div></td></tr>)}
       </tbody></table></div>
         : <>
-          <div className="list">{invited.map((ev) => { const r = row(ev); return <div key={ev.id} className="row"><div className="main"><A to={`/manage/vendors/${ev.vendorId}`} className="title">{ev.name}{r.v?.product && <span className="muted" style={{ fontWeight: 400 }}> · {r.v.product}</span>}</A><div className="meta">{r.v && !r.v.external ? <Pill tone="gold">של החווה</Pill> : ev.confirmed ? <Pill tone="ok">אישרו הגעה</Pill> : <Pill tone="ochre">עוד לא ענו</Pill>}{ev.notes && <span>{ev.notes}</span>}{r.v?.external && <span>חיצוני</span>}</div>{!ev.confirmed && r.v?.external && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" kind="ghost" icon="whatsapp" onClick={r.again}>הזמנה שוב</Btn><Btn size="sm" onClick={r.confirm}>אישרו</Btn></div>}{r.v && !r.v.external && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" kind="ghost" to={`/manage/events/${id}/products`}>{d.products.length} מוצרים</Btn></div>}</div><Btn size="xs" kind="quiet" onClick={r.remove}>הסרה</Btn></div>; })}{!invited.length && <p className="lead">עוד לא הוזמן אף אחד. בוחרים מהרשימה למטה.</p>}</div>
+          <div className="list">{invited.map((ev) => { const r = row(ev); return <div key={ev.id} className="row"><div className="main"><A to={`/manage/vendors/${ev.vendorId}`} className="title">{ev.name}{r.v?.product && <span className="muted" style={{ fontWeight: 400 }}> · {r.v.product}</span>}</A><div className="meta">{r.v && !r.v.external ? <Pill tone="gold">של החווה</Pill> : ev.confirmed ? <Pill tone="ok">אישרו הגעה</Pill> : <Pill tone="ochre">עוד לא ענו</Pill>}{ev.notes && <span>{ev.notes}</span>}{r.v?.external && <span>חיצוני</span>}</div>{!ev.confirmed && r.v?.external && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" kind="ghost" icon="whatsapp" onClick={r.again}>הזמנה שוב</Btn><Btn size="sm" onClick={r.confirm}>אישרו</Btn></div>}{e.stall !== false && r.v && !r.v.external && <div className="inline" style={{ marginTop: 8 }}><Btn size="sm" kind="ghost" to={`/manage/events/${id}/products`}>{d.products.length} מוצרים</Btn></div>}</div><Btn size="xs" kind="quiet" onClick={r.remove}>הסרה</Btn></div>; })}{!invited.length && <p className="lead">עוד לא הוזמן אף אחד. בוחרים מהרשימה למטה.</p>}</div>
           <Sec title="עוד ברשימה, לא מוזמנים" n={rest.length} />
           <div className="list">{rest.map((v) => <Row key={v.id} center title={<>{v.name}<span className="muted" style={{ fontWeight: 400 }}> · {v.product}</span></>} meta={<span className="ltr">{v.phone}</span>} end={<Btn size="sm" kind="ghost" onClick={() => invite(v)}>להזמין</Btn>} />)}</div>
         </>}

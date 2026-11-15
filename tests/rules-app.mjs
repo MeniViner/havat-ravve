@@ -171,6 +171,15 @@ try{
  const ev=(extra={})=>({title:'פסטיבל',description:'',image:'',location:'',start:'2030-01-01T18:00:00.000Z',end:'2030-01-01T22:00:00.000Z',price:50,maxPerOrder:5,capacity:0,open:true,published:true,questions:[],createdBy:actor('beni'),createdAt:now,updatedAt:now,...extra});
  await assertFails(setDoc(doc(vol,'events','e1'),ev({createdBy:actor('vol')})));
  await assertSucceeds(setDoc(doc(beni,'events','e1'),ev()));
+ await assertSucceeds(updateDoc(doc(beni,'events','e1'),{description:'אירוע ותיק ללא הגדרת מודולים'}));
+ const tour=doc(beni,'events','tour');
+ await assertSucceeds(setDoc(tour,ev({entry:false,stall:false})));
+ await assertSucceeds(updateDoc(tour,{entry:true}));
+ assert.equal((await assertSucceeds(getDoc(tour))).data().stall,false);
+ await assertSucceeds(updateDoc(tour,{entry:false,stall:true}));
+ await assertFails(updateDoc(tour,{entry:'false'}));
+ await assertFails(updateDoc(tour,{stall:null}));
+ await assertFails(updateDoc(doc(vol,'events','tour'),{entry:true}));
  await assertSucceeds(setDoc(doc(beni,'events','draft'),ev({published:false,createdBy:actor('beni')})));
  await assertSucceeds(setDoc(doc(beni,'events','free'),ev({price:0,createdBy:actor('beni')})));
  await assertSucceeds(getDoc(doc(anon,'events','e1')));
