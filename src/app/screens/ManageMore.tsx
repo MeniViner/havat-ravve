@@ -1,12 +1,13 @@
 // Manager: visits, donations, calendar, reports, activity feed, settings.
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type { Visit, Donation, CalendarItem, Settings, Ticket, RegistrationField, Profile } from '../types';
 import { PAYMENT_LABELS, VISIT_LABELS, KIND_LABELS, type ActivityKind } from '../types';
 import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, dateKey, money, useDesktop, dayLabel, DAY_SHORT } from '../ui';
 import { navigate } from '../router';
 import { usePerson, useHistoryTasks, useOpenTasks } from '../store';
-import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, saveCalendarItem, deleteCalendarItem, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, downloadCsv, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
+import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, saveCalendarItem, deleteCalendarItem, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
+import { ExportActions } from '../ExportTable';
 import { useActivityFor, useActivityByKind, ACTION_LABELS } from '../activity';
 import { useList } from '../db';
 
@@ -19,9 +20,17 @@ export function VisitsScreen({ ctx, visits, selectedId }: { ctx: TeamCtx; visits
   const n = (f: VFilter) => visits.filter((v) => f === 'past' ? v.date < today && v.status === 'approved' : f === 'approved' ? v.status === 'approved' && v.date >= today : v.status === f).length;
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'new', label: 'חדשות', n: n('new') }, { value: 'approved', label: 'מאושרים', n: n('approved') }, { value: 'rejected', label: 'לא מתאים', n: n('rejected') || undefined }, { value: 'past', label: 'עברו', n: n('past') || undefined }, { value: 'all', label: 'הכל' }]} rust={filter === 'new'} />;
   const status = (v: Visit) => <Pill tone={v.status === 'new' ? 'rust' : v.status === 'approved' ? 'ok' : undefined}>{v.status === 'new' ? `חדש · ${relTime(v.createdAt)}` : v.status === 'approved' ? `אושר${v.handledBy ? ' · ' + firstName(v.handledBy.name) : ''}${v.managerNote ? ' · ' + v.managerNote : ''}` : VISIT_LABELS[v.status]}</Pill>;
+  const visitExport = () => ({
+    filename: 'ביקורים.csv',
+    headers: ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'],
+    rows: visits.map((visit) => [
+      visit.date, visit.name, visit.phone, visit.people, visit.type, VISIT_LABELS[visit.status],
+      visit.managerNote, visit.handledBy?.name || '',
+    ]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="ביקורים" sub={desktop ? 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן. ה־CRM הקטן של מי שרוצה לבוא.' : 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן.'} end={<><Btn kind="ghost" size="sm" to="/manage/settings/visit-types">סוגי ביקור</Btn>{desktop && <Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('ביקורים.csv', ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'], visits.map((v) => [v.date, v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || '']))}>אקסל</Btn>}</>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="ביקורים" sub={desktop ? 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן. ה־CRM הקטן של מי שרוצה לבוא.' : 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן.'} end={<><Btn kind="ghost" size="sm" to="/manage/settings/visit-types">סוגי ביקור</Btn><ExportActions getData={visitExport} /></>} />
       <div style={{ paddingTop: 8, paddingInline: desktop ? 20 : 0 }}>{chips}</div>
       {!list.length && <Empty title={filter === 'new' ? 'אין בקשות חדשות' : 'אין ביקורים כאלה'} />}
       {desktop ? <div className="tablewrap"><table><thead><tr><th>תאריך</th><th>מי</th><th>אנשים</th><th className="opt">סוג</th><th className="opt">טלפון</th><th>מצב</th><th className="opt"></th></tr></thead><tbody>{list.map((v) => <tr key={v.id} className={'link ' + (v.id === selectedId ? 'sel' : '')} onClick={() => navigate(`/manage/visits/${v.id}`)}><td style={{ whiteSpace: 'nowrap' }}>{fmtWeekday(v.date)} {fmtDate(v.date)}</td><td style={{ fontWeight: 600 }}>{v.name}</td><td>{v.people}</td><td className="opt">{v.type}</td><td className="ltr opt">{v.phone}</td><td>{status(v)}</td><td className="opt"><div className="acts" onClick={(e) => e.stopPropagation()}>{v.status === 'new' && <Btn size="xs" to={`/manage/visits/${v.id}`}>אישור</Btn>}<a className="btn ghost xs" href={telLink(v.phone)}>התקשרות</a><a className="btn ghost xs" href={waLink(v.phone)} target="_blank" rel="noopener">וואטסאפ</a></div></td></tr>)}</tbody></table></div>
@@ -89,9 +98,18 @@ export function DonationsScreen({ ctx, donations, selectedId }: { ctx: TeamCtx; 
   const recPill = (d: Donation) => d.receiptWanted ? <Pill tone={d.receiptSent ? 'ok' : 'ochre'}>{d.receiptSent ? 'נשלחה' : desktop ? 'צריך קבלה' : `צריך קבלה · ${d.receiptName || d.name}`}</Pill> : <span className="muted">בלי קבלה</span>;
   const acts = (d: Donation) => <>{!paid(d) && <Btn size="xs" onClick={() => approve(d)}>אישור תשלום</Btn>}{d.phone && <a className="btn ghost xs" href={thanks(d)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תודה</a>}{d.receiptWanted && !d.receiptSent && paid(d) && <Btn size="xs" kind="ghost" onClick={() => receipt(d)}>הקבלה נשלחה</Btn>}</>;
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'month', label: 'החודש' }, { value: 'pending', label: 'ממתינות', n: pending.length || undefined }, { value: 'receipt', label: 'צריך קבלה', n: receipts.length || undefined }, { value: 'memorial', label: 'עם הנצחה' }, { value: 'year', label: 'השנה' }, { value: 'all', label: 'הכל' }]} />;
+  const donationExport = () => ({
+    filename: 'תרומות.csv',
+    headers: ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'],
+    rows: donations.map((donation) => [
+      fmtDate(donation.createdAt), donation.name, donation.phone, donation.amount, donation.label,
+      donation.memorial, donation.note, PAYMENT_LABELS[donation.paymentStatus],
+      donation.receiptWanted ? (donation.receiptSent ? 'נשלחה' : 'צריך · ' + donation.receiptName) : '',
+    ]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="תרומות" sub="אישור העברות, קבלות ידניות, ותודה אישית בוואטסאפ." end={<><Btn kind="ghost" size="sm" to="/manage/settings/donations">סכומים מוגדרים</Btn><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('תרומות.csv', ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'], donations.map((d) => [fmtDate(d.createdAt), d.name, d.phone, d.amount, d.label, d.memorial, d.note, PAYMENT_LABELS[d.paymentStatus], d.receiptWanted ? (d.receiptSent ? 'נשלחה' : 'צריך · ' + d.receiptName) : '']))}>אקסל</Btn></>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="תרומות" sub="אישור העברות, קבלות ידניות, ותודה אישית בוואטסאפ." end={<><Btn kind="ghost" size="sm" to="/manage/settings/donations">סכומים מוגדרים</Btn><ExportActions getData={donationExport} /></>} />
       {desktop ? <div className="cols4"><div className="stat"><b>{money(sumM)}</b><span>החודש · {donations.filter((d) => paid(d) && d.createdAt >= monthStart).length} תורמים</span></div><div className="stat"><b>{money(sumY)}</b><span>השנה · {donations.filter((d) => paid(d) && d.createdAt >= yearStart).length} תורמים</span></div><div className="stat" style={pending.length ? { background: 'var(--ochre-bg)' } : undefined}><b className={pending.length ? 'ochre' : ''}>{money(pending.reduce((s, d) => s + d.amount, 0))}</b><span>ממתין לאישור · {pending.length}</span></div><div className="stat"><b>{receipts.length}</b><span>קבלות לשלוח</span></div></div>
         : <Ledger items={[{ n: money(sumM), label: 'החודש' }, { n: money(sumY), label: 'השנה' }, { n: money(pending.reduce((s, d) => s + d.amount, 0)), label: 'ממתין', tone: pending.length ? 'ochre' : undefined }]} small />}
       <div style={{ paddingTop: 12, paddingInline: desktop ? 20 : 0 }}>{chips}</div>
@@ -196,16 +214,30 @@ export function ReportsScreen({ ctx }: { ctx: TeamCtx }) {
   const newPeople = people.items.filter((p) => p.createdAt >= from); const approvedV = visits.items.filter((v) => v.status === 'approved' && v.createdAt >= from); const reqV = visits.items.filter((v) => v.createdAt >= from);
   const source = useMemo(() => { const m = new Map<string, number>(); for (const p of people.items) { const s = p.fields?.source || 'לא ענו'; m.set(s, (m.get(s) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [people.items]);
   const label = range === 'month' ? 'החודש' : range === '3m' ? '3 חודשים' : 'השנה';
+  const taskExport = () => ({
+    filename: `משימות ${label}.csv`,
+    headers: ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'],
+    rows: tasks.items.map((task) => [task.title, task.doneBy?.name || '', task.doneAt || '', task.templateId ? 'כן' : '']),
+  });
+  const moneyExport = () => ({
+    filename: `כסף ${label}.csv`,
+    headers: ['סעיף', 'סכום'],
+    rows: [
+      ['תרומות ששולמו', paidD.reduce((sum, donation) => sum + donation.amount, 0)],
+      ['כרטיסים ששולמו', paidT.reduce((sum, ticket) => sum + ticket.price, 0)],
+      ['חובות פתוחים', openSum],
+    ],
+  });
   return (
     <>
       <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="דוחות" sub="משימות, כסף ואנשים לפי תקופה. כל טבלה ניתנת לייצוא לאקסל." />
       <div className="inline pad"><Chips value={range} onChange={setRange} options={[{ value: 'month', label: 'החודש' }, { value: '3m', label: '3 חודשים' }, { value: 'year', label: 'השנה' }]} /></div>
       <div className={desktop ? 'cols' : ''}>
         <div>
-          <Sec title="משימות · מי ביצע" link="ייצוא" onLink={() => downloadCsv(`משימות ${label}.csv`, ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'], tasks.items.map((t) => [t.title, t.doneBy?.name || '', t.doneAt || '', t.templateId ? 'כן' : '']))} />
+          <Sec title="משימות · מי ביצע"><ExportActions getData={taskExport} downloadLabel="ייצוא" /></Sec>
           <Ledger small items={[{ n: tasks.items.length, label: 'בוצעו' }, { n: (tasks.items.length / days).toFixed(1), label: 'ביום' }, ...(recurring.length ? [{ n: `${Math.round((onTime / recurring.length) * 100)}%`, label: 'חוזרות בזמן' }] : []), { n: open.items.filter((t) => t.dueDate && t.dueDate < today).length, label: 'פתוחות באיחור', tone: open.items.some((t) => t.dueDate && t.dueDate < today) ? 'rust' : undefined }]} />
           <div className="bars" style={{ paddingTop: 14 }}>{perPerson.slice(0, 6).map(([n, c]) => <div className="bar" key={n}><span>{n}</span><i style={{ width: `${(c / max) * 100}%` }} /><b>{c}</b></div>)}{!perPerson.length && <p className="lead" style={{ padding: 0 }}>אין משימות שבוצעו בתקופה.</p>}</div>
-          <Sec title="כסף" link="ייצוא" onLink={() => downloadCsv(`כסף ${label}.csv`, ['סעיף', 'סכום'], [['תרומות ששולמו', paidD.reduce((s, d) => s + d.amount, 0)], ['כרטיסים ששולמו', paidT.reduce((s, t) => s + t.price, 0)], ['חובות פתוחים', openSum]])} />
+          <Sec title="כסף"><ExportActions getData={moneyExport} downloadLabel="ייצוא" /></Sec>
           <div className="list">
             <Row center to="/manage/donations" title="תרומות ששולמו" meta={<span>{new Set(paidD.map((d) => d.uid)).size} תורמים · {donations.items.filter((d) => d.receiptWanted && !d.receiptSent).length} קבלות ממתינות</span>} end={<span className="amount">{money(paidD.reduce((s, d) => s + d.amount, 0))}</span>} />
             <Row center to="/manage/events" title="כרטיסים ששולמו" meta={<span>{paidT.length} כרטיסים · {new Set(paidT.map((t) => t.eventId)).size} אירועים</span>} end={<span className="amount">{money(paidT.reduce((s, t) => s + t.price, 0))}</span>} />
@@ -239,18 +271,23 @@ export function ActivityScreen({ ctx }: { ctx: TeamCtx }) {
   const list = acts.items.filter((a) => (!who || a.by.uid === who) && (!q || a.text.includes(q) || a.by.name.includes(q)));
   const byDay = useMemo(() => { const m = new Map<string, typeof list>(); for (const a of list) m.set(a.at.slice(0, 10), [...(m.get(a.at.slice(0, 10)) || []), a]); return [...m.entries()]; }, [list]);
   const kinds: (ActivityKind | 'all')[] = ['all', 'task', 'shopping', 'ticket', 'tab', 'visit', 'donation', 'user', 'event', 'settings'];
+  const activityExport = () => ({
+    filename: 'פעילות.csv',
+    headers: ['מתי', 'מי', 'פעולה', 'מה', 'סוג'],
+    rows: list.map((entry) => [entry.at, entry.by.name, ACTION_LABELS[entry.action] || entry.action, entry.text, KIND_LABELS[entry.kind]]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="כל הפעילות" sub="כל מה שקרה בחווה, לפי זמן. נשמר לתמיד. כאן מוצאים את המקדח אחרי שבוע." end={<Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('פעילות.csv', ['מתי', 'מי', 'פעולה', 'מה', 'סוג'], list.map((a) => [a.at, a.by.name, ACTION_LABELS[a.action] || a.action, a.text, KIND_LABELS[a.kind]]))}>אקסל</Btn>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="כל הפעילות" sub="כל מה שקרה בחווה, לפי זמן. נשמר לתמיד. כאן מוצאים את המקדח אחרי שבוע." end={<ExportActions getData={activityExport} />} />
       <div className="inline pad"><Input placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} style={{ minHeight: 44, flex: 1, minWidth: 160 }} /></div>
       <div style={{ paddingTop: 10, paddingInline: desktop ? 20 : 0, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <Chips scroll={!desktop} value={kind} onChange={setKind} options={kinds.map((k) => ({ value: k, label: k === 'all' ? 'הכל' : KIND_LABELS[k] }))} />
         {desktop && <><span className="muted">·</span><Chips value={who} onChange={setWho} options={[{ value: '', label: 'כולם' }, ...people.map(([u, n]) => ({ value: u, label: firstName(n) }))]} /></>}
       </div>
       {acts.loading && !list.length && <Loading />}
-      {desktop ? <div className="tablewrap"><table><thead><tr><th>מתי</th><th>מי</th><th>מה</th><th>סוג</th></tr></thead><tbody>{byDay.map(([day, items]) => <>
-        <tr key={day} className="sub"><td colSpan={4} style={{ fontWeight: 700, color: 'var(--ink)', background: 'var(--paper2)' }}>{dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtDayLong(day)}`}</td></tr>
-        {items.map((a) => <tr key={a.id}><td className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtTime(a.at)}</td><td style={{ fontWeight: 600 }}>{a.by.name}</td><td className="wrap">{ACTION_LABELS[a.action] || a.action}: {a.text}</td><td className="muted">{KIND_LABELS[a.kind]}</td></tr>)}</>)}</tbody></table></div>
+      {desktop ? <div className="tablewrap"><table><thead><tr><th>מתי</th><th>מי</th><th>מה</th><th>סוג</th></tr></thead><tbody>{byDay.map(([day, items]) => <Fragment key={day}>
+        <tr className="sub"><td colSpan={4} style={{ fontWeight: 700, color: 'var(--ink)', background: 'var(--paper2)' }}>{dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtDayLong(day)}`}</td></tr>
+        {items.map((a) => <tr key={a.id}><td className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtTime(a.at)}</td><td style={{ fontWeight: 600 }}>{a.by.name}</td><td className="wrap">{ACTION_LABELS[a.action] || a.action}: {a.text}</td><td className="muted">{KIND_LABELS[a.kind]}</td></tr>)}</Fragment>)}</tbody></table></div>
         : byDay.map(([day, items]) => <div key={day}><Sec title={dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtWeekday(day)}`} n={items.length} /><div className="list">{items.map((a) => <Row key={a.id} center start={<Avatar name={a.by.name} size="sm" light />} title={<span style={{ fontSize: 15, fontWeight: 500 }}>{firstName(a.by.name)} · {ACTION_LABELS[a.action] || a.action}: {a.text}</span>} meta={<span>{fmtTime(a.at)} · {KIND_LABELS[a.kind]}</span>} />)}</div></div>)}
       {!acts.loading && !list.length && <Empty title="אין פעילות כזו" />}
     </>

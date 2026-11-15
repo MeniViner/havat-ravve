@@ -190,7 +190,7 @@ export function useRecentBought(enabled: boolean) {
 }
 export const useBoughtHistory = (enabled: boolean, fromIso: string) => useList<ShoppingItem>('shopping', { where: [['boughtAt', '>=', fromIso]], orderBy: [['boughtAt', 'desc']], limit: 400 }, enabled);
 export const useShoppingItem = (id: string, enabled = true) => useDoc<ShoppingItem>('shopping/' + (id || '_'), enabled && !!id);
-export type NewShopping = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean };
+export type NewShopping = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
 export async function addShopping(actor: Actor, data: NewShopping) {
   const now = nowIso();
   const id = newId('shopping');

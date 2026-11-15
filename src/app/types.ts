@@ -66,6 +66,7 @@ export type ShoppingItem = {
   title: string;
   note: string;
   link: string;
+  photo?: string;
   category: ShoppingCategory;
   qty: string;
   urgent: boolean;

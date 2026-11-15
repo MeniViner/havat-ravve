@@ -5,7 +5,8 @@ import { PAYMENT_LABELS, TAB_LABELS, KIND_LABELS } from '../types';
 import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtTime, fmtDate, fmtDateShort, fmtWeekday, fmtDayLong, fmtRange, firstName, relTime, whenText, todayISO, money, useDesktop, useSort, Th } from '../ui';
 import { navigate } from '../router';
-import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, isOpenTab, useDonations, downloadCsv, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
+import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, isOpenTab, useDonations, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
+import { ExportActions } from '../ExportTable';
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
 import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
@@ -178,7 +179,18 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const sorted = desktop ? apply(list, (o, k) => k === 'name' ? o[0].ownerName : k === 'count' ? o.length : k === 'payment' ? o[0].paymentStatus : o[0].createdAt) : list;
   if (!d.e) return <EventFrame id={id} tab="guests" ctx={ctx}>{null}</EventFrame>;
   const e = d.e;
-  const csv = () => downloadCsv(`${e.title} - נרשמים.csv`, ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'], all.map((o) => [o[0].ownerName, o[0].ownerPhone, o.filter((x) => x.status === 'valid').length, PAYMENT_LABELS[o[0].paymentStatus], fmtDate(o[0].createdAt), o.reduce((s, x) => s + (x.entries > 0 ? 1 : 0), 0), Object.values(o[0].answers || {}).join(' / ')]));
+  const registrationExport = () => ({
+    filename: `${e.title} - נרשמים.csv`,
+    headers: ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
+    rows: all.map((order) => {
+      const first = order[0];
+      return [
+        first.ownerName, first.ownerPhone, order.filter((ticket) => ticket.status === 'valid').length,
+        PAYMENT_LABELS[first.paymentStatus], fmtDate(first.createdAt),
+        order.filter((ticket) => ticket.entries > 0).length, Object.values(first.answers || {}).join(' / '),
+      ];
+    }),
+  });
   const remind = (o: Ticket[]) => waLink(o[0].ownerPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(o[0].ownerName), 'אירוע': e.title, 'סכום': o[0].price * o.filter((x) => x.status === 'valid').length }));
   const pay = (o: Ticket[], status: PaymentStatus) => setOrderPayment(ctx.actor, o.filter((x) => x.status === 'valid'), status).then(() => toast({ text: `${o[0].ownerName} · ${PAYMENT_LABELS[status]}`, action: { label: 'ביטול', onClick: () => setOrderPayment(ctx.actor, o, o[0].paymentStatus) } }, 5000));
   const cancel = (o: Ticket[]) => { const reason = prompt('סיבת הביטול (תירשם בהיסטוריה):') ?? null; if (reason === null) return; cancelOrder(ctx.actor, o.filter((x) => x.status === 'valid'), reason).then(() => toast({ text: 'ההזמנה בוטלה' })); };
@@ -186,7 +198,7 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const payPill = (t: Ticket, n: number) => t.status === 'cancelled' ? <Pill tone="rust">בוטל</Pill> : <Pill tone={isPaid(t.paymentStatus) ? 'ok' : 'ochre'}>{PAYMENT_LABELS[t.paymentStatus]}{t.paymentStatus === 'pending' || t.paymentStatus === 'claimed' ? ` · ${money(t.price * n)}` : ''}</Pill>;
   const actions = (o: Ticket[]) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); if (!valid.length) return null; return <>{t.paymentStatus === 'claimed' && <Btn size="xs" onClick={() => pay(o, 'paid')}>אישור תשלום</Btn>}{t.paymentStatus === 'pending' && <><a className="btn ghost xs" href={remind(o)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a><Btn size="xs" kind="ghost" onClick={() => pay(o, 'paid')}>סימון שולם</Btn></>}<a className="btn quiet xs" href={telLink(t.ownerPhone)}><Icon name="phone" size={14} /></a><Btn size="xs" kind="quiet" onClick={() => cancel(o)}>ביטול</Btn></>; };
   return (
-    <EventFrame id={id} tab="guests" ctx={ctx} title={desktop ? e.title : 'נרשמים'} end={<Btn kind="ghost" size="sm" icon="download" onClick={csv}>אקסל</Btn>}>
+    <EventFrame id={id} tab="guests" ctx={ctx} title={desktop ? e.title : 'נרשמים'} end={<ExportActions getData={registrationExport} />}>
       {!desktop && <p className="lead">{d.valid.length} כרטיסים · {d.orders.length} הזמנות{e.price ? ` · ${d.unpaid.length} ממתינים לתשלום` : ''}</p>}
       <div className="inline pad" style={{ paddingTop: 10 }}><Input placeholder="חיפוש נרשמים" value={q} onChange={(ev) => setQ(ev.target.value)} style={{ minHeight: 44, flex: 1, minWidth: 180 }} />{desktop && chips}</div>
       {!desktop && <div style={{ paddingTop: 10 }}>{chips}</div>}
@@ -258,9 +270,14 @@ export function EventVendorsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
 export function VendorsScreen({ ctx }: { ctx: TeamCtx }) {
   const all = useVendors(true); const [q, setQ] = useState(''); const desktop = useDesktop();
   const list = all.items.filter((v) => !q || v.name.includes(q) || v.product.includes(q) || v.phone.includes(q));
+  const vendorExport = () => ({
+    filename: 'בעלי דוכנים.csv',
+    headers: ['שם', 'טלפון', 'מה מוכרים', 'חיצוני', 'הערות'],
+    rows: all.items.map((vendor) => [vendor.name, vendor.phone, vendor.product, vendor.external ? 'כן' : 'לא', vendor.notes]),
+  });
   return (
     <>
-      <Top backTo="/manage" backLabel="ניהול" title={<>בעלי דוכנים <span className="muted" style={{ fontWeight: 500 }}>· {all.items.length}</span></>} sub="הרשימה הקבועה, חוזרת מאירוע לאירוע. הכסף שלהם לא עובר דרך המערכת." end={<><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('בעלי דוכנים.csv', ['שם', 'טלפון', 'מה מוכרים', 'חיצוני', 'הערות'], all.items.map((v) => [v.name, v.phone, v.product, v.external ? 'כן' : 'לא', v.notes]))}>אקסל</Btn><Btn size="sm" icon="plus" to="/manage/vendors/new">בעל דוכן</Btn></>} />
+      <Top backTo="/manage" backLabel="ניהול" title={<>בעלי דוכנים <span className="muted" style={{ fontWeight: 500 }}>· {all.items.length}</span></>} sub="הרשימה הקבועה, חוזרת מאירוע לאירוע. הכסף שלהם לא עובר דרך המערכת." end={<><ExportActions getData={vendorExport} /><Btn size="sm" icon="plus" to="/manage/vendors/new">בעל דוכן</Btn></>} />
       <Field><Input placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
       {desktop ? <div className="tablewrap"><table><thead><tr><th>שם</th><th>מה מוכרים</th><th>טלפון</th><th>הערות</th><th></th></tr></thead><tbody>{list.map((v) => <tr key={v.id} className="link" onClick={() => navigate(`/manage/vendors/${v.id}`)}><td style={{ fontWeight: 600 }}>{v.name}{!v.external && <> <Pill tone="gold">של החווה</Pill></>}</td><td className="wrap">{v.product}</td><td className="ltr">{v.phone}</td><td className="muted wrap">{v.notes}</td><td style={{ textAlign: 'end' }}>{v.phone && <a className="btn ghost xs" href={waLink(v.phone)} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>וואטסאפ</a>}</td></tr>)}</tbody></table></div>
         : <div className="list" style={{ marginTop: 10 }}>{list.map((v) => <Row key={v.id} to={`/manage/vendors/${v.id}`} center title={<>{v.name}<span className="muted" style={{ fontWeight: 400 }}> · {v.product}</span></>} meta={<>{v.phone && <span className="ltr">{v.phone}</span>}{!v.external && <Pill tone="gold">של החווה</Pill>}{v.notes && <span>{v.notes}</span>}</>} chev />)}{!list.length && <Empty title="אין בעלי דוכנים ברשימה" />}</div>}
@@ -349,6 +366,14 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const claimed = tabs.filter((t) => t.status === 'claimed');
   const total = (rows: Tab[]) => rows.reduce((sum, t) => sum + t.total, 0);
   const openTotal = total(open);
+  const accountExport = () => ({
+    filename: `${e.title} - חשבונות.csv`,
+    headers: ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'],
+    rows: tabs.map((tab) => [
+      tab.guestName, tab.guestPhone, tab.items.map((item) => `${item.name}×${item.qty}`).join(' '),
+      tab.total, TAB_LABELS[tab.status], fmtDate(tab.updatedAt),
+    ]),
+  });
   const list = tabs.filter((t) => filter === 'all' || t.status === filter).sort((a, b) => (a.status === 'open' || a.status === 'claimed' ? 0 : 1) - (b.status === 'open' || b.status === 'claimed' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt));
   const remind = (t: Tab) => waLink(t.guestPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(t.guestName), 'אירוע': e.title, 'סכום': t.total }));
   const set = (t: Tab, s: Tab['status'], note?: string) => setTabStatus(ctx.actor, t, s, note).then(() => toast({ text: `${t.guestName} · ${TAB_LABELS[s]}`, action: { label: 'ביטול', onClick: () => setTabStatus(ctx.actor, t, t.status) } }, 5000));
@@ -356,7 +381,7 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const statusPill = (t: Tab) => <Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'open' ? `לא שולם · ${Math.max(0, Math.round((Date.now() - new Date(t.createdAt).getTime()) / 86400_000))} ימים` : TAB_LABELS[t.status]}</Pill>;
   const acts = (t: Tab) => <>{t.status === 'claimed' && <Btn size="xs" onClick={() => set(t, 'paid')}>אישור · שולם</Btn>}{t.status === 'open' && <>{t.guestPhone && <a className="btn ghost xs" href={remind(t)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a>}<Btn size="xs" kind="ghost" onClick={() => set(t, 'paid')}>שולם</Btn></>}{(t.status === 'open' || t.status === 'claimed') && <Btn size="xs" kind="quiet" onClick={() => waive(t)}>מחילה</Btn>}</>;
   return (
-    <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv(`${e.title} - חשבונות.csv`, ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'], tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), t.total, TAB_LABELS[t.status], fmtDate(t.updatedAt)]))}>אקסל</Btn>{open.some((t) => t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
+    <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><ExportActions getData={accountExport} />{open.some((t) => t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
       {!desktop && <p className="lead">דוכן החווה · {fmtDate(e.start)} · על בסיס אמון</p>}
       <Ledger small items={[{ n: tabs.length, label: 'חשבונות' }, { n: money(total(tabs)), label: 'נמכרו' }, { n: money(total(tabs.filter((t) => t.status === 'paid'))), label: 'שולמו' }, { n: money(openTotal), label: `פתוחים · ${open.length}`, tone: openTotal ? 'ochre' : undefined }]} />
       {claimed.length > 0 && <p className="note">ממתינים לאישור תשלום · {money(total(claimed))}</p>}
@@ -407,9 +432,18 @@ export function EventReportScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const donMoney = dayDon.reduce((s, x) => s + x.amount, 0);
   const top = (() => { const m = new Map<string, { name: string; units: number; rev: number }>(); for (const t of d.tabs) for (const i of t.items) { const c = m.get(i.productId) || { name: i.name, units: 0, rev: 0 }; c.units += i.qty; c.rev += i.qty * i.price; m.set(i.productId, c); } return [...m.values()].sort((a, b) => b.units - a.units); })(); // computed after the early return above, so it cannot be a hook
   const pct = d.valid.length ? Math.round((d.arrived.length / d.valid.length) * 100) : 0;
-  const csv = () => downloadCsv(`${e.title} - דוח.csv`, ['מדד', 'ערך'], [['כרטיסים', d.valid.length], ['הזמנות', d.orders.length], ['הגיעו', d.arrived.length], ['אחוז הגעה', pct + '%'], ['כרטיסים ששולמו ₪', ticketMoney], ['מכירות דוכן ₪', stall], ['תרומות ביום האירוע ₪', donMoney], ['פתוח ₪', openSum], ['נמחל ₪', waived], ...top.map((t) => [t.name, `${t.units} יח׳ · ${t.rev} ₪`])]);
+  const reportExport = () => ({
+    filename: `${e.title} - דוח.csv`,
+    headers: ['מדד', 'ערך'],
+    rows: [
+      ['כרטיסים', d.valid.length], ['הזמנות', d.orders.length], ['הגיעו', d.arrived.length],
+      ['אחוז הגעה', pct + '%'], ['כרטיסים ששולמו ₪', ticketMoney], ['מכירות דוכן ₪', stall],
+      ['תרומות ביום האירוע ₪', donMoney], ['פתוח ₪', openSum], ['נמחל ₪', waived],
+      ...top.map((item) => [item.name, `${item.units} יח׳ · ${item.rev} ₪`]),
+    ],
+  });
   return (
-    <EventFrame id={id} tab="report" ctx={ctx} title={desktop ? `${e.title} · דוח` : 'דוח האירוע'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={csv}>ייצוא לאקסל</Btn>{desktop && <Btn kind="ghost" size="sm" icon="print" onClick={() => window.print()}>הדפסה</Btn>}</>}>
+    <EventFrame id={id} tab="report" ctx={ctx} title={desktop ? `${e.title} · דוח` : 'דוח האירוע'} end={<><ExportActions getData={reportExport} downloadLabel="ייצוא לאקסל" />{desktop && <Btn kind="ghost" size="sm" icon="print" onClick={() => window.print()}>הדפסה</Btn>}</>}>
       {!desktop && <p className="lead">{e.title} · {fmtWeekday(e.start)} {fmtDate(e.start)}{e.end < new Date().toISOString() ? ' · הסתיים' : ''}</p>}
       <Sec title="אנשים" />
       <Ledger small items={[{ n: d.valid.length, label: 'כרטיסים' }, { n: d.arrived.length, label: 'הגיעו' }, { n: `${pct}%`, label: 'הגעה' }, { n: d.valid.filter((t) => t.entries > 1).length, label: 'יצאו וחזרו' }]} />

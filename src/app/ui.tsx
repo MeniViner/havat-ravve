@@ -128,7 +128,7 @@ const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(pre
  * Checking answers back before the item leaves: the mark fills and the tick draws, the line is struck, then the row folds away.
  * Only then is the change written, so the list never just jumps.
  */
-export function Chk({ on, onChange, label, rust, small, round }: { on: boolean; onChange: (v: boolean) => void; label: string; rust?: boolean; small?: boolean; round?: boolean }) {
+export function Chk({ on, onChange, label, rust, small, round, stayVisible }: { on: boolean; onChange: (v: boolean) => void; label: string; rust?: boolean; small?: boolean; round?: boolean; stayVisible?: boolean }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const reset = useRef(0);
@@ -136,7 +136,7 @@ export function Chk({ on, onChange, label, rust, small, round }: { on: boolean; 
   const click = (e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
     if (busy) return;
-    if (on || reducedMotion()) { onChange(!on); return; }
+    if (stayVisible || on || reducedMotion()) { onChange(!on); return; }
     setBusy(true);
     const row = ref.current?.closest<HTMLElement>('.row, .line, tr') || null;
     const tr = row?.tagName === 'TR';
@@ -249,7 +249,7 @@ export function useUndoable() {
 }
 
 // ---------- bottom sheet (only for short confirmations and pickers) ----------
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: ReactNode }) {
+export function Sheet({ open, onClose, title, children, panelClassName = '' }: { open: boolean; onClose: () => void; title?: string; children: ReactNode; panelClassName?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const d = ref.current; if (!d) return; if (open && !d.open) d.showModal(); if (!open && d.open) d.close(); }, [open]);
   useEffect(() => {
@@ -259,7 +259,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     d.addEventListener('cancel', onCancel); d.addEventListener('click', onClick);
     return () => { d.removeEventListener('cancel', onCancel); d.removeEventListener('click', onClick); };
   }, [onClose]);
-  return <dialog ref={ref} className="sheet"><div className="sheet-inner"><div className="sheet-grip" aria-hidden="true" />{title && <header className="sheet-head"><h2>{title}</h2><button type="button" className="iconbtn" onClick={onClose} aria-label="סגירה"><Icon name="x" /></button></header>}{open && children}</div></dialog>;
+  return <dialog ref={ref} className="sheet" aria-label={title}><div className={`sheet-inner ${panelClassName}`}><div className="sheet-grip" aria-hidden="true" />{title && <header className="sheet-head"><h2>{title}</h2><button type="button" className="iconbtn" onClick={onClose} aria-label="סגירה"><Icon name="x" /></button></header>}{open && children}</div></dialog>;
 }
 
 // ---------- desktop table helpers ----------
@@ -269,9 +269,13 @@ export function useSort<T>(initial: string, dir: 'asc' | 'desc' = 'asc') {
   const apply = (rows: T[], get: (r: T, key: string) => string | number | null | undefined) => [...rows].sort((a, b) => { const x = get(a, sort.key) ?? '', y = get(b, sort.key) ?? ''; const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he'); return sort.dir === 'asc' ? c : -c; });
   return { sort, toggle, apply };
 }
-export const Th = ({ k, sort, onSort, children, end }: { k?: string; sort?: { key: string; dir: 'asc' | 'desc' }; onSort?: (k: string) => void; children?: ReactNode; end?: boolean }) => (
-  <th className={sort && k === sort.key ? 'sort' : ''} style={end ? { textAlign: 'end' } : undefined}>{k && onSort ? <button type="button" onClick={() => onSort(k)}>{children}{sort?.key === k && (sort.dir === 'asc' ? ' ↑' : ' ↓')}</button> : children}</th>
-);
+export function Th({ k, sort, onSort, children, end }: { k?: string; sort?: { key: string; dir: 'asc' | 'desc' }; onSort?: (k: string) => void; children?: ReactNode; end?: boolean }) {
+  const direction = k === sort?.key ? sort?.dir : undefined;
+  return <th scope="col" aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : undefined}
+    className={direction ? 'sort' : ''} style={end ? { textAlign: 'end' } : undefined}>
+    {k && onSort ? <button type="button" onClick={() => onSort(k)}>{children}{direction && <span aria-hidden="true">{direction === 'asc' ? ' ↑' : ' ↓'}</span>}</button> : children}
+  </th>;
+}
 
 // ---------- formatting ----------
 const TZ = 'Asia/Jerusalem';

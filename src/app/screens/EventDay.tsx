@@ -110,14 +110,14 @@ export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: F
   if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'כשמנהל יפרסם אירוע, הכניסה והדוכן יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
   const isLive = isToday(chosen, today);
   return (
-    <>
-      <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${isLive ? ' · השער נפתח חצי שעה לפני' : ' · ' + inText(chosen.start)}`} end={!id ? <A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
+    <div className="event-hub">
+      <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${isLive ? ' · השער נפתח חצי שעה לפני' : ' · ' + inText(chosen.start)}`} end={!id ? <A className="iconbtn" to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
       <Ledger items={[{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }, { n: openTabs.length, label: 'חשבונות פתוחים', tone: openTabs.length ? 'ochre' : undefined }]} />
       <div className="actions row2" style={{ paddingBottom: 0 }}><Btn size="big" icon="qr" to={`/scan/${chosen.id}`}>כניסה</Btn><Btn size="big" kind="ghost" icon="store" to={`/stall/${chosen.id}`}>דוכן</Btn></div>
       <div className="strip ok"><Icon name="download" size={18} />{tickets.loading ? 'מוריד את רשימת הכרטיסים…' : `${valid.length} כרטיסים ו־${products.items.filter((p) => p.active).length} מוצרים במכשיר. הסריקה והדוכן עובדים בלי קליטה.`}</div>
       {scans.length > 0 && <><Sec title="סריקות אחרונות" link="חיפוש אורח" linkTo={`/scan/${chosen.id}/search`} /><div className="list">{scans.map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}</div></>}
       {upcoming.length > 0 && <><Sec title="אירועים קרובים" />{upcoming.slice(0, 4).map((e) => <EventTeaser key={e.id} e={e} to={`/events-staff/${e.id}`} />)}</>}
-    </>
+    </div>
   );
 }
 

@@ -149,6 +149,29 @@ tr.checking td{opacity:.35;transition:opacity .3s .1s}
 .sec.day.rust .tog{color:var(--rust)}
 .sec .hint{font-size:13px;font-weight:400;color:var(--muted);margin-inline-end:auto}
 
+/* Today and the staff event hub */
+.today-screen .top h1,.event-hub .top h1{color:var(--green);font-size:clamp(28px,4.8vw,36px)}
+.today-screen .ledger,.event-hub .ledger{background:var(--paper2);border-top-color:var(--gold)}
+.today-screen .ledger span,.event-hub .ledger span{font-size:14px}
+.today-screen .ledger .today-free-ratio{margin:0;color:inherit;font-family:var(--sans);font-size:clamp(15px,4.4vw,23px);line-height:1.2}
+.today-screen .ledger b:has(.today-free-ratio){display:grid;place-items:center;min-height:34px}
+.today-screen .row .meta,.event-hub .row .meta,.today-screen .owner,.event-hub .evcard .date .m{font-size:14px}
+.today-screen .btn:is(.sm,.xs),.today-screen .owner.take,.today-screen .sec .tog,.event-hub .btn:is(.sm,.xs){min-height:44px}
+.today-screen .sec a,.today-screen .minebox header a,.event-hub .sec a{display:inline-flex;align-items:center;justify-content:flex-end;min-width:44px;min-height:44px}
+.today-screen .note-more{min-height:44px}
+.today-screen .row.done .title{text-decoration:line-through}
+.today-free,.today-others{margin:18px 20px 0}
+.today-free{background:var(--paper2);border:1px solid var(--line);border-radius:12px}
+.today-free .sec{background:var(--ok-bg);border-radius:11px 11px 0 0;padding:4px 14px}
+.today-free .row,.today-others .row{padding-inline:14px}
+.today-others{border-top:1px solid var(--line)}
+.today-others .sec{color:var(--muted);padding:4px 0}
+.today-history{display:inline-flex;align-items:center;min-height:44px;margin:8px 20px 0;color:var(--green2);font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.today-shopping{margin:12px 20px 0;padding:14px 16px 12px;border-block-start:2px solid var(--gold);background:var(--gold-bg)}
+.today-shopping h2{font-size:19px;color:var(--green)}
+.today-shopping-summary{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px;color:var(--green)}
+.today-shopping-summary b{color:var(--rust)}
+
 /* ---------- shopping: a ruled note per shop ---------- */
 .notes{display:grid;gap:14px;padding:14px 12px 0;align-items:start}
 .notepad{position:relative;background:var(--white);border:1px solid var(--line);border-radius:14px;overflow:hidden}

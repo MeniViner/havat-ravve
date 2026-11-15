@@ -1,6 +1,7 @@
+import { startTransition, useOptimistic } from 'react';
 import type { Task, FarmEvent, CalendarItem, AppNotification, ShoppingItem } from '../types';
 import type { TeamCtx } from '../ctx';
-import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, fmtDayLong, fmtTime, firstName, greeting, inText, fmtDateShort, fmtWeekday, todayISO, useDesktop, useOpenSections, useToast, relTime, money } from '../ui';
+import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, fmtDayLong, fmtTime, firstName, greeting, inText, fmtDateShort, fmtWeekday, todayISO, dateKey, useDesktop, useOpenSections, useToast, relTime, money } from '../ui';
 import { setTaskDone, editTask } from '../store';
 import { ShopLine, useMarkBought, taskMeta } from './legacy';
 
@@ -9,10 +10,25 @@ type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingIte
 export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inbox, loading }: Props) {
   const desktop = useDesktop();
   const today = todayISO();
-  const mine = open.filter((t) => t.assignee?.uid === ctx.actor.uid);
+  const toast = useToast();
   const overdue = open.filter((t) => t.dueDate && t.dueDate < today);
-  const todays = open.filter((t) => !t.dueDate || t.dueDate <= today || t.urgent).sort(byPriority(ctx.actor.uid, today));
-  const doneToday = recent.filter((t) => (t.doneAt || '') >= today).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || ''));
+  const dueToday = (t: Task) => !t.dueDate || t.dueDate <= today || t.urgent;
+  const byId = new Map<string, Task>();
+  for (const task of [...open, ...recent]) {
+    if (task.managersOnly && !ctx.manager) continue;
+    const previous = byId.get(task.id);
+    if (!previous || task.updatedAt >= previous.updatedAt) byId.set(task.id, task);
+  }
+  const visible = [...byId.values()].filter((t) => {
+    if (!t.done) return dueToday(t);
+    const completed = Date.parse(t.doneAt || '');
+    return Number.isFinite(completed) && dateKey(new Date(completed)) === today;
+  });
+  // Keep the pending row in the union while the independent open and done listeners catch up.
+  const [tasks, showDone] = useOptimistic(visible, (current, next: Task) => [
+    ...current.filter((t) => t.id !== next.id), next,
+  ]);
+  const todays = [...tasks].sort(byPriority(ctx.actor.uid, today));
   const upcoming = events.filter((e) => e.end >= new Date().toISOString() && e.published).sort((a, b) => a.start.localeCompare(b.start));
   const next = upcoming[0];
   const eventToday = next && next.start.slice(0, 10) <= today && next.end.slice(0, 10) >= today ? next : null;
@@ -20,17 +36,29 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
   const myToday = todays.filter((t) => t.assignee?.uid === ctx.actor.uid);
   const free = todays.filter((t) => !t.assignee);
   const theirs = todays.filter((t) => t.assignee && t.assignee.uid !== ctx.actor.uid);
-  const myLater = mine.length - myToday.length;
+  const myLater = open.filter((t) => t.assignee?.uid === ctx.actor.uid && !dueToday(t)).length;
+  const myOpen = myToday.filter((t) => !t.done).length;
+  // The free ratio is currently unassigned open work out of all visible open and completed-today tasks.
+  const freeOpen = free.filter((t) => !t.done).length;
   const markBought = useMarkBought(ctx);
-  const { isOpen, toggle } = useOpenSections(['free', 'theirs', 'done', 'inbox', 'shop'], 'today2', ['theirs', 'done']);
-  const toggleDone = (t: Task, v: boolean) => setTaskDone(ctx.actor, t, v).catch(() => {});
+  const { isOpen, toggle } = useOpenSections(['free', 'theirs', 'inbox', 'shop'], 'today2', ['theirs']);
+  const toggleDone = (task: Task, done: boolean) => startTransition(async () => {
+    showDone({ ...task, done, doneAt: done ? new Date().toISOString() : null, doneBy: done ? ctx.actor : null });
+    try { await setTaskDone(ctx.actor, task, done); }
+    catch (error) { toast({ text: (error as Error).message || 'לא נשמר', kind: 'error' }); }
+  });
 
   return (
-    <>
+    <div className="today-screen">
       <Top date={fmtDayLong(today)} title={`${greeting()}, ${firstName(ctx.profile.displayName)}`} end={desktop
         ? <><Btn kind="ghost" size="sm" icon="plus" to="/tasks/new">משימה</Btn><Btn kind="ghost" size="sm" icon="plus" to="/shopping/new">פריט לקניות</Btn></>
-        : <A to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
-      <Ledger items={[{ n: myToday.length, label: 'עליך' }, { n: free.length, label: 'פנויות' }, ...(ctx.manager ? [{ n: overdue.length, label: 'באיחור', tone: overdue.length ? 'rust' as const : undefined }] : []), { n: doneToday.length, label: 'בוצעו היום' }, ...(ctx.manager && desktop ? [{ n: shopping.length, label: 'פריטי קניות', to: '/shopping' }, { n: inbox.length, label: 'לטיפול', tone: inbox.length ? 'ochre' as const : undefined, to: '/manage/inbox' }] : [])]} />
+        : <A className="iconbtn" to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A>} />
+      <Ledger items={[
+        { n: myOpen, label: 'עליך' },
+        { n: <span className="today-free-ratio">{freeOpen} מתוך {todays.length}</span>, label: 'פנויות' },
+        ...(ctx.manager ? [{ n: overdue.length, label: 'באיחור', tone: overdue.length ? 'rust' as const : undefined }] : []),
+        ...(ctx.manager && desktop ? [{ n: shopping.length, label: 'פריטי קניות', to: '/shopping' }, { n: inbox.length, label: 'לטיפול', tone: inbox.length ? 'ochre' as const : undefined, to: '/manage/inbox' }] : []),
+      ]} />
 
       {eventToday && <A to={`/events-staff/${eventToday.id}`} className="paybox ok" style={{ display: 'block', marginTop: 14 }}><b>היום: {eventToday.title}</b>{fmtTime(eventToday.start)}–{fmtTime(eventToday.end)} · כניסה ודוכן מהטלפון</A>}
       {!eventToday && next && !desktop && <EventTeaser e={next} to={`/events-staff/${next.id}`} />}
@@ -44,17 +72,15 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
               : <p className="none">{free.length ? 'אין כרגע משימות עליך. אפשר לקחת אחת מהפנויות למטה.' : 'אין כרגע משימות עליך.'}</p>}
             {myLater > 0 && <A to="/tasks" className="more">ועוד {myLater} עליך בימים הבאים</A>}
           </section>
-          {(free.length > 0 || !loading) && <>
-            <Sec serif title="פנויות" n={free.length} open={isOpen('free')} onToggle={() => toggle('free')}><span className="hint">מי שפנוי לוקח</span></Sec>
-            {isOpen('free') && (free.length ? <div className="list">{free.slice(0, desktop ? 12 : 8).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div> : <p className="lead">אין משימות פנויות. כשמישהו מוסיף משימה בלי שם, היא תופיע כאן.</p>)}
-          </>}
-          {theirs.length > 0 && <>
-            <Sec serif title="אצל אחרים" n={theirs.length} open={isOpen('theirs')} onToggle={() => toggle('theirs')} />
+          {(free.length > 0 || !loading) && <section className="today-free" aria-label="משימות פנויות">
+            <Sec serif title="פנויות" n={freeOpen} open={isOpen('free')} onToggle={() => toggle('free')} />
+            {isOpen('free') && (free.length ? <div className="list">{free.slice(0, desktop ? 12 : 8).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div> : <p className="lead">אין משימות פנויות כרגע.</p>)}
+          </section>}
+          {theirs.length > 0 && <section className="today-others" aria-label="משימות אצל אחרים">
+            <Sec title="אצל אחרים" n={theirs.length} open={isOpen('theirs')} onToggle={() => toggle('theirs')} />
             {isOpen('theirs') && <div className="list">{theirs.slice(0, 10).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>}
-          </>}
-          <Sec serif title="בוצע היום" n={doneToday.length} link="היסטוריה" linkTo="/history" open={isOpen('done')} onToggle={() => toggle('done')} />
-          {isOpen('done') && <div className="list">{doneToday.slice(0, 6).map((t) => <Row key={t.id} done to={`/tasks/${t.id}`} start={<Chk round on onChange={(v) => toggleDone(t, v)} label={`להחזיר לביצוע: ${t.title}`} />} title={t.title} meta={<><span>{firstName(t.doneBy?.name || '')} · {fmtTime(t.doneAt)}</span>{t.donePhoto && <Icon name="camera" />}</>} />)}
-            {!doneToday.length && <p className="lead">עדיין לא סומן כלום היום.</p>}</div>}
+          </section>}
+          <A to="/history" className="today-history">היסטוריה</A>
         </div>
         {desktop && (
           <div>
@@ -72,14 +98,21 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
           </div>
         )}
       </div>
-      {!desktop && <div className="phoneonly" style={{ padding: '16px 20px 0', display: 'flex', gap: 10 }}><Btn kind="ghost" size="sm" icon="cart" to="/shopping">קניות · {shopping.length}{urgentShop ? ` · ${urgentShop} דחוף` : ''}</Btn>{ctx.manager && inbox.length > 0 && <Btn kind="ghost" size="sm" icon="bell" to="/manage/inbox">לטיפול · {inbox.length}</Btn>}</div>}
-    </>
+      {!desktop && <section className="today-shopping" aria-label="קניות">
+        <h2>קניות</h2>
+        <div className="today-shopping-summary">
+          <span>{shopping.length} פריטים{urgentShop > 0 && <> · <b>{urgentShop} דחוף</b></>}</span>
+          <Btn kind="ghost" size="sm" to="/shopping">לרשימת הקניות</Btn>
+        </div>
+      </section>}
+      {!desktop && ctx.manager && inbox.length > 0 && <div className="actions"><Btn kind="ghost" size="sm" icon="bell" to="/manage/inbox">לטיפול · {inbox.length}</Btn></div>}
+    </div>
   );
 }
 
 export const byPriority = (uid: string, today: string) => (a: Task, b: Task) => {
-  const score = (t: Task) => (t.urgent ? 0 : 0) + (t.dueDate && t.dueDate < today ? 1 : 0) * -1 + (t.urgent ? -4 : 0) + (t.assignee?.uid === uid ? -2 : 0) + (t.dueDate === today ? -1 : 0);
-  return score(a) - score(b) || a.createdAt.localeCompare(b.createdAt);
+  const score = (t: Task) => (t.dueDate && t.dueDate < today ? -1 : 0) + (t.urgent ? -4 : 0) + (t.assignee?.uid === uid ? -2 : 0) + (t.dueDate === today ? -1 : 0);
+  return score(a) - score(b) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 };
 
 /**
@@ -89,11 +122,11 @@ export function TaskRow({ t, ctx, today, onDone, selected }: { t: Task; ctx: Tea
   const take = useTakeTask(ctx);
   const mine = t.assignee?.uid === ctx.actor.uid;
   return (
-    <div className={`row task${t.urgent ? ' urgent' : ''}${mine ? ' mine' : ''}${selected ? ' sel' : ''}`}>
-      <Chk round on={t.done} onChange={onDone} label={`בוצע: ${t.title}`} rust={t.urgent} />
+    <div className={`row task${t.done ? ' done' : ''}${t.urgent && !t.done ? ' urgent' : ''}${mine ? ' mine' : ''}${selected ? ' sel' : ''}`}>
+      <Chk round stayVisible on={t.done} onChange={onDone} label={`בוצע: ${t.title}`} rust={t.urgent && !t.done} />
       <A to={`/tasks/${t.id}`} className="main lnk" style={{ display: 'flex', gap: 12, flex: 1, minWidth: 0 }}>
         {t.photo && <img className="thumb" src={t.photo} alt="" />}
-        <div className="main"><div className="title">{t.title}</div><div className="meta">{t.urgent && <Pill tone="rust">דחוף</Pill>}{t.managersOnly && <Pill>מנהלים</Pill>}{taskMeta(t, ctx, today, true)}</div></div>
+        <div className="main"><div className="title">{t.title}</div><div className="meta">{t.urgent && !t.done && <Pill tone="rust">דחוף</Pill>}{t.managersOnly && <Pill>מנהלים</Pill>}{t.done ? <span>{firstName(t.doneBy?.name || '')} · {fmtTime(t.doneAt)}</span> : taskMeta(t, ctx, today, true)}</div></div>
       </A>
       <TaskOwner t={t} ctx={ctx} onTake={() => take(t)} />
     </div>
@@ -107,7 +140,7 @@ export function useTakeTask(ctx: TeamCtx) {
 export function TaskOwner({ t, ctx, onTake }: { t: Task; ctx: TeamCtx; onTake?: () => void }) {
   if (t.assignee?.uid === ctx.actor.uid) return <span className="owner mine">עליך</span>;
   if (t.assignee) return <span className="owner other" title={`אצל ${t.assignee.name}`}><Avatar name={t.assignee.name} size="xs" light />{firstName(t.assignee.name)}</span>;
-  if (t.templateId || !onTake) return <span className="owner all">לכולם</span>;
+  if (t.done || !onTake) return <span className="owner all">לכולם</span>;
   return <button type="button" className="owner take" onClick={(e) => { e.stopPropagation(); onTake(); }}>אני על זה</button>;
 }
 

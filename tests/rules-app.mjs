@@ -101,12 +101,31 @@ try{
  await assertSucceeds(setDoc(doc(beni,'task_templates','tpl2'),{...tpl,managersOnly:true}));
  await assertSucceeds(getDocs(query(collection(vol,'task_templates'),where('managersOnly','==',false))));
  await assertFails(getDocs(collection(vol,'task_templates')));
+ const routine=doc(vol,'tasks','tpl1_2026-11-11');
+ await assertSucceeds(setDoc(doc(beni,'tasks',routine.id),task('beni',{templateId:'tpl1',dateKey:'2026-11-11',dueDate:'2026-11-11'})));
+ await assertSucceeds(updateDoc(routine,{assignee:actor('vol'),updatedAt:now}));
+ await assertSucceeds(updateDoc(routine,{assignee:null,updatedAt:now}));
+ await assertSucceeds(updateDoc(routine,{assignee:actor('vol'),updatedAt:now}));
+ await assertSucceeds(updateDoc(routine,{done:true,doneBy:actor('vol'),doneAt:now,updatedAt:now}));
+ assert.equal((await assertSucceeds(getDoc(routine))).data().assignee.uid,'vol');
+ await assertSucceeds(setDoc(doc(beni,'tasks','tpl2_2026-11-11'),task('beni',{templateId:'tpl2',dateKey:'2026-11-11',managersOnly:true})));
+ await assertFails(getDoc(doc(vol,'tasks','tpl2_2026-11-11')));
+ await assertFails(updateDoc(doc(vol,'tasks','tpl2_2026-11-11'),{assignee:actor('vol'),updatedAt:now}));
 
  // --- shopping ---
  await assertSucceeds(setDoc(doc(vol,'shopping','s1'),item('vol')));
  await assertFails(setDoc(doc(vol,'shopping','s2'),item('vol',{category:'other'})));
  await assertFails(setDoc(doc(vol,'shopping','s3'),item('vol',{category:'online',link:'javascript:alert(1)'})));
  await assertSucceeds(setDoc(doc(vol,'shopping','s3'),item('vol',{category:'online',link:'https://example.com/p'})));
+ const photo='data:image/webp;base64,AAAA';
+ await assertSucceeds(setDoc(doc(vol,'shopping','s4'),item('vol',{category:'building',photo})));
+ const legacyShopItem=doc(vol,'shopping','s1');
+ await assertSucceeds(updateDoc(legacyShopItem,{photo,updatedAt:now}));
+ await assertSucceeds(updateDoc(legacyShopItem,{note:'פרטים על הפריט',updatedAt:now}));
+ assert.equal((await assertSucceeds(getDoc(legacyShopItem))).data().photo,photo);
+ await assertSucceeds(updateDoc(legacyShopItem,{photo:'',updatedAt:now}));
+ await assertFails(updateDoc(legacyShopItem,{photo:'data:image/svg+xml,<svg/>',updatedAt:now}));
+ await assertFails(updateDoc(legacyShopItem,{photo:'data:image/jpeg;base64,'+'A'.repeat(400000),updatedAt:now}));
  await assertFails(getDocs(collection(stranger,'shopping')));
  const s1=(await getDoc(doc(vol,'shopping','s1'))).data();
  await assertFails(setDoc(doc(guest,'shopping','s1'),{...s1,bought:true,boughtBy:actor('vol'),boughtAt:now,expireAt:now,updatedAt:now})); // wrong actor

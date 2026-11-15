@@ -7,6 +7,7 @@ import { useToast, todayISO, addDays, fmtDayShort } from '../ui';
 import { Head, Seg, Field, Tick, Btn, Form, Empty, pickImage, deferDelete, useSticky } from '../kit';
 import { back, navigate, param } from '../router';
 import { addTask, editTask, deleteTask, useTask, compressPhoto, getPosition, addShopping, useBoughtHistory } from '../store';
+import { ShoppingPhotoField } from './ShoppingPhoto';
 
 export const CATS: { id: ShoppingCategory; label: string; hint: string; done: string }[] = [
   { id: 'super', label: 'סופר', hint: '', done: 'נקנה' },
@@ -91,6 +92,7 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
   return (
     <Form onSubmit={submit}>
       <Field label="מה צריך לעשות?">{(id) => <input id={id} ref={titleRef} className="r-input big" value={title} onChange={(e) => { setTitle(e.target.value); setErr(''); }} maxLength={200} enterKeyHint="done" autoComplete="off" />}</Field>
+      {ctx.manager && <Tick on={managersOnly} onChange={setManagersOnly}>למנהלים בלבד</Tick>}
       {err && <p className="r-err" role="alert">{err}</p>}
       {photo && <div className="r-photo"><img src={photo} alt="התמונה שצורפה" /><button type="button" onClick={() => setPhoto('')}>הסרה</button></div>}
       <div style={{ display: 'flex', gap: 10 }}>
@@ -103,7 +105,6 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
       <Seg label="עד מתי?" value={when} onChange={setWhen} options={[{ value: 'none', label: 'בלי תאריך' }, { value: 'today', label: 'היום' }, { value: 'tomorrow', label: 'מחר' }, { value: 'date', label: when === 'date' ? fmtDayShort(date) : 'תאריך' }]} />
       {when === 'date' && <Field label="באיזה תאריך?">{(id) => <input id={id} type="date" className="r-input" dir="ltr" min={today} value={date} onChange={(e) => setDate(e.target.value || date)} />}</Field>}
       <Tick on={urgent} onChange={setUrgent} help="עולה לראש הרשימה אצל כולם">דחוף</Tick>
-      {ctx.manager && <Tick on={managersOnly} onChange={setManagersOnly} help="מתנדבים לא יראו אותה">למנהלים בלבד</Tick>}
       <details className="r-details" open={!!note || undefined}>
         <summary>להוסיף הסבר</summary>
         <Field label="הסבר">{(id) => <textarea id={id} className="r-input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} placeholder="איפה הכלים, מה בדיוק, למי לפנות" />}</Field>
@@ -118,7 +119,7 @@ export function TaskEditScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   return (
     <>
       <Head backTo={`/tasks/${id}`} backLabel="ביטול" title="עריכת משימה" />
-      {loading ? <div className="r-empty">טוען…</div> : item ? <TaskForm key={item.id} ctx={ctx} existing={item} /> : <Empty title="המשימה לא נמצאה" />}
+      {loading ? <div className="r-empty">טוען…</div> : item && (ctx.manager || !item.managersOnly) ? <TaskForm key={item.id} ctx={ctx} existing={item} /> : <Empty title="המשימה לא נמצאה" />}
     </>
   );
 }
@@ -129,6 +130,7 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
   const toast = useToast();
   const [cat, setCat] = useSticky<ShoppingCategory>('shop-tab', (param('c') as ShoppingCategory) || 'super');
   const [title, setTitle] = useState(''); const [qty, setQty] = useState(''); const [note, setNote] = useState(''); const [link, setLink] = useState('');
+  const [photo, setPhoto] = useState('');
   const [urgent, setUrgent] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
@@ -140,13 +142,14 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t]) => t);
   }, [past.items, cat]);
   const submit = async () => {
+    if (busy) return;
     const t = title.trim();
     if (!t) { setErr('צריך לכתוב מה לקנות'); ref.current?.focus(); return; }
     setBusy(true); setErr('');
     try {
-      await addShopping(ctx.actor, { title: t, qty: qty.trim(), note: note.trim(), link: fixLink(link), category: cat, urgent });
+      await addShopping(ctx.actor, { title: t, qty: qty.trim(), note: note.trim(), link: fixLink(link), category: cat, urgent, ...(photo ? { photo } : {}) });
       toast({ text: `נוסף ל${catOf(cat).label}: ${t}` }, 2500);
-      setTitle(''); setQty(''); setNote(''); setLink(''); setUrgent(false); ref.current?.focus();
+      setTitle(''); setQty(''); setNote(''); setLink(''); setPhoto(''); setUrgent(false); ref.current?.focus();
     } catch (e) { setErr((e as Error).message || 'לא נשמר'); } finally { setBusy(false); }
   };
   return (
@@ -155,6 +158,7 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
       <Field label={cat === 'giveaway' ? 'מה מחפשים?' : 'מה לקנות?'} help={catOf(cat).hint || undefined}>{(id) => <input id={id} ref={ref} className="r-input big" value={title} onChange={(e) => { setTitle(e.target.value); setErr(''); }} maxLength={200} enterKeyHint="done" autoComplete="off" />}</Field>
       {!title && usual.length > 0 && <div className="r-sugg" style={{ padding: 0 }}><span>קונים בדרך כלל:</span>{usual.map((t) => <button key={t} type="button" onClick={() => { setTitle(t); ref.current?.focus(); }}>{t}</button>)}</div>}
       <Field label="כמה?" help="לא חובה. 6 קרטונים, 2 חבילות, 50 מטר">{(id) => <input id={id} className="r-input" value={qty} onChange={(e) => setQty(e.target.value)} maxLength={40} enterKeyHint="done" autoComplete="off" />}</Field>
+      <ShoppingPhotoField photo={photo} title={title} busy={busy} onChange={setPhoto} onBusy={setBusy} onError={setErr} />
       {err && <p className="r-err" role="alert">{err}</p>}
       <Btn type="submit" disabled={busy}>הוספה</Btn>
       <h2 className="r-optional">אפשר גם, לא חובה</h2>

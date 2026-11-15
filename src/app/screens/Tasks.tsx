@@ -10,7 +10,7 @@ import { useActivityFor, ACTION_LABELS } from '../activity';
 
 // ---------- what a task is, in the words the screen uses ----------
 export const mapsLink = (l: TaskLocation) => `https://maps.google.com/?q=${l.lat},${l.lng}`;
-/** Today's instance of a recurring chore: nobody owns it, whoever does it ticks it. */
+/** A dated instance of a recurring task. */
 export const isRoutine = (t: Task) => !!t.templateId && !!t.dateKey;
 type Bucket = 'late' | 'today' | 'later' | 'open';
 const ORDER: Bucket[] = ['late', 'today', 'later', 'open'];
@@ -69,7 +69,7 @@ export function TaskRow({ t, ctx, today, leaving, onDone, onTake, owner = true, 
       </A>
       <div className="r-endcell">
         {t.photo && <img className="r-thumb" src={t.photo} alt="" />}
-        {owner && (t.assignee ? <span className="r-who">{mine ? 'שלך' : firstName(t.assignee.name)}</span> : !routine && onTake ? <button type="button" className="r-take" onClick={() => onTake(t)}>לקחת</button> : null)}
+        {owner && (t.assignee ? <span className="r-who">{mine ? 'שלך' : firstName(t.assignee.name)}</span> : onTake && <button type="button" className="r-take" onClick={() => onTake(t)}>לקחת</button>)}
       </div>
     </div>
   );
@@ -116,8 +116,7 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
         : rows.length === 0 && !(tab === 'routine' && routineDone.length) ? <Empty title={emptyText[tab][0]}>{emptyText[tab][1]}</Empty>
           : desktop ? <TaskTable rows={rows} ctx={ctx} today={today} leaving={leaving} onDone={done} onTake={act.take} selectedId={selectedId} />
             : tab === 'routine' ? <>
-              <p className="r-hint" style={{ paddingTop: 14 }}>מה שחוזר כל יום. מי שעושה מסמן.</p>
-              {rows.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} leaving={leaving.has(t.id)} onDone={done} owner={false} />)}
+              {rows.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} leaving={leaving.has(t.id)} onDone={done} onTake={act.take} />)}
               {routineDone.map((t) => <DoneLine key={t.id} t={t} />)}
             </> : ORDER.map((b) => {
               const group = rows.filter((t) => bucketOf(t, today) === b);
@@ -160,7 +159,7 @@ function TaskTable({ rows, ctx, today, leaving, onDone, onTake, selectedId }: { 
               <td className="r-c"><Check on={leaving.has(t.id)} onChange={() => onDone(t)} label={`בוצע: ${t.title}`} /></td>
               <td><span className="r-t">{t.title}</span>{t.urgent && <> <span className="r-tag">דחוף</span></>}</td>
               <td>{placeText(t)}</td>
-              <td>{t.assignee ? <b>{mine ? 'שלך' : firstName(t.assignee.name)}</b> : isRoutine(t) ? 'שגרה' : <button type="button" className="r-take" onClick={(e) => { e.stopPropagation(); onTake(t); }}>לקחת</button>}</td>
+              <td>{t.assignee ? <b>{mine ? 'שלך' : firstName(t.assignee.name)}</b> : <button type="button" className="r-take" onClick={(e) => { e.stopPropagation(); onTake(t); }}>לקחת</button>}</td>
               <td className={due.late ? 'late' : ''}>{due.text}</td>
               <td>{isRoutine(t) ? '' : firstName(t.createdBy.name)}</td>
             </tr>
@@ -174,11 +173,12 @@ function TaskTable({ rows, ctx, today, leaving, onDone, onTake, selectedId }: { 
 // ---------- one task ----------
 export function TaskDetail({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const { item: t, loading } = useTask(id);
-  const log = useActivityFor('task', id);
+  const visible = t && (ctx.manager || !t.managersOnly);
+  const log = useActivityFor('task', id, !!visible);
   const act = useTaskActions(ctx); const toast = useToast(); const today = todayISO();
   const [note, setNote] = useState<string | null>(null);
   if (loading) return <><Head backTo="/tasks" backLabel="משימות" title="" /><div className="r-empty">טוען…</div></>;
-  if (!t) return <><Head backTo="/tasks" backLabel="משימות" title="המשימה לא נמצאה" /><Empty title="ייתכן שנמחקה">אפשר לחפש אותה בהיסטוריה.</Empty></>;
+  if (!t || !visible) return <><Head backTo="/tasks" backLabel="משימות" title="המשימה לא נמצאה" /><Empty title="ייתכן שנמחקה">אפשר לחפש אותה בהיסטוריה.</Empty></>;
   const mine = t.assignee?.uid === ctx.actor.uid; const routine = isRoutine(t);
   const canEdit = ctx.manager || (!routine && t.createdBy.uid === ctx.actor.uid);
   const due = dueText(t, today); const place = placeText(t);
@@ -199,7 +199,7 @@ export function TaskDetail({ id, ctx }: { id: string; ctx: TeamCtx }) {
         ? <div className="r-actions"><Btn kind="ghost" small onClick={() => act.photo(t)}>{t.donePhoto ? 'להחליף תמונה' : 'להוסיף תמונה'}</Btn><Btn kind="ghost" small onClick={() => setNote(t.doneNote || '')}>{t.doneNote ? 'לערוך הערה' : 'להוסיף הערה'}</Btn></div>
         : <Form onSubmit={saveNote}><textarea className="r-input" autoFocus value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} aria-label="הערה על מה שנעשה" placeholder="איפה הנחתי, מה חסר, מה נשאר…" /><div style={{ display: 'flex', gap: 10 }}><Btn type="submit">שמירה</Btn><Btn kind="quiet" onClick={() => setNote(null)}>ביטול</Btn></div></Form>)}
       <dl className="r-facts">
-        <div><dt>על מי</dt><dd>{t.assignee ? (mine ? `עליך (${firstName(t.assignee.name)})` : t.assignee.name) : routine ? 'כולם, מי שעושה מסמן' : 'פנויה'}</dd>
+        <div><dt>על מי</dt><dd>{t.assignee ? (mine ? `עליך (${firstName(t.assignee.name)})` : t.assignee.name) : 'פנויה'}</dd>
           {ctx.manager && !routine && !t.done && <select className="r-input" style={{ minHeight: 44, width: 130, fontSize: 16 }} aria-label="להעביר למישהו" value={t.assignee?.uid || ''} onChange={(e) => assign(e.target.value)}><option value="">פנויה</option>{ctx.team.map((p) => <option key={p.uid} value={p.uid}>{firstName(p.displayName)}</option>)}</select>}</div>
         {place && <div><dt>איפה</dt><dd>{place}</dd>{t.location && <a className="r-btn ghost sm" href={mapsLink(t.location)} target="_blank" rel="noopener">ניווט</a>}</div>}
         {(due.text || routine) && <div><dt>עד מתי</dt><dd className={due.late ? 'late' : ''}>{routine ? `היום${ctx.templates.find((x) => x.id === t.templateId)?.time ? ', עד ' + ctx.templates.find((x) => x.id === t.templateId)!.time : ''}` : due.late ? `היה ${dayLabel(t.dueDate)}` : due.text}</dd></div>}
@@ -210,8 +210,8 @@ export function TaskDetail({ id, ctx }: { id: string; ctx: TeamCtx }) {
         {t.done ? <Btn kind="ghost" onClick={() => act.undone(t)}>להחזיר לביצוע</Btn>
           : <>
             <Btn onClick={() => { act.done(t); }}>בוצע</Btn>
-            {!routine && !t.assignee && <Btn kind="ghost" fit onClick={() => act.take(t)}>לקחת</Btn>}
-            {!routine && mine && <Btn kind="ghost" fit onClick={() => act.release(t)}>לשחרר</Btn>}
+            {!t.assignee && <Btn kind="ghost" fit onClick={() => act.take(t)}>לקחת</Btn>}
+            {mine && <Btn kind="ghost" fit onClick={() => act.release(t)}>לשחרר</Btn>}
           </>}
       </div>
     </>
