@@ -241,13 +241,25 @@ export const useEventTabs = (eventId: string, enabled: boolean) => useList<Tab>(
 export const useMyTabs = (uid: string, enabled: boolean) => useList<Tab>('tabs', { where: [['guestUid', '==', uid]], orderBy: [['createdAt', 'desc']] }, enabled && !!uid);
 export const useOpenTabs = (enabled: boolean) => useList<Tab>('tabs', { where: [['status', 'in', ['open', 'claimed']]], orderBy: [['createdAt', 'desc']], limit: 500 }, enabled);
 export const useTab = (id: string, enabled = true) => useDoc<Tab>('tabs/' + (id || '_'), enabled && !!id);
-export async function openTab(actor: Actor, event: FarmEvent, guest: { uid: string; name: string; phone: string; ticketId: string }) {
-  const now = nowIso(); const id = newId('tabs');
-  await write.set('tabs', id, { eventId: event.id, eventTitle: event.title, guestUid: guest.uid, guestName: guest.name, guestPhone: guest.phone, ticketId: guest.ticketId, items: [], total: 0, status: 'open', createdBy: actor, createdAt: now, updatedAt: now });
-  logActivity(actor, 'tab', id, 'opened', `${guest.name} · ${event.title}`, { subjectUid: guest.uid, eventId: event.id });
-  return id;
-}
+export type StallGuest = { uid: string; name: string; phone: string; ticketId: string };
+export const hasTabPurchases = (tab: Tab) => tab.items.length > 0 || tab.total > 0;
+export const isOpenTab = (tab: Tab) => tab.status === 'open' && hasTabPurchases(tab);
 const sum = (items: TabItem[]) => Math.round(items.reduce((s, i) => s + i.price * i.qty, 0) * 100) / 100;
+
+/** The rules require the empty account to exist before the first item update. */
+export async function openTab(actor: Actor, event: FarmEvent, guest: StallGuest): Promise<Tab> {
+  const now = nowIso();
+  const id = newId('tabs');
+  const tab: Omit<Tab, 'id'> = {
+    eventId: event.id, eventTitle: event.title, guestUid: guest.uid, guestName: guest.name,
+    guestPhone: guest.phone, ticketId: guest.ticketId, items: [], total: 0, status: 'open',
+    createdBy: actor, createdAt: now, updatedAt: now,
+  };
+  await write.set('tabs', id, tab);
+  logActivity(actor, 'tab', id, 'opened', `${guest.name} · ${event.title}`, { subjectUid: guest.uid, eventId: event.id });
+  return { ...tab, id };
+}
+
 /** Adds to the tab without reading it first: works without reception, and two volunteers can add to the same tab at once. */
 export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[]) {
   // each line gets its own moment, so two identical products added together stay two lines

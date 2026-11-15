@@ -5,7 +5,7 @@ import { PAYMENT_LABELS, TAB_LABELS, KIND_LABELS } from '../types';
 import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtTime, fmtDate, fmtDateShort, fmtWeekday, fmtDayLong, fmtRange, firstName, relTime, whenText, todayISO, money, useDesktop, useSort, Th } from '../ui';
 import { navigate } from '../router';
-import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, useDonations, downloadCsv, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
+import { useAllEvents, useEvent, saveEvent, deleteEvent, type EventInput, useEventTickets, setOrderPayment, cancelOrder, useVendors, useVendor, saveVendor, deleteVendor, useEventVendors, setEventVendor, removeEventVendor, useProducts, saveProduct, deleteProduct, copyProducts, useEventTabs, useTab, setTabStatus, removeTabItem, isOpenTab, useDonations, downloadCsv, fillTemplate, waLink, telLink, upsertCalendarRef, deleteCalendarRef } from '../data';
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
 import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
@@ -141,13 +141,14 @@ export function EventHubScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const e = d.e;
   const unpaidSum = d.unpaid.reduce((s, t) => s + t.price, 0);
   const confirmed = d.vendors.filter((v) => v.confirmed).length;
-  const openTabs = d.tabs.filter((t) => t.status === 'open' || t.status === 'claimed');
+  const activeTabs = d.tabs.filter((t) => t.status !== 'open' || isOpenTab(t));
+  const openTabs = activeTabs.filter(isOpenTab);
   const subs: Record<EventTab, string> = {
     hub: '', guests: `${d.valid.length} כרטיסים · ${d.orders.length} הזמנות${e.price ? ` · ${d.unpaid.length} ממתינים לתשלום` : ''}`,
     entry: d.arrived.length ? `${d.arrived.length} נכנסו מתוך ${d.valid.length}` : 'מתחיל ביום האירוע · הצוות סורק מהטלפון',
     vendors: d.vendors.length ? `${d.vendors.length} הוזמנו · ${confirmed} אישרו הגעה${d.vendors.length - confirmed ? ` · ${d.vendors.length - confirmed} עוד לא ענו` : ''}` : 'עוד לא הוזמנו',
     products: d.products.length ? `${d.products.filter((p) => p.active).length} מוצרים${d.products.some((p) => !p.active) ? ` · ${d.products.filter((p) => !p.active).length} מוסתר` : ''}` : 'אין מוצרים · אפשר להעתיק מאירוע קודם',
-    tabs: d.tabs.length ? `${d.tabs.length} חשבונות · ${money(d.tabs.reduce((s, t) => s + t.total, 0))} נמכרו${openTabs.length ? ` · ${openTabs.length} פתוחים` : ''}` : 'נפתחים ביום האירוע',
+    tabs: activeTabs.length ? `${activeTabs.length} חשבונות · ${money(activeTabs.reduce((s, t) => s + t.total, 0))} נמכרו · ${openTabs.length} פתוחים` : 'נפתחים ביום האירוע',
     report: 'נרשמו · הגיעו · הכנסות · מה נמכר', files: e.files?.length ? `${e.files.length} קבצים` : 'אישורים, מפת הצבה, רשימות',
     activity: d.acts.length ? `${d.acts.length} פעולות · אחרונה: ${d.acts[0].text.slice(0, 40)} · ${relTime(d.acts[0].at)}` : 'אין עדיין',
   };
@@ -343,18 +344,23 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const [filter, setFilter] = useState<TabFilter>('all');
   if (!d.e) return <EventFrame id={id} tab="tabs" ctx={ctx}>{null}</EventFrame>;
   const e = d.e;
-  const sum = (s: Tab['status'][]) => d.tabs.filter((t) => s.includes(t.status)).reduce((x, t) => x + t.total, 0);
-  const list = d.tabs.filter((t) => filter === 'all' || t.status === filter).sort((a, b) => (a.status === 'open' || a.status === 'claimed' ? 0 : 1) - (b.status === 'open' || b.status === 'claimed' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt));
+  const tabs = d.tabs.filter((t) => t.status !== 'open' || isOpenTab(t));
+  const open = tabs.filter(isOpenTab);
+  const claimed = tabs.filter((t) => t.status === 'claimed');
+  const total = (rows: Tab[]) => rows.reduce((sum, t) => sum + t.total, 0);
+  const openTotal = total(open);
+  const list = tabs.filter((t) => filter === 'all' || t.status === filter).sort((a, b) => (a.status === 'open' || a.status === 'claimed' ? 0 : 1) - (b.status === 'open' || b.status === 'claimed' ? 0 : 1) || b.updatedAt.localeCompare(a.updatedAt));
   const remind = (t: Tab) => waLink(t.guestPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(t.guestName), 'אירוע': e.title, 'סכום': t.total }));
   const set = (t: Tab, s: Tab['status'], note?: string) => setTabStatus(ctx.actor, t, s, note).then(() => toast({ text: `${t.guestName} · ${TAB_LABELS[s]}`, action: { label: 'ביטול', onClick: () => setTabStatus(ctx.actor, t, t.status) } }, 5000));
   const waive = (t: Tab) => { const r = prompt('סיבת המחילה (לא חובה):'); if (r === null) return; set(t, 'waived', r); };
   const statusPill = (t: Tab) => <Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'open' ? `לא שולם · ${Math.max(0, Math.round((Date.now() - new Date(t.createdAt).getTime()) / 86400_000))} ימים` : TAB_LABELS[t.status]}</Pill>;
   const acts = (t: Tab) => <>{t.status === 'claimed' && <Btn size="xs" onClick={() => set(t, 'paid')}>אישור · שולם</Btn>}{t.status === 'open' && <>{t.guestPhone && <a className="btn ghost xs" href={remind(t)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a>}<Btn size="xs" kind="ghost" onClick={() => set(t, 'paid')}>שולם</Btn></>}{(t.status === 'open' || t.status === 'claimed') && <Btn size="xs" kind="quiet" onClick={() => waive(t)}>מחילה</Btn>}</>;
   return (
-    <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv(`${e.title} - חשבונות.csv`, ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'], d.tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), t.total, TAB_LABELS[t.status], fmtDate(t.updatedAt)]))}>אקסל</Btn>{d.tabs.some((t) => t.status === 'open' && t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
+    <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv(`${e.title} - חשבונות.csv`, ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'], tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), t.total, TAB_LABELS[t.status], fmtDate(t.updatedAt)]))}>אקסל</Btn>{open.some((t) => t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
       {!desktop && <p className="lead">דוכן החווה · {fmtDate(e.start)} · על בסיס אמון</p>}
-      <Ledger small items={[{ n: d.tabs.length, label: 'חשבונות' }, { n: money(sum(['open', 'claimed', 'paid', 'waived'])), label: 'נמכרו' }, { n: money(sum(['paid'])), label: 'שולמו' }, { n: money(sum(['open', 'claimed'])), label: `פתוחים · ${d.tabs.filter((t) => t.status === 'open' || t.status === 'claimed').length}`, tone: sum(['open', 'claimed']) ? 'ochre' : undefined }]} />
-      <div style={{ paddingTop: 10 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: d.tabs.length }, { value: 'open', label: 'פתוחים', n: d.tabs.filter((t) => t.status === 'open').length }, { value: 'claimed', label: 'סימנו "העברתי"', n: d.tabs.filter((t) => t.status === 'claimed').length }, { value: 'paid', label: 'שולמו', n: d.tabs.filter((t) => t.status === 'paid').length }, { value: 'waived', label: 'נמחלו', n: d.tabs.filter((t) => t.status === 'waived').length || undefined }]} /></div>
+      <Ledger small items={[{ n: tabs.length, label: 'חשבונות' }, { n: money(total(tabs)), label: 'נמכרו' }, { n: money(total(tabs.filter((t) => t.status === 'paid'))), label: 'שולמו' }, { n: money(openTotal), label: `פתוחים · ${open.length}`, tone: openTotal ? 'ochre' : undefined }]} />
+      {claimed.length > 0 && <p className="note">ממתינים לאישור תשלום · {money(total(claimed))}</p>}
+      <div style={{ paddingTop: 10 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: tabs.length }, { value: 'open', label: 'פתוחים', n: open.length }, { value: 'claimed', label: 'סימנו "העברתי"', n: claimed.length }, { value: 'paid', label: 'שולמו', n: tabs.filter((t) => t.status === 'paid').length }, { value: 'waived', label: 'נמחלו', n: tabs.filter((t) => t.status === 'waived').length || undefined }]} /></div>
       {!list.length && <Empty title="אין חשבונות" text="חשבונות נפתחים בדוכן ביום האירוע." />}
       {desktop ? <div className="tablewrap"><table><thead><tr><th>מצב</th><th>מי</th><th>מה</th><th>סכום</th><th>עדכון אחרון</th><th></th></tr></thead><tbody>{list.map((t) => <tr key={t.id}><td>{statusPill(t)}</td><td style={{ fontWeight: 600 }}><A to={`/manage/events/${id}/tabs/${t.id}`}>{t.guestName}</A>{!t.guestUid && <span className="muted"> · מזדמן</span>}</td><td className="muted wrap">{t.items.length > 3 ? `${t.items.length} פריטים` : t.items.map((i) => i.name + (i.qty > 1 ? ` ×${i.qty}` : '')).join(' · ')}</td><td className="money">{money(t.total)}</td><td className="muted">{relTime(t.updatedAt)}</td><td><div className="acts">{acts(t)}</div></td></tr>)}</tbody></table></div>
         : <div className="list">{list.map((t) => <div key={t.id} className="row"><Avatar name={t.guestName} /><div className="main"><A to={`/manage/events/${id}/tabs/${t.id}`} className="title">{t.guestName}</A><div className="meta">{statusPill(t)}<span>{relTime(t.updatedAt)}</span></div><div className="meta">{t.items.map((i) => i.name + (i.qty > 1 ? ` ×${i.qty}` : '')).join(' · ')} · {t.items.length} פריטים</div>{(t.status === 'open' || t.status === 'claimed') && <div className="inline" style={{ marginTop: 8 }}>{acts(t)}</div>}</div><span className="amount">{money(t.total)}</span></div>)}</div>}

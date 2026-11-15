@@ -206,6 +206,7 @@ export const tickets: Ticket[] = [
   ...order(E.oct, pr(U.noam), 1, 'paid', at(-26, '12:00'), { entriesPer: [1] }),
   ...order(E.oct, pr(U.shirak), 1, 'paid', at(-25, '12:00'), { entriesPer: [1] }),
   ...order(E.oct, pr(U.yossi), 2, 'pending', at(-25, '12:00'), { entriesPer: [1, 1] }),
+  ...order(E.fall, pr(U.michal), 1, 'pending', at(0, '11:07')),
 ];
 
 // ---------- visits ----------
@@ -296,6 +297,7 @@ export const tabs: Tab[] = [
   tab('demo-tab-michal-oct', E.oct, pr(U.michal), [tabItem('demo-pr-tea', 2, at(-24, '17:20'), A.yoav), tabItem('demo-pr-bread', 2, at(-24, '17:20'), A.yoav)], 'paid', at(-24, '17:20'), A.yoav, { updatedAt: at(-22, '10:00') }),
   tab('demo-tab-walkin-oct', E.oct, { uid: '', displayName: 'עובר אורח', phone: '052-000-0411' }, [tabItem('demo-pr-lemonade', 1, at(-24, '19:00'), A.noa)], 'waived', at(-24, '19:00'), A.noa, { updatedAt: at(-17, '10:00') }),
   tab('demo-tab-noam-oct', E.oct, pr(U.noam), [tabItem('demo-pr-cheese', 1, at(-24, '16:12'), A.yoav)], 'paid', at(-24, '16:12'), A.yoav),
+  tab('demo-tab-noam-empty-fall', E.fall, pr(U.noam), [], 'open', at(-1, '12:00'), A.yoav),
 ];
 
 // ---------- notifications (manager queue) ----------

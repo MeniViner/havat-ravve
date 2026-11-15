@@ -1,8 +1,9 @@
 // Rules tests for the team app collections (users, invites, tasks, task_templates, shopping, places).
 import {createRequire} from 'node:module';const require=createRequire(import.meta.url);require('firebase/compat/firestore');
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocs,collection,updateDoc,deleteDoc,query,where}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocFromCache,getDocs,collection,updateDoc,deleteDoc,query,where,arrayUnion,increment,disableNetwork,enableNetwork}=require('firebase/firestore');
 
 const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
 const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
@@ -193,6 +194,14 @@ try{
  await assertSucceeds(getDoc(doc(vol,'tickets','t1')));
  await assertSucceeds(getDocs(query(collection(guest,'tickets'),where('ownerUid','==','guest'))));
  await assertFails(getDocs(collection(guest,'tickets')));
+ await assertSucceeds(setDoc(doc(other,'tickets','other-event-ticket'),tk('other',{orderId:'other-order'})));
+ const atEvent=where('eventId','==','e1');
+ await assertFails(getDocs(query(collection(guest,'tickets'),atEvent)));
+ await assertFails(getDocs(query(collection(guest,'tickets'),atEvent,where('ownerUid','==','other'))));
+ const ownTickets=await assertSucceeds(getDocs(query(collection(guest,'tickets'),atEvent,where('ownerUid','==','guest'))));
+ const volunteerTickets=await assertSucceeds(getDocs(query(collection(vol,'tickets'),atEvent)));
+ assert.equal(ownTickets.docs.some((ticket)=>ticket.id==='other-event-ticket'),false);
+ assert.equal(volunteerTickets.docs.some((ticket)=>ticket.id==='other-event-ticket'),true);
  const t1=(await getDoc(doc(guest,'tickets','t1'))).data();
  await assertFails(setDoc(doc(guest,'tickets','t1'),{...t1,paymentStatus:'paid',updatedAt:now}));
  await assertSucceeds(setDoc(doc(guest,'tickets','t1'),{...t1,paymentStatus:'claimed',updatedAt:now}));
@@ -228,6 +237,25 @@ try{
 
  // tabs
  const tb={eventId:'e1',eventTitle:'פסטיבל',guestUid:'guest',guestName:'אורח',guestPhone:'',ticketId:'t1',items:[],total:0,status:'open',createdBy:actor('vol'),createdAt:now,updatedAt:now};
+ const firstItem={productId:'p1',name:'יין',price:20,qty:2,at:now,by:actor('vol')};
+ const firstPurchase=doc(vol,'tabs','tb-first-purchase');
+ await assertFails(setDoc(firstPurchase,{...tb,items:[firstItem],total:40}));
+ // The stall queues the empty create followed by a separate item update, even without reception.
+ await disableNetwork(vol);
+ const firstCreate=setDoc(firstPurchase,tb);
+ let firstUpdate;
+ try{
+  const emptyDraft=(await getDocFromCache(firstPurchase)).data();
+  assert.equal(emptyDraft.items.length,0);
+  firstUpdate=updateDoc(firstPurchase,{items:arrayUnion(firstItem),total:increment(40),updatedAt:now});
+  const queuedPurchase=(await getDocFromCache(firstPurchase)).data();
+  assert.deepEqual(queuedPurchase.items,[firstItem]);
+  assert.equal(queuedPurchase.total,40);
+ } finally{ await enableNetwork(vol); }
+ await assertSucceeds(Promise.all([firstCreate,firstUpdate]));
+ const savedPurchase=(await assertSucceeds(getDoc(firstPurchase))).data();
+ assert.deepEqual(savedPurchase.items,[firstItem]);
+ assert.equal(savedPurchase.total,40);
  await assertFails(setDoc(doc(guest,'tabs','tb1'),{...tb,createdBy:actor('guest')}));
  await assertSucceeds(setDoc(doc(vol,'tabs','tb1'),tb));
  await assertSucceeds(updateDoc(doc(vol,'tabs','tb1'),{items:[{productId:'p1',name:'יין',price:20,qty:2,at:now,by:actor('vol')}],total:40,updatedAt:now}));
