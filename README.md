@@ -62,7 +62,7 @@ npm run dev
 התיקייה `.github/workflows` מגדירה שלושה תהליכים ב־GitHub Actions:
 
 - **CI** (`ci.yml`) – על כל Pull Request ועל כל דחיפה ל־`main`: typecheck, בנייה, בדיקה ש־`dist/` מעודכן ביחס לקוד, `npm test`, ובדיקות כללי Firestore מול האמולטור (עם Java 21 של הריצה).
-- **Preview** (`preview.yml`) – על Pull Request מתוך הריפו נפתח ערוץ Hosting זמני לשבוע, עם קישור בתגובה על ה־PR. הסבב בענף `feedback-round-1` משתמש בבדיקות מקומיות ולכן מדלג על הפריסה. עד שהסוד מוגדר התהליך מדלג עם הודעה.
+- **Preview** (`preview.yml`) – על Pull Request מתוך הריפו נפתח ערוץ Hosting זמני לשבוע, עם קישור בתגובה על ה־PR. עד שהסוד מוגדר התהליך מדלג עם הודעה.
 - **Deploy** (`deploy.yml`) – כל דחיפה ל־`main` (וגם ידנית מ־Actions) בונה ופורסת Hosting + כללי Firestore + אינדקסים לפרויקט havat-ravve. אין כאן שדרוג תוכנית חיוב; הפריסה זהה ל־`npm run deploy`.
 
 הגדרה חד־פעמית (מהמחשב, עם חשבון שמורשה לפרויקט):

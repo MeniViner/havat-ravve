@@ -21,7 +21,7 @@ At each stage a fresh verifier runs both typechecks, rebuilds and checks `dist/`
 - The account already exposes registration fields and the app offers static install instructions. Stage 5 extends those entry points. The demo guest already has a profile, so onboarding requires a fresh demo profile or a local Auth emulator signup.
 - App managers and CMS editors have separate permissions. The `/admin` link follows the CMS access check.
 - The local dev server serves a service worker stub and omits the built app manifest. The install UI can be exercised there with a browser event. Install eligibility needs the built app on local hosting.
-- Opening a same-repository PR can trigger a temporary Firebase Hosting preview. Exclude `feedback-round-1` from the preview job before opening its PR.
+- The `feedback-round-1` branch skipped the Firebase Hosting preview during initial QA. The preview job was restored for release testing.
 
 ## Baseline notes
 
@@ -43,4 +43,4 @@ Windows denied binding the default Firestore port. The test suites ran with the 
 | Chrome demo at 390×844 and 1280×800 | 42 checks passed across 12 persona and viewport combinations |
 | Browser console | Zero errors or React warnings |
 
-[Stage 0 browser matrix and before screenshots](smoke/round-1/0/README.md)
+[Stage 0 browser matrix](smoke/round-1/0/README.md)

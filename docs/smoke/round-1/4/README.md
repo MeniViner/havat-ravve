@@ -1,5 +1,7 @@
 # Stage 4 farm calendar
 
+Screenshots are kept outside the repository in `havat-ravve-feedback-round-1-smoke-screenshots-6a8584c.zip`.
+
 Chrome passed all 70 current-stage checks at 390×844 and 1280×800 with a clean console. Both typechecks, staged build parity, core and demo tests, Firestore rules, and all 254 Worker assertions passed.
 
 - Team navigation and Today link to the same calendar. The Today strip covers the current Sunday–Saturday week. Presence colours follow the person's ID. Multiple shifts for the same person on one day contribute one dot. Filled and outlined dots distinguish managers and volunteers.
@@ -12,73 +14,73 @@ Screenshot review caught clipped labels on short appointments. These now use one
 
 | Check | Persona | Viewport | Result | Screenshot |
 | --- | --- | --- | --- | --- |
-| 4.all-day-legacy All-day rows and older time labels | staff | 390×844 | Pass | [day empty time](staff-390x844-4.all-day-legacy-day-empty-time.png), [day legacy time](staff-390x844-4.all-day-legacy-day-legacy-time.png) |
-| 4.all-day-legacy All-day rows and older time labels | staff | 1280×800 | Pass | [day empty time](staff-1280x800-4.all-day-legacy-day-empty-time.png), [day legacy time](staff-1280x800-4.all-day-legacy-day-legacy-time.png) |
-| 4.all-day-legacy All-day rows and older time labels | manager | 390×844 | Pass | [day empty time](manager-390x844-4.all-day-legacy-day-empty-time.png), [day legacy time](manager-390x844-4.all-day-legacy-day-legacy-time.png) |
-| 4.all-day-legacy All-day rows and older time labels | manager | 1280×800 | Pass | [day empty time](manager-1280x800-4.all-day-legacy-day-empty-time.png), [day legacy time](manager-1280x800-4.all-day-legacy-day-legacy-time.png) |
-| 4.all-day-legacy All-day rows and older time labels | owner | 390×844 | Pass | [day empty time](owner-390x844-4.all-day-legacy-day-empty-time.png), [day legacy time](owner-390x844-4.all-day-legacy-day-legacy-time.png) |
-| 4.all-day-legacy All-day rows and older time labels | owner | 1280×800 | Pass | [day empty time](owner-1280x800-4.all-day-legacy-day-empty-time.png), [day legacy time](owner-1280x800-4.all-day-legacy-day-legacy-time.png) |
-| 4.approve-and-publish Automatic visit and event entries | manager | 390×844 | Pass | [newly approved visit](manager-390x844-4.approve-and-publish-newly-approved-visit.png), [newly published event](manager-390x844-4.approve-and-publish-newly-published-event.png) |
-| 4.approve-and-publish Automatic visit and event entries | manager | 1280×800 | Pass | [newly approved visit](manager-1280x800-4.approve-and-publish-newly-approved-visit.png), [newly published event](manager-1280x800-4.approve-and-publish-newly-published-event.png) |
-| 4.approve-and-publish Automatic visit and event entries | owner | 390×844 | Pass | [newly approved visit](owner-390x844-4.approve-and-publish-newly-approved-visit.png), [newly published event](owner-390x844-4.approve-and-publish-newly-published-event.png) |
-| 4.approve-and-publish Automatic visit and event entries | owner | 1280×800 | Pass | [newly approved visit](owner-1280x800-4.approve-and-publish-newly-approved-visit.png), [newly published event](owner-1280x800-4.approve-and-publish-newly-published-event.png) |
-| 4.day-timed Timed day placement and overlap | staff | 390×844 | Pass | [day timed range](staff-390x844-4.day-timed-day-timed-range.png), [day single time](staff-390x844-4.day-timed-day-single-time.png), [day single time agenda](staff-390x844-4.day-timed-day-single-time-agenda.png), [week timed range](staff-390x844-4.day-timed-week-timed-range.png), [week single time](staff-390x844-4.day-timed-week-single-time.png) |
-| 4.day-timed Timed day placement and overlap | staff | 1280×800 | Pass | [day timed range](staff-1280x800-4.day-timed-day-timed-range.png), [day single time](staff-1280x800-4.day-timed-day-single-time.png), [day single time agenda](staff-1280x800-4.day-timed-day-single-time-agenda.png), [week timed range](staff-1280x800-4.day-timed-week-timed-range.png), [week single time](staff-1280x800-4.day-timed-week-single-time.png) |
-| 4.day-timed Timed day placement and overlap | manager | 390×844 | Pass | [day timed range](manager-390x844-4.day-timed-day-timed-range.png), [day single time](manager-390x844-4.day-timed-day-single-time.png), [day single time agenda](manager-390x844-4.day-timed-day-single-time-agenda.png), [week timed range](manager-390x844-4.day-timed-week-timed-range.png), [week single time](manager-390x844-4.day-timed-week-single-time.png) |
-| 4.day-timed Timed day placement and overlap | manager | 1280×800 | Pass | [day timed range](manager-1280x800-4.day-timed-day-timed-range.png), [day single time](manager-1280x800-4.day-timed-day-single-time.png), [day single time agenda](manager-1280x800-4.day-timed-day-single-time-agenda.png), [week timed range](manager-1280x800-4.day-timed-week-timed-range.png), [week single time](manager-1280x800-4.day-timed-week-single-time.png) |
-| 4.day-timed Timed day placement and overlap | owner | 390×844 | Pass | [day timed range](owner-390x844-4.day-timed-day-timed-range.png), [day single time](owner-390x844-4.day-timed-day-single-time.png), [day single time agenda](owner-390x844-4.day-timed-day-single-time-agenda.png), [week timed range](owner-390x844-4.day-timed-week-timed-range.png), [week single time](owner-390x844-4.day-timed-week-single-time.png) |
-| 4.day-timed Timed day placement and overlap | owner | 1280×800 | Pass | [day timed range](owner-1280x800-4.day-timed-day-timed-range.png), [day single time](owner-1280x800-4.day-timed-day-single-time.png), [day single time agenda](owner-1280x800-4.day-timed-day-single-time-agenda.png), [week timed range](owner-1280x800-4.day-timed-week-timed-range.png), [week single time](owner-1280x800-4.day-timed-week-single-time.png) |
-| 4.dots Stable colours, roles, and overflow | staff | 390×844 | Pass | [today dots](staff-390x844-4.dots-today-dots.png), [month dots](staff-390x844-4.dots-month-dots.png), [week dots](staff-390x844-4.dots-week-dots.png), [day dots](staff-390x844-4.dots-day-dots.png), [next month dots](staff-390x844-4.dots-next-month-dots.png) |
-| 4.dots Stable colours, roles, and overflow | staff | 1280×800 | Pass | [today dots](staff-1280x800-4.dots-today-dots.png), [month dots](staff-1280x800-4.dots-month-dots.png), [week dots](staff-1280x800-4.dots-week-dots.png), [day dots](staff-1280x800-4.dots-day-dots.png), [next month dots](staff-1280x800-4.dots-next-month-dots.png) |
-| 4.dots Stable colours, roles, and overflow | manager | 390×844 | Pass | [today dots](manager-390x844-4.dots-today-dots.png), [month dots](manager-390x844-4.dots-month-dots.png), [week dots](manager-390x844-4.dots-week-dots.png), [day dots](manager-390x844-4.dots-day-dots.png), [next month dots](manager-390x844-4.dots-next-month-dots.png) |
-| 4.dots Stable colours, roles, and overflow | manager | 1280×800 | Pass | [today dots](manager-1280x800-4.dots-today-dots.png), [month dots](manager-1280x800-4.dots-month-dots.png), [week dots](manager-1280x800-4.dots-week-dots.png), [day dots](manager-1280x800-4.dots-day-dots.png), [next month dots](manager-1280x800-4.dots-next-month-dots.png) |
-| 4.dots Stable colours, roles, and overflow | owner | 390×844 | Pass | [today dots](owner-390x844-4.dots-today-dots.png), [month dots](owner-390x844-4.dots-month-dots.png), [week dots](owner-390x844-4.dots-week-dots.png), [day dots](owner-390x844-4.dots-day-dots.png), [next month dots](owner-390x844-4.dots-next-month-dots.png) |
-| 4.dots Stable colours, roles, and overflow | owner | 1280×800 | Pass | [today dots](owner-1280x800-4.dots-today-dots.png), [month dots](owner-1280x800-4.dots-month-dots.png), [week dots](owner-1280x800-4.dots-week-dots.png), [day dots](owner-1280x800-4.dots-day-dots.png), [next month dots](owner-1280x800-4.dots-next-month-dots.png) |
-| 4.guest-denied Guest calendar access | guest | 390×844 | Pass | [calendar denied](guest-390x844-4.guest-denied-calendar-denied.png), [mark presence denied](guest-390x844-4.guest-denied-mark-presence-denied.png) |
-| 4.guest-denied Guest calendar access | guest | 1280×800 | Pass | [calendar denied](guest-1280x800-4.guest-denied-calendar-denied.png), [mark presence denied](guest-1280x800-4.guest-denied-mark-presence-denied.png) |
-| 4.manager-entry-types Manager entry types | manager | 390×844 | Pass | [meeting created](manager-390x844-4.manager-entry-types-meeting-created.png), [planning created](manager-390x844-4.manager-entry-types-planning-created.png), [manual created](manager-390x844-4.manager-entry-types-manual-created.png) |
-| 4.manager-entry-types Manager entry types | manager | 1280×800 | Pass | [meeting created](manager-1280x800-4.manager-entry-types-meeting-created.png), [planning created](manager-1280x800-4.manager-entry-types-planning-created.png), [manual created](manager-1280x800-4.manager-entry-types-manual-created.png) |
-| 4.manager-entry-types Manager entry types | owner | 390×844 | Pass | [meeting created](owner-390x844-4.manager-entry-types-meeting-created.png), [planning created](owner-390x844-4.manager-entry-types-planning-created.png), [manual created](owner-390x844-4.manager-entry-types-manual-created.png) |
-| 4.manager-entry-types Manager entry types | owner | 1280×800 | Pass | [meeting created](owner-1280x800-4.manager-entry-types-meeting-created.png), [planning created](owner-1280x800-4.manager-entry-types-planning-created.png), [manual created](owner-1280x800-4.manager-entry-types-manual-created.png) |
-| 4.manager-other-presence Manager controls for team presence | manager | 390×844 | Pass | [other person edit](manager-390x844-4.manager-other-presence-other-person-edit.png), [other person changed](manager-390x844-4.manager-other-presence-other-person-changed.png) |
-| 4.manager-other-presence Manager controls for team presence | manager | 1280×800 | Pass | [other person edit](manager-1280x800-4.manager-other-presence-other-person-edit.png), [other person changed](manager-1280x800-4.manager-other-presence-other-person-changed.png) |
-| 4.manager-other-presence Manager controls for team presence | owner | 390×844 | Pass | [other person edit](owner-390x844-4.manager-other-presence-other-person-edit.png), [other person changed](owner-390x844-4.manager-other-presence-other-person-changed.png) |
-| 4.manager-other-presence Manager controls for team presence | owner | 1280×800 | Pass | [other person edit](owner-1280x800-4.manager-other-presence-other-person-edit.png), [other person changed](owner-1280x800-4.manager-other-presence-other-person-changed.png) |
-| 4.month Month view | staff | 390×844 | Pass | [month grid](staff-390x844-4.month-month-grid.png) |
-| 4.month Month view | staff | 1280×800 | Pass | [month grid](staff-1280x800-4.month-month-grid.png) |
-| 4.month Month view | manager | 390×844 | Pass | [month grid](manager-390x844-4.month-month-grid.png) |
-| 4.month Month view | manager | 1280×800 | Pass | [month grid](manager-1280x800-4.month-month-grid.png) |
-| 4.month Month view | owner | 390×844 | Pass | [month grid](owner-390x844-4.month-month-grid.png) |
-| 4.month Month view | owner | 1280×800 | Pass | [month grid](owner-1280x800-4.month-month-grid.png) |
-| 4.navigation-today Team navigation and Today strip | staff | 390×844 | Pass | [main navigation](staff-390x844-4.navigation-today-main-navigation.png), [today presence strip](staff-390x844-4.navigation-today-today-presence-strip.png) |
-| 4.navigation-today Team navigation and Today strip | staff | 1280×800 | Pass | [main navigation](staff-1280x800-4.navigation-today-main-navigation.png), [today presence strip](staff-1280x800-4.navigation-today-today-presence-strip.png) |
-| 4.navigation-today Team navigation and Today strip | manager | 390×844 | Pass | [main navigation](manager-390x844-4.navigation-today-main-navigation.png), [today presence strip](manager-390x844-4.navigation-today-today-presence-strip.png) |
-| 4.navigation-today Team navigation and Today strip | manager | 1280×800 | Pass | [main navigation](manager-1280x800-4.navigation-today-main-navigation.png), [today presence strip](manager-1280x800-4.navigation-today-today-presence-strip.png) |
-| 4.navigation-today Team navigation and Today strip | owner | 390×844 | Pass | [main navigation](owner-390x844-4.navigation-today-main-navigation.png), [today presence strip](owner-390x844-4.navigation-today-today-presence-strip.png) |
-| 4.navigation-today Team navigation and Today strip | owner | 1280×800 | Pass | [main navigation](owner-1280x800-4.navigation-today-main-navigation.png), [today presence strip](owner-1280x800-4.navigation-today-today-presence-strip.png) |
-| 4.own-presence Own presence create, edit, and remove | staff | 390×844 | Pass | [presence create](staff-390x844-4.own-presence-presence-create.png), [presence edit](staff-390x844-4.own-presence-presence-edit.png), [presence delete undo](staff-390x844-4.own-presence-presence-delete-undo.png) |
-| 4.own-presence Own presence create, edit, and remove | staff | 1280×800 | Pass | [presence create](staff-1280x800-4.own-presence-presence-create.png), [presence edit](staff-1280x800-4.own-presence-presence-edit.png), [presence delete undo](staff-1280x800-4.own-presence-presence-delete-undo.png) |
-| 4.own-presence Own presence create, edit, and remove | manager | 390×844 | Pass | [presence create](manager-390x844-4.own-presence-presence-create.png), [presence edit](manager-390x844-4.own-presence-presence-edit.png), [presence delete undo](manager-390x844-4.own-presence-presence-delete-undo.png) |
-| 4.own-presence Own presence create, edit, and remove | manager | 1280×800 | Pass | [presence create](manager-1280x800-4.own-presence-presence-create.png), [presence edit](manager-1280x800-4.own-presence-presence-edit.png), [presence delete undo](manager-1280x800-4.own-presence-presence-delete-undo.png) |
-| 4.own-presence Own presence create, edit, and remove | owner | 390×844 | Pass | [presence create](owner-390x844-4.own-presence-presence-create.png), [presence edit](owner-390x844-4.own-presence-presence-edit.png), [presence delete undo](owner-390x844-4.own-presence-presence-delete-undo.png) |
-| 4.own-presence Own presence create, edit, and remove | owner | 1280×800 | Pass | [presence create](owner-1280x800-4.own-presence-presence-create.png), [presence edit](owner-1280x800-4.own-presence-presence-edit.png), [presence delete undo](owner-1280x800-4.own-presence-presence-delete-undo.png) |
-| 4.period-navigation Calendar period navigation | staff | 390×844 | Pass | [month next](staff-390x844-4.period-navigation-month-next.png), [day return to today](staff-390x844-4.period-navigation-day-return-to-today.png) |
-| 4.period-navigation Calendar period navigation | staff | 1280×800 | Pass | [month next](staff-1280x800-4.period-navigation-month-next.png), [day return to today](staff-1280x800-4.period-navigation-day-return-to-today.png) |
-| 4.period-navigation Calendar period navigation | manager | 390×844 | Pass | [month next](manager-390x844-4.period-navigation-month-next.png), [day return to today](manager-390x844-4.period-navigation-day-return-to-today.png) |
-| 4.period-navigation Calendar period navigation | manager | 1280×800 | Pass | [month next](manager-1280x800-4.period-navigation-month-next.png), [day return to today](manager-1280x800-4.period-navigation-day-return-to-today.png) |
-| 4.period-navigation Calendar period navigation | owner | 390×844 | Pass | [month next](owner-390x844-4.period-navigation-month-next.png), [day return to today](owner-390x844-4.period-navigation-day-return-to-today.png) |
-| 4.period-navigation Calendar period navigation | owner | 1280×800 | Pass | [month next](owner-1280x800-4.period-navigation-month-next.png), [day return to today](owner-1280x800-4.period-navigation-day-return-to-today.png) |
-| 4.source-fixtures Published events and approved visits | staff | 390×844 | Pass | [approved visit](staff-390x844-4.source-fixtures-approved-visit.png), [published event](staff-390x844-4.source-fixtures-published-event.png) |
-| 4.source-fixtures Published events and approved visits | staff | 1280×800 | Pass | [approved visit](staff-1280x800-4.source-fixtures-approved-visit.png), [published event](staff-1280x800-4.source-fixtures-published-event.png) |
-| 4.source-fixtures Published events and approved visits | manager | 390×844 | Pass | [approved visit](manager-390x844-4.source-fixtures-approved-visit.png), [published event](manager-390x844-4.source-fixtures-published-event.png) |
-| 4.source-fixtures Published events and approved visits | manager | 1280×800 | Pass | [approved visit](manager-1280x800-4.source-fixtures-approved-visit.png), [published event](manager-1280x800-4.source-fixtures-published-event.png) |
-| 4.source-fixtures Published events and approved visits | owner | 390×844 | Pass | [approved visit](owner-390x844-4.source-fixtures-approved-visit.png), [published event](owner-390x844-4.source-fixtures-published-event.png) |
-| 4.source-fixtures Published events and approved visits | owner | 1280×800 | Pass | [approved visit](owner-1280x800-4.source-fixtures-approved-visit.png), [published event](owner-1280x800-4.source-fixtures-published-event.png) |
-| 4.staff-permissions Volunteer edit permissions | staff | 390×844 | Pass | [other person denied](staff-390x844-4.staff-permissions-other-person-denied.png), [presence only form](staff-390x844-4.staff-permissions-presence-only-form.png) |
-| 4.staff-permissions Volunteer edit permissions | staff | 1280×800 | Pass | [other person denied](staff-1280x800-4.staff-permissions-other-person-denied.png), [presence only form](staff-1280x800-4.staff-permissions-presence-only-form.png) |
-| 4.week Week hour grid | staff | 390×844 | Pass | [week grid](staff-390x844-4.week-week-grid.png), [week last date](staff-390x844-4.week-week-last-date.png) |
-| 4.week Week hour grid | staff | 1280×800 | Pass | [week grid](staff-1280x800-4.week-week-grid.png), [week last date](staff-1280x800-4.week-week-last-date.png) |
-| 4.week Week hour grid | manager | 390×844 | Pass | [week grid](manager-390x844-4.week-week-grid.png), [week last date](manager-390x844-4.week-week-last-date.png) |
-| 4.week Week hour grid | manager | 1280×800 | Pass | [week grid](manager-1280x800-4.week-week-grid.png), [week last date](manager-1280x800-4.week-week-last-date.png) |
-| 4.week Week hour grid | owner | 390×844 | Pass | [week grid](owner-390x844-4.week-week-grid.png), [week last date](owner-390x844-4.week-week-last-date.png) |
-| 4.week Week hour grid | owner | 1280×800 | Pass | [week grid](owner-1280x800-4.week-week-grid.png), [week last date](owner-1280x800-4.week-week-last-date.png) |
+| 4.all-day-legacy All-day rows and older time labels | staff | 390×844 | Pass | day empty time, day legacy time |
+| 4.all-day-legacy All-day rows and older time labels | staff | 1280×800 | Pass | day empty time, day legacy time |
+| 4.all-day-legacy All-day rows and older time labels | manager | 390×844 | Pass | day empty time, day legacy time |
+| 4.all-day-legacy All-day rows and older time labels | manager | 1280×800 | Pass | day empty time, day legacy time |
+| 4.all-day-legacy All-day rows and older time labels | owner | 390×844 | Pass | day empty time, day legacy time |
+| 4.all-day-legacy All-day rows and older time labels | owner | 1280×800 | Pass | day empty time, day legacy time |
+| 4.approve-and-publish Automatic visit and event entries | manager | 390×844 | Pass | newly approved visit, newly published event |
+| 4.approve-and-publish Automatic visit and event entries | manager | 1280×800 | Pass | newly approved visit, newly published event |
+| 4.approve-and-publish Automatic visit and event entries | owner | 390×844 | Pass | newly approved visit, newly published event |
+| 4.approve-and-publish Automatic visit and event entries | owner | 1280×800 | Pass | newly approved visit, newly published event |
+| 4.day-timed Timed day placement and overlap | staff | 390×844 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.day-timed Timed day placement and overlap | staff | 1280×800 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.day-timed Timed day placement and overlap | manager | 390×844 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.day-timed Timed day placement and overlap | manager | 1280×800 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.day-timed Timed day placement and overlap | owner | 390×844 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.day-timed Timed day placement and overlap | owner | 1280×800 | Pass | day timed range, day single time, day single time agenda, week timed range, week single time |
+| 4.dots Stable colours, roles, and overflow | staff | 390×844 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.dots Stable colours, roles, and overflow | staff | 1280×800 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.dots Stable colours, roles, and overflow | manager | 390×844 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.dots Stable colours, roles, and overflow | manager | 1280×800 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.dots Stable colours, roles, and overflow | owner | 390×844 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.dots Stable colours, roles, and overflow | owner | 1280×800 | Pass | today dots, month dots, week dots, day dots, next month dots |
+| 4.guest-denied Guest calendar access | guest | 390×844 | Pass | calendar denied, mark presence denied |
+| 4.guest-denied Guest calendar access | guest | 1280×800 | Pass | calendar denied, mark presence denied |
+| 4.manager-entry-types Manager entry types | manager | 390×844 | Pass | meeting created, planning created, manual created |
+| 4.manager-entry-types Manager entry types | manager | 1280×800 | Pass | meeting created, planning created, manual created |
+| 4.manager-entry-types Manager entry types | owner | 390×844 | Pass | meeting created, planning created, manual created |
+| 4.manager-entry-types Manager entry types | owner | 1280×800 | Pass | meeting created, planning created, manual created |
+| 4.manager-other-presence Manager controls for team presence | manager | 390×844 | Pass | other person edit, other person changed |
+| 4.manager-other-presence Manager controls for team presence | manager | 1280×800 | Pass | other person edit, other person changed |
+| 4.manager-other-presence Manager controls for team presence | owner | 390×844 | Pass | other person edit, other person changed |
+| 4.manager-other-presence Manager controls for team presence | owner | 1280×800 | Pass | other person edit, other person changed |
+| 4.month Month view | staff | 390×844 | Pass | month grid |
+| 4.month Month view | staff | 1280×800 | Pass | month grid |
+| 4.month Month view | manager | 390×844 | Pass | month grid |
+| 4.month Month view | manager | 1280×800 | Pass | month grid |
+| 4.month Month view | owner | 390×844 | Pass | month grid |
+| 4.month Month view | owner | 1280×800 | Pass | month grid |
+| 4.navigation-today Team navigation and Today strip | staff | 390×844 | Pass | main navigation, today presence strip |
+| 4.navigation-today Team navigation and Today strip | staff | 1280×800 | Pass | main navigation, today presence strip |
+| 4.navigation-today Team navigation and Today strip | manager | 390×844 | Pass | main navigation, today presence strip |
+| 4.navigation-today Team navigation and Today strip | manager | 1280×800 | Pass | main navigation, today presence strip |
+| 4.navigation-today Team navigation and Today strip | owner | 390×844 | Pass | main navigation, today presence strip |
+| 4.navigation-today Team navigation and Today strip | owner | 1280×800 | Pass | main navigation, today presence strip |
+| 4.own-presence Own presence create, edit, and remove | staff | 390×844 | Pass | presence create, presence edit, presence delete undo |
+| 4.own-presence Own presence create, edit, and remove | staff | 1280×800 | Pass | presence create, presence edit, presence delete undo |
+| 4.own-presence Own presence create, edit, and remove | manager | 390×844 | Pass | presence create, presence edit, presence delete undo |
+| 4.own-presence Own presence create, edit, and remove | manager | 1280×800 | Pass | presence create, presence edit, presence delete undo |
+| 4.own-presence Own presence create, edit, and remove | owner | 390×844 | Pass | presence create, presence edit, presence delete undo |
+| 4.own-presence Own presence create, edit, and remove | owner | 1280×800 | Pass | presence create, presence edit, presence delete undo |
+| 4.period-navigation Calendar period navigation | staff | 390×844 | Pass | month next, day return to today |
+| 4.period-navigation Calendar period navigation | staff | 1280×800 | Pass | month next, day return to today |
+| 4.period-navigation Calendar period navigation | manager | 390×844 | Pass | month next, day return to today |
+| 4.period-navigation Calendar period navigation | manager | 1280×800 | Pass | month next, day return to today |
+| 4.period-navigation Calendar period navigation | owner | 390×844 | Pass | month next, day return to today |
+| 4.period-navigation Calendar period navigation | owner | 1280×800 | Pass | month next, day return to today |
+| 4.source-fixtures Published events and approved visits | staff | 390×844 | Pass | approved visit, published event |
+| 4.source-fixtures Published events and approved visits | staff | 1280×800 | Pass | approved visit, published event |
+| 4.source-fixtures Published events and approved visits | manager | 390×844 | Pass | approved visit, published event |
+| 4.source-fixtures Published events and approved visits | manager | 1280×800 | Pass | approved visit, published event |
+| 4.source-fixtures Published events and approved visits | owner | 390×844 | Pass | approved visit, published event |
+| 4.source-fixtures Published events and approved visits | owner | 1280×800 | Pass | approved visit, published event |
+| 4.staff-permissions Volunteer edit permissions | staff | 390×844 | Pass | other person denied, presence only form |
+| 4.staff-permissions Volunteer edit permissions | staff | 1280×800 | Pass | other person denied, presence only form |
+| 4.week Week hour grid | staff | 390×844 | Pass | week grid, week last date |
+| 4.week Week hour grid | staff | 1280×800 | Pass | week grid, week last date |
+| 4.week Week hour grid | manager | 390×844 | Pass | week grid, week last date |
+| 4.week Week hour grid | manager | 1280×800 | Pass | week grid, week last date |
+| 4.week Week hour grid | owner | 390×844 | Pass | week grid, week last date |
+| 4.week Week hour grid | owner | 1280×800 | Pass | week grid, week last date |

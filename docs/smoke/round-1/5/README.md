@@ -1,6 +1,8 @@
 # Stage 5 guest experience
 
-Chrome passed all 70 current-stage checks at 390×844 and 1280×800 with zero console warnings, errors, browser dialogs, or off-origin requests. The 126 screenshots below were captured at those viewport sizes.
+Screenshots are kept outside the repository in `havat-ravve-feedback-round-1-smoke-screenshots-6a8584c.zip`.
+
+Chrome passed all 70 current-stage checks at 390×844 and 1280×800 with zero console warnings, errors, browser dialogs, or off-origin requests. The 126 screenshots were captured at those viewport sizes.
 
 Both typechecks, the build and staged distribution parity, the core and demo suites, Firestore rules, and all 258 Worker assertions passed. The rules tests included a manager recording confirmation for a full 20-ticket order.
 
@@ -18,73 +20,73 @@ The same preview passed all 284 earlier checks. These replays include the five S
 
 | Check | Persona | Viewport | Result | Screenshot |
 | --- | --- | --- | --- | --- |
-| 5.1.edit-account Edit registration answers from Account | guest | 390×844 | Pass | [existing profile edit](guest-390x844-5.1.edit-account-existing-profile-edit.png) |
-| 5.1.edit-account Edit registration answers from Account | guest | 1280×800 | Pass | [existing profile edit](guest-1280x800-5.1.edit-account-existing-profile-edit.png) |
-| 5.1.new-registration New profile with required and optional questions | new | 390×844 | Pass | [configured registration form](new-390x844-5.1.new-registration-configured-registration-form.png), [new profile persisted](new-390x844-5.1.new-registration-new-profile-persisted.png) |
-| 5.1.new-registration New profile with required and optional questions | new | 1280×800 | Pass | [configured registration form](new-1280x800-5.1.new-registration-configured-registration-form.png), [new profile persisted](new-1280x800-5.1.new-registration-new-profile-persisted.png) |
-| 5.2.free-order Free registration | guest | 390×844 | Pass | [free tour ticket](guest-390x844-5.2.free-order-free-tour-ticket.png) |
-| 5.2.free-order Free registration | guest | 1280×800 | Pass | [free tour ticket](guest-1280x800-5.2.free-order-free-tour-ticket.png) |
-| 5.2.guest-donation Guest payment confirmation choice on a donation | guest | 390×844 | Pass | [prefilled payment confirmation choice](guest-390x844-5.2.guest-donation-prefilled-payment-confirmation-choice.png), [donation payment screen](guest-390x844-5.2.guest-donation-donation-payment-screen.png) |
-| 5.2.guest-donation Guest payment confirmation choice on a donation | guest | 1280×800 | Pass | [prefilled payment confirmation choice](guest-1280x800-5.2.guest-donation-prefilled-payment-confirmation-choice.png), [donation payment screen](guest-1280x800-5.2.guest-donation-donation-payment-screen.png) |
-| 5.2.guest-order Guest payment confirmation choice on a ticket order | guest | 390×844 | Pass | [prefilled payment confirmation choice](guest-390x844-5.2.guest-order-prefilled-payment-confirmation-choice.png), [priced ticket created](guest-390x844-5.2.guest-order-priced-ticket-created.png) |
-| 5.2.guest-order Guest payment confirmation choice on a ticket order | guest | 1280×800 | Pass | [prefilled payment confirmation choice](guest-1280x800-5.2.guest-order-prefilled-payment-confirmation-choice.png), [priced ticket created](guest-1280x800-5.2.guest-order-priced-ticket-created.png) |
-| 5.2.guest-stall Guest payment confirmation choice on a stall account | guest | 390×844 | Pass | [prefilled payment confirmation choice](guest-390x844-5.2.guest-stall-prefilled-payment-confirmation-choice.png), [stall claimed](guest-390x844-5.2.guest-stall-stall-claimed.png) |
-| 5.2.guest-stall Guest payment confirmation choice on a stall account | guest | 1280×800 | Pass | [prefilled payment confirmation choice](guest-1280x800-5.2.guest-stall-prefilled-payment-confirmation-choice.png), [stall claimed](guest-1280x800-5.2.guest-stall-stall-claimed.png) |
-| 5.2.manager-donation Manager donation draft links and sent audit | manager | 390×844 | Pass | [two drafts and guest preference](manager-390x844-5.2.manager-donation-two-drafts-and-guest-preference.png), [manual sent audit](manager-390x844-5.2.manager-donation-manual-sent-audit.png) |
-| 5.2.manager-donation Manager donation draft links and sent audit | manager | 1280×800 | Pass | [two drafts and guest preference](manager-1280x800-5.2.manager-donation-two-drafts-and-guest-preference.png), [manual sent audit](manager-1280x800-5.2.manager-donation-manual-sent-audit.png) |
-| 5.2.manager-donation Manager donation draft links and sent audit | owner | 390×844 | Pass | [two drafts and guest preference](owner-390x844-5.2.manager-donation-two-drafts-and-guest-preference.png), [manual sent audit](owner-390x844-5.2.manager-donation-manual-sent-audit.png) |
-| 5.2.manager-donation Manager donation draft links and sent audit | owner | 1280×800 | Pass | [two drafts and guest preference](owner-1280x800-5.2.manager-donation-two-drafts-and-guest-preference.png), [manual sent audit](owner-1280x800-5.2.manager-donation-manual-sent-audit.png) |
-| 5.2.manager-order Manager ticket order draft links and sent audit | manager | 390×844 | Pass | [two drafts and guest preference](manager-390x844-5.2.manager-order-two-drafts-and-guest-preference.png), [manual sent audit](manager-390x844-5.2.manager-order-manual-sent-audit.png) |
-| 5.2.manager-order Manager ticket order draft links and sent audit | manager | 1280×800 | Pass | [two drafts and guest preference](manager-1280x800-5.2.manager-order-two-drafts-and-guest-preference.png), [manual sent audit](manager-1280x800-5.2.manager-order-manual-sent-audit.png) |
-| 5.2.manager-order Manager ticket order draft links and sent audit | owner | 390×844 | Pass | [two drafts and guest preference](owner-390x844-5.2.manager-order-two-drafts-and-guest-preference.png), [manual sent audit](owner-390x844-5.2.manager-order-manual-sent-audit.png) |
-| 5.2.manager-order Manager ticket order draft links and sent audit | owner | 1280×800 | Pass | [two drafts and guest preference](owner-1280x800-5.2.manager-order-two-drafts-and-guest-preference.png), [manual sent audit](owner-1280x800-5.2.manager-order-manual-sent-audit.png) |
-| 5.2.manager-stall Manager stall account draft links and sent audit | manager | 390×844 | Pass | [two drafts and guest preference](manager-390x844-5.2.manager-stall-two-drafts-and-guest-preference.png), [manual sent audit](manager-390x844-5.2.manager-stall-manual-sent-audit.png) |
-| 5.2.manager-stall Manager stall account draft links and sent audit | manager | 1280×800 | Pass | [two drafts and guest preference](manager-1280x800-5.2.manager-stall-two-drafts-and-guest-preference.png), [manual sent audit](manager-1280x800-5.2.manager-stall-manual-sent-audit.png) |
-| 5.2.manager-stall Manager stall account draft links and sent audit | owner | 390×844 | Pass | [two drafts and guest preference](owner-390x844-5.2.manager-stall-two-drafts-and-guest-preference.png), [manual sent audit](owner-390x844-5.2.manager-stall-manual-sent-audit.png) |
-| 5.2.manager-stall Manager stall account draft links and sent audit | owner | 1280×800 | Pass | [two drafts and guest preference](owner-1280x800-5.2.manager-stall-two-drafts-and-guest-preference.png), [manual sent audit](owner-1280x800-5.2.manager-stall-manual-sent-audit.png) |
-| 5.2.reuse-and-edit Reuse choice across payments and edit it from Account | guest | 390×844 | Pass | [prefilled payment confirmation choice](guest-390x844-5.2.reuse-and-edit-prefilled-payment-confirmation-choice.png), [profile channel change](guest-390x844-5.2.reuse-and-edit-profile-channel-change.png) |
-| 5.2.reuse-and-edit Reuse choice across payments and edit it from Account | guest | 1280×800 | Pass | [prefilled payment confirmation choice](guest-1280x800-5.2.reuse-and-edit-prefilled-payment-confirmation-choice.png), [profile channel change](guest-1280x800-5.2.reuse-and-edit-profile-channel-change.png) |
-| 5.3.contact-request Contact form, manager inbox and reply actions | staff | 390×844 | Pass | [signed in contact form](staff-390x844-5.3.contact-request-signed-in-contact-form.png), [contact submitted](staff-390x844-5.3.contact-request-contact-submitted.png), [manager queue and reply](staff-390x844-5.3.contact-request-manager-queue-and-reply.png), [manager handled contact](staff-390x844-5.3.contact-request-manager-handled-contact.png) |
-| 5.3.contact-request Contact form, manager inbox and reply actions | staff | 1280×800 | Pass | [signed in contact form](staff-1280x800-5.3.contact-request-signed-in-contact-form.png), [contact submitted](staff-1280x800-5.3.contact-request-contact-submitted.png), [manager queue and reply](staff-1280x800-5.3.contact-request-manager-queue-and-reply.png), [manager handled contact](staff-1280x800-5.3.contact-request-manager-handled-contact.png) |
-| 5.3.contact-request Contact form, manager inbox and reply actions | guest | 390×844 | Pass | [signed in contact form](guest-390x844-5.3.contact-request-signed-in-contact-form.png), [contact submitted](guest-390x844-5.3.contact-request-contact-submitted.png), [manager queue and reply](guest-390x844-5.3.contact-request-manager-queue-and-reply.png), [manager handled contact](guest-390x844-5.3.contact-request-manager-handled-contact.png) |
-| 5.3.contact-request Contact form, manager inbox and reply actions | guest | 1280×800 | Pass | [signed in contact form](guest-1280x800-5.3.contact-request-signed-in-contact-form.png), [contact submitted](guest-1280x800-5.3.contact-request-contact-submitted.png), [manager queue and reply](guest-1280x800-5.3.contact-request-manager-queue-and-reply.png), [manager handled contact](guest-1280x800-5.3.contact-request-manager-handled-contact.png) |
-| 5.3.official-contact Official contact settings and missing numbers | manager | 390×844 | Pass | [blocked number from settings](manager-390x844-5.3.official-contact-blocked-number-from-settings.png), [signed in contact number from settings](manager-390x844-5.3.official-contact-signed-in-contact-number-from-settings.png), [blocked without whatsapp](manager-390x844-5.3.official-contact-blocked-without-whatsapp.png), [blocked without contact number](manager-390x844-5.3.official-contact-blocked-without-contact-number.png) |
-| 5.3.official-contact Official contact settings and missing numbers | manager | 1280×800 | Pass | [blocked number from settings](manager-1280x800-5.3.official-contact-blocked-number-from-settings.png), [signed in contact number from settings](manager-1280x800-5.3.official-contact-signed-in-contact-number-from-settings.png), [blocked without whatsapp](manager-1280x800-5.3.official-contact-blocked-without-whatsapp.png), [blocked without contact number](manager-1280x800-5.3.official-contact-blocked-without-contact-number.png) |
-| 5.3.official-contact Official contact settings and missing numbers | owner | 390×844 | Pass | [blocked number from settings](owner-390x844-5.3.official-contact-blocked-number-from-settings.png), [signed in contact number from settings](owner-390x844-5.3.official-contact-signed-in-contact-number-from-settings.png), [blocked without whatsapp](owner-390x844-5.3.official-contact-blocked-without-whatsapp.png), [blocked without contact number](owner-390x844-5.3.official-contact-blocked-without-contact-number.png) |
-| 5.3.official-contact Official contact settings and missing numbers | owner | 1280×800 | Pass | [blocked number from settings](owner-1280x800-5.3.official-contact-blocked-number-from-settings.png), [signed in contact number from settings](owner-1280x800-5.3.official-contact-signed-in-contact-number-from-settings.png), [blocked without whatsapp](owner-1280x800-5.3.official-contact-blocked-without-whatsapp.png), [blocked without contact number](owner-1280x800-5.3.official-contact-blocked-without-contact-number.png) |
-| 5.3.signed-in-contact-access Contact form requires an eligible account | anon | 390×844 | Pass | [signed in contact required](anon-390x844-5.3.signed-in-contact-access-signed-in-contact-required.png) |
-| 5.3.signed-in-contact-access Contact form requires an eligible account | anon | 1280×800 | Pass | [signed in contact required](anon-1280x800-5.3.signed-in-contact-access-signed-in-contact-required.png) |
-| 5.3.signed-in-contact-access Contact form requires an eligible account | blocked | 390×844 | Pass | [signed in contact required](blocked-390x844-5.3.signed-in-contact-access-signed-in-contact-required.png) |
-| 5.3.signed-in-contact-access Contact form requires an eligible account | blocked | 1280×800 | Pass | [signed in contact required](blocked-1280x800-5.3.signed-in-contact-access-signed-in-contact-required.png) |
-| 5.4.appinstalled Suppress invitation after installation | guest | 390×844 | Pass | [installed suppression](guest-390x844-5.4.appinstalled-installed-suppression.png) |
-| 5.4.appinstalled Suppress invitation after installation | guest | 1280×800 | Pass | [installed suppression](guest-1280x800-5.4.appinstalled-installed-suppression.png) |
-| 5.4.built-manifest Built manifest, icons and service worker | guest | 390×844 | Pass | [built app manifest and worker](guest-390x844-5.4.built-manifest-built-app-manifest-and-worker.png) |
-| 5.4.built-manifest Built manifest, icons and service worker | guest | 1280×800 | Pass | [built app manifest and worker](guest-1280x800-5.4.built-manifest-built-app-manifest-and-worker.png) |
-| 5.4.chrome-first-visit Chrome first screen and captured install prompt | guest | 390×844 | Pass | [first screen](guest-390x844-5.4.chrome-first-visit-first-screen.png), [captured chrome prompt](guest-390x844-5.4.chrome-first-visit-captured-chrome-prompt.png) |
-| 5.4.chrome-first-visit Chrome first screen and captured install prompt | guest | 1280×800 | Pass | [first screen](guest-1280x800-5.4.chrome-first-visit-first-screen.png), [captured chrome prompt](guest-1280x800-5.4.chrome-first-visit-captured-chrome-prompt.png) |
-| 5.4.chrome-native-dismissal Dismissal through the browser prompt | guest | 390×844 | Pass | [dismissed native prompt](guest-390x844-5.4.chrome-native-dismissal-dismissed-native-prompt.png) |
-| 5.4.chrome-native-dismissal Dismissal through the browser prompt | guest | 1280×800 | Pass | [dismissed native prompt](guest-1280x800-5.4.chrome-native-dismissal-dismissed-native-prompt.png) |
-| 5.4.dismissal-two-weeks Banner dismissal, persistence and expiry | guest | 390×844 | Pass | [still dismissed day 14](guest-390x844-5.4.dismissal-two-weeks-still-dismissed-day-14.png), [shown after day 14](guest-390x844-5.4.dismissal-two-weeks-shown-after-day-14.png) |
-| 5.4.dismissal-two-weeks Banner dismissal, persistence and expiry | guest | 1280×800 | Pass | [still dismissed day 14](guest-1280x800-5.4.dismissal-two-weeks-still-dismissed-day-14.png), [shown after day 14](guest-1280x800-5.4.dismissal-two-weeks-shown-after-day-14.png) |
-| 5.4.ios-first-visit First screen and Safari install instructions | guest | 390×844 | Pass | [first screen](guest-390x844-5.4.ios-first-visit-first-screen.png), [safari instructions](guest-390x844-5.4.ios-first-visit-safari-instructions.png) |
-| 5.4.ios-first-visit First screen and Safari install instructions | guest | 1280×800 | Pass | [first screen](guest-1280x800-5.4.ios-first-visit-first-screen.png), [safari instructions](guest-1280x800-5.4.ios-first-visit-safari-instructions.png) |
-| 5.4.standalone-chrome Suppress invitation in Chrome standalone | guest | 390×844 | Pass | [installed display mode](guest-390x844-5.4.standalone-chrome-installed-display-mode.png) |
-| 5.4.standalone-chrome Suppress invitation in Chrome standalone | guest | 1280×800 | Pass | [installed display mode](guest-1280x800-5.4.standalone-chrome-installed-display-mode.png) |
-| 5.4.standalone-ios Suppress invitation in iOS standalone | guest | 390×844 | Pass | [installed safari](guest-390x844-5.4.standalone-ios-installed-safari.png) |
-| 5.4.standalone-ios Suppress invitation in iOS standalone | guest | 1280×800 | Pass | [installed safari](guest-1280x800-5.4.standalone-ios-installed-safari.png) |
-| 5.5.newly-published-badge New publication badge and previous visit | guest | 390×844 | Pass | [prior visit](guest-390x844-5.5.newly-published-badge-prior-visit.png), [newly published event](guest-390x844-5.5.newly-published-badge-newly-published-event.png), [next visit already seen](guest-390x844-5.5.newly-published-badge-next-visit-already-seen.png) |
-| 5.5.newly-published-badge New publication badge and previous visit | guest | 1280×800 | Pass | [prior visit](guest-1280x800-5.5.newly-published-badge-prior-visit.png), [newly published event](guest-1280x800-5.5.newly-published-badge-newly-published-event.png), [next visit already seen](guest-1280x800-5.5.newly-published-badge-next-visit-already-seen.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | staff | 390×844 | Pass | [cms link absent](staff-390x844-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | staff | 1280×800 | Pass | [cms link absent](staff-1280x800-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | manager | 390×844 | Pass | [cms link absent](manager-390x844-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | manager | 1280×800 | Pass | [cms link absent](manager-1280x800-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | owner | 390×844 | Pass | [entitled public site editor](owner-390x844-5.6.cms-editor-link-entitled-public-site-editor.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | owner | 1280×800 | Pass | [entitled public site editor](owner-1280x800-5.6.cms-editor-link-entitled-public-site-editor.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | guest | 390×844 | Pass | [cms link absent](guest-390x844-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | guest | 1280×800 | Pass | [cms link absent](guest-1280x800-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | anon | 390×844 | Pass | [cms link absent](anon-390x844-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | anon | 1280×800 | Pass | [cms link absent](anon-1280x800-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | blocked | 390×844 | Pass | [cms link absent](blocked-390x844-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-editor-link CMS link visibility by persona | blocked | 1280×800 | Pass | [cms link absent](blocked-1280x800-5.6.cms-editor-link-cms-link-absent.png) |
-| 5.6.cms-grant-states CMS invitation and revocation | manager | 390×844 | Pass | [invited editor link](manager-390x844-5.6.cms-grant-states-invited-editor-link.png) |
-| 5.6.cms-grant-states CMS invitation and revocation | manager | 1280×800 | Pass | [invited editor link](manager-1280x800-5.6.cms-grant-states-invited-editor-link.png) |
+| 5.1.edit-account Edit registration answers from Account | guest | 390×844 | Pass | existing profile edit |
+| 5.1.edit-account Edit registration answers from Account | guest | 1280×800 | Pass | existing profile edit |
+| 5.1.new-registration New profile with required and optional questions | new | 390×844 | Pass | configured registration form, new profile persisted |
+| 5.1.new-registration New profile with required and optional questions | new | 1280×800 | Pass | configured registration form, new profile persisted |
+| 5.2.free-order Free registration | guest | 390×844 | Pass | free tour ticket |
+| 5.2.free-order Free registration | guest | 1280×800 | Pass | free tour ticket |
+| 5.2.guest-donation Guest payment confirmation choice on a donation | guest | 390×844 | Pass | prefilled payment confirmation choice, donation payment screen |
+| 5.2.guest-donation Guest payment confirmation choice on a donation | guest | 1280×800 | Pass | prefilled payment confirmation choice, donation payment screen |
+| 5.2.guest-order Guest payment confirmation choice on a ticket order | guest | 390×844 | Pass | prefilled payment confirmation choice, priced ticket created |
+| 5.2.guest-order Guest payment confirmation choice on a ticket order | guest | 1280×800 | Pass | prefilled payment confirmation choice, priced ticket created |
+| 5.2.guest-stall Guest payment confirmation choice on a stall account | guest | 390×844 | Pass | prefilled payment confirmation choice, stall claimed |
+| 5.2.guest-stall Guest payment confirmation choice on a stall account | guest | 1280×800 | Pass | prefilled payment confirmation choice, stall claimed |
+| 5.2.manager-donation Manager donation draft links and sent audit | manager | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-donation Manager donation draft links and sent audit | manager | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-donation Manager donation draft links and sent audit | owner | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-donation Manager donation draft links and sent audit | owner | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-order Manager ticket order draft links and sent audit | manager | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-order Manager ticket order draft links and sent audit | manager | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-order Manager ticket order draft links and sent audit | owner | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-order Manager ticket order draft links and sent audit | owner | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-stall Manager stall account draft links and sent audit | manager | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-stall Manager stall account draft links and sent audit | manager | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-stall Manager stall account draft links and sent audit | owner | 390×844 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.manager-stall Manager stall account draft links and sent audit | owner | 1280×800 | Pass | two drafts and guest preference, manual sent audit |
+| 5.2.reuse-and-edit Reuse choice across payments and edit it from Account | guest | 390×844 | Pass | prefilled payment confirmation choice, profile channel change |
+| 5.2.reuse-and-edit Reuse choice across payments and edit it from Account | guest | 1280×800 | Pass | prefilled payment confirmation choice, profile channel change |
+| 5.3.contact-request Contact form, manager inbox and reply actions | staff | 390×844 | Pass | signed in contact form, contact submitted, manager queue and reply, manager handled contact |
+| 5.3.contact-request Contact form, manager inbox and reply actions | staff | 1280×800 | Pass | signed in contact form, contact submitted, manager queue and reply, manager handled contact |
+| 5.3.contact-request Contact form, manager inbox and reply actions | guest | 390×844 | Pass | signed in contact form, contact submitted, manager queue and reply, manager handled contact |
+| 5.3.contact-request Contact form, manager inbox and reply actions | guest | 1280×800 | Pass | signed in contact form, contact submitted, manager queue and reply, manager handled contact |
+| 5.3.official-contact Official contact settings and missing numbers | manager | 390×844 | Pass | blocked number from settings, signed in contact number from settings, blocked without whatsapp, blocked without contact number |
+| 5.3.official-contact Official contact settings and missing numbers | manager | 1280×800 | Pass | blocked number from settings, signed in contact number from settings, blocked without whatsapp, blocked without contact number |
+| 5.3.official-contact Official contact settings and missing numbers | owner | 390×844 | Pass | blocked number from settings, signed in contact number from settings, blocked without whatsapp, blocked without contact number |
+| 5.3.official-contact Official contact settings and missing numbers | owner | 1280×800 | Pass | blocked number from settings, signed in contact number from settings, blocked without whatsapp, blocked without contact number |
+| 5.3.signed-in-contact-access Contact form requires an eligible account | anon | 390×844 | Pass | signed in contact required |
+| 5.3.signed-in-contact-access Contact form requires an eligible account | anon | 1280×800 | Pass | signed in contact required |
+| 5.3.signed-in-contact-access Contact form requires an eligible account | blocked | 390×844 | Pass | signed in contact required |
+| 5.3.signed-in-contact-access Contact form requires an eligible account | blocked | 1280×800 | Pass | signed in contact required |
+| 5.4.appinstalled Suppress invitation after installation | guest | 390×844 | Pass | installed suppression |
+| 5.4.appinstalled Suppress invitation after installation | guest | 1280×800 | Pass | installed suppression |
+| 5.4.built-manifest Built manifest, icons and service worker | guest | 390×844 | Pass | built app manifest and worker |
+| 5.4.built-manifest Built manifest, icons and service worker | guest | 1280×800 | Pass | built app manifest and worker |
+| 5.4.chrome-first-visit Chrome first screen and captured install prompt | guest | 390×844 | Pass | first screen, captured chrome prompt |
+| 5.4.chrome-first-visit Chrome first screen and captured install prompt | guest | 1280×800 | Pass | first screen, captured chrome prompt |
+| 5.4.chrome-native-dismissal Dismissal through the browser prompt | guest | 390×844 | Pass | dismissed native prompt |
+| 5.4.chrome-native-dismissal Dismissal through the browser prompt | guest | 1280×800 | Pass | dismissed native prompt |
+| 5.4.dismissal-two-weeks Banner dismissal, persistence and expiry | guest | 390×844 | Pass | still dismissed day 14, shown after day 14 |
+| 5.4.dismissal-two-weeks Banner dismissal, persistence and expiry | guest | 1280×800 | Pass | still dismissed day 14, shown after day 14 |
+| 5.4.ios-first-visit First screen and Safari install instructions | guest | 390×844 | Pass | first screen, safari instructions |
+| 5.4.ios-first-visit First screen and Safari install instructions | guest | 1280×800 | Pass | first screen, safari instructions |
+| 5.4.standalone-chrome Suppress invitation in Chrome standalone | guest | 390×844 | Pass | installed display mode |
+| 5.4.standalone-chrome Suppress invitation in Chrome standalone | guest | 1280×800 | Pass | installed display mode |
+| 5.4.standalone-ios Suppress invitation in iOS standalone | guest | 390×844 | Pass | installed safari |
+| 5.4.standalone-ios Suppress invitation in iOS standalone | guest | 1280×800 | Pass | installed safari |
+| 5.5.newly-published-badge New publication badge and previous visit | guest | 390×844 | Pass | prior visit, newly published event, next visit already seen |
+| 5.5.newly-published-badge New publication badge and previous visit | guest | 1280×800 | Pass | prior visit, newly published event, next visit already seen |
+| 5.6.cms-editor-link CMS link visibility by persona | staff | 390×844 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | staff | 1280×800 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | manager | 390×844 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | manager | 1280×800 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | owner | 390×844 | Pass | entitled public site editor |
+| 5.6.cms-editor-link CMS link visibility by persona | owner | 1280×800 | Pass | entitled public site editor |
+| 5.6.cms-editor-link CMS link visibility by persona | guest | 390×844 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | guest | 1280×800 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | anon | 390×844 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | anon | 1280×800 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | blocked | 390×844 | Pass | cms link absent |
+| 5.6.cms-editor-link CMS link visibility by persona | blocked | 1280×800 | Pass | cms link absent |
+| 5.6.cms-grant-states CMS invitation and revocation | manager | 390×844 | Pass | invited editor link |
+| 5.6.cms-grant-states CMS invitation and revocation | manager | 1280×800 | Pass | invited editor link |

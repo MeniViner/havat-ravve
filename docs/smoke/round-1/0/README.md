@@ -1,5 +1,7 @@
 # Stage 0 browser baseline
 
+Screenshots are kept outside the repository in `havat-ravve-feedback-round-1-smoke-screenshots-6a8584c.zip`.
+
 Chrome on the local demo reproduced the reported defects. The result column answers whether the baseline behaviour matched the expected reproduction or control. The console was clean in all 12 persona and viewport combinations.
 
 - **1.1** The inline stall picker stayed open after selecting an open account, a search result or a scanned ticket. The direct picker and account-list workaround opened the grid.
@@ -10,45 +12,45 @@ Chrome on the local demo reproduced the reported defects. The result column answ
 
 | Check | Persona | Viewport | Result | Screenshot |
 | --- | --- | --- | --- | --- |
-| Stall guest selection | staff | 390×844 | Pass | [Open row](staff-390x844-1.1-inline-open-row-stays-picker.png), [Accounts workaround](staff-390x844-1.1-accounts-workaround-opens-products.png), [Search result](staff-390x844-1.1-inline-search-tap-stays-picker.png), [QR](staff-390x844-1.1-inline-qr-stays-picker.png), [Direct picker](staff-390x844-1.1-explicit-picker-qr-opens-products.png) |
-| Stall guest selection | staff | 1280×800 | Pass | [Open row](staff-1280x800-1.1-inline-open-row-stays-picker.png), [Accounts workaround](staff-1280x800-1.1-accounts-workaround-opens-products.png), [Search result](staff-1280x800-1.1-inline-search-tap-stays-picker.png), [QR](staff-1280x800-1.1-inline-qr-stays-picker.png), [Direct picker](staff-1280x800-1.1-explicit-picker-qr-opens-products.png) |
-| Stall guest selection | manager | 390×844 | Pass | [Open row](manager-390x844-1.1-inline-open-row-stays-picker.png), [Accounts workaround](manager-390x844-1.1-accounts-workaround-opens-products.png), [Search result](manager-390x844-1.1-inline-search-tap-stays-picker.png), [QR](manager-390x844-1.1-inline-qr-stays-picker.png), [Direct picker](manager-390x844-1.1-explicit-picker-qr-opens-products.png) |
-| Stall guest selection | manager | 1280×800 | Pass | [Open row](manager-1280x800-1.1-inline-open-row-stays-picker.png), [Accounts workaround](manager-1280x800-1.1-accounts-workaround-opens-products.png), [Search result](manager-1280x800-1.1-inline-search-tap-stays-picker.png), [QR](manager-1280x800-1.1-inline-qr-stays-picker.png), [Direct picker](manager-1280x800-1.1-explicit-picker-qr-opens-products.png) |
-| Stall guest selection | owner | 390×844 | Pass | [Open row](owner-390x844-1.1-inline-open-row-stays-picker.png), [Accounts workaround](owner-390x844-1.1-accounts-workaround-opens-products.png), [Search result](owner-390x844-1.1-inline-search-tap-stays-picker.png), [QR](owner-390x844-1.1-inline-qr-stays-picker.png), [Direct picker](owner-390x844-1.1-explicit-picker-qr-opens-products.png) |
-| Stall guest selection | owner | 1280×800 | Pass | [Open row](owner-1280x800-1.1-inline-open-row-stays-picker.png), [Accounts workaround](owner-1280x800-1.1-accounts-workaround-opens-products.png), [Search result](owner-1280x800-1.1-inline-search-tap-stays-picker.png), [QR](owner-1280x800-1.1-inline-qr-stays-picker.png), [Direct picker](owner-1280x800-1.1-explicit-picker-qr-opens-products.png) |
-| Empty stall accounts | staff | 390×844 | Pass | [Gate scan](staff-390x844-1.2-gate-scan-created-no-account.png), [Empty row](staff-390x844-1.2-picked-guest-empty-account.png), [Stall accounts](staff-390x844-1.2-stall-accounts-count-includes-empty.png), [Event hub](staff-390x844-1.2-staff-hub-count-includes-empty.png) |
-| Empty stall accounts | staff | 1280×800 | Pass | [Gate scan](staff-1280x800-1.2-gate-scan-created-no-account.png), [Empty row](staff-1280x800-1.2-picked-guest-empty-account.png), [Stall accounts](staff-1280x800-1.2-stall-accounts-count-includes-empty.png), [Event hub](staff-1280x800-1.2-staff-hub-count-includes-empty.png) |
-| Empty stall accounts | manager | 390×844 | Pass | [Gate scan](manager-390x844-1.2-gate-scan-created-no-account.png), [Empty row](manager-390x844-1.2-picked-guest-empty-account.png), [Stall accounts](manager-390x844-1.2-stall-accounts-count-includes-empty.png), [Event hub](manager-390x844-1.2-staff-hub-count-includes-empty.png), [Manager accounts](manager-390x844-1.2-manager-accounts-count-includes-empty.png) |
-| Empty stall accounts | manager | 1280×800 | Pass | [Gate scan](manager-1280x800-1.2-gate-scan-created-no-account.png), [Empty row](manager-1280x800-1.2-picked-guest-empty-account.png), [Stall accounts](manager-1280x800-1.2-stall-accounts-count-includes-empty.png), [Event hub](manager-1280x800-1.2-staff-hub-count-includes-empty.png), [Manager accounts](manager-1280x800-1.2-manager-accounts-count-includes-empty.png) |
-| Empty stall accounts | owner | 390×844 | Pass | [Gate scan](owner-390x844-1.2-gate-scan-created-no-account.png), [Empty row](owner-390x844-1.2-picked-guest-empty-account.png), [Stall accounts](owner-390x844-1.2-stall-accounts-count-includes-empty.png), [Event hub](owner-390x844-1.2-staff-hub-count-includes-empty.png), [Manager accounts](owner-390x844-1.2-manager-accounts-count-includes-empty.png) |
-| Empty stall accounts | owner | 1280×800 | Pass | [Gate scan](owner-1280x800-1.2-gate-scan-created-no-account.png), [Empty row](owner-1280x800-1.2-picked-guest-empty-account.png), [Stall accounts](owner-1280x800-1.2-stall-accounts-count-includes-empty.png), [Event hub](owner-1280x800-1.2-staff-hub-count-includes-empty.png), [Manager accounts](owner-1280x800-1.2-manager-accounts-count-includes-empty.png) |
-| Per-item cart controls | staff | 390×844 | Pass | [Cart](staff-390x844-1.3-cart-full-no-item-controls.png), [Clear](staff-390x844-1.3-clear-wiped-all-no-undo.png) |
-| Per-item cart controls | staff | 1280×800 | Pass | [Cart](staff-1280x800-1.3-cart-full-no-item-controls.png), [Clear](staff-1280x800-1.3-clear-wiped-all-no-undo.png) |
-| Per-item cart controls | manager | 390×844 | Pass | [Cart](manager-390x844-1.3-cart-full-no-item-controls.png), [Clear](manager-390x844-1.3-clear-wiped-all-no-undo.png) |
-| Per-item cart controls | manager | 1280×800 | Pass | [Cart](manager-1280x800-1.3-cart-full-no-item-controls.png), [Clear](manager-1280x800-1.3-clear-wiped-all-no-undo.png) |
-| Per-item cart controls | owner | 390×844 | Pass | [Cart](owner-390x844-1.3-cart-full-no-item-controls.png), [Clear](owner-390x844-1.3-clear-wiped-all-no-undo.png) |
-| Per-item cart controls | owner | 1280×800 | Pass | [Cart](owner-1280x800-1.3-cart-full-no-item-controls.png), [Clear](owner-1280x800-1.3-clear-wiped-all-no-undo.png) |
-| First-character gate search | staff | 390×844 | Pass | [One character](staff-390x844-1.4-gate-gate-one-character-no-results.png), [Two characters](staff-390x844-1.4-gate-gate-two-characters-first-result.png) |
-| First-character gate search | staff | 1280×800 | Pass | [One character](staff-1280x800-1.4-gate-gate-one-character-no-results.png), [Two characters](staff-1280x800-1.4-gate-gate-two-characters-first-result.png) |
-| First-character gate search | manager | 390×844 | Pass | [One character](manager-390x844-1.4-gate-gate-one-character-no-results.png), [Two characters](manager-390x844-1.4-gate-gate-two-characters-first-result.png) |
-| First-character gate search | manager | 1280×800 | Pass | [One character](manager-1280x800-1.4-gate-gate-one-character-no-results.png), [Two characters](manager-1280x800-1.4-gate-gate-two-characters-first-result.png) |
-| First-character gate search | owner | 390×844 | Pass | [One character](owner-390x844-1.4-gate-gate-one-character-no-results.png), [Two characters](owner-390x844-1.4-gate-gate-two-characters-first-result.png) |
-| First-character gate search | owner | 1280×800 | Pass | [One character](owner-1280x800-1.4-gate-gate-one-character-no-results.png), [Two characters](owner-1280x800-1.4-gate-gate-two-characters-first-result.png) |
-| First-character stall search | staff | 390×844 | Pass | [One character](staff-390x844-1.4-stall-stall-one-character-no-results.png), [Two characters](staff-390x844-1.4-stall-stall-two-characters-first-result.png) |
-| First-character stall search | staff | 1280×800 | Pass | [One character](staff-1280x800-1.4-stall-stall-one-character-no-results.png), [Two characters](staff-1280x800-1.4-stall-stall-two-characters-first-result.png) |
-| First-character stall search | manager | 390×844 | Pass | [One character](manager-390x844-1.4-stall-stall-one-character-no-results.png), [Two characters](manager-390x844-1.4-stall-stall-two-characters-first-result.png) |
-| First-character stall search | manager | 1280×800 | Pass | [One character](manager-1280x800-1.4-stall-stall-one-character-no-results.png), [Two characters](manager-1280x800-1.4-stall-stall-two-characters-first-result.png) |
-| First-character stall search | owner | 390×844 | Pass | [One character](owner-390x844-1.4-stall-stall-one-character-no-results.png), [Two characters](owner-390x844-1.4-stall-stall-two-characters-first-result.png) |
-| First-character stall search | owner | 1280×800 | Pass | [One character](owner-1280x800-1.4-stall-stall-one-character-no-results.png), [Two characters](owner-1280x800-1.4-stall-stall-two-characters-first-result.png) |
-| Guest event registration count | staff | 390×844 | Pass | [Registration count](staff-390x844-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | staff | 1280×800 | Pass | [Registration count](staff-1280x800-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | manager | 390×844 | Pass | [Registration count](manager-390x844-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | manager | 1280×800 | Pass | [Registration count](manager-1280x800-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | owner | 390×844 | Pass | [Registration count](owner-390x844-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | owner | 1280×800 | Pass | [Registration count](owner-1280x800-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | guest | 390×844 | Pass | [Registration count](guest-390x844-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | guest | 1280×800 | Pass | [Registration count](guest-1280x800-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | anon | 390×844 | Pass | [Registration count](anon-390x844-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | anon | 1280×800 | Pass | [Registration count](anon-1280x800-1.8-public-event-registrations-visible.png) |
-| Guest event registration count | blocked | 390×844 | Pass | [Blocked account](blocked-390x844-1.8-blocked-account-guard.png) |
-| Guest event registration count | blocked | 1280×800 | Pass | [Blocked account](blocked-1280x800-1.8-blocked-account-guard.png) |
+| Stall guest selection | staff | 390×844 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Stall guest selection | staff | 1280×800 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Stall guest selection | manager | 390×844 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Stall guest selection | manager | 1280×800 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Stall guest selection | owner | 390×844 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Stall guest selection | owner | 1280×800 | Pass | Open row, Accounts workaround, Search result, QR, Direct picker |
+| Empty stall accounts | staff | 390×844 | Pass | Gate scan, Empty row, Stall accounts, Event hub |
+| Empty stall accounts | staff | 1280×800 | Pass | Gate scan, Empty row, Stall accounts, Event hub |
+| Empty stall accounts | manager | 390×844 | Pass | Gate scan, Empty row, Stall accounts, Event hub, Manager accounts |
+| Empty stall accounts | manager | 1280×800 | Pass | Gate scan, Empty row, Stall accounts, Event hub, Manager accounts |
+| Empty stall accounts | owner | 390×844 | Pass | Gate scan, Empty row, Stall accounts, Event hub, Manager accounts |
+| Empty stall accounts | owner | 1280×800 | Pass | Gate scan, Empty row, Stall accounts, Event hub, Manager accounts |
+| Per-item cart controls | staff | 390×844 | Pass | Cart, Clear |
+| Per-item cart controls | staff | 1280×800 | Pass | Cart, Clear |
+| Per-item cart controls | manager | 390×844 | Pass | Cart, Clear |
+| Per-item cart controls | manager | 1280×800 | Pass | Cart, Clear |
+| Per-item cart controls | owner | 390×844 | Pass | Cart, Clear |
+| Per-item cart controls | owner | 1280×800 | Pass | Cart, Clear |
+| First-character gate search | staff | 390×844 | Pass | One character, Two characters |
+| First-character gate search | staff | 1280×800 | Pass | One character, Two characters |
+| First-character gate search | manager | 390×844 | Pass | One character, Two characters |
+| First-character gate search | manager | 1280×800 | Pass | One character, Two characters |
+| First-character gate search | owner | 390×844 | Pass | One character, Two characters |
+| First-character gate search | owner | 1280×800 | Pass | One character, Two characters |
+| First-character stall search | staff | 390×844 | Pass | One character, Two characters |
+| First-character stall search | staff | 1280×800 | Pass | One character, Two characters |
+| First-character stall search | manager | 390×844 | Pass | One character, Two characters |
+| First-character stall search | manager | 1280×800 | Pass | One character, Two characters |
+| First-character stall search | owner | 390×844 | Pass | One character, Two characters |
+| First-character stall search | owner | 1280×800 | Pass | One character, Two characters |
+| Guest event registration count | staff | 390×844 | Pass | Registration count |
+| Guest event registration count | staff | 1280×800 | Pass | Registration count |
+| Guest event registration count | manager | 390×844 | Pass | Registration count |
+| Guest event registration count | manager | 1280×800 | Pass | Registration count |
+| Guest event registration count | owner | 390×844 | Pass | Registration count |
+| Guest event registration count | owner | 1280×800 | Pass | Registration count |
+| Guest event registration count | guest | 390×844 | Pass | Registration count |
+| Guest event registration count | guest | 1280×800 | Pass | Registration count |
+| Guest event registration count | anon | 390×844 | Pass | Registration count |
+| Guest event registration count | anon | 1280×800 | Pass | Registration count |
+| Guest event registration count | blocked | 390×844 | Pass | Blocked account |
+| Guest event registration count | blocked | 1280×800 | Pass | Blocked account |

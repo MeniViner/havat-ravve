@@ -1,5 +1,7 @@
 # Stage 3 event modules
 
+Screenshots are kept outside the repository in `havat-ravve-feedback-round-1-smoke-screenshots-6a8584c.zip`.
+
 Chrome passed all 50 current-stage checks at 390×844 and 1280×800 with a clean console. Both typechecks, staged build parity, core and demo tests, Firestore rules, and all 250 Worker assertions passed.
 
 The same preview passed all 98 [Stage 2 checks](../2/README.md) and all 66 [Stage 1 checks](../1/README.md), including the corrected Stage 0 scenarios, with no browser diagnostics.
@@ -10,53 +12,53 @@ External vendor planning remains an independent event tab. The gate and stall ro
 
 | Check | Persona | Viewport | Result | Screenshot |
 | --- | --- | --- | --- | --- |
-| 3.autumn Festival with both modules enabled | staff | 390×844 | Pass | [overview](staff-390x844-3.autumn-overview.png) |
-| 3.autumn Festival with both modules enabled | staff | 1280×800 | Pass | [overview](staff-1280x800-3.autumn-overview.png) |
-| 3.autumn Festival with both modules enabled | manager | 390×844 | Pass | [overview](manager-390x844-3.autumn-overview.png) |
-| 3.autumn Festival with both modules enabled | manager | 1280×800 | Pass | [overview](manager-1280x800-3.autumn-overview.png) |
-| 3.autumn Festival with both modules enabled | owner | 390×844 | Pass | [overview](owner-390x844-3.autumn-overview.png) |
-| 3.autumn Festival with both modules enabled | owner | 1280×800 | Pass | [overview](owner-1280x800-3.autumn-overview.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | staff | 390×844 | Pass | [gate to stall](staff-390x844-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](staff-390x844-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](staff-390x844-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | staff | 1280×800 | Pass | [gate to stall](staff-1280x800-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](staff-1280x800-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](staff-1280x800-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | manager | 390×844 | Pass | [gate to stall](manager-390x844-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](manager-390x844-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](manager-390x844-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | manager | 1280×800 | Pass | [gate to stall](manager-1280x800-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](manager-1280x800-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](manager-1280x800-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | owner | 390×844 | Pass | [gate to stall](owner-390x844-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](owner-390x844-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](owner-390x844-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.enabled-cross-actions Shortcuts between enabled modules | owner | 1280×800 | Pass | [gate to stall](owner-1280x800-3.enabled-cross-actions-gate-to-stall.png), [search to stall picker](owner-1280x800-3.enabled-cross-actions-search-to-stall-picker.png), [stall to gate](owner-1280x800-3.enabled-cross-actions-stall-to-gate.png) |
-| 3.entry-off-only Stall only | staff | 390×844 | Pass | [staff event hub](staff-390x844-3.entry-off-only-staff-event-hub.png), [guarded module](staff-390x844-3.entry-off-only-guarded-module.png), [stall without gate](staff-390x844-3.entry-off-only-stall-without-gate.png) |
-| 3.entry-off-only Stall only | staff | 1280×800 | Pass | [staff event hub](staff-1280x800-3.entry-off-only-staff-event-hub.png), [guarded module](staff-1280x800-3.entry-off-only-guarded-module.png), [stall without gate](staff-1280x800-3.entry-off-only-stall-without-gate.png) |
-| 3.entry-off-only Stall only | manager | 390×844 | Pass | [editor after reload](manager-390x844-3.entry-off-only-editor-after-reload.png), [management](manager-390x844-3.entry-off-only-management.png), [staff event hub](manager-390x844-3.entry-off-only-staff-event-hub.png), [guarded module](manager-390x844-3.entry-off-only-guarded-module.png), [stall without gate](manager-390x844-3.entry-off-only-stall-without-gate.png) |
-| 3.entry-off-only Stall only | manager | 1280×800 | Pass | [editor after reload](manager-1280x800-3.entry-off-only-editor-after-reload.png), [management](manager-1280x800-3.entry-off-only-management.png), [staff event hub](manager-1280x800-3.entry-off-only-staff-event-hub.png), [guarded module](manager-1280x800-3.entry-off-only-guarded-module.png), [stall without gate](manager-1280x800-3.entry-off-only-stall-without-gate.png) |
-| 3.entry-off-only Stall only | owner | 390×844 | Pass | [editor after reload](owner-390x844-3.entry-off-only-editor-after-reload.png), [management](owner-390x844-3.entry-off-only-management.png), [staff event hub](owner-390x844-3.entry-off-only-staff-event-hub.png), [guarded module](owner-390x844-3.entry-off-only-guarded-module.png), [stall without gate](owner-390x844-3.entry-off-only-stall-without-gate.png) |
-| 3.entry-off-only Stall only | owner | 1280×800 | Pass | [editor after reload](owner-1280x800-3.entry-off-only-editor-after-reload.png), [management](owner-1280x800-3.entry-off-only-management.png), [staff event hub](owner-1280x800-3.entry-off-only-staff-event-hub.png), [guarded module](owner-1280x800-3.entry-off-only-guarded-module.png), [stall without gate](owner-1280x800-3.entry-off-only-stall-without-gate.png) |
-| 3.manager-navigation Module visibility in management | manager | 390×844 | Pass | [demo e tour navigation](manager-390x844-3.manager-navigation-demo-e-tour-navigation.png), [demo e fall navigation](manager-390x844-3.manager-navigation-demo-e-fall-navigation.png), [demo e oct navigation](manager-390x844-3.manager-navigation-demo-e-oct-navigation.png) |
-| 3.manager-navigation Module visibility in management | manager | 1280×800 | Pass | [demo e tour navigation](manager-1280x800-3.manager-navigation-demo-e-tour-navigation.png), [demo e fall navigation](manager-1280x800-3.manager-navigation-demo-e-fall-navigation.png), [demo e oct navigation](manager-1280x800-3.manager-navigation-demo-e-oct-navigation.png) |
-| 3.manager-navigation Module visibility in management | owner | 390×844 | Pass | [demo e tour navigation](owner-390x844-3.manager-navigation-demo-e-tour-navigation.png), [demo e fall navigation](owner-390x844-3.manager-navigation-demo-e-fall-navigation.png), [demo e oct navigation](owner-390x844-3.manager-navigation-demo-e-oct-navigation.png) |
-| 3.manager-navigation Module visibility in management | owner | 1280×800 | Pass | [demo e tour navigation](owner-1280x800-3.manager-navigation-demo-e-tour-navigation.png), [demo e fall navigation](owner-1280x800-3.manager-navigation-demo-e-fall-navigation.png), [demo e oct navigation](owner-1280x800-3.manager-navigation-demo-e-oct-navigation.png) |
-| 3.october-legacy Older event defaults | staff | 390×844 | Pass | [overview](staff-390x844-3.october-legacy-overview.png) |
-| 3.october-legacy Older event defaults | staff | 1280×800 | Pass | [overview](staff-1280x800-3.october-legacy-overview.png) |
-| 3.october-legacy Older event defaults | manager | 390×844 | Pass | [overview](manager-390x844-3.october-legacy-overview.png) |
-| 3.october-legacy Older event defaults | manager | 1280×800 | Pass | [overview](manager-1280x800-3.october-legacy-overview.png) |
-| 3.october-legacy Older event defaults | owner | 390×844 | Pass | [overview](owner-390x844-3.october-legacy-overview.png) |
-| 3.october-legacy Older event defaults | owner | 1280×800 | Pass | [overview](owner-1280x800-3.october-legacy-overview.png) |
-| 3.restore-both Save and reopen both switches enabled | manager | 390×844 | Pass | [editor after reload](manager-390x844-3.restore-both-editor-after-reload.png) |
-| 3.restore-both Save and reopen both switches enabled | manager | 1280×800 | Pass | [editor after reload](manager-1280x800-3.restore-both-editor-after-reload.png) |
-| 3.restore-both Save and reopen both switches enabled | owner | 390×844 | Pass | [editor after reload](owner-390x844-3.restore-both-editor-after-reload.png) |
-| 3.restore-both Save and reopen both switches enabled | owner | 1280×800 | Pass | [editor after reload](owner-1280x800-3.restore-both-editor-after-reload.png) |
-| 3.stall-off-only Entry only | staff | 390×844 | Pass | [staff event hub](staff-390x844-3.stall-off-only-staff-event-hub.png), [guarded module](staff-390x844-3.stall-off-only-guarded-module.png), [gate without stall](staff-390x844-3.stall-off-only-gate-without-stall.png), [gate search without stall](staff-390x844-3.stall-off-only-gate-search-without-stall.png) |
-| 3.stall-off-only Entry only | staff | 1280×800 | Pass | [staff event hub](staff-1280x800-3.stall-off-only-staff-event-hub.png), [guarded module](staff-1280x800-3.stall-off-only-guarded-module.png), [gate without stall](staff-1280x800-3.stall-off-only-gate-without-stall.png), [gate search without stall](staff-1280x800-3.stall-off-only-gate-search-without-stall.png) |
-| 3.stall-off-only Entry only | manager | 390×844 | Pass | [editor after reload](manager-390x844-3.stall-off-only-editor-after-reload.png), [management](manager-390x844-3.stall-off-only-management.png), [staff event hub](manager-390x844-3.stall-off-only-staff-event-hub.png), [guarded module](manager-390x844-3.stall-off-only-guarded-module.png), [gate without stall](manager-390x844-3.stall-off-only-gate-without-stall.png), [gate search without stall](manager-390x844-3.stall-off-only-gate-search-without-stall.png) |
-| 3.stall-off-only Entry only | manager | 1280×800 | Pass | [editor after reload](manager-1280x800-3.stall-off-only-editor-after-reload.png), [management](manager-1280x800-3.stall-off-only-management.png), [staff event hub](manager-1280x800-3.stall-off-only-staff-event-hub.png), [guarded module](manager-1280x800-3.stall-off-only-guarded-module.png), [gate without stall](manager-1280x800-3.stall-off-only-gate-without-stall.png), [gate search without stall](manager-1280x800-3.stall-off-only-gate-search-without-stall.png) |
-| 3.stall-off-only Entry only | owner | 390×844 | Pass | [editor after reload](owner-390x844-3.stall-off-only-editor-after-reload.png), [management](owner-390x844-3.stall-off-only-management.png), [staff event hub](owner-390x844-3.stall-off-only-staff-event-hub.png), [guarded module](owner-390x844-3.stall-off-only-guarded-module.png), [gate without stall](owner-390x844-3.stall-off-only-gate-without-stall.png), [gate search without stall](owner-390x844-3.stall-off-only-gate-search-without-stall.png) |
-| 3.stall-off-only Entry only | owner | 1280×800 | Pass | [editor after reload](owner-1280x800-3.stall-off-only-editor-after-reload.png), [management](owner-1280x800-3.stall-off-only-management.png), [staff event hub](owner-1280x800-3.stall-off-only-staff-event-hub.png), [guarded module](owner-1280x800-3.stall-off-only-guarded-module.png), [gate without stall](owner-1280x800-3.stall-off-only-gate-without-stall.png), [gate search without stall](owner-1280x800-3.stall-off-only-gate-search-without-stall.png) |
-| 3.tour Tour details and Tasks link | staff | 390×844 | Pass | [event details and tasks](staff-390x844-3.tour-event-details-and-tasks.png) |
-| 3.tour Tour details and Tasks link | staff | 1280×800 | Pass | [event details and tasks](staff-1280x800-3.tour-event-details-and-tasks.png) |
-| 3.tour Tour details and Tasks link | manager | 390×844 | Pass | [event details and tasks](manager-390x844-3.tour-event-details-and-tasks.png) |
-| 3.tour Tour details and Tasks link | manager | 1280×800 | Pass | [event details and tasks](manager-1280x800-3.tour-event-details-and-tasks.png) |
-| 3.tour Tour details and Tasks link | owner | 390×844 | Pass | [event details and tasks](owner-390x844-3.tour-event-details-and-tasks.png) |
-| 3.tour Tour details and Tasks link | owner | 1280×800 | Pass | [event details and tasks](owner-1280x800-3.tour-event-details-and-tasks.png) |
-| 3.tour-direct-links Guarded staff routes | staff | 390×844 | Pass | [guarded entrance](staff-390x844-3.tour-direct-links-guarded-entrance.png), [guarded stall](staff-390x844-3.tour-direct-links-guarded-stall.png) |
-| 3.tour-direct-links Guarded staff routes | staff | 1280×800 | Pass | [guarded entrance](staff-1280x800-3.tour-direct-links-guarded-entrance.png), [guarded stall](staff-1280x800-3.tour-direct-links-guarded-stall.png) |
-| 3.tour-direct-links Guarded staff routes | manager | 390×844 | Pass | [guarded entrance](manager-390x844-3.tour-direct-links-guarded-entrance.png), [guarded stall](manager-390x844-3.tour-direct-links-guarded-stall.png) |
-| 3.tour-direct-links Guarded staff routes | manager | 1280×800 | Pass | [guarded entrance](manager-1280x800-3.tour-direct-links-guarded-entrance.png), [guarded stall](manager-1280x800-3.tour-direct-links-guarded-stall.png) |
-| 3.tour-direct-links Guarded staff routes | owner | 390×844 | Pass | [guarded entrance](owner-390x844-3.tour-direct-links-guarded-entrance.png), [guarded stall](owner-390x844-3.tour-direct-links-guarded-stall.png) |
-| 3.tour-direct-links Guarded staff routes | owner | 1280×800 | Pass | [guarded entrance](owner-1280x800-3.tour-direct-links-guarded-entrance.png), [guarded stall](owner-1280x800-3.tour-direct-links-guarded-stall.png) |
+| 3.autumn Festival with both modules enabled | staff | 390×844 | Pass | overview |
+| 3.autumn Festival with both modules enabled | staff | 1280×800 | Pass | overview |
+| 3.autumn Festival with both modules enabled | manager | 390×844 | Pass | overview |
+| 3.autumn Festival with both modules enabled | manager | 1280×800 | Pass | overview |
+| 3.autumn Festival with both modules enabled | owner | 390×844 | Pass | overview |
+| 3.autumn Festival with both modules enabled | owner | 1280×800 | Pass | overview |
+| 3.enabled-cross-actions Shortcuts between enabled modules | staff | 390×844 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.enabled-cross-actions Shortcuts between enabled modules | staff | 1280×800 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.enabled-cross-actions Shortcuts between enabled modules | manager | 390×844 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.enabled-cross-actions Shortcuts between enabled modules | manager | 1280×800 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.enabled-cross-actions Shortcuts between enabled modules | owner | 390×844 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.enabled-cross-actions Shortcuts between enabled modules | owner | 1280×800 | Pass | gate to stall, search to stall picker, stall to gate |
+| 3.entry-off-only Stall only | staff | 390×844 | Pass | staff event hub, guarded module, stall without gate |
+| 3.entry-off-only Stall only | staff | 1280×800 | Pass | staff event hub, guarded module, stall without gate |
+| 3.entry-off-only Stall only | manager | 390×844 | Pass | editor after reload, management, staff event hub, guarded module, stall without gate |
+| 3.entry-off-only Stall only | manager | 1280×800 | Pass | editor after reload, management, staff event hub, guarded module, stall without gate |
+| 3.entry-off-only Stall only | owner | 390×844 | Pass | editor after reload, management, staff event hub, guarded module, stall without gate |
+| 3.entry-off-only Stall only | owner | 1280×800 | Pass | editor after reload, management, staff event hub, guarded module, stall without gate |
+| 3.manager-navigation Module visibility in management | manager | 390×844 | Pass | demo e tour navigation, demo e fall navigation, demo e oct navigation |
+| 3.manager-navigation Module visibility in management | manager | 1280×800 | Pass | demo e tour navigation, demo e fall navigation, demo e oct navigation |
+| 3.manager-navigation Module visibility in management | owner | 390×844 | Pass | demo e tour navigation, demo e fall navigation, demo e oct navigation |
+| 3.manager-navigation Module visibility in management | owner | 1280×800 | Pass | demo e tour navigation, demo e fall navigation, demo e oct navigation |
+| 3.october-legacy Older event defaults | staff | 390×844 | Pass | overview |
+| 3.october-legacy Older event defaults | staff | 1280×800 | Pass | overview |
+| 3.october-legacy Older event defaults | manager | 390×844 | Pass | overview |
+| 3.october-legacy Older event defaults | manager | 1280×800 | Pass | overview |
+| 3.october-legacy Older event defaults | owner | 390×844 | Pass | overview |
+| 3.october-legacy Older event defaults | owner | 1280×800 | Pass | overview |
+| 3.restore-both Save and reopen both switches enabled | manager | 390×844 | Pass | editor after reload |
+| 3.restore-both Save and reopen both switches enabled | manager | 1280×800 | Pass | editor after reload |
+| 3.restore-both Save and reopen both switches enabled | owner | 390×844 | Pass | editor after reload |
+| 3.restore-both Save and reopen both switches enabled | owner | 1280×800 | Pass | editor after reload |
+| 3.stall-off-only Entry only | staff | 390×844 | Pass | staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.stall-off-only Entry only | staff | 1280×800 | Pass | staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.stall-off-only Entry only | manager | 390×844 | Pass | editor after reload, management, staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.stall-off-only Entry only | manager | 1280×800 | Pass | editor after reload, management, staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.stall-off-only Entry only | owner | 390×844 | Pass | editor after reload, management, staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.stall-off-only Entry only | owner | 1280×800 | Pass | editor after reload, management, staff event hub, guarded module, gate without stall, gate search without stall |
+| 3.tour Tour details and Tasks link | staff | 390×844 | Pass | event details and tasks |
+| 3.tour Tour details and Tasks link | staff | 1280×800 | Pass | event details and tasks |
+| 3.tour Tour details and Tasks link | manager | 390×844 | Pass | event details and tasks |
+| 3.tour Tour details and Tasks link | manager | 1280×800 | Pass | event details and tasks |
+| 3.tour Tour details and Tasks link | owner | 390×844 | Pass | event details and tasks |
+| 3.tour Tour details and Tasks link | owner | 1280×800 | Pass | event details and tasks |
+| 3.tour-direct-links Guarded staff routes | staff | 390×844 | Pass | guarded entrance, guarded stall |
+| 3.tour-direct-links Guarded staff routes | staff | 1280×800 | Pass | guarded entrance, guarded stall |
+| 3.tour-direct-links Guarded staff routes | manager | 390×844 | Pass | guarded entrance, guarded stall |
+| 3.tour-direct-links Guarded staff routes | manager | 1280×800 | Pass | guarded entrance, guarded stall |
+| 3.tour-direct-links Guarded staff routes | owner | 390×844 | Pass | guarded entrance, guarded stall |
+| 3.tour-direct-links Guarded staff routes | owner | 1280×800 | Pass | guarded entrance, guarded stall |
