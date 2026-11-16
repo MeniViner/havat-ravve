@@ -4,6 +4,7 @@ import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, fmtDayLong, fmtTime, firstName, greeting, inText, fmtDateShort, fmtWeekday, todayISO, dateKey, useDesktop, useOpenSections, useToast, relTime, money } from '../ui';
 import { setTaskDone, editTask } from '../store';
 import { ShopLine, useMarkBought, taskMeta } from './legacy';
+import { WeekPresenceStrip } from './CalendarGrid';
 
 type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingItem[]; events: FarmEvent[]; calendar: CalendarItem[]; inbox: AppNotification[]; loading: boolean };
 
@@ -61,6 +62,8 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
         ...(ctx.manager && desktop ? [{ n: shopping.length, label: 'פריטי קניות', to: '/shopping' }, { n: inbox.length, label: 'לטיפול', tone: inbox.length ? 'ochre' as const : undefined, to: '/manage/inbox' }] : []),
       ]} />
 
+      <WeekPresenceStrip today={today} items={calendar} team={ctx.team} />
+
       {eventToday && <A to={`/events-staff/${eventToday.id}`} className="paybox ok" style={{ display: 'block', marginTop: 14 }}><b>היום: {eventToday.title}</b>{fmtTime(eventToday.start)}–{fmtTime(eventToday.end)}{eventModules && ` · ${eventModules} מהטלפון`}</A>}
       {!eventToday && next && !desktop && <EventTeaser e={next} to={`/events-staff/${next.id}`} />}
 
@@ -90,10 +93,6 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
               {isOpen('inbox') && <div className="list">{inbox.slice(0, 5).map((n) => <Row key={n.id} to={n.link} center title={n.title} meta={<span>{n.text} · {relTime(n.createdAt)}</span>} chev />)}{!inbox.length && <p className="lead">אין כלום שמחכה להחלטה.</p>}</div>}
             </>}
             {next && <><Sec title={inText(next.start)} n={`${fmtWeekday(next.start)} ${fmtDateShort(next.start)}`} link="האירוע" linkTo={ctx.manager ? `/manage/events/${next.id}` : `/events-staff/${next.id}`} /><EventTeaser e={next} to={ctx.manager ? `/manage/events/${next.id}` : `/events-staff/${next.id}`} /></>}
-            {ctx.manager && <>
-              <Sec title="מי בחווה" link="יומן" linkTo="/manage/calendar" />
-              <div className="list">{calendar.filter((c) => c.date >= today).slice(0, 5).map((c) => <Row key={c.id} center to="/manage/calendar" title={c.title} meta={<span>{c.date === today ? 'היום' : fmtWeekday(c.date)} · {c.time}</span>} />)}{!calendar.length && <p className="lead">היומן ריק לשבוע הקרוב.</p>}</div>
-            </>}
             <Sec title="קניות" n={`${shopping.length} פריטים${urgentShop ? ` · ${urgentShop} דחוף` : ''}`} link="לרשימה" linkTo="/shopping" open={isOpen('shop')} onToggle={() => toggle('shop')} />
             {isOpen('shop') && (shopping.length ? <div className="notes" style={{ paddingTop: 6 }}><div className="notepad">{[...shopping].sort((a, b) => Number(b.urgent) - Number(a.urgent)).slice(0, 6).map((i) => <ShopLine key={i.id} i={i} onMark={(v) => markBought(i, v)} />)}{shopping.length > 6 && <A to="/shopping" className="note-more">ועוד {shopping.length - 6} ברשימה</A>}</div></div> : <p className="lead">הרשימה ריקה.</p>)}
           </div>

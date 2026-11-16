@@ -4,7 +4,7 @@ import { nowIso } from './firebase';
 import { logActivity } from './activity';
 import type {
   Actor, FarmEvent, Ticket, Visit, VisitStatus, Donation, Vendor, EventVendor, Product, Tab, TabItem, TabStatus, Settings,
-  AppNotification, NotificationType, CalendarItem, Profile, PaymentStatus,
+  AppNotification, NotificationType, CalendarItem, CalendarKind, Profile, PaymentStatus,
 } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
@@ -299,9 +299,16 @@ export async function handleNotificationsFor(open: AppNotification[], refId: str
 
 // ---------- calendar ----------
 export const useCalendar = (enabled: boolean, fromDate: string, toDate: string) => useList<CalendarItem>('calendar', { where: [['date', '>=', fromDate], ['date', '<=', toDate]], orderBy: [['date', 'asc']] }, enabled);
-export async function saveCalendarItem(actor: Actor, data: { title: string; date: string; time: string }, existing?: CalendarItem) {
-  if (existing) await write.update('calendar', existing.id, data);
-  else await write.set('calendar', newId('calendar'), { ...data, ownerUid: actor.uid, ownerName: actor.name, kind: 'manual', refId: '', createdAt: nowIso() });
+export const useCalendarItem = (id: string, enabled: boolean) => useDoc<CalendarItem>(`calendar/${id}`, enabled);
+export type CalendarDraft = Pick<CalendarItem, 'title' | 'date' | 'time'> & { kind: Exclude<CalendarKind, 'visit' | 'event'> };
+export async function saveCalendarItem(owner: Actor, data: CalendarDraft, existing?: CalendarItem) {
+  const ownership = { ownerUid: owner.uid, ownerName: owner.name };
+  if (existing) {
+    const patch = owner.uid === existing.ownerUid ? data : { ...data, ...ownership };
+    await write.update('calendar', existing.id, patch);
+  } else {
+    await write.set('calendar', newId('calendar'), { ...data, ...ownership, refId: '', createdAt: nowIso() });
+  }
 }
 export const deleteCalendarItem = (id: string) => write.remove('calendar', id);
 export async function upsertCalendarRef(actor: Actor, kind: 'visit' | 'event', refId: string, data: { title: string; date: string; time: string }) {

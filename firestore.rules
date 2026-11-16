@@ -186,8 +186,13 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /calendar/{id} {
-   allow read: if isManager();
-   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event']));
+   function calendarShape(){return incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event','presence','meeting','planning'];}
+   function ownsPresence(){return isStaff() && resource.data.kind == 'presence' && resource.data.ownerUid == uid();}
+   function createsPresence(){return isStaff() && incoming().kind == 'presence' && incoming().ownerUid == uid() && incoming().ownerName == get(userPath()).data.displayName && incoming().refId == '' && str(incoming().createdAt, 40);}
+   allow read: if isStaff();
+   allow create: if calendarShape() && (isManager() || createsPresence());
+   allow update: if calendarShape() && (isManager() || (ownsPresence() && changed().hasOnly(['title','date','time'])));
+   allow delete: if isManager() || ownsPresence();
   }
  }
 }

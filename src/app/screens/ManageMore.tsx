@@ -1,12 +1,12 @@
-// Manager: visits, donations, calendar, reports, activity feed, settings.
+// Manager: visits, donations, reports, activity feed, settings.
 import { Fragment, useMemo, useState } from 'react';
-import type { Visit, Donation, CalendarItem, Settings, Ticket, RegistrationField, Profile } from '../types';
+import type { Visit, Donation, Settings, Ticket, RegistrationField, Profile } from '../types';
 import { PAYMENT_LABELS, VISIT_LABELS, KIND_LABELS, type ActivityKind } from '../types';
 import type { TeamCtx } from '../ctx';
-import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, dateKey, money, useDesktop, dayLabel, DAY_SHORT } from '../ui';
+import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, money, useDesktop, dayLabel } from '../ui';
 import { navigate } from '../router';
 import { usePerson, useHistoryTasks, useOpenTasks } from '../store';
-import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, saveCalendarItem, deleteCalendarItem, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
+import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
 import { ExportActions } from '../ExportTable';
 import { useActivityFor, useActivityByKind, ACTION_LABELS } from '../activity';
 import { useList } from '../db';
@@ -138,57 +138,6 @@ export function DonationDetailScreen({ id, ctx, panel }: { id: string; ctx: Team
       <Sec title="היסטוריה" />
       <div className="list">{log.items.map((a) => <Row key={a.id} center title={<span style={{ fontSize: 15, fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={<span>{whenText(a.at)}</span>} />)}<Row center title={<span style={{ fontSize: 15, fontWeight: 500 }}>התרומה נרשמה מהאפליקציה · התראה למנהלים</span>} meta={<span>{whenText(d.createdAt)}</span>} /></div>
       <div className="actions sticky">{!paid && <Btn size="big" icon="check" onClick={approve}>אישור תשלום</Btn>}{d.receiptWanted && !d.receiptSent && <Btn kind="ghost" onClick={() => setDonation(ctx.actor, d, { receiptSent: true }).then(() => toast({ text: 'סומן: הקבלה נשלחה' }, 2500))}>הקבלה נשלחה</Btn>}{paid && <Btn kind="quiet" size="sm" onClick={() => setDonation(ctx.actor, d, { paymentStatus: 'claimed' })}>להחזיר לממתין</Btn>}</div>
-    </>
-  );
-}
-
-// ---------- calendar ----------
-const COLORS = ['#263a2c', '#8e6412', '#aa4f36', '#3a5240', '#6f5a2a', '#5c685e'];
-export function CalendarScreen({ ctx }: { ctx: TeamCtx }) {
-  const today = todayISO(); const desktop = useDesktop(); const toast = useToast();
-  const [month, setMonth] = useState(today.slice(0, 7)); const [sel, setSel] = useState(today);
-  const first = new Date(month + '-01T12:00:00'); const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(); const pad = first.getDay();
-  const items = useCalendar(true, month + '-01', month + '-' + String(days).padStart(2, '0'));
-  const owners = useMemo(() => [...new Map(items.items.filter((c) => c.kind === 'manual').map((c) => [c.ownerUid, c.ownerName])).entries()], [items.items]);
-  const color = (c: CalendarItem) => c.kind === 'manual' ? COLORS[Math.max(0, owners.findIndex(([u]) => u === c.ownerUid)) % COLORS.length] : 'var(--gold)';
-  const shift = (n: number) => { const d = new Date(month + '-01T12:00:00'); d.setMonth(d.getMonth() + n); setMonth(dateKey(d).slice(0, 7)); };
-  const of = (k: string) => items.items.filter((c) => c.date === k);
-  const cell = (i: number) => { const k = `${month}-${String(i + 1).padStart(2, '0')}`; const list = of(k); return { k, list }; };
-  const dayList = of(sel);
-  const upcoming = items.items.filter((c) => c.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-  return (
-    <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="יומן מנהלים" sub={desktop ? 'לכל מנהל יומן בצבע שלו, כולם רואים את כולם. ביקורים מאושרים ואירועים נכנסים לבד.' : undefined} end={<Btn size="sm" icon="plus" to="/manage/calendar/new">ליומן</Btn>} />
-      <div className="inline pad" style={{ justifyContent: 'space-between' }}><Btn kind="quiet" size="sm" onClick={() => shift(-1)}><Icon name="back" size={18} />הקודם</Btn><b style={{ fontSize: 18 }}>{fmtMonthYear(month + '-01')}</b><Btn kind="quiet" size="sm" onClick={() => shift(1)}>הבא<Icon name="chev" size={18} /></Btn></div>
-      <div className="inline pad">{owners.map(([u, n], i) => <span key={u} className="pill" style={{ background: COLORS[i % COLORS.length], color: '#fff' }}>{firstName(n)}</span>)}<span className="pill gold">אירועים וביקורים</span></div>
-      {desktop ? <div style={{ padding: '12px 20px 0' }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 4 }}>{['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'].map((d) => <div key={d} className="muted" style={{ fontSize: 13, fontWeight: 600, padding: '4px 6px' }}>{d}</div>)}{Array.from({ length: pad }, (_, i) => <div key={'p' + i} />)}{Array.from({ length: days }, (_, i) => { const { k, list } = cell(i); return <div key={k} style={{ minHeight: 96, background: 'var(--white)', border: `1px solid ${k === today ? 'var(--green)' : 'var(--line2)'}`, borderRadius: 8, padding: 6 }}><div style={{ fontWeight: 700, fontSize: 14 }}>{i + 1}{k === today && <span className="muted" style={{ fontWeight: 500 }}> · היום</span>}</div>{list.map((c) => <A key={c.id} to={c.kind === 'visit' ? `/manage/visits/${c.refId}` : c.kind === 'event' ? `/manage/events/${c.refId}` : '/manage/calendar'} style={{ display: 'block', fontSize: 12, marginTop: 4, padding: '2px 6px', borderRadius: 4, background: color(c), color: '#fff', lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.kind === 'manual' ? `${firstName(c.ownerName)} · ` : ''}{c.title}{c.time ? ` ${c.time}` : ''}</A>)}</div>; })}</div></div>
-        : <>
-          <div className="cal">{DAY_SHORT.map((d) => <div key={d} className="wd">{d}</div>)}{Array.from({ length: pad }, (_, i) => <span key={'p' + i} />)}{Array.from({ length: days }, (_, i) => { const { k, list } = cell(i); return <button type="button" key={k} className={(k === today ? 'today ' : '') + (k === sel ? 'on ' : '') + (list.length ? 'dot' : '')} onClick={() => setSel(k)}>{i + 1}</button>; })}</div>
-          <Sec title={sel === today ? `היום, ${fmtDayLong(sel)}` : fmtDayLong(sel)} n={dayList.length || undefined} />
-          <div className="list">{dayList.map((c) => <CalRow key={c.id} c={c} color={color(c)} ctx={ctx} onDelete={() => deleteCalendarItem(c.id).then(() => toast({ text: 'הוסר מהיומן' }, 2000))} />)}{!dayList.length && <p className="lead">אין כלום ביום הזה. <A to={`/manage/calendar/new?date=${sel}`} style={{ textDecoration: 'underline' }}>להוסיף</A></p>}</div>
-          <Sec title="בהמשך החודש" n={upcoming.filter((c) => c.date > sel).length || undefined} />
-          <div className="list">{upcoming.filter((c) => c.date > sel).slice(0, 8).map((c) => <CalRow key={c.id} c={c} color={color(c)} ctx={ctx} withDate onDelete={() => deleteCalendarItem(c.id)} />)}</div>
-        </>}
-    </>
-  );
-}
-function CalRow({ c, color, ctx, withDate, onDelete }: { c: CalendarItem; color: string; ctx: TeamCtx; withDate?: boolean; onDelete: () => void }) {
-  const to = c.kind === 'visit' ? `/manage/visits/${c.refId}` : c.kind === 'event' ? `/manage/events/${c.refId}` : undefined;
-  return <Row to={to} center start={<span style={{ width: 10, height: 40, borderRadius: 5, background: color, flexShrink: 0 }} />} title={c.title} meta={<span>{[withDate ? dayLabel(c.date) : '', c.time, c.kind === 'manual' ? c.ownerName : c.kind === 'visit' ? 'ביקור מאושר' : 'אירוע'].filter(Boolean).join(' · ')}</span>} end={c.kind === 'manual' && (c.ownerUid === ctx.actor.uid || ctx.owner) ? <button type="button" className="iconbtn" aria-label="הסרה" onClick={onDelete}><Icon name="x" size={18} /></button> : undefined} chev={!!to} />;
-}
-export function CalendarAddScreen({ ctx }: { ctx: TeamCtx }) {
-  const today = todayISO(); const toast = useToast();
-  const preset = new URLSearchParams(location.search).get('date') || today;
-  const [title, setTitle] = useState('אני בחווה'); const [date, setDate] = useState(preset); const [from, setFrom] = useState('09:00'); const [to, setTo] = useState('');
-  const save = () => saveCalendarItem(ctx.actor, { title: title.trim() === 'אני בחווה' ? `${firstName(ctx.actor.name)} בחווה` : title.trim(), date, time: to ? `${from}–${to}` : from }).then(() => navigate('/manage/calendar', true)).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
-  return (
-    <>
-      <Top backTo="/manage/calendar" backLabel="יומן" title="פריט ביומן" sub="היומן שלך, בצבע שלך. כל המנהלים רואים, כדי לדעת מי בחווה ומתי." />
-      <Field label="מה"><div className="chips">{['אני בחווה', 'פגישת צוות', 'ספק מגיע', 'סיור'].map((t) => <Chip key={t} on={title === t} onClick={() => setTitle(t)}>{t}</Chip>)}</div><Input style={{ marginTop: 10 }} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-      <Field label="מתי"><div className="chips"><Chip on={date === today} onClick={() => setDate(today)}>היום</Chip><Chip on={date === addDays(today, 1)} onClick={() => setDate(addDays(today, 1))}>מחר · {fmtWeekday(addDays(today, 1))} {fmtDate(addDays(today, 1))}</Chip></div><Input type="date" dir="ltr" style={{ marginTop: 10 }} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-      <div className="cols"><Field label="משעה"><Input type="time" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="עד (לא חובה)"><Input type="time" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} /></Field></div>
-      <p className="note">ביומן של {firstName(ctx.actor.name)} · הצבע שלך ביומן המשותף. תזכורות וחזרה שבועית: בשלב הבא.</p>
-      <div className="actions sticky"><Btn size="big" disabled={!title.trim() || !date} onClick={save}>שמירה ליומן</Btn></div>
     </>
   );
 }

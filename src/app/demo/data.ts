@@ -317,15 +317,23 @@ export const notifications: AppNotification[] = [
 
 // ---------- calendar ----------
 const cal = (id: string, owner: Actor, title: string, date: string, time: string, kind: CalendarItem['kind'] = 'manual', refId = ''): CalendarItem => ({ id, ownerUid: owner.uid, ownerName: owner.name, title, date, time, kind, refId, createdAt: ago(48) });
+const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 2, 12);
+const nextMonthPresenceDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-02`;
 export const calendar: CalendarItem[] = [
   cal('demo-c-1', A.eliya, 'אליה בחווה', key(0), '09:00–14:00'),
   cal('demo-c-2', A.beni, 'בני בחווה', key(1), '08:00–13:00'),
   cal('demo-c-3', A.noa, 'ספק מגיע', key(-1), '11:00'),
-  cal('demo-c-4', A.beni, 'פגישת צוות לפני הפסטיבל', key(THU), '17:00'),
-  cal('demo-c-5', A.noa, 'הכנת שולחנות', key(SAT1 - 1), ''),
+  cal('demo-c-4', A.beni, 'פגישת צוות לפני הפסטיבל', key(0), '10:30–11:30', 'meeting'),
+  cal('demo-c-5', A.noa, 'הכנות לפסטיבל', key(0), '', 'planning'),
   cal('demo-c-6', A.eliya, 'אליה בחווה', key(8), '09:00–14:00'),
   cal('demo-c-7', A.eliya, 'אליה בחווה', key(FRI), ''),
   cal('demo-c-8', A.beni, 'בני בחווה', key(15), ''),
+  cal('demo-c-presence-yoav', A.yoav, 'יואב בחווה', key(0), '08:00–11:00', 'presence'),
+  cal('demo-c-presence-yoav-later', A.yoav, 'יואב בחווה אחר הצהריים', key(0), '15:00–17:00', 'presence'),
+  cal('demo-c-presence-dana', A.dana, 'דנה בחווה', key(0), '08:30–13:30', 'presence'),
+  cal('demo-c-presence-noa', A.noa, 'נועה בחווה', key(0), '10:00–14:00', 'presence'),
+  cal('demo-c-presence-beni', A.beni, 'בני בחווה', key(0), '', 'presence'),
+  cal('demo-c-presence-yoav-next-month', A.yoav, 'יואב בחווה', nextMonthPresenceDate, '09:00–12:00', 'presence'),
   cal('visit_demo-v-kindergarten', A.beni, 'ביקור: גן ילדים "רימון" · 24', key(THU), '09:30', 'visit', 'demo-v-kindergarten'),
   cal('visit_demo-v-photo', A.noa, 'ביקור: חוג צילום באר שבע · 12', key(FRI - 3), 'שקיעה', 'visit', 'demo-v-photo'),
   cal('visit_demo-v-rachel', A.beni, 'אירוע פרטי: יום הולדת 60 לרחל · 30', key(FRI + 7), '11:00', 'visit', 'demo-v-rachel'),

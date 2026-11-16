@@ -620,10 +620,18 @@ try {
     ok(await w(MGR, 'calendar.update', { itemId, time: '09:30' }), 'calendar.update');
     const cl = await r(MGR, '/v1/calendar?dateFrom=2026-12-01&dateTo=2026-12-10');
     check(cl.json.data.items.map((x) => x.date).join() === '2026-12-02,2026-12-10', 'calendar.list date range, inclusive, in order', cl.json.data.items.map((x) => x.date));
+    const sharedCalendarKinds = ['presence', 'meeting', 'planning'];
+    for (const kind of sharedCalendarKinds) {
+      const id = `syn-calendar-${kind}`;
+      await seed('calendar', id, { title: kind, date: '2026-11-25', time: '09:00', ownerUid: 'syn-dani-l', ownerName: 'דני לוי', kind, refId: '', createdAt: t0 });
+      const list = await r(MGR, `/v1/calendar?kind=${kind}`);
+      check(list.status === 200 && list.json.data.items.some((item) => item.id === id && item.kind === kind), `calendar.list accepts kind ${kind}`);
+    }
 
     // overview
     const ovm = await r(MGR, '/v1/overview?date=2026-11-25');
     check(ovm.status === 200 && typeof ovm.json.data.tasks.open === 'number' && ovm.json.data.tasks.overdue >= 1 && 'visits' in ovm.json.data && 'payments' in ovm.json.data && ovm.json.data.upcomingEvents.some((e) => e.id === eventId), 'farm.overview for a manager: counts, overdue, payments, events', ovm.json.error);
+    check(sharedCalendarKinds.every((kind) => ovm.json.data.calendarToday.some((item) => item.kind === kind)), 'farm.overview includes new calendar kinds');
     const ovs = await r(STAFF, '/v1/overview');
     check(ovs.status === 200 && !('visits' in ovs.json.data) && !('payments' in ovs.json.data), 'farm.overview for staff has no visits or payments');
 

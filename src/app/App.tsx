@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
 import { useRoute, match, navigate } from './router';
-import { Icon, ToastProvider, A, Avatar, useDesktop, usePageEnter, todayISO, addDays } from './ui';
+import { Icon, ToastProvider, A, Avatar, Empty, Top, useDesktop, usePageEnter, todayISO } from './ui';
 import type { TeamCtx, GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
 import { ROLE_LABELS } from './types';
@@ -19,11 +19,14 @@ import { GuestHome, EventPage, OrderPage, LoginPage, OnboardingPage, BlockedPage
 import { ManageHomeScreen, InboxScreen } from './screens/Manage';
 import { EventsListScreen, EventEditor, EventHubScreen, EventGuestsScreen, EventEntryScreen, EventVendorsScreen, VendorsScreen, VendorEditor, EventProductsScreen, ProductEditor, EventTabsScreen, TabDetailScreen, EventReportScreen, EventFilesScreen, EventActivityScreen } from './screens/ManageEvents';
 import { PeopleScreen, PersonScreen, InviteRoleScreen, TemplatesScreen, TemplateEditor, PlacesScreen, PlaceEditor } from './screens/ManagePeople';
-import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen, CalendarScreen, CalendarAddScreen, ReportsScreen, ActivityScreen, SettingsScreen, SettingsPage, type SettingsPageKey } from './screens/ManageMore';
+import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen, ReportsScreen, ActivityScreen, SettingsScreen, SettingsPage, type SettingsPageKey } from './screens/ManageMore';
+import { CalendarScreen, CalendarEditor } from './screens/Calendar';
+import { calendarRange, shiftCalendarDay } from './screens/CalendarGrid';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
 const isCurrent = (i: NavItem, route: string) => i.match ? i.match(route) : i.path === '/' ? route === '/' : route.startsWith(i.path);
+const isCalendarRoute = (route: string) => /^(?:\/manage)?\/calendar(?:\/|$)/.test(route);
 
 function BottomNav({ route, items }: { route: string; items: NavItem[] }) {
   return <nav className="bottom" aria-label="ניווט ראשי"><div className="nav">{items.map((i) => <A key={i.path} to={i.path} className={isCurrent(i, route) ? 'on' : ''} aria-current={isCurrent(i, route) ? 'page' : undefined}><span className="ico"><Icon name={i.icon} /></span>{i.label}{i.badge ? <span className="badge">{i.badge > 99 ? '99+' : i.badge}</span> : null}</A>)}</div></nav>;
@@ -90,7 +93,8 @@ function GuestApp({ user, profile, settings }: { user: Session | null; profile: 
   const route = useRoute(); const online = useOnline();
   const ctx: GuestCtx = { user, profile, settings };
   const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
-  const screen = guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
+  const screen = isCalendarRoute(route) ? <><Top title="יומן החווה" backTo="/" backLabel="בית" /><Empty title="היומן זמין לצוות החווה" /></>
+    : guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
   return <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />;
 }
 function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
@@ -108,7 +112,7 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
 }
 
 /** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
-const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
+const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 // ---------- team app ----------
 function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
@@ -124,7 +128,9 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   const team = useTeam(true); const instances = useTodayInstances(true, manager, today);
   const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
   const inbox = useNotifications(manager); const people = usePeople(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
-  const calendar = useCalendar(manager, today, addDays(today, 14));
+  const week = calendarRange('week', today);
+  const calendar = useCalendar(true, week.from, manager ? shiftCalendarDay(today, 14) : week.to);
+  const calendarItems = calendar.items.filter((item) => !isHidden(item.id));
   const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, settings, places: places.items, templates: templates.items, team: team.items }), [user, actor, profile, manager, owner, settings, places.items, templates.items, team.items]);
   const guestCtx: GuestCtx = { user, profile, settings };
 
@@ -138,15 +144,16 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     { path: '/', icon: 'home', label: 'היום' },
     { path: '/tasks', icon: 'list', label: 'משימות', badge: myOpen || undefined, match: (r) => r.startsWith('/tasks') || r.startsWith('/history') },
     { path: '/shopping', icon: 'cart', label: 'קניות', badge: shopping.items.filter((i) => i.urgent).length || undefined },
-    manager && !desktop ? { path: '/manage', icon: 'people', label: 'ניהול', badge: inbox.items.length || undefined, match: (r) => r.startsWith('/manage') } : { path: '/events-staff', icon: 'qr', label: 'אירועים', match: (r) => r.startsWith('/events-staff') || r.startsWith('/scan') || r.startsWith('/stall') },
+    { path: '/calendar', icon: 'calendar', label: 'יומן', match: isCalendarRoute },
+    manager && !desktop ? { path: '/manage', icon: 'people', label: 'ניהול', badge: inbox.items.length || undefined, match: (r) => r.startsWith('/manage') && !isCalendarRoute(r) } : { path: '/events-staff', icon: 'qr', label: 'אירועים', match: (r) => r.startsWith('/events-staff') || r.startsWith('/scan') || r.startsWith('/stall') },
   ];
   const manageNav: NavItem[] | undefined = manager ? [
     { path: '/manage/inbox', icon: 'bell', label: 'לטיפול', badge: inbox.items.length || undefined },
     { path: '/manage/events', icon: 'ticket', label: 'אירועים' }, { path: '/manage/people', icon: 'people', label: 'אנשים' }, { path: '/manage/visits', icon: 'pin', label: 'ביקורים' },
-    { path: '/manage/donations', icon: 'heart', label: 'תרומות' }, { path: '/manage/calendar', icon: 'calendar', label: 'יומן' }, { path: '/manage/reports', icon: 'chart', label: 'דוחות' }, { path: '/manage/settings', icon: 'sliders', label: 'הגדרות' },
+    { path: '/manage/donations', icon: 'heart', label: 'תרומות' }, { path: '/manage/reports', icon: 'chart', label: 'דוחות' }, { path: '/manage/settings', icon: 'sliders', label: 'הגדרות' },
   ] : undefined;
 
-  const today_ = <TodayScreen ctx={ctx} open={open.items} recent={recent.items} shopping={shopping.items} events={events.items} calendar={calendar.items} inbox={inbox.items} loading={open.loading} />;
+  const today_ = <TodayScreen ctx={ctx} open={open.items} recent={recent.items} shopping={shopping.items} events={events.items} calendar={calendarItems} inbox={inbox.items} loading={open.loading} />;
   const tasks = (sel?: string) => <TasksScreen ctx={ctx} open={open.items} recent={recent.items} loading={open.loading} selectedId={sel} />;
   const shop = (sel?: string) => <ShoppingScreen ctx={ctx} open={shopping.items} recent={bought.items} loading={shopping.loading} selectedId={sel} />;
   let m: Record<string, string> | null;
@@ -170,9 +177,13 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   else if ((m = match(r, '/stall/:id/pick'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} mode="pick" />}</EventModuleGate>;
   else if ((m = match(r, '/stall/:id/tabs'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} mode="tabs" />}</EventModuleGate>;
   else if ((m = match(r, '/stall/:id'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} />}</EventModuleGate>;
+  else if (r === '/calendar' || r === '/manage/calendar') master = <CalendarScreen ctx={ctx} />;
+  else if (r === '/calendar/new' || r === '/manage/calendar/new') master = <CalendarEditor ctx={ctx} />;
+  else if ((m = match(r, '/calendar/:id/edit'))) master = <CalendarEditor key={m.id} id={m.id} ctx={ctx} />;
+  else if ((m = match(r, '/calendar/:view/:date'))) master = <CalendarScreen ctx={ctx} view={m.view} date={m.date} />;
   else if (guestRoutes(r, guestCtx)) master = guestRoutes(r, guestCtx);
   else if (r.startsWith('/manage') && manager) {
-    const mh = <ManageHomeScreen ctx={ctx} inbox={inbox.items} events={events.items} visits={visits.items} donations={donations.items} people={people.items} calendar={calendar.items} templatesCount={templates.items.filter((t) => t.active).length} placesCount={places.items.length} vendorsCount={vendors.items.length} />;
+    const mh = <ManageHomeScreen ctx={ctx} inbox={inbox.items} events={events.items} visits={visits.items} donations={donations.items} people={people.items} calendar={calendarItems} templatesCount={templates.items.filter((t) => t.active).length} placesCount={places.items.length} vendorsCount={vendors.items.length} />;
     if (r === '/manage') master = desktop ? <InboxScreen ctx={ctx} inbox={inbox.items} /> : mh;
     else if (r === '/manage/inbox') master = <InboxScreen ctx={ctx} inbox={inbox.items} />;
     else if (r === '/manage/events') master = <EventsListScreen ctx={ctx} />;
@@ -205,8 +216,6 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else if ((m = match(r, '/manage/visits/:id'))) { master = <VisitsScreen ctx={ctx} visits={visits.items} selectedId={m.id} />; detail = <VisitDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
     else if (r === '/manage/donations') master = <DonationsScreen ctx={ctx} donations={donations.items} />;
     else if ((m = match(r, '/manage/donations/:id'))) { master = <DonationsScreen ctx={ctx} donations={donations.items} selectedId={m.id} />; detail = <DonationDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/calendar') master = <CalendarScreen ctx={ctx} />;
-    else if (r === '/manage/calendar/new') master = <CalendarAddScreen ctx={ctx} />;
     else if (r === '/manage/reports') master = <ReportsScreen ctx={ctx} />;
     else if (r === '/manage/activity') master = <ActivityScreen ctx={ctx} />;
     else if (r === '/manage/settings') master = <SettingsScreen ctx={ctx} />;
