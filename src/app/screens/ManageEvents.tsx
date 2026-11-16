@@ -10,6 +10,7 @@ import { ExportActions } from '../ExportTable';
 import { useActivityForEvent, ACTION_LABELS } from '../activity';
 import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
+import { PaymentConfirmationActions } from './PaymentConfirmation';
 
 const toLocal = (iso: string) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocal = (s: string) => (s ? new Date(s).toISOString() : '');
@@ -213,6 +214,15 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const cancel = (o: Ticket[]) => { const reason = prompt('סיבת הביטול (תירשם בהיסטוריה):') ?? null; if (reason === null) return; cancelOrder(ctx.actor, o.filter((x) => x.status === 'valid'), reason).then(() => toast({ text: 'ההזמנה בוטלה' })); };
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: all.filter((o) => o.some((x) => x.status === 'valid')).length }, ...(e.price ? [{ value: 'unpaid' as GuestFilter, label: 'לא שולם', n: all.filter((o) => o[0].paymentStatus === 'pending' && o.some((x) => x.status === 'valid')).length }, { value: 'claimed' as GuestFilter, label: 'סימנו "העברתי"', n: all.filter((o) => o[0].paymentStatus === 'claimed').length }] : []), { value: 'arrived', label: 'הגיעו', n: all.filter((o) => o.some((x) => x.entries > 0)).length || undefined }, { value: 'cancelled', label: 'בוטלו', n: all.filter((o) => !o.some((x) => x.status === 'valid')).length || undefined }]} />;
   const payPill = (t: Ticket, n: number) => t.status === 'cancelled' ? <Pill tone="rust">בוטל</Pill> : <Pill tone={isPaid(t.paymentStatus) ? 'ok' : 'ochre'}>{PAYMENT_LABELS[t.paymentStatus]}{t.paymentStatus === 'pending' || t.paymentStatus === 'claimed' ? ` · ${money(t.price * n)}` : ''}</Pill>;
+  const confirmation = (order: Ticket[], valid: Ticket[]) => {
+    const first = order[0];
+    if (!valid.length || !first.price) return null;
+    return <PaymentConfirmationActions ctx={ctx} collection="tickets" ids={valid.map((ticket) => ticket.id)}
+      uid={first.ownerUid} name={first.ownerName} phone={first.ownerPhone} amount={first.price * valid.length}
+      purpose={`כרטיסים לאירוע ${e.title}`} event={e.title}
+      paid={valid.every((ticket) => ticket.paymentStatus === 'paid' || ticket.paymentStatus === 'paid_onsite')}
+      confirmation={valid.find((ticket) => ticket.paymentConfirmation)?.paymentConfirmation} />;
+  };
   const actions = (o: Ticket[]) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); if (!valid.length) return null; return <>{t.paymentStatus === 'claimed' && <Btn size="xs" onClick={() => pay(o, 'paid')}>אישור תשלום</Btn>}{t.paymentStatus === 'pending' && <><a className="btn ghost xs" href={remind(o)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a><Btn size="xs" kind="ghost" onClick={() => pay(o, 'paid')}>סימון שולם</Btn></>}<a className="btn quiet xs" href={telLink(t.ownerPhone)}><Icon name="phone" size={14} /></a><Btn size="xs" kind="quiet" onClick={() => cancel(o)}>ביטול</Btn></>; };
   return (
     <EventFrame id={id} tab="guests" ctx={ctx} title={desktop ? e.title : 'נרשמים'} end={<ExportActions getData={registrationExport} />}>
@@ -221,8 +231,8 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
       {!desktop && <div style={{ paddingTop: 10 }}>{chips}</div>}
       {!sorted.length && <Empty title="אין נרשמים כאלה" />}
       {desktop ? <div className="tablewrap"><table><thead><tr><Th k="name" sort={sort} onSort={toggle}>שם</Th><th>טלפון</th><Th k="count" sort={sort} onSort={toggle}>כרטיסים</Th><Th k="payment" sort={sort} onSort={toggle}>תשלום</Th><Th k="createdAt" sort={sort} onSort={toggle}>הוזמן</Th><th>הגיעו</th><th>תשובות</th><th></th></tr></thead>
-        <tbody>{sorted.map((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); return <tr key={t.orderId}><td style={{ fontWeight: 600 }}><A to={`/manage/people/${t.ownerUid}`}>{t.ownerName}</A>{valid.some((x) => x.holderName) && <div className="muted" style={{ fontSize: 13, whiteSpace: 'normal', fontWeight: 400 }}>{valid.filter((x) => x.holderName).map((x) => `כרטיס ${x.index}: ${x.holderName}`).join(' · ')}</div>}</td><td className="ltr">{t.ownerPhone}</td><td>{valid.length}</td><td>{payPill(t, valid.length)}</td><td className="muted">{fmtDate(t.createdAt)}</td><td>{valid.filter((x) => x.entries > 0).length || <span className="muted">—</span>}</td><td className="muted wrap" style={{ fontSize: 13 }}>{Object.values(t.answers || {}).join(' / ') || '—'}</td><td><div className="acts">{actions(o)}</div></td></tr>; })}</tbody></table></div>
-        : <div className="list">{sorted.map((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); return <div key={t.orderId} className="row"><Avatar name={t.ownerName} /><div className="main"><A to={`/manage/people/${t.ownerUid}`} className="title">{t.ownerName} · {valid.length || o.length} {(valid.length || o.length) === 1 ? 'כרטיס' : 'כרטיסים'}</A><div className="meta"><span className="ltr">{t.ownerPhone}</span>{payPill(t, valid.length)}<span>{relTime(t.createdAt)}</span></div>{valid.some((x) => x.holderName) && <div className="meta">{valid.filter((x) => x.holderName).map((x) => `כרטיס ${x.index}: ${x.holderName}`).join(' · ')}</div>}{Object.entries(t.answers || {}).map(([k, v]) => <div key={k} className="meta">{e.questions.find((qq) => qq.id === k)?.label || k}: "{v}"</div>)}<div className="inline" style={{ marginTop: 8 }}>{actions(o)}</div></div></div>; })}</div>}
+        <tbody>{sorted.map((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); return <tr key={t.orderId}><td style={{ fontWeight: 600 }}><A to={`/manage/people/${t.ownerUid}`}>{t.ownerName}</A>{valid.some((x) => x.holderName) && <div className="muted" style={{ fontSize: 13, whiteSpace: 'normal', fontWeight: 400 }}>{valid.filter((x) => x.holderName).map((x) => `כרטיס ${x.index}: ${x.holderName}`).join(' · ')}</div>}</td><td className="ltr">{t.ownerPhone}</td><td>{valid.length}</td><td>{payPill(t, valid.length)}</td><td className="muted">{fmtDate(t.createdAt)}</td><td>{valid.filter((x) => x.entries > 0).length || <span className="muted">—</span>}</td><td className="muted wrap" style={{ fontSize: 13 }}>{Object.values(t.answers || {}).join(' / ') || '—'}</td><td><div className="acts">{actions(o)}</div>{confirmation(o, valid)}</td></tr>; })}</tbody></table></div>
+        : <div className="list">{sorted.map((o) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); return <div key={t.orderId} className="row"><Avatar name={t.ownerName} /><div className="main"><A to={`/manage/people/${t.ownerUid}`} className="title">{t.ownerName} · {valid.length || o.length} {(valid.length || o.length) === 1 ? 'כרטיס' : 'כרטיסים'}</A><div className="meta"><span className="ltr">{t.ownerPhone}</span>{payPill(t, valid.length)}<span>{relTime(t.createdAt)}</span></div>{valid.some((x) => x.holderName) && <div className="meta">{valid.filter((x) => x.holderName).map((x) => `כרטיס ${x.index}: ${x.holderName}`).join(' · ')}</div>}{Object.entries(t.answers || {}).map(([k, v]) => <div key={k} className="meta">{e.questions.find((qq) => qq.id === k)?.label || k}: "{v}"</div>)}<div className="inline" style={{ marginTop: 8 }}>{actions(o)}</div>{confirmation(o, valid)}</div></div>; })}</div>}
     </EventFrame>
   );
 }
@@ -421,6 +431,11 @@ export function TabDetailScreen({ eventId, tid, ctx }: { eventId: string; tid: s
     <>
       <Top backTo={`/manage/events/${eventId}/tabs`} backLabel="חשבונות" title={t.guestName} sub={`${t.eventTitle} · ${fmtDate(t.createdAt)} · נפתח על ידי ${firstName(t.createdBy.name)}`} end={<Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : TAB_LABELS[t.status]}</Pill>} />
       <div className={'paybox ' + (t.status === 'paid' ? 'ok' : t.status === 'waived' ? '' : '')}><b>{money(t.total)}</b>{t.status === 'open' || t.status === 'claimed' ? 'לתשלום' : TAB_LABELS[t.status]}</div>
+      {t.total > 0 && <div className="pad">
+        <PaymentConfirmationActions ctx={ctx} collection="tabs" ids={[t.id]} uid={t.guestUid} name={t.guestName} phone={t.guestPhone}
+          amount={t.total} event={t.eventTitle} purpose={`חשבון הדוכן באירוע ${t.eventTitle}`}
+          paid={t.status === 'paid'} confirmation={t.paymentConfirmation} />
+      </div>}
       <Sec title="פריטים" n={t.items.length} />
       <div className="list">{t.items.map((i, idx) => <Row key={idx} center title={<>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</>} meta={<span>{fmtTime(i.at)} · {firstName(i.by.name)}</span>} end={<><span className="amount">{money(i.price * i.qty)}</span>{t.status !== 'paid' && <button type="button" className="iconbtn" aria-label="הסרה" onClick={() => { const r = prompt('למה מסירים? (לא חובה)'); if (r !== null) removeTabItem(ctx.actor, t, idx, r); }}><Icon name="x" size={18} /></button>}</>} />)}</div>
       <Sec title="תשלום והיסטוריה" />

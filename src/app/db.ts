@@ -123,6 +123,14 @@ export const inc = (by: number): FieldOp => ({ __op: 'inc', by });
 const isOp = (v: unknown): v is FieldOp => !!v && typeof v === 'object' && '__op' in (v as object);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const toFirestore = (patch: Record<string, unknown>) => Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, !isOp(v) ? v : v.__op === 'inc' ? increment(v.by) : v.__op === 'union' ? arrayUnion(...v.values) : arrayRemove(...v.values)]));
+const isMap = (value: unknown): value is Row => !!value && typeof value === 'object' && !Array.isArray(value);
+function mergeLocal(current: Row, patch: Row): Row {
+  const merged = Object.entries(patch).map(([key, value]) => {
+    const existing = current[key];
+    return [key, isMap(existing) && isMap(value) && Object.keys(value).length ? mergeLocal(existing, value) : value];
+  });
+  return { ...current, ...Object.fromEntries(merged) };
+}
 function applyLocal(cur: Record<string, unknown>, patch: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...cur };
   for (const [k, v] of Object.entries(patch)) {
@@ -146,6 +154,10 @@ export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collect
 type WriteOpts = { quiet?: boolean };
 export const write = {
   async set(col: string, id: string, data: Record<string, unknown>, o: WriteOpts = {}) { if (demoOnly()) return demoSet(col, id, data); await settle(setDoc(real(col, id), data), o.quiet); },
+  async merge(col: string, id: string, data: Record<string, unknown>) {
+    if (demoOnly()) return demoSet(col, id, mergeLocal(demoDoc(col + '/' + id) || {}, data));
+    await settle(setDoc(real(col, id), data, { merge: true }));
+  },
   async update(col: string, id: string, patch: Record<string, unknown>, o: WriteOpts = {}) {
     if (demoOnly()) return demoSet(col, id, applyLocal(demoDoc(`${col}/${id}`) || {}, patch));
     await settle(updateDoc(real(col, id), toFirestore(patch)), o.quiet);

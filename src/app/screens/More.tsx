@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import type { TeamCtx, GuestCtx } from '../ctx';
-import type { Profile } from '../types';
+import type { TeamCtx } from '../ctx';
+import type { Profile, RegistrationField } from '../types';
 import { ROLE_LABELS } from '../types';
-import { Top, Ledger, Sec, Btn, Icon, A, Field, Input, Select, SwitchRow, Avatar, Chips, useToast, todayISO, addDays } from '../ui';
+import { Top, Ledger, Sec, Btn, Icon, A, Field, SwitchRow, Avatar, Chips, useToast, todayISO, addDays } from '../ui';
 import { navigate } from '../router';
 import { signOutUser } from '../firebase';
 import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
 import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
+import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
 
 const PREF_KEY = 'farm-prefs';
 const readPrefs = () => { try { return { assigned: true, urgent: true, eventDay: true, newEvents: true, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') } as Record<string, boolean>; } catch { return { assigned: true, urgent: true, eventDay: true, newEvents: true }; } };
@@ -26,6 +27,7 @@ export function MoreScreen({ ctx }: { ctx: TeamCtx }) {
       <Sec title="עוד" />
       <div className="links">
         <A to="/me"><Icon name="ticket" />הכרטיסים והתרומות שלי<span className="s">כמו אורח, אם הזמנתי לאירוע</span><Icon name="chev" className="chev" size={18} /></A>
+        <A to="/contact?from=team"><Icon name="phone" />פנייה למנהלים<Icon name="chev" className="chev" size={18} /></A>
         <InstallHint />
         <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A>
         <a href="/" target="_blank" rel="noopener"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a>
@@ -37,21 +39,38 @@ export function MoreScreen({ ctx }: { ctx: TeamCtx }) {
   );
 }
 
-export function ProfileSection({ profile, fields }: { profile: Profile; fields: GuestCtx['settings']['registrationFields'] }) {
-  const [edit, setEdit] = useState(false);
-  const [f, setF] = useState({ displayName: profile.displayName, phone: profile.phone, fields: { ...(profile.fields || {}) } });
+export function ProfileSection({ profile, fields }: { profile: Profile; fields: RegistrationField[] }) {
+  const [draft, setDraft] = useState<Partial<ProfileDetails> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const questions = signupQuestions(fields);
+  const edit = draft !== null;
+  const details = {
+    displayName: draft?.displayName ?? profile.displayName,
+    phone: draft?.phone ?? profile.phone,
+    fields: { ...profile.fields, ...draft?.fields },
+  };
   const toast = useToast();
-  const save = async () => { try { await updateOwnProfile(profile.uid, f); setEdit(false); toast({ text: 'נשמר' }, 2000); } catch { toast({ text: 'לא נשמר', kind: 'error' }); } };
+  const save = async () => {
+    if (!draft || !profileDetailsComplete(details, questions)) return;
+    setBusy(true);
+    try {
+      await updateOwnProfile(profile.uid, draft);
+      setDraft(null);
+      toast({ text: 'נשמר' }, 2000);
+    } catch {
+      toast({ text: 'לא נשמר', kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
-      <Sec title="הפרטים שלי" link={edit ? 'ביטול' : 'עריכה'} onLink={() => setEdit(!edit)} />
-      {!edit ? <dl className="kv"><dt>שם בעברית</dt><dd>{profile.displayName}</dd><dt>טלפון</dt><dd className="ltr">{profile.phone || '—'}</dd>{fields.map((x) => <span key={x.id} style={{ display: 'contents' }}><dt>{x.label}</dt><dd>{profile.fields?.[x.id] || <span className="muted">—</span>}</dd></span>)}</dl>
-        : <>
-          <Field label="שם בעברית"><Input value={f.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} /></Field>
-          <Field label="טלפון"><Input dir="ltr" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
-          {fields.map((x) => <Field key={x.id} label={x.label}>{x.type === 'choice' ? <Select value={f.fields[x.id] || ''} onChange={(e) => setF({ ...f, fields: { ...f.fields, [x.id]: e.target.value } })}><option value="">בחירה…</option>{x.options.map((o) => <option key={o}>{o}</option>)}</Select> : <Input type={x.type === 'date' ? 'date' : 'text'} dir={x.type === 'date' ? 'ltr' : undefined} value={f.fields[x.id] || ''} onChange={(e) => setF({ ...f, fields: { ...f.fields, [x.id]: e.target.value } })} />}</Field>)}
-          <div className="actions"><Btn disabled={!f.displayName.trim()} onClick={save}>שמירה</Btn></div>
-        </>}
+      <Sec title="הפרטים שלי" link={edit ? 'ביטול' : 'עריכה'} onLink={() => { if (!busy) setDraft(edit ? null : {}); }} />
+      {!edit ? <dl className="kv"><dt>שם בעברית</dt><dd>{profile.displayName}</dd><dt>טלפון</dt><dd className="ltr">{profile.phone || '—'}</dd>{questions.map((field) => <span key={field.id} style={{ display: 'contents' }}><dt>{field.label}</dt><dd>{answerOf(profile.fields, field) || <span className="muted">—</span>}</dd></span>)}</dl>
+        : <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
+          <RegistrationInputs data={details} questions={questions} onChange={(patch) => setDraft((current) => ({ ...current, ...patch, fields: { ...current?.fields, ...patch.fields } }))} />
+          <div className="actions"><Btn type="submit" disabled={!profileDetailsComplete(details, questions) || busy}>שמירה</Btn></div>
+        </form>}
     </>
   );
 }
@@ -88,7 +107,7 @@ export function SignOut() {
 export function DemoSection({ role }: { role: Profile['role'] }) {
   const demo = useDemo();
   const toast = useToast();
-  const personas: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon'];
+  const personas: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new'];
   return (
     <>
       <Sec title="מצב הדגמה" n={demo.on ? 'פעיל' : undefined} />

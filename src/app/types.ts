@@ -19,6 +19,10 @@ export type Profile = {
 };
 
 export type Actor = { uid: string; name: string };
+export type ReceiptPreference = 'whatsapp' | 'email';
+export const RECEIPT_PREFERENCE_FIELD = 'receiptPreference';
+export const RECEIPT_PREFERENCE_LABELS: Record<ReceiptPreference, string> = { whatsapp: 'וואטסאפ', email: 'מייל' };
+export type PaymentConfirmation = { by: Actor; at: string };
 
 export type Place = { id: string; name: string; lat: number; lng: number; createdBy: Actor; createdAt: string };
 
@@ -99,7 +103,7 @@ export type EventFile = { name: string; url: string; kind: 'doc' | 'image'; by: 
 export type FarmEvent = {
   id: string; title: string; description: string; image: string; location: string;
   start: string; end: string; price: number; maxPerOrder: number; capacity: number;
-  open: boolean; published: boolean; questions: EventQuestion[];
+  open: boolean; published: boolean; publishedAt?: string; questions: EventQuestion[];
   entry?: boolean; stall?: boolean;
   files?: EventFile[];
   createdBy: Actor; createdAt: string; updatedAt: string;
@@ -111,6 +115,7 @@ export type Ticket = {
   ownerUid: string; ownerName: string; ownerPhone: string; holderName: string;
   secret: string; price: number; paymentStatus: PaymentStatus; status: 'valid' | 'cancelled';
   scans: TicketScan[]; entries: number; answers: Record<string, string>;
+  paymentConfirmation?: PaymentConfirmation;
   createdAt: string; updatedAt: string;
 };
 
@@ -124,6 +129,7 @@ export type Visit = {
 export type Donation = {
   id: string; uid: string; name: string; phone: string; amount: number; label: string; note: string; memorial: string;
   receiptWanted: boolean; receiptName: string; receiptSent: boolean; paymentStatus: PaymentStatus;
+  paymentConfirmation?: PaymentConfirmation;
   createdAt: string; updatedAt: string;
 };
 
@@ -136,33 +142,38 @@ export const TAB_LABELS: Record<TabStatus, string> = { open: 'פתוח', claimed
 export type Tab = {
   id: string; eventId: string; eventTitle: string; guestUid: string; guestName: string; guestPhone: string; ticketId: string;
   items: TabItem[]; total: number; status: TabStatus; createdBy: Actor; createdAt: string; updatedAt: string;
+  paymentConfirmation?: PaymentConfirmation;
 };
 
 export type RegistrationField = { id: string; label: string; type: 'text' | 'date' | 'choice'; options: string[]; required: boolean };
+export type FarmContact = { whatsapp?: string; phone?: string };
 export type Settings = {
   donationPresets: { amount: number; label: string }[];
   visitTypes: string[];
   payment: { bit: string; paybox: string; cash: boolean; note: string };
-  templates: { visitApproved: string; donationThanks: string; debtReminder: string; ticketReminder: string; vendorInvite?: string };
+  templates: { visitApproved: string; donationThanks: string; debtReminder: string; ticketReminder: string; vendorInvite?: string; paymentConfirmation?: string };
   registrationFields: RegistrationField[];
   guestIntro: string;
+  contact?: FarmContact;
 };
 export const DEFAULT_SETTINGS: Settings = {
   donationPresets: [{ amount: 18, label: 'חי' }, { amount: 180, label: 'עשר פעמים חי' }, { amount: 360, label: 'לב' }],
   visitTypes: ['סיור בחווה', 'מפגש קבוצתי', 'אירוע פרטי', 'אחר'],
   payment: { bit: '', paybox: '', cash: true, note: '' },
+  contact: { whatsapp: '', phone: '' },
   templates: {
     visitApproved: 'שלום [שם], הביקור בחוות רווה ב־[תאריך] מאושר. נשמח לראותכם!',
     donationThanks: 'שלום [שם], תודה רבה על התרומה לחוות רווה.',
     debtReminder: 'שלום [שם], תודה שהייתם ב־[אירוע]. נשאר לתשלום [סכום] ₪. אפשר להעביר בביט או ב־PayBox. תודה!',
     ticketReminder: 'שלום [שם], מזכירים: [אירוע] מתקיים ב־[תאריך]. הכרטיסים באפליקציה: https://havat-ravve.web.app/app/me',
     vendorInvite: 'שלום [שם], נשמח שתגיעו עם דוכן ל־[אירוע] ב־[תאריך] בחוות רווה. מתאים?',
+    paymentConfirmation: 'שלום [שם], קיבלנו את התשלום בסך [סכום] עבור [עבור]. תודה מחוות רווה!',
   },
   registrationFields: [],
   guestIntro: 'ברוכים הבאים לחוות רווה. כאן מזמינים כרטיסים לאירועים, מתאמים ביקור ותורמים.',
 };
 
-export type NotificationType = 'visit' | 'donation' | 'join' | 'order' | 'receipt' | 'tab' | 'claim';
+export type NotificationType = 'visit' | 'donation' | 'join' | 'order' | 'receipt' | 'tab' | 'claim' | 'contact';
 export type AppNotification = { id: string; type: NotificationType; title: string; text: string; link: string; refId: string; createdAt: string; handled: boolean; handledBy: Actor | null; handledAt: string | null };
 
 export type CalendarKind = 'manual' | 'visit' | 'event' | 'presence' | 'meeting' | 'planning';

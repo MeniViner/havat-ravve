@@ -6,10 +6,12 @@ import type { TeamCtx } from '../ctx';
 import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, money, useDesktop, dayLabel } from '../ui';
 import { navigate } from '../router';
 import { usePerson, useHistoryTasks, useOpenTasks } from '../store';
-import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
+import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, upsertCalendarRef, deleteCalendarRef, saveSettingsPart, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, contactPhoneOk, handleNotificationsFor, useNotifications } from '../data';
 import { ExportActions } from '../ExportTable';
 import { useActivityFor, useActivityByKind, ACTION_LABELS } from '../activity';
 import { useList } from '../db';
+import { CmsEditorLink } from './Manage';
+import { PaymentConfirmationActions } from './PaymentConfirmation';
 
 // ---------- visits ----------
 type VFilter = 'new' | 'approved' | 'rejected' | 'past' | 'all';
@@ -134,6 +136,10 @@ export function DonationDetailScreen({ id, ctx, panel }: { id: string; ctx: Team
       {d.note && <blockquote className="quote" style={{ marginTop: 12 }}>"{d.note}"</blockquote>}
       {donor.item ? <Row center to={`/manage/people/${donor.item.uid}`} start={<Avatar name={donor.item.displayName} />} title={donor.item.displayName} meta={<><span className="ltr">{donor.item.phone}</span><span>לקוח/ה #{donor.item.customerNumber} · {count} תרומות עד היום</span></>} chev /> : <dl className="kv"><dt>טלפון</dt><dd className="ltr">{d.phone || '—'}</dd></dl>}
       <dl className="kv"><dt>קבלה</dt><dd>{d.receiptWanted ? <>{d.receiptSent ? <Pill tone="ok">נשלחה</Pill> : <Pill tone="ochre">צריך/ה קבלה</Pill>} על שם: {d.receiptName || d.name}</> : <span className="muted">לא ביקש/ה</span>}</dd><dt>אמצעי</dt><dd>{d.paymentStatus === 'claimed' ? `סימן/ה "העברתי" · ${whenText(d.updatedAt)}` : d.paymentStatus === 'pending' ? 'עוד לא סימן/ה שהעביר/ה' : PAYMENT_LABELS[d.paymentStatus]}</dd></dl>
+      <div className="pad">
+        <PaymentConfirmationActions ctx={ctx} collection="donations" ids={[d.id]} uid={d.uid} name={d.name} phone={d.phone}
+          amount={d.amount} purpose="תרומה לחווה" paid={d.paymentStatus === 'paid'} confirmation={d.paymentConfirmation} />
+      </div>
       <div className="inline pad" style={{ paddingTop: 12 }}>{d.phone && <><a className="btn ghost sm" href={waLink(d.phone, fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': d.amount }))} target="_blank" rel="noopener"><Icon name="whatsapp" size={18} />תודה בוואטסאפ</a><a className="btn ghost sm" href={telLink(d.phone)}><Icon name="phone" size={18} />התקשרות</a></>}</div>
       <Sec title="היסטוריה" />
       <div className="list">{log.items.map((a) => <Row key={a.id} center title={<span style={{ fontSize: 15, fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={<span>{whenText(a.at)}</span>} />)}<Row center title={<span style={{ fontSize: 15, fontWeight: 500 }}>התרומה נרשמה מהאפליקציה · התראה למנהלים</span>} meta={<span>{whenText(d.createdAt)}</span>} /></div>
@@ -256,23 +262,28 @@ export function SettingsScreen({ ctx }: { ctx: TeamCtx }) {
         <A to="/manage/settings/donations"><Icon name="heart" />סכומי תרומה<span className="s">{s.donationPresets.map((p) => `${p.amount} ₪`).join(' · ')} + סכום</span><Icon name="chev" className="chev" size={18} /></A>
         <A to="/manage/settings/visit-types"><Icon name="pin" />סוגי ביקור<span className="s">{s.visitTypes.join(', ')}</span><Icon name="chev" className="chev" size={18} /></A>
         <A to="/manage/settings/questions"><Icon name="list" />שאלות הרשמה נוספות<span className="s">{s.registrationFields.length ? s.registrationFields.map((f) => f.label).join(', ') : 'רק שם וטלפון'}</span><Icon name="chev" className="chev" size={18} /></A>
-        <A to="/manage/settings/whatsapp"><Icon name="whatsapp" />הודעות מוכנות לוואטסאפ<span className="s">אישור ביקור, תודה, תזכורות</span><Icon name="chev" className="chev" size={18} /></A>
+        <A to="/manage/settings/whatsapp"><Icon name="whatsapp" />הודעות מוכנות לוואטסאפ<span className="s">אישור ביקור, אישור תשלום ותזכורות</span><Icon name="chev" className="chev" size={18} /></A>
+        <A to="/manage/settings/contact"><Icon name="phone" />פרטי קשר לחווה<span className="s">{s.contact?.phone || s.contact?.whatsapp || 'לא הוגדר'}</span><Icon name="chev" className="chev" size={18} /></A>
         {ctx.owner && <A to="/manage/settings/managers"><Icon name="people" />מנהלים ובעלים<span className="s">{owners} בעלים · {managers} מנהלים</span><Icon name="chev" className="chev" size={18} /></A>}
         <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<span className="s">הנוסח שהאורח מאשר</span><Icon name="chev" className="chev" size={18} /></A>
-        <a href="/admin" target="_blank" rel="noopener"><Icon name="external" />עריכת האתר<span className="s">טקסטים ותמונות באתר התדמית, נפתח בחלון נפרד</span><Icon name="chev" className="chev" size={18} /></a>
+        <CmsEditorLink ctx={ctx} />
       </div>
       <Field label="משפט פתיחה לאורחים" hint="מופיע בראש דף הבית של האורח."><Textarea rows={2} value={intro ?? s.guestIntro} onChange={(e) => setIntro(e.target.value)} /></Field>
-      {intro !== null && intro !== s.guestIntro && <div className="actions"><Btn onClick={() => saveSettings(ctx.actor, { ...s, guestIntro: intro.trim() }).then(() => { setIntro(null); toast({ text: 'נשמר' }, 2000); })}>שמירה</Btn></div>}
+      {intro !== null && intro !== s.guestIntro && <div className="actions"><Btn onClick={() => saveSettingsPart(ctx.actor, { guestIntro: intro.trim() }).then(() => { setIntro(null); toast({ text: 'נשמר' }, 2000); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }))}>שמירה</Btn></div>}
     </>
   );
 }
-export type SettingsPageKey = 'payments' | 'donations' | 'visit-types' | 'questions' | 'whatsapp' | 'managers';
+export type SettingsPageKey = 'payments' | 'donations' | 'visit-types' | 'questions' | 'whatsapp' | 'managers' | 'contact';
 export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKey }) {
   const toast = useToast();
-  const [s, setS] = useState<Settings>(() => structuredClone(ctx.settings));
-  const dirty = JSON.stringify(s) !== JSON.stringify(ctx.settings);
-  const save = () => saveSettings(ctx.actor, s).then(() => { toast({ text: 'נשמר' }, 2000); navigate('/manage/settings', true); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
+  const [draft, setS] = useState<Settings | null>(null);
+  const s = draft ?? ctx.settings;
+  const sections: Partial<Record<SettingsPageKey, keyof Settings>> = { payments: 'payment', donations: 'donationPresets', 'visit-types': 'visitTypes', questions: 'registrationFields', whatsapp: 'templates' };
+  const section = sections[page];
+  const dirty = section && JSON.stringify(s[section]) !== JSON.stringify(ctx.settings[section]);
+  const save = () => section && saveSettingsPart(ctx.actor, { [section]: s[section] }).then(() => { toast({ text: 'נשמר' }, 2000); navigate('/manage/settings', true); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
   const foot = <div className="actions sticky"><Btn size="big" disabled={!dirty} onClick={save}>שמירה</Btn></div>;
+  if (page === 'contact') return <ContactSettings ctx={ctx} />;
   if (page === 'payments') return (
     <>
       <Top backTo="/manage/settings" backLabel="הגדרות" title="תשלומים" sub="מה האורח רואה כשצריך לשלם על כרטיס, תרומה או חשבון דוכן." />
@@ -309,7 +320,7 @@ export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKe
     const setF = (i: number, p: Partial<RegistrationField>) => setS({ ...s, registrationFields: fields.map((f, j) => j === i ? { ...f, ...p } : f) });
     return (
       <>
-        <Top backTo="/manage/settings" backLabel="הגדרות" title="שאלות הרשמה נוספות" sub='בהרשמה שואלים רק שם וטלפון. כל שאלה כאן קופצת בכניסה הבאה כ"השלמת פרטים", ואפשר לדחות.' />
+        <Top backTo="/manage/settings" backLabel="הגדרות" title="שאלות הרשמה נוספות" sub='השאלות מופיעות בהרשמה. נרשמים קיימים יכולים להשלים ולעדכן תשובות ב"החשבון שלי".' />
         {fields.map((f, i) => <div key={f.id} style={{ borderBottom: '1px solid var(--line2)', paddingBottom: 14 }}>
           <Field label={`שאלה ${i + 1}`}><Input value={f.label} onChange={(e) => setF(i, { label: e.target.value })} /></Field>
           <div className="inline pad" style={{ paddingTop: 10 }}><Chips value={f.type} onChange={(type) => setF(i, { type })} options={[{ value: 'text', label: 'טקסט' }, { value: 'choice', label: 'בחירה' }, { value: 'date', label: 'תאריך' }]} /><Chip on={f.required} onClick={() => setF(i, { required: !f.required })}>חובה</Chip><Btn size="xs" kind="quiet" onClick={() => setS({ ...s, registrationFields: fields.filter((_, j) => j !== i) })}>הסרה</Btn></div>
@@ -323,18 +334,54 @@ export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKe
     );
   }
   if (page === 'whatsapp') {
-    const keys: { k: keyof Settings['templates']; t: string }[] = [{ k: 'visitApproved', t: 'אישור ביקור' }, { k: 'donationThanks', t: 'תודה על תרומה' }, { k: 'debtReminder', t: 'תזכורת חוב' }, { k: 'ticketReminder', t: 'תזכורת לאירוע' }, { k: 'vendorInvite', t: 'הזמנת בעל דוכן' }];
+    const keys: { k: keyof Settings['templates']; t: string }[] = [{ k: 'visitApproved', t: 'אישור ביקור' }, { k: 'donationThanks', t: 'תודה על תרומה' }, { k: 'debtReminder', t: 'תזכורת חוב' }, { k: 'ticketReminder', t: 'תזכורת לאירוע' }, { k: 'vendorInvite', t: 'הזמנת בעל דוכן' }, { k: 'paymentConfirmation', t: 'אישור תשלום (וואטסאפ ומייל)' }];
     return (
       <>
         <Top backTo="/manage/settings" backLabel="הגדרות" title="הודעות מוכנות לוואטסאפ" sub="הכפתור באפליקציה פותח וואטסאפ עם הטקסט מוכן. המערכת לא שולחת בעצמה." />
-        <div className="inline pad">{['[שם]', '[תאריך]', '[אירוע]', '[סכום]', '[שעה]'].map((p) => <span key={p} className="pill gold ltr">{p}</span>)}</div>
-        {keys.map(({ k, t }) => <Field key={k} label={t}><Textarea rows={3} value={s.templates[k] || ''} onChange={(e) => setS({ ...s, templates: { ...s.templates, [k]: e.target.value } })} /></Field>)}
+        <div className="inline pad">{['[שם]', '[תאריך]', '[אירוע]', '[סכום]', '[שעה]', '[עבור]'].map((p) => <span key={p} className="pill gold ltr">{p}</span>)}</div>
+        {keys.map(({ k, t }) => <Field key={k} label={t}><Textarea rows={3} maxLength={k === 'paymentConfirmation' ? 2000 : undefined} value={s.templates[k] || ''} onChange={(e) => setS({ ...s, templates: { ...s.templates, [k]: e.target.value } })} /></Field>)}
         <Sec title="תצוגה מקדימה · תזכורת חוב" /><blockquote className="quote">{fillTemplate(s.templates.debtReminder, { 'שם': 'רוני לוי', 'אירוע': 'יריד אוקטובר', 'סכום': 46 })}</blockquote>
         {foot}
       </>
     );
   }
   return <ManagersPage ctx={ctx} />;
+}
+
+function ContactSettings({ ctx }: { ctx: TeamCtx }) {
+  const contact = ctx.settings.contact || {};
+  const [draft, setDraft] = useState<Settings['contact']>();
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const whatsapp = draft?.whatsapp ?? contact.whatsapp ?? '';
+  const phone = draft?.phone ?? contact.phone ?? '';
+  const valid = [whatsapp, phone].every((value) => !value.trim() || contactPhoneOk(value.trim()));
+  const dirty = whatsapp !== (contact.whatsapp || '') || phone !== (contact.phone || '');
+  const save = async () => {
+    if (!draft || !valid || busy) return;
+    setBusy(true);
+    const patch = Object.fromEntries(Object.entries(draft).map(([key, value]) => [key, value.trim()]));
+    try {
+      await saveSettingsPart(ctx.actor, { contact: patch }, 'פרטי הקשר של החווה עודכנו');
+      toast({ text: 'נשמר' }, 2000);
+      navigate('/manage/settings', true);
+    } catch {
+      toast({ text: 'לא נשמר', kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Top backTo="/manage/settings" backLabel="הגדרות" title="פרטי קשר לחווה" sub="המספרים מופיעים בדף הפנייה למנהלים ובמסך חשבון חסום." />
+      <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <Field label="מספר וואטסאפ" hint="אפשר להשאיר ריק כדי להסתיר את הקישור לוואטסאפ."><Input type="tel" dir="ltr" maxLength={25} value={whatsapp} onChange={(e) => setDraft({ ...draft, whatsapp: e.target.value })} /></Field>
+        <Field label="מספר טלפון"><Input type="tel" dir="ltr" maxLength={25} value={phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
+        {!valid && <p className="note">הזינו מספר טלפון תקין או השאירו את השדה ריק.</p>}
+        <div className="actions sticky"><Btn type="submit" size="big" disabled={!dirty || !valid || busy}>שמירה</Btn></div>
+      </form>
+    </>
+  );
 }
 function AnsweredCount({ f }: { f: RegistrationField }) {
   const people = useList<Profile>('users', { orderBy: [['displayName', 'asc']] });

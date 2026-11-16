@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';const require=createRequire(import.met
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocFromCache,getDocs,collection,updateDoc,deleteDoc,query,where,arrayUnion,increment,disableNetwork,enableNetwork}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocFromCache,getDocs,collection,updateDoc,deleteDoc,query,where,arrayUnion,increment,disableNetwork,enableNetwork,writeBatch}=require('firebase/firestore');
 
 const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
 const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
@@ -29,7 +29,13 @@ try{
  await assertFails(setDoc(doc(beni,'users','beni'),profile('beni','beni@example.com','manager','active')));    // nobody self-creates as manager
  await assertFails(setDoc(doc(beni,'users','beni'),profile('beni','beni@example.com','staff','active')));      // staff needs a pre-assigned role
  await assertSucceeds(setDoc(doc(beni,'users','beni'),profile('beni','beni@example.com','guest','active')));
- await assertSucceeds(setDoc(doc(guest,'users','guest'),profile('guest','guest@example.com','guest','active')));
+ const guestProfile=doc(guest,'users','guest');
+ await assertFails(setDoc(guestProfile,profile('guest','guest@example.com','guest','active',{fields:{receiptPreference:'sms'}})));
+ await assertSucceeds(setDoc(guestProfile,profile('guest','guest@example.com','guest','active',{fields:{city:'באר שבע',source:'חברים'}})));
+ await assertSucceeds(setDoc(guestProfile,{fields:{receiptPreference:'whatsapp'},updatedAt:now},{merge:true}));
+ await assertSucceeds(setDoc(guestProfile,{fields:{receiptPreference:'email'},updatedAt:now},{merge:true}));
+ await assertFails(setDoc(guestProfile,{fields:{receiptPreference:'sms'},updatedAt:now},{merge:true}));
+ assert.deepEqual((await getDoc(guestProfile)).data().fields,{city:'באר שבע',source:'חברים',receiptPreference:'email'});
  await assertFails(setDoc(doc(stranger,'users','someone-else'),profile('someone-else','stranger@example.com','guest','active')));
  await assertFails(getDoc(doc(guest,'users','beni')));                        // guests cannot read others
  await assertFails(getDocs(collection(beni,'users')));                        // guests cannot list
@@ -40,6 +46,7 @@ try{
  await assertFails(updateDoc(doc(beni,'users','owner'),{role:'guest',status:'active',notes:'',updatedAt:now})); // manager cannot touch an owner
  await assertFails(updateDoc(doc(beni,'users','guest'),{role:'owner',status:'active',notes:'',updatedAt:now})); // manager cannot create owners
  await assertFails(updateDoc(doc(beni,'users','guest'),{role:'manager',status:'active',notes:'',updatedAt:now})); // manager cannot promote to manager
+ await assertFails(setDoc(doc(beni,'users','guest'),{fields:{receiptPreference:'whatsapp'},updatedAt:now},{merge:true}));
  await assertSucceeds(updateDoc(doc(guest,'users','guest'),{displayName:'אורח',phone:'',updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'users','guest'),{role:'manager',status:'active',updatedAt:now}));
 
@@ -166,6 +173,19 @@ try{
  await assertFails(updateDoc(doc(beni,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));   // a manager cannot change where the money goes
  await assertSucceeds(updateDoc(doc(beni,'settings','app'),{visitTypes:['סיור']}));
  await assertSucceeds(updateDoc(doc(owner,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));
+ const contact={whatsapp:'050-000-0642',phone:'08-000-0642'};
+ await assertFails(setDoc(doc(vol,'settings','app'),{contact},{merge:true}));
+ await assertFails(setDoc(doc(guest,'settings','app'),{contact},{merge:true}));
+ await assertFails(setDoc(doc(beni,'settings','app'),{contact:{whatsapp:'https://example.test'}},{merge:true}));
+ await assertFails(setDoc(doc(beni,'settings','app'),{contact:{phone:'1'}},{merge:true}));
+ await assertFails(setDoc(doc(beni,'settings','app'),{contact:{email:'fake@example.test'}},{merge:true}));
+ await assertFails(setDoc(doc(beni,'settings','app'),{templates:{paymentConfirmation:42}},{merge:true}));
+ await assertSucceeds(setDoc(doc(beni,'settings','app'),{contact,templates:{paymentConfirmation:'קיבלנו [סכום]'}},{merge:true}));
+ await assertSucceeds(setDoc(doc(beni,'settings','app'),{contact:{whatsapp:''}},{merge:true}));
+ const publicSettings=(await getDoc(doc(anon,'settings','app'))).data();
+ assert.deepEqual(publicSettings.contact,{...contact,whatsapp:''});
+ assert.equal(publicSettings.payment.bit,'050');
+ assert.equal(publicSettings.templates.paymentConfirmation,'קיבלנו [סכום]');
 
  // events: published readable by anyone, drafts only by staff
  const ev=(extra={})=>({title:'פסטיבל',description:'',image:'',location:'',start:'2030-01-01T18:00:00.000Z',end:'2030-01-01T22:00:00.000Z',price:50,maxPerOrder:5,capacity:0,open:true,published:true,questions:[],createdBy:actor('beni'),createdAt:now,updatedAt:now,...extra});
@@ -180,6 +200,17 @@ try{
  await assertFails(updateDoc(tour,{entry:'false'}));
  await assertFails(updateDoc(tour,{stall:null}));
  await assertFails(updateDoc(doc(vol,'events','tour'),{entry:true}));
+ const publication=doc(beni,'events','publication');
+ const republishedAt=new Date(Date.parse(now)+5000).toISOString();
+ await assertFails(setDoc(publication,ev({publishedAt:'tomorrow'})));
+ await assertFails(setDoc(publication,ev({published:false,publishedAt:now})));
+ await assertSucceeds(setDoc(publication,ev({publishedAt:now})));
+ await assertFails(updateDoc(publication,{publishedAt:republishedAt,updatedAt:republishedAt}));
+ await assertSucceeds(updateDoc(publication,{title:'עדכון',updatedAt:republishedAt}));
+ assert.equal((await getDoc(publication)).data().publishedAt,now);
+ await assertSucceeds(updateDoc(publication,{published:false,updatedAt:republishedAt}));
+ await assertFails(updateDoc(doc(vol,'events','publication'),{published:true,publishedAt:republishedAt,updatedAt:republishedAt}));
+ await assertSucceeds(updateDoc(publication,{published:true,publishedAt:republishedAt,updatedAt:republishedAt}));
  await assertSucceeds(setDoc(doc(beni,'events','draft'),ev({published:false,createdBy:actor('beni')})));
  await assertSucceeds(setDoc(doc(beni,'events','free'),ev({price:0,createdBy:actor('beni')})));
  await assertSucceeds(getDoc(doc(anon,'events','e1')));
@@ -200,8 +231,11 @@ try{
 
  // tickets
  const tk=(uid,extra={})=>({eventId:'e1',eventTitle:'פסטיבל',orderId:'o1',index:1,total:2,ownerUid:uid,ownerName:'אורח',ownerPhone:'0500000000',holderName:'',secret:'abcdef0123456789abcdef00',price:50,paymentStatus:'pending',status:'valid',scans:[],entries:0,answers:{},createdAt:now,updatedAt:now,...extra});
+ const confirmation={paymentConfirmation:{by:actor('beni'),at:now},updatedAt:now};
  await assertFails(setDoc(doc(anon,'tickets','t0'),tk('anon')));
  await assertSucceeds(setDoc(doc(guest,'tickets','t1'),tk('guest')));
+ await assertFails(setDoc(doc(guest,'tickets','forged-send'),tk('guest',confirmation)));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),confirmation));
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('other')));                                   // not own
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('guest',{paymentStatus:'paid'})));            // cannot self-mark paid
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('guest',{price:0})));                         // price must match event
@@ -241,6 +275,32 @@ try{
  await assertFails(setDoc(doc(vol,'tickets','t1'),{...t1s,secret:'ffffffffffffffffffffffff'}));
  await assertFails(setDoc(doc(guest,'tickets','t1'),{...t1s,status:'cancelled',updatedAt:now}));    // already entered
  await assertSucceeds(updateDoc(doc(beni,'tickets','t1'),{paymentStatus:'paid',updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'tickets','t1'),confirmation));
+ await assertFails(updateDoc(doc(vol,'tickets','t1'),confirmation));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{...confirmation,paymentConfirmation:{by:actor('vol'),at:now}}));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{...confirmation,paymentConfirmation:{by:{uid:'beni',name:'אדם אחר'},at:now}}));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{...confirmation,paymentConfirmation:{by:actor('beni'),at:'tomorrow'}}));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{...confirmation,status:'cancelled'}));
+ const confirmationBatch=writeBatch(beni);
+ for(const ticketId of ['t1','t9']) confirmationBatch.update(doc(beni,'tickets',ticketId),confirmation);
+ await assertSucceeds(confirmationBatch.commit());
+ for(const ticketId of ['t1','t9']) assert.deepEqual((await getDoc(doc(beni,'tickets',ticketId))).data().paymentConfirmation,confirmation.paymentConfirmation);
+ await assertSucceeds(updateDoc(doc(vol,'tickets','t1'),{scans:arrayUnion({at:republishedAt,by:actor('vol')}),entries:increment(1),updatedAt:republishedAt}));
+ // The largest supported order fits in the same atomic payment and confirmation batches.
+ await assertSucceeds(setDoc(doc(beni,'events','large-order'),ev({maxPerOrder:20})));
+ const largeOrder=Array.from({length:20},(_,i)=>`large-order-${i+1}`);
+ const placeOrder=writeBatch(guest);
+ const payLargeOrder=writeBatch(beni);
+ const confirmLargeOrder=writeBatch(beni);
+ for(const [i,id] of largeOrder.entries()){
+  placeOrder.set(doc(guest,'tickets',id),tk('guest',{eventId:'large-order',orderId:'large-order',index:i+1,total:20}));
+  payLargeOrder.update(doc(beni,'tickets',id),{paymentStatus:'paid',updatedAt:now});
+  confirmLargeOrder.update(doc(beni,'tickets',id),confirmation);
+ }
+ await assertSucceeds(placeOrder.commit());
+ await assertSucceeds(payLargeOrder.commit());
+ await assertSucceeds(confirmLargeOrder.commit());
+ assert.deepEqual((await getDoc(doc(beni,'tickets','large-order-20'))).data().paymentConfirmation,confirmation.paymentConfirmation);
  const tf=(await getDoc(doc(guest,'tickets','tf'))).data();
  await assertSucceeds(setDoc(doc(guest,'tickets','tf'),{...tf,status:'cancelled',updatedAt:now}));
 
@@ -257,10 +317,16 @@ try{
  // donations
  const dn={uid:'guest',name:'אורח',phone:'',amount:180,label:'חי',note:'',memorial:'',receiptWanted:true,receiptName:'אורח',receiptSent:false,paymentStatus:'pending',createdAt:now,updatedAt:now};
  await assertSucceeds(setDoc(doc(guest,'donations','d1'),dn));
+ await assertFails(setDoc(doc(guest,'donations','forged-send'),{...dn,...confirmation}));
+ await assertFails(updateDoc(doc(beni,'donations','d1'),confirmation));
  await assertFails(setDoc(doc(guest,'donations','d2'),{...dn,paymentStatus:'paid'}));
  await assertSucceeds(updateDoc(doc(guest,'donations','d1'),{paymentStatus:'claimed',updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'donations','d1'),{paymentStatus:'paid',updatedAt:now}));
  await assertSucceeds(updateDoc(doc(beni,'donations','d1'),{paymentStatus:'paid',receiptSent:true,updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'donations','d1'),confirmation));
+ await assertFails(updateDoc(doc(beni,'donations','d1'),{...confirmation,receiptSent:false}));
+ await assertSucceeds(updateDoc(doc(beni,'donations','d1'),confirmation));
+ assert.equal((await getDoc(doc(beni,'donations','d1'))).data().receiptSent,true);
  await assertFails(getDocs(collection(vol,'donations')));
 
  // tabs
@@ -286,6 +352,8 @@ try{
  assert.equal(savedPurchase.total,40);
  await assertFails(setDoc(doc(guest,'tabs','tb1'),{...tb,createdBy:actor('guest')}));
  await assertSucceeds(setDoc(doc(vol,'tabs','tb1'),tb));
+ await assertFails(setDoc(doc(vol,'tabs','forged-send'),{...tb,...confirmation}));
+ await assertFails(updateDoc(doc(beni,'tabs','tb1'),confirmation));
  await assertSucceeds(updateDoc(doc(vol,'tabs','tb1'),{items:[{productId:'p1',name:'יין',price:20,qty:2,at:now,by:actor('vol')}],total:40,updatedAt:now}));
  await assertFails(updateDoc(doc(vol,'tabs','tb1'),{status:'waived',updatedAt:now}));            // staff cannot waive a debt
  await assertFails(updateDoc(doc(guest,'tabs','tb1'),{status:'paid',updatedAt:now}));              // a guest cannot mark their own tab paid
@@ -293,6 +361,10 @@ try{
  await assertSucceeds(updateDoc(doc(guest,'tabs','tb1'),{status:'claimed',updatedAt:now}));
  await assertSucceeds(updateDoc(doc(vol,'tabs','tb1'),{status:'paid',updatedAt:now}));             // paid on the spot: a volunteer closes the tab
  await assertSucceeds(updateDoc(doc(beni,'tabs','tb1'),{status:'paid',updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'tabs','tb1'),confirmation));
+ await assertFails(updateDoc(doc(guest,'tabs','tb1'),confirmation));
+ await assertSucceeds(updateDoc(doc(beni,'tabs','tb1'),confirmation));
+ await assertFails(updateDoc(doc(owner,'tabs','tb1'),{paymentConfirmation:{by:actor('owner'),at:republishedAt},updatedAt:republishedAt}));
  await assertSucceeds(getDoc(doc(guest,'tabs','tb1')));
  await assertFails(getDoc(doc(other,'tabs','tb1')));
 
@@ -301,6 +373,17 @@ try{
  await assertFails(setDoc(doc(guest,'notifications','n2'),{type:'visit',title:'x',text:'y',link:'',refId:'',createdAt:now,handled:true,handledBy:null,handledAt:null}));
  await assertFails(getDocs(collection(vol,'notifications')));
  await assertSucceeds(updateDoc(doc(beni,'notifications','n1'),{handled:true,handledBy:actor('beni'),handledAt:now}));
+ const message={type:'contact',title:'חניה',text:'איפה החניה הנגישה?',link:'/manage/inbox',refId:'guest',createdAt:now,handled:false,handledBy:null,handledAt:null};
+ await assertFails(setDoc(doc(anon,'notifications','contact-forged'),message));
+ await assertFails(setDoc(doc(blockedUser,'notifications','contact-forged'),{...message,refId:'blk'}));
+ await assertFails(setDoc(doc(guest,'notifications','contact-forged'),{...message,refId:'vol'}));
+ await assertFails(setDoc(doc(guest,'notifications','contact-forged'),{...message,link:'/manage/people/other'}));
+ await assertFails(setDoc(doc(guest,'notifications','contact-forged'),{...message,text:''}));
+ await assertSucceeds(setDoc(doc(guest,'notifications','guest-contact'),message));
+ await assertSucceeds(setDoc(doc(vol,'notifications','team-contact'),{...message,refId:'vol'}));
+ await assertFails(getDoc(doc(guest,'notifications','guest-contact')));
+ await assertSucceeds(getDoc(doc(beni,'notifications','guest-contact')));
+ await assertSucceeds(updateDoc(doc(beni,'notifications','guest-contact'),{handled:true,handledBy:actor('beni'),handledAt:now}));
  const cal={ownerUid:'beni',ownerName:'בני',title:'פריט ביומן',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now};
  const volCal={...cal,ownerUid:'vol',ownerName:'בדיקה',kind:'presence',time:'08:00–11:00'};
  await assertSucceeds(setDoc(doc(beni,'calendar','c1'),cal));

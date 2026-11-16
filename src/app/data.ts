@@ -4,26 +4,31 @@ import { nowIso } from './firebase';
 import { logActivity } from './activity';
 import type {
   Actor, FarmEvent, Ticket, Visit, VisitStatus, Donation, Vendor, EventVendor, Product, Tab, TabItem, TabStatus, Settings,
-  AppNotification, NotificationType, CalendarItem, CalendarKind, Profile, PaymentStatus,
+  AppNotification, NotificationType, CalendarItem, CalendarKind, Profile, PaymentStatus, ReceiptPreference,
 } from './types';
-import { DEFAULT_SETTINGS } from './types';
+import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD } from './types';
 
 export const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
 export const fillTemplate = (t: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`[${k}]`, String(v)), t);
 export const waLink = (phone: string, text = '') => { const p = phone.replace(/\D/g, '').replace(/^0/, '972'); return `https://wa.me/${p}${text ? '?text=' + encodeURIComponent(text) : ''}`; };
 export const telLink = (phone: string) => 'tel:' + phone.replace(/[^\d+]/g, '');
+export const contactPhoneOk = (phone: string) => /^\+?[\d(). -]+$/.test(phone) && /^\d{9,15}$/.test(phone.replace(/\D/g, ''));
+export const receiptDestination = (profile: Pick<Profile, 'phone' | 'email'>, method: ReceiptPreference) =>
+  method === 'whatsapp' ? (contactPhoneOk(profile.phone) ? profile.phone : '') : (/^[^\s@?&/#]+@[^\s@?&/#]+\.[^\s@?&/#]+$/.test(profile.email) ? profile.email : '');
+export function receiptPreference(profile?: Pick<Profile, 'fields' | 'phone' | 'email'> | null) {
+  const value = profile?.fields?.[RECEIPT_PREFERENCE_FIELD];
+  return profile && (value === 'whatsapp' || value === 'email') && receiptDestination(profile, value) ? value : undefined;
+}
 
 // ---------- settings ----------
 export function useSettings() {
-  const { item, loading } = useDoc<Settings & { id: string }>('settings/app', true);
-  return { settings: { ...DEFAULT_SETTINGS, ...(item || {}), payment: { ...DEFAULT_SETTINGS.payment, ...(item?.payment || {}) }, templates: { ...DEFAULT_SETTINGS.templates, ...(item?.templates || {}) } } as Settings, loading };
+  const { item, loading, error } = useDoc<Settings & { id: string }>('settings/app', true);
+  return { settings: { ...DEFAULT_SETTINGS, ...item, payment: { ...DEFAULT_SETTINGS.payment, ...item?.payment }, templates: { ...DEFAULT_SETTINGS.templates, ...item?.templates }, contact: { ...DEFAULT_SETTINGS.contact, ...item?.contact } }, loading, error };
 }
-export async function saveSettings(actor: Actor, s: Settings) { const { ...data } = s as Settings & { id?: string }; delete (data as { id?: string }).id; await write.set('settings', 'app', data); logActivity(actor, 'settings', 'app', 'saved', 'ההגדרות עודכנו'); }
 
-/** Saves one part of the settings and nothing else, so a page opened before the settings loaded, or a second manager on
- *  another page, can never overwrite the rest with defaults. `exists` = the settings document is already on the server. */
-export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, exists: boolean, what: string) {
-  if (exists) await write.update('settings', 'app', patch as Record<string, unknown>); else await write.set('settings', 'app', patch as Record<string, unknown>);
+/** Merge a section of settings, including when the document has never been saved. */
+export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, what = 'ההגדרות עודכנו') {
+  await write.merge('settings', 'app', patch);
   logActivity(actor, 'settings', 'app', 'saved', what);
 }
 
@@ -31,16 +36,17 @@ export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, e
 export const useUpcomingEvents = () => useList<FarmEvent>('events', { where: [['published', '==', true]], orderBy: [['start', 'asc']] }, true);
 export const useAllEvents = (enabled: boolean) => useList<FarmEvent>('events', { orderBy: [['start', 'desc']] }, enabled);
 export const useEvent = (id: string, enabled = true) => useDoc<FarmEvent>('events/' + (id || '_'), enabled && !!id);
-export type EventInput = Omit<FarmEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>;
+export type EventInput = Omit<FarmEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'publishedAt'>;
 export async function saveEvent(actor: Actor, data: EventInput, existing?: FarmEvent) {
   const now = nowIso();
+  const publication = data.published && !existing?.published ? { publishedAt: now } : {};
   if (existing) {
-    await write.update('events', existing.id, { ...data, updatedAt: now });
+    await write.update('events', existing.id, { ...data, ...publication, updatedAt: now });
     logActivity(actor, 'event', existing.id, data.published !== existing.published ? (data.published ? 'published' : 'unpublished') : 'edited', data.title, { eventId: existing.id });
     return existing.id;
   }
   const id = newId('events');
-  await write.set('events', id, { ...data, createdBy: actor, createdAt: now, updatedAt: now });
+  await write.set('events', id, { ...data, ...publication, createdBy: actor, createdAt: now, updatedAt: now });
   logActivity(actor, 'event', id, 'created', data.title, { eventId: id });
   return id;
 }
@@ -282,6 +288,15 @@ export async function claimTabPaid(tab: Tab) {
   await write.update('tabs', tab.id, { status: 'claimed', updatedAt: nowIso() });
   logActivity({ uid: tab.guestUid, name: tab.guestName }, 'tab', tab.id, 'claimed', `${tab.total} ₪ · ${tab.eventTitle}`, { subjectUid: tab.guestUid, eventId: tab.eventId });
   await notify('tab', `תשלום דוכן הועבר: ${tab.eventTitle}`, `${tab.guestName} · ${tab.total} ₪`, `/manage/events/${tab.eventId}/tabs/${tab.id}`, tab.id).catch(() => {});
+}
+
+/** An order has one confirmation, recorded on each of its paid tickets together. */
+export async function markPaymentConfirmation(actor: Actor, collection: 'tickets' | 'donations' | 'tabs', ids: string[]) {
+  const at = nowIso();
+  await write.batch(ids.map((id) => ({
+    op: 'update', col: collection, id,
+    data: { paymentConfirmation: { by: actor, at }, updatedAt: at },
+  })));
 }
 
 // ---------- notifications (manager queue) ----------

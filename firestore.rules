@@ -43,6 +43,7 @@ service cloud.firestore {
   function inviteValid(code){return code is string && exists(/databases/$(database)/documents/invites/$(code)) && get(/databases/$(database)/documents/invites/$(code)).data.active == true && get(/databases/$(database)/documents/invites/$(code)).data.role == 'staff';}
   function incoming(){return request.resource.data;}
   function changed(){return request.resource.data.diff(resource.data).affectedKeys();}
+  function isoTime(v){return v is string && v.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z');}
 
   match /users/{id} {
    function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
@@ -54,8 +55,9 @@ service cloud.firestore {
    allow get: if self(id) || isManager();
    // volunteers need the names of the team (who a task is on), never the guests
    allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
-   allow create: if self(id) && profileShape() && incoming().email == request.auth.token.email && createRole();
-   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit()) || (isManager() && managerEdit()));
+   function fieldsOk(){return incoming().get('fields', {}) is map && incoming().get('fields', {}).get('receiptPreference', '') in ['', 'whatsapp', 'email'];}
+   allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole();
+   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()));
    allow delete: if isOwner();
   }
   match /counters/{name} {
@@ -114,18 +116,27 @@ service cloud.firestore {
   function signed(){return google() && exists(userPath()) && get(userPath()).data.status != 'blocked';}
   function mine(field){return google() && resource.data[field] == uid();}
   function actorOf(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid is string && a.name is string;}
+  function marksConfirmation(){
+   let stamp = incoming().paymentConfirmation;
+   return !('paymentConfirmation' in resource.data) && changed().hasOnly(['paymentConfirmation','updatedAt'])
+     && stamp is map && stamp.keys().hasOnly(['by','at']) && actorOk(stamp.by) && stamp.by.name == get(userPath()).data.displayName
+     && isoTime(stamp.at) && stamp.at == incoming().updatedAt;
+  }
   match /settings/{name} {
    allow read: if true;
    // where guests send money is the owners' decision; every other part of the settings is any manager's
-   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming()));
-   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment']));
+   function numberOk(v){return str(v, 25) && (v == '' || v.matches('[+]?([() .-]*[0-9]){9,15}[() .-]*'));}
+   function contactOk(){let c = incoming().get('contact', {}); return c is map && c.keys().hasOnly(['phone','whatsapp']) && numberOk(c.get('phone', '')) && numberOk(c.get('whatsapp', ''));}
+   function confirmationTemplateOk(){let t = incoming().get('templates', {}); return t is map && str(t.get('paymentConfirmation', ''), 2000);}
+   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming())) && contactOk() && confirmationTemplateOk();
+   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk());
    allow delete: if isOwner() && name == 'app';
   }
   match /events/{id} {
-   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','questions','files','entry','stall','createdBy','createdAt','updatedAt']) && incoming().get('entry', true) is bool && incoming().get('stall', true) is bool && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10;}
+   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','publishedAt','questions','files','entry','stall','createdBy','createdAt','updatedAt']) && (!('publishedAt' in incoming()) || isoTime(incoming().publishedAt)) && incoming().get('entry', true) is bool && incoming().get('stall', true) is bool && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10;}
    allow read: if resource.data.published == true || isStaff();
-   allow create: if isManager() && eventShape() && actorOk(incoming().createdBy);
-   allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy;
+   allow create: if isManager() && eventShape() && actorOk(incoming().createdBy) && (!('publishedAt' in incoming()) || (incoming().published && incoming().publishedAt == incoming().createdAt));
+   allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy && (!changed().hasAny(['publishedAt']) || (incoming().published && !resource.data.published && incoming().publishedAt == incoming().updatedAt));
    allow delete: if isManager();
    match /vendors/{vid} {
     allow read: if isStaff();
@@ -143,11 +154,11 @@ service cloud.firestore {
   }
   match /tickets/{id} {
    function event(){return get(/databases/$(database)/documents/events/$(incoming().eventId)).data;}
-   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','paymentConfirmation','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isStaff() || mine('ownerUid');
-   allow create: if signed() && ticketShape() && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
+   allow create: if signed() && ticketShape() && !('paymentConfirmation' in incoming()) && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
    allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && (
-     isManager()
+     (isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'valid' && resource.data.price > 0 && resource.data.paymentStatus in ['paid','paid_onsite'] && marksConfirmation())))
      || (isStaff() && changed().hasOnly(['scans','entries','paymentStatus','updatedAt']) && incoming().entries == resource.data.entries + 1 && incoming().scans.size() == resource.data.scans.size() + 1 && actorOk(incoming().scans[resource.data.scans.size()].by) && (incoming().paymentStatus == resource.data.paymentStatus || incoming().paymentStatus == 'paid_onsite'))
      || (isStaff() && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus in ['pending','claimed'] && incoming().paymentStatus == 'paid_onsite')
      || (mine('ownerUid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed')
@@ -162,10 +173,10 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /donations/{id} {
-   function donationShape(){return incoming().keys().hasOnly(['uid','name','phone','amount','label','note','memorial','receiptWanted','receiptName','receiptSent','paymentStatus','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && incoming().amount is number && incoming().amount > 0 && incoming().amount <= 1000000 && str(incoming().label, 100) && str(incoming().note, 2000) && str(incoming().memorial, 500) && incoming().receiptWanted is bool && str(incoming().receiptName, 120) && incoming().receiptSent is bool && incoming().paymentStatus in ['pending','claimed','paid','cancelled'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function donationShape(){return incoming().keys().hasOnly(['uid','name','phone','amount','label','note','memorial','receiptWanted','receiptName','receiptSent','paymentStatus','paymentConfirmation','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && incoming().amount is number && incoming().amount > 0 && incoming().amount <= 1000000 && str(incoming().label, 100) && str(incoming().note, 2000) && str(incoming().memorial, 500) && incoming().receiptWanted is bool && str(incoming().receiptName, 120) && incoming().receiptSent is bool && incoming().paymentStatus in ['pending','claimed','paid','cancelled'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isManager() || mine('uid');
-   allow create: if signed() && donationShape() && incoming().uid == uid() && incoming().paymentStatus == 'pending' && incoming().receiptSent == false;
-   allow update: if donationShape() && incoming().uid == resource.data.uid && incoming().amount == resource.data.amount && ((isManager() && changed().hasOnly(['paymentStatus','receiptSent','updatedAt'])) || (mine('uid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed'));
+   allow create: if signed() && donationShape() && !('paymentConfirmation' in incoming()) && incoming().uid == uid() && incoming().paymentStatus == 'pending' && incoming().receiptSent == false;
+   allow update: if donationShape() && incoming().uid == resource.data.uid && incoming().amount == resource.data.amount && ((isManager() && (changed().hasOnly(['paymentStatus','receiptSent','updatedAt']) || (resource.data.paymentStatus == 'paid' && marksConfirmation()))) || (mine('uid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed'));
    allow delete: if isManager();
   }
   match /vendors/{id} {
@@ -173,15 +184,15 @@ service cloud.firestore {
    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().product, 300) && incoming().external is bool && str(incoming().notes, 2000)));
   }
   match /tabs/{id} {
-   function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','paymentConfirmation','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isStaff() || mine('guestUid');
-   allow create: if isStaff() && tabShape() && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0;
-   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && ((isManager()) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (isStaff() && changed().hasOnly(['status','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid') || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow create: if isStaff() && tabShape() && !('paymentConfirmation' in incoming()) && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0;
+   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (isStaff() && changed().hasOnly(['status','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid') || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
   match /notifications/{id} {
    allow read: if isManager();
-   allow create: if signed() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
+   allow create: if signed() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim','contact'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && (incoming().type != 'contact' || (incoming().refId == uid() && incoming().link == '/manage/inbox' && incoming().title.size() > 0 && incoming().text.size() > 0 && isoTime(incoming().createdAt))) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
    allow update: if isManager() && changed().hasOnly(['handled','handledBy','handledAt']);
    allow delete: if isManager();
   }

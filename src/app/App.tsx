@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAuth, useProfile, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
+import { useAuth, useProfile, useCmsEditor, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
 import { useRoute, match, navigate } from './router';
 import { Icon, ToastProvider, A, Avatar, Empty, Top, useDesktop, usePageEnter, todayISO } from './ui';
@@ -15,13 +15,14 @@ import { ShoppingScreen, ShopItemScreen } from './screens/Shopping';
 import { Guard, isHidden, useHiddenVersion } from './kit';
 import { MoreScreen } from './screens/More';
 import { StaffEventsScreen, EventModuleGate, ScanScreen, ScanSearchScreen, StallScreen } from './screens/EventDay';
-import { GuestHome, EventPage, OrderPage, LoginPage, OnboardingPage, BlockedPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage } from './screens/Guest';
+import { GuestHome, EventPage, OrderPage, LoginPage, OnboardingPage, BlockedPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage, ContactPage } from './screens/Guest';
 import { ManageHomeScreen, InboxScreen } from './screens/Manage';
 import { EventsListScreen, EventEditor, EventHubScreen, EventGuestsScreen, EventEntryScreen, EventVendorsScreen, VendorsScreen, VendorEditor, EventProductsScreen, ProductEditor, EventTabsScreen, TabDetailScreen, EventReportScreen, EventFilesScreen, EventActivityScreen } from './screens/ManageEvents';
 import { PeopleScreen, PersonScreen, InviteRoleScreen, TemplatesScreen, TemplateEditor, PlacesScreen, PlaceEditor } from './screens/ManagePeople';
 import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen, ReportsScreen, ActivityScreen, SettingsScreen, SettingsPage, type SettingsPageKey } from './screens/ManageMore';
 import { CalendarScreen, CalendarEditor } from './screens/Calendar';
 import { calendarRange, shiftCalendarDay } from './screens/CalendarGrid';
+import { InstallBanner } from './InstallBanner';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
@@ -47,7 +48,7 @@ function Rail({ route, items, manage, profile, role }: { route: string; items: N
     </aside>
   );
 }
-const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'real'];
+const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new', 'real'];
 /** The green bar that marks demo mode. Switching persona happens right here, from any screen. */
 export function DemoStrip() {
   const demo = useDemo();
@@ -69,6 +70,7 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
   const content = (
     <>
       {!online && <div className="strip" style={{ marginTop: 8 }}><Icon name="wifiOff" size={18} />אין קליטה. מה שתעשו יישמר בטלפון ויישלח כשתחזור הרשת.</div>}
+      <InstallBanner />
       {desktop ? master : (detail ?? master)}
     </>
   );
@@ -92,7 +94,7 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
 function GuestApp({ user, profile, settings }: { user: Session | null; profile: Profile | null; settings: Settings }) {
   const route = useRoute(); const online = useOnline();
   const ctx: GuestCtx = { user, profile, settings };
-  const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
+  const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' || r === '/contact' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
   const screen = isCalendarRoute(route) ? <><Top title="יומן החווה" backTo="/" backLabel="בית" /><Empty title="היומן זמין לצוות החווה" /></>
     : guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
   return <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />;
@@ -107,17 +109,19 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   if (route === '/me/account') return <GuestAccountPage ctx={ctx} />;
   if (route === '/visit') return <VisitPage ctx={ctx} />;
   if (route === '/donate') return <DonatePage ctx={ctx} />;
+  if (route === '/contact') return <ContactPage ctx={ctx} />;
   if (route === '/terms') return <TermsPage />;
   return null;
 }
 
 /** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
-const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
+const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|contact|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 // ---------- team app ----------
 function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
   const route = useRoute(); const online = useOnline(); const desktop = useDesktop();
   const manager = canManage(profile, user.email); const owner = isOwner(profile, user.email);
+  const cmsEditor = useCmsEditor(user, manager);
   const actor = useMemo(() => actorOf(user, profile), [user.uid, profile.displayName]);
   const today = useToday(); useHiddenVersion();
   const openAll = useOpenTasks(true, manager); const recent = useRecentDoneTasks(true, manager);
@@ -128,10 +132,11 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   const team = useTeam(true); const instances = useTodayInstances(true, manager, today);
   const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
   const inbox = useNotifications(manager); const people = usePeople(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
+  const peopleByUid = useMemo(() => new Map(people.items.map((p) => [p.uid, p])), [people.items]);
   const week = calendarRange('week', today);
   const calendar = useCalendar(true, week.from, manager ? shiftCalendarDay(today, 14) : week.to);
   const calendarItems = calendar.items.filter((item) => !isHidden(item.id));
-  const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, settings, places: places.items, templates: templates.items, team: team.items }), [user, actor, profile, manager, owner, settings, places.items, templates.items, team.items]);
+  const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid }), [user, actor, profile, manager, owner, cmsEditor, settings, places.items, templates.items, team.items, peopleByUid]);
   const guestCtx: GuestCtx = { user, profile, settings };
 
   useEffect(() => {
@@ -184,7 +189,7 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   else if (guestRoutes(r, guestCtx)) master = guestRoutes(r, guestCtx);
   else if (r.startsWith('/manage') && manager) {
     const mh = <ManageHomeScreen ctx={ctx} inbox={inbox.items} events={events.items} visits={visits.items} donations={donations.items} people={people.items} calendar={calendarItems} templatesCount={templates.items.filter((t) => t.active).length} placesCount={places.items.length} vendorsCount={vendors.items.length} />;
-    if (r === '/manage') master = desktop ? <InboxScreen ctx={ctx} inbox={inbox.items} /> : mh;
+    if (r === '/manage') master = desktop ? <InboxScreen ctx={ctx} inbox={inbox.items} home /> : mh;
     else if (r === '/manage/inbox') master = <InboxScreen ctx={ctx} inbox={inbox.items} />;
     else if (r === '/manage/events') master = <EventsListScreen ctx={ctx} />;
     else if (r === '/manage/events/new') master = <EventEditor ctx={ctx} />;
@@ -219,7 +224,7 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
     else if (r === '/manage/reports') master = <ReportsScreen ctx={ctx} />;
     else if (r === '/manage/activity') master = <ActivityScreen ctx={ctx} />;
     else if (r === '/manage/settings') master = <SettingsScreen ctx={ctx} />;
-    else if ((m = match(r, '/manage/settings/:page'))) master = <SettingsPage ctx={ctx} page={m.page as SettingsPageKey} />;
+    else if ((m = match(r, '/manage/settings/:page'))) master = <SettingsPage key={m.page} ctx={ctx} page={m.page as SettingsPageKey} />;
     else master = mh;
   }
   const banner = open.error ? <div className="strip rust"><Icon name="info" size={18} />{open.error.includes('index') ? 'המערכת עדיין מתכוננת (אינדקסים). נסו שוב בעוד דקה.' : open.error}</div> : null;
@@ -235,7 +240,7 @@ function Splash() {
 export default function App() {
   const { user, loading } = useAuth();
   const { profile, loading: profileLoading, missing, error: profileError } = useProfile(user);
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading, error: settingsError } = useSettings();
   const demo = useDemo();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
@@ -247,8 +252,12 @@ export default function App() {
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
   if (loading || (user && profileLoading)) return <Splash />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
-  if (user && (missing || !profile)) return <ToastProvider><DemoStrip /><OnboardingPage user={user} /></ToastProvider>;
-  if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} /></ToastProvider>;
+  if (user && (missing || !profile)) {
+    if (settingsLoading) return <Splash />;
+    if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
+    return <ToastProvider><DemoStrip /><OnboardingPage key={user.uid} user={user} fields={settings.registrationFields} /></ToastProvider>;
+  }
+  if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} contact={settings.contact} /></ToastProvider>;
   if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;
   return <ToastProvider><GuestApp user={user} profile={profile} settings={settings} /></ToastProvider>;
 }

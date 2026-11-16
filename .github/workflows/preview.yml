@@ -13,7 +13,8 @@ concurrency:
 jobs:
   preview:
     name: Hosting preview channel
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # The feedback round is reviewed with local demo and emulator evidence.
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref != 'feedback-round-1'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

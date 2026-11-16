@@ -1,23 +1,33 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence, signInWithPopup, signInWithRedirect, signOut, connectAuthEmulator, type User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence, signInWithPopup, signInWithRedirect, signOut, connectAuthEmulator, type Auth, type User } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from 'firebase/firestore';
 import config from '../../site.config.json';
 
 const useEmulator = location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator');
 export const app = getApps()[0] || initializeApp(config.firebase);
 export const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-export const auth = getAuth(app);
 export const ownerEmail = config.ownerEmail;
 
 // Local development against the Firebase emulators: http://localhost:5000/app?emulator
 if (useEmulator) {
-  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, 'localhost', 8080);
 }
 export { config };
 
-export const authReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
+let appAuth: Auth | undefined;
+function getAppAuth() {
+  if (!appAuth) {
+    appAuth = getAuth(app);
+    if (useEmulator) connectAuthEmulator(appAuth, 'http://localhost:9099', { disableWarnings: true });
+  }
+  return appAuth;
+}
 
+export async function readyAuth() {
+  const auth = getAppAuth();
+  await setPersistence(auth, browserLocalPersistence).catch(() => {});
+  return auth;
+}
 
 /** Browsers inside other apps (a link opened from WhatsApp, Instagram, Facebook). Google refuses to sign in there, so the screen says so instead of offering a button that cannot work. */
 export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|MicroMessenger|Snapchat|; wv\)/i.test(navigator.userAgent);
@@ -25,6 +35,7 @@ export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|Mi
 const POPUP_UNAVAILABLE = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request', 'auth/web-storage-unsupported'];
 /** Popup first (the page and a half-filled form stay as they are). Where a popup cannot open, an installed app on iPhone for one, the whole page goes to Google and comes back. */
 export async function signIn() {
+  const auth = getAppAuth();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   if (useEmulator) { await signInWithRedirect(auth, provider); return; }
@@ -36,7 +47,7 @@ export async function signIn() {
 }
 
 export async function signOutUser() {
-  await signOut(auth);
+  await signOut(getAppAuth());
 }
 
 export function isGoogleUser(user: User | null) {

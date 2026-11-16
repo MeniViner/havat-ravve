@@ -554,6 +554,10 @@ try {
     // events, vendors, products
     const ev = await w(MGR, 'events.create', { title: 'יום פתוח', start: '2026-12-10T10:00', end: '2026-12-10T14:00', price: 30, published: true });
     ok(ev, 'events.create'); const eventId = ev.json.data.eventId;
+    const publishedEvent = await docOf('events/' + eventId);
+    check(publishedEvent.publishedAt && publishedEvent.publishedAt === publishedEvent.createdAt, 'creating a published event records its publication time');
+    ok(await w(MGR, 'events.update', { eventId, description: 'עדכון לתיאור' }), 'events.update edit without publication');
+    check((await docOf('events/' + eventId)).publishedAt === publishedEvent.publishedAt, 'editing a published event preserves its publication time');
     const cal = await docOf('calendar/event_' + eventId);
     check(cal && cal.date === '2026-12-10' && cal.time === '10:00–14:00' && cal.kind === 'event', 'a published event gets its calendar entry, as the app makes it');
     check((await w(MGR, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-09T10:00' })).status === 400, 'end before start → 400');
@@ -561,6 +565,8 @@ try {
     ok(await w(MGR, 'events.update', { eventId, published: false }), 'events.update unpublish');
     check(!(await docOf('calendar/event_' + eventId)) && (await actsOf(eventId)).includes('unpublished'), 'unpublishing removes the calendar entry and logs "unpublished"');
     ok(await w(MGR, 'events.update', { eventId, published: true, capacity: 80 }), 'events.update publish again');
+    const republishedEvent = await docOf('events/' + eventId);
+    check(republishedEvent.publishedAt > publishedEvent.publishedAt && republishedEvent.publishedAt === republishedEvent.updatedAt, 'republishing records a new publication time');
     const vd = await w(MGR, 'vendors.create', { name: 'גבינות הגליל', phone: '0501111111', product: 'גבינות' });
     ok(vd, 'vendors.create'); const vendorId = vd.json.data.vendorId;
     ok(await w(MGR, 'vendors.update', { vendorId, external: true }), 'vendors.update');
