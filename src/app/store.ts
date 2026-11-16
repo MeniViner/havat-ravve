@@ -2,9 +2,9 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
-import { db, auth, authReady, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
+import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
-import { useDemo, PERSONA_UID, demoDoc, demoOnly } from './demo/store';
+import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
@@ -12,16 +12,27 @@ import { CATEGORY_LABELS, ROLE_LABELS } from './types';
 // ---------- auth ----------
 type AuthState = { loading: boolean; user: User | null };
 let authState: AuthState = { loading: true, user: null };
+let authStarted = false;
 const authListeners = new Set<() => void>();
-authReady.then(() => onAuthStateChanged(auth, (user) => { authState = { loading: false, user: isGoogleUser(user) ? user : null }; authListeners.forEach((l) => l()); }));
+function startAuth() {
+  if (authStarted) return;
+  authStarted = true;
+  void readyAuth().then((auth) => onAuthStateChanged(auth, (user) => {
+    authState = { loading: false, user: isGoogleUser(user) ? user : null };
+    authListeners.forEach((listener) => listener());
+  }));
+}
 const useFirebaseAuth = () => useSyncExternalStore((l) => { authListeners.add(l); return () => authListeners.delete(l); }, () => authState);
 
 /** The current session: the signed-in Google account, or the active demo persona. */
 export function useAuth(): { loading: boolean; user: Session | null; real: boolean } {
   const fb = useFirebaseAuth();
   const demo = useDemo();
+  // Firebase prepares its redirect helper on some browsers. Keep it out of a fresh demo session.
+  useEffect(() => { if (!demo.on) startAuth(); }, [demo.on]);
   return useMemo(() => {
     if (demo.on) {
+      if (demo.persona === 'new') return { loading: false, user: NEW_DEMO_SESSION, real: false };
       const uid = PERSONA_UID[demo.persona];
       const p = uid ? (demoDoc('users/' + uid) as Profile | null) : null;
       return { loading: false, user: p ? { uid: p.uid, email: p.email, displayName: p.displayName } : null, real: false };
@@ -43,15 +54,40 @@ export const isOwner = (p: Profile | null, email?: string | null) => isOwnerEmai
 export const isTeam = (p: Profile | null, email?: string | null) => canManage(p, email) || (!!p && p.status === 'active' && p.role === 'staff');
 export const actorOf = (user: Session, p: Profile | null): Actor => ({ uid: user.uid, name: p?.displayName || user.displayName || user.email || '' });
 
-/** The role for a brand-new account: owner by bootstrap email, otherwise whatever a manager pre-assigned to this email, otherwise guest. Real accounts only. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string }) {
-  // this transaction talks to Firestore directly, so it must never run for a demo persona
-  if (demoOnly() || user.uid.startsWith('demo-')) throw new Error('במצב הדגמה לא נרשמים באמת. יוצאים מההדגמה כדי להירשם.');
+export function useCmsEditor(user: Session, enabled: boolean) {
+  const email = user.email.toLowerCase();
+  const bootstrap = isOwnerEmail(email);
+  const demo = useDemo();
+  const { user: firebaseUser } = useFirebaseAuth();
+  const [verifiedOwner, setVerifiedOwner] = useState<User | null>(null);
+  const { item } = useDoc<{ uid: string | null; active: boolean }>('cms_admins/' + (email || '_'), enabled && !!email && !bootstrap);
+  useEffect(() => {
+    if (!enabled || !bootstrap || demo.on || firebaseUser?.uid !== user.uid) return;
+    let current = true;
+    firebaseUser.getIdTokenResult().then(({ claims, signInProvider }) => {
+      if (current) setVerifiedOwner(claims.email_verified === true && signInProvider === 'google.com' ? firebaseUser : null);
+    }).catch(() => { if (current) setVerifiedOwner(null); });
+    return () => { current = false; };
+  }, [enabled, bootstrap, demo.on, user.uid, firebaseUser]);
+  if (!enabled) return false;
+  if (bootstrap) return !demo.on && !!firebaseUser && verifiedOwner === firebaseUser && firebaseUser.uid === user.uid;
+  return item?.active === true && (item.uid === null || item.uid === user.uid);
+}
+
+/** The role for a brand-new account: owner by bootstrap email, otherwise whatever a manager pre-assigned to this email, otherwise guest. */
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }) {
+  const now = nowIso();
   const email = (user.email || '').toLowerCase();
+  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+  if (demoOnly() && getDemo().persona === 'new' && user.uid === NEW_DEMO_SESSION.uid) {
+    if (!demoDoc('users/' + user.uid)) await write.set('users', user.uid, { ...details, role: 'guest', customerNumber: 999 });
+    return;
+  }
+  // This transaction bypasses the data facade to reserve a customer number.
+  if (demoOnly() || user.uid.startsWith('demo-')) throw new Error('במצב הדגמה לא נרשמים באמת. יוצאים מההדגמה כדי להירשם.');
   const counterRef = doc(db, 'counters', 'users');
   const userRef = doc(db, 'users', user.uid);
   const inviteRef = doc(db, 'role_invites', email);
-  const now = nowIso();
   await runTransaction(db, async (t) => {
     const existing = await t.get(userRef);
     if (existing.exists()) return;
@@ -60,14 +96,14 @@ export async function createProfile(user: Session, data: { displayName: string; 
     const value = (counter.exists() ? counter.data().value : 0) + 1;
     if (counter.exists()) t.update(counterRef, { value }); else t.set(counterRef, { value });
     const role: Role = isOwnerEmail(email) ? 'owner' : (invite?.exists() ? (invite.data().role as Role) : 'guest');
-    const profile: Profile = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), role, status: 'active', customerNumber: value, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+    const profile: Profile = { ...details, role, customerNumber: value };
     t.set(userRef, profile);
   });
   logActivity({ uid: user.uid, name: data.displayName.trim() }, 'user', user.uid, 'joined', `${data.displayName.trim()} נרשם/ה`, { subjectUid: user.uid });
 }
 
 export const updateOwnProfile = (uid: string, data: { displayName?: string; phone?: string; fields?: Record<string, string> }) =>
-  write.update('users', uid, { ...(data.displayName !== undefined ? { displayName: data.displayName.trim() } : {}), ...(data.phone !== undefined ? { phone: data.phone.trim() } : {}), ...(data.fields ? { fields: data.fields } : {}), updatedAt: nowIso() });
+  write.merge('users', uid, { ...(data.displayName !== undefined ? { displayName: data.displayName.trim() } : {}), ...(data.phone !== undefined ? { phone: data.phone.trim() } : {}), ...(data.fields && Object.keys(data.fields).length ? { fields: data.fields } : {}), updatedAt: nowIso() });
 
 // ---------- people (managers) ----------
 export const usePeople = (enabled: boolean) => useList<Profile>('users', { orderBy: [['displayName', 'asc']] }, enabled);
@@ -190,7 +226,7 @@ export function useRecentBought(enabled: boolean) {
 }
 export const useBoughtHistory = (enabled: boolean, fromIso: string) => useList<ShoppingItem>('shopping', { where: [['boughtAt', '>=', fromIso]], orderBy: [['boughtAt', 'desc']], limit: 400 }, enabled);
 export const useShoppingItem = (id: string, enabled = true) => useDoc<ShoppingItem>('shopping/' + (id || '_'), enabled && !!id);
-export type NewShopping = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean };
+export type NewShopping = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
 export async function addShopping(actor: Actor, data: NewShopping) {
   const now = nowIso();
   const id = newId('shopping');

@@ -1,14 +1,17 @@
-// Manager: visits, donations, calendar, reports, activity feed, settings.
-import { useMemo, useState } from 'react';
-import type { Visit, Donation, CalendarItem, Settings, Ticket, RegistrationField, Profile } from '../types';
+// Manager: visits, donations, reports, activity feed, settings.
+import { Fragment, useMemo, useState } from 'react';
+import type { Visit, Donation, Settings, Ticket, RegistrationField, Profile } from '../types';
 import { PAYMENT_LABELS, VISIT_LABELS, KIND_LABELS, type ActivityKind } from '../types';
 import type { TeamCtx } from '../ctx';
-import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, dateKey, money, useDesktop, dayLabel, DAY_SHORT } from '../ui';
+import { Top, Ledger, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Avatar, Loading, useToast, fmtDate, fmtTime, fmtDayLong, fmtWeekday, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, money, useDesktop, dayLabel } from '../ui';
 import { navigate } from '../router';
 import { usePerson, useHistoryTasks, useOpenTasks } from '../store';
-import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, saveCalendarItem, deleteCalendarItem, upsertCalendarRef, deleteCalendarRef, saveSettings, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, downloadCsv, fillTemplate, waLink, telLink, handleNotificationsFor, useNotifications } from '../data';
+import { setVisitStatus, useVisit, useDonation, setDonation, useDonations, useCalendar, upsertCalendarRef, deleteCalendarRef, saveSettingsPart, useOpenTickets, useOpenTabs, useAllEvents, useEventTickets, fillTemplate, waLink, telLink, contactPhoneOk, handleNotificationsFor, useNotifications } from '../data';
+import { ExportActions } from '../ExportTable';
 import { useActivityFor, useActivityByKind, ACTION_LABELS } from '../activity';
 import { useList } from '../db';
+import { CmsEditorLink } from './Manage';
+import { PaymentConfirmationActions } from './PaymentConfirmation';
 
 // ---------- visits ----------
 type VFilter = 'new' | 'approved' | 'rejected' | 'past' | 'all';
@@ -19,9 +22,17 @@ export function VisitsScreen({ ctx, visits, selectedId }: { ctx: TeamCtx; visits
   const n = (f: VFilter) => visits.filter((v) => f === 'past' ? v.date < today && v.status === 'approved' : f === 'approved' ? v.status === 'approved' && v.date >= today : v.status === f).length;
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'new', label: 'חדשות', n: n('new') }, { value: 'approved', label: 'מאושרים', n: n('approved') }, { value: 'rejected', label: 'לא מתאים', n: n('rejected') || undefined }, { value: 'past', label: 'עברו', n: n('past') || undefined }, { value: 'all', label: 'הכל' }]} rust={filter === 'new'} />;
   const status = (v: Visit) => <Pill tone={v.status === 'new' ? 'rust' : v.status === 'approved' ? 'ok' : undefined}>{v.status === 'new' ? `חדש · ${relTime(v.createdAt)}` : v.status === 'approved' ? `אושר${v.handledBy ? ' · ' + firstName(v.handledBy.name) : ''}${v.managerNote ? ' · ' + v.managerNote : ''}` : VISIT_LABELS[v.status]}</Pill>;
+  const visitExport = () => ({
+    filename: 'ביקורים.csv',
+    headers: ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'],
+    rows: visits.map((visit) => [
+      visit.date, visit.name, visit.phone, visit.people, visit.type, VISIT_LABELS[visit.status],
+      visit.managerNote, visit.handledBy?.name || '',
+    ]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="ביקורים" sub={desktop ? 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן. ה־CRM הקטן של מי שרוצה לבוא.' : 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן.'} end={<><Btn kind="ghost" size="sm" to="/manage/settings/visit-types">סוגי ביקור</Btn>{desktop && <Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('ביקורים.csv', ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'], visits.map((v) => [v.date, v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || '']))}>אקסל</Btn>}</>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="ביקורים" sub={desktop ? 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן. ה־CRM הקטן של מי שרוצה לבוא.' : 'בקשות מהאתר. מתקשרים, מאשרים, וזה נכנס ליומן.'} end={<><Btn kind="ghost" size="sm" to="/manage/settings/visit-types">סוגי ביקור</Btn><ExportActions getData={visitExport} /></>} />
       <div style={{ paddingTop: 8, paddingInline: desktop ? 20 : 0 }}>{chips}</div>
       {!list.length && <Empty title={filter === 'new' ? 'אין בקשות חדשות' : 'אין ביקורים כאלה'} />}
       {desktop ? <div className="tablewrap"><table><thead><tr><th>תאריך</th><th>מי</th><th>אנשים</th><th className="opt">סוג</th><th className="opt">טלפון</th><th>מצב</th><th className="opt"></th></tr></thead><tbody>{list.map((v) => <tr key={v.id} className={'link ' + (v.id === selectedId ? 'sel' : '')} onClick={() => navigate(`/manage/visits/${v.id}`)}><td style={{ whiteSpace: 'nowrap' }}>{fmtWeekday(v.date)} {fmtDate(v.date)}</td><td style={{ fontWeight: 600 }}>{v.name}</td><td>{v.people}</td><td className="opt">{v.type}</td><td className="ltr opt">{v.phone}</td><td>{status(v)}</td><td className="opt"><div className="acts" onClick={(e) => e.stopPropagation()}>{v.status === 'new' && <Btn size="xs" to={`/manage/visits/${v.id}`}>אישור</Btn>}<a className="btn ghost xs" href={telLink(v.phone)}>התקשרות</a><a className="btn ghost xs" href={waLink(v.phone)} target="_blank" rel="noopener">וואטסאפ</a></div></td></tr>)}</tbody></table></div>
@@ -89,9 +100,18 @@ export function DonationsScreen({ ctx, donations, selectedId }: { ctx: TeamCtx; 
   const recPill = (d: Donation) => d.receiptWanted ? <Pill tone={d.receiptSent ? 'ok' : 'ochre'}>{d.receiptSent ? 'נשלחה' : desktop ? 'צריך קבלה' : `צריך קבלה · ${d.receiptName || d.name}`}</Pill> : <span className="muted">בלי קבלה</span>;
   const acts = (d: Donation) => <>{!paid(d) && <Btn size="xs" onClick={() => approve(d)}>אישור תשלום</Btn>}{d.phone && <a className="btn ghost xs" href={thanks(d)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תודה</a>}{d.receiptWanted && !d.receiptSent && paid(d) && <Btn size="xs" kind="ghost" onClick={() => receipt(d)}>הקבלה נשלחה</Btn>}</>;
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'month', label: 'החודש' }, { value: 'pending', label: 'ממתינות', n: pending.length || undefined }, { value: 'receipt', label: 'צריך קבלה', n: receipts.length || undefined }, { value: 'memorial', label: 'עם הנצחה' }, { value: 'year', label: 'השנה' }, { value: 'all', label: 'הכל' }]} />;
+  const donationExport = () => ({
+    filename: 'תרומות.csv',
+    headers: ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'],
+    rows: donations.map((donation) => [
+      fmtDate(donation.createdAt), donation.name, donation.phone, donation.amount, donation.label,
+      donation.memorial, donation.note, PAYMENT_LABELS[donation.paymentStatus],
+      donation.receiptWanted ? (donation.receiptSent ? 'נשלחה' : 'צריך · ' + donation.receiptName) : '',
+    ]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="תרומות" sub="אישור העברות, קבלות ידניות, ותודה אישית בוואטסאפ." end={<><Btn kind="ghost" size="sm" to="/manage/settings/donations">סכומים מוגדרים</Btn><Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('תרומות.csv', ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'], donations.map((d) => [fmtDate(d.createdAt), d.name, d.phone, d.amount, d.label, d.memorial, d.note, PAYMENT_LABELS[d.paymentStatus], d.receiptWanted ? (d.receiptSent ? 'נשלחה' : 'צריך · ' + d.receiptName) : '']))}>אקסל</Btn></>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="תרומות" sub="אישור העברות, קבלות ידניות, ותודה אישית בוואטסאפ." end={<><Btn kind="ghost" size="sm" to="/manage/settings/donations">סכומים מוגדרים</Btn><ExportActions getData={donationExport} /></>} />
       {desktop ? <div className="cols4"><div className="stat"><b>{money(sumM)}</b><span>החודש · {donations.filter((d) => paid(d) && d.createdAt >= monthStart).length} תורמים</span></div><div className="stat"><b>{money(sumY)}</b><span>השנה · {donations.filter((d) => paid(d) && d.createdAt >= yearStart).length} תורמים</span></div><div className="stat" style={pending.length ? { background: 'var(--ochre-bg)' } : undefined}><b className={pending.length ? 'ochre' : ''}>{money(pending.reduce((s, d) => s + d.amount, 0))}</b><span>ממתין לאישור · {pending.length}</span></div><div className="stat"><b>{receipts.length}</b><span>קבלות לשלוח</span></div></div>
         : <Ledger items={[{ n: money(sumM), label: 'החודש' }, { n: money(sumY), label: 'השנה' }, { n: money(pending.reduce((s, d) => s + d.amount, 0)), label: 'ממתין', tone: pending.length ? 'ochre' : undefined }]} small />}
       <div style={{ paddingTop: 12, paddingInline: desktop ? 20 : 0 }}>{chips}</div>
@@ -116,61 +136,14 @@ export function DonationDetailScreen({ id, ctx, panel }: { id: string; ctx: Team
       {d.note && <blockquote className="quote" style={{ marginTop: 12 }}>"{d.note}"</blockquote>}
       {donor.item ? <Row center to={`/manage/people/${donor.item.uid}`} start={<Avatar name={donor.item.displayName} />} title={donor.item.displayName} meta={<><span className="ltr">{donor.item.phone}</span><span>לקוח/ה #{donor.item.customerNumber} · {count} תרומות עד היום</span></>} chev /> : <dl className="kv"><dt>טלפון</dt><dd className="ltr">{d.phone || '—'}</dd></dl>}
       <dl className="kv"><dt>קבלה</dt><dd>{d.receiptWanted ? <>{d.receiptSent ? <Pill tone="ok">נשלחה</Pill> : <Pill tone="ochre">צריך/ה קבלה</Pill>} על שם: {d.receiptName || d.name}</> : <span className="muted">לא ביקש/ה</span>}</dd><dt>אמצעי</dt><dd>{d.paymentStatus === 'claimed' ? `סימן/ה "העברתי" · ${whenText(d.updatedAt)}` : d.paymentStatus === 'pending' ? 'עוד לא סימן/ה שהעביר/ה' : PAYMENT_LABELS[d.paymentStatus]}</dd></dl>
+      <div className="pad">
+        <PaymentConfirmationActions ctx={ctx} collection="donations" ids={[d.id]} uid={d.uid} name={d.name} phone={d.phone}
+          amount={d.amount} purpose="תרומה לחווה" paid={d.paymentStatus === 'paid'} confirmation={d.paymentConfirmation} />
+      </div>
       <div className="inline pad" style={{ paddingTop: 12 }}>{d.phone && <><a className="btn ghost sm" href={waLink(d.phone, fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': d.amount }))} target="_blank" rel="noopener"><Icon name="whatsapp" size={18} />תודה בוואטסאפ</a><a className="btn ghost sm" href={telLink(d.phone)}><Icon name="phone" size={18} />התקשרות</a></>}</div>
       <Sec title="היסטוריה" />
       <div className="list">{log.items.map((a) => <Row key={a.id} center title={<span style={{ fontSize: 15, fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={<span>{whenText(a.at)}</span>} />)}<Row center title={<span style={{ fontSize: 15, fontWeight: 500 }}>התרומה נרשמה מהאפליקציה · התראה למנהלים</span>} meta={<span>{whenText(d.createdAt)}</span>} /></div>
       <div className="actions sticky">{!paid && <Btn size="big" icon="check" onClick={approve}>אישור תשלום</Btn>}{d.receiptWanted && !d.receiptSent && <Btn kind="ghost" onClick={() => setDonation(ctx.actor, d, { receiptSent: true }).then(() => toast({ text: 'סומן: הקבלה נשלחה' }, 2500))}>הקבלה נשלחה</Btn>}{paid && <Btn kind="quiet" size="sm" onClick={() => setDonation(ctx.actor, d, { paymentStatus: 'claimed' })}>להחזיר לממתין</Btn>}</div>
-    </>
-  );
-}
-
-// ---------- calendar ----------
-const COLORS = ['#263a2c', '#8e6412', '#aa4f36', '#3a5240', '#6f5a2a', '#5c685e'];
-export function CalendarScreen({ ctx }: { ctx: TeamCtx }) {
-  const today = todayISO(); const desktop = useDesktop(); const toast = useToast();
-  const [month, setMonth] = useState(today.slice(0, 7)); const [sel, setSel] = useState(today);
-  const first = new Date(month + '-01T12:00:00'); const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(); const pad = first.getDay();
-  const items = useCalendar(true, month + '-01', month + '-' + String(days).padStart(2, '0'));
-  const owners = useMemo(() => [...new Map(items.items.filter((c) => c.kind === 'manual').map((c) => [c.ownerUid, c.ownerName])).entries()], [items.items]);
-  const color = (c: CalendarItem) => c.kind === 'manual' ? COLORS[Math.max(0, owners.findIndex(([u]) => u === c.ownerUid)) % COLORS.length] : 'var(--gold)';
-  const shift = (n: number) => { const d = new Date(month + '-01T12:00:00'); d.setMonth(d.getMonth() + n); setMonth(dateKey(d).slice(0, 7)); };
-  const of = (k: string) => items.items.filter((c) => c.date === k);
-  const cell = (i: number) => { const k = `${month}-${String(i + 1).padStart(2, '0')}`; const list = of(k); return { k, list }; };
-  const dayList = of(sel);
-  const upcoming = items.items.filter((c) => c.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-  return (
-    <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="יומן מנהלים" sub={desktop ? 'לכל מנהל יומן בצבע שלו, כולם רואים את כולם. ביקורים מאושרים ואירועים נכנסים לבד.' : undefined} end={<Btn size="sm" icon="plus" to="/manage/calendar/new">ליומן</Btn>} />
-      <div className="inline pad" style={{ justifyContent: 'space-between' }}><Btn kind="quiet" size="sm" onClick={() => shift(-1)}><Icon name="back" size={18} />הקודם</Btn><b style={{ fontSize: 18 }}>{fmtMonthYear(month + '-01')}</b><Btn kind="quiet" size="sm" onClick={() => shift(1)}>הבא<Icon name="chev" size={18} /></Btn></div>
-      <div className="inline pad">{owners.map(([u, n], i) => <span key={u} className="pill" style={{ background: COLORS[i % COLORS.length], color: '#fff' }}>{firstName(n)}</span>)}<span className="pill gold">אירועים וביקורים</span></div>
-      {desktop ? <div style={{ padding: '12px 20px 0' }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', gap: 4 }}>{['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'].map((d) => <div key={d} className="muted" style={{ fontSize: 13, fontWeight: 600, padding: '4px 6px' }}>{d}</div>)}{Array.from({ length: pad }, (_, i) => <div key={'p' + i} />)}{Array.from({ length: days }, (_, i) => { const { k, list } = cell(i); return <div key={k} style={{ minHeight: 96, background: 'var(--white)', border: `1px solid ${k === today ? 'var(--green)' : 'var(--line2)'}`, borderRadius: 8, padding: 6 }}><div style={{ fontWeight: 700, fontSize: 14 }}>{i + 1}{k === today && <span className="muted" style={{ fontWeight: 500 }}> · היום</span>}</div>{list.map((c) => <A key={c.id} to={c.kind === 'visit' ? `/manage/visits/${c.refId}` : c.kind === 'event' ? `/manage/events/${c.refId}` : '/manage/calendar'} style={{ display: 'block', fontSize: 12, marginTop: 4, padding: '2px 6px', borderRadius: 4, background: color(c), color: '#fff', lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.kind === 'manual' ? `${firstName(c.ownerName)} · ` : ''}{c.title}{c.time ? ` ${c.time}` : ''}</A>)}</div>; })}</div></div>
-        : <>
-          <div className="cal">{DAY_SHORT.map((d) => <div key={d} className="wd">{d}</div>)}{Array.from({ length: pad }, (_, i) => <span key={'p' + i} />)}{Array.from({ length: days }, (_, i) => { const { k, list } = cell(i); return <button type="button" key={k} className={(k === today ? 'today ' : '') + (k === sel ? 'on ' : '') + (list.length ? 'dot' : '')} onClick={() => setSel(k)}>{i + 1}</button>; })}</div>
-          <Sec title={sel === today ? `היום, ${fmtDayLong(sel)}` : fmtDayLong(sel)} n={dayList.length || undefined} />
-          <div className="list">{dayList.map((c) => <CalRow key={c.id} c={c} color={color(c)} ctx={ctx} onDelete={() => deleteCalendarItem(c.id).then(() => toast({ text: 'הוסר מהיומן' }, 2000))} />)}{!dayList.length && <p className="lead">אין כלום ביום הזה. <A to={`/manage/calendar/new?date=${sel}`} style={{ textDecoration: 'underline' }}>להוסיף</A></p>}</div>
-          <Sec title="בהמשך החודש" n={upcoming.filter((c) => c.date > sel).length || undefined} />
-          <div className="list">{upcoming.filter((c) => c.date > sel).slice(0, 8).map((c) => <CalRow key={c.id} c={c} color={color(c)} ctx={ctx} withDate onDelete={() => deleteCalendarItem(c.id)} />)}</div>
-        </>}
-    </>
-  );
-}
-function CalRow({ c, color, ctx, withDate, onDelete }: { c: CalendarItem; color: string; ctx: TeamCtx; withDate?: boolean; onDelete: () => void }) {
-  const to = c.kind === 'visit' ? `/manage/visits/${c.refId}` : c.kind === 'event' ? `/manage/events/${c.refId}` : undefined;
-  return <Row to={to} center start={<span style={{ width: 10, height: 40, borderRadius: 5, background: color, flexShrink: 0 }} />} title={c.title} meta={<span>{[withDate ? dayLabel(c.date) : '', c.time, c.kind === 'manual' ? c.ownerName : c.kind === 'visit' ? 'ביקור מאושר' : 'אירוע'].filter(Boolean).join(' · ')}</span>} end={c.kind === 'manual' && (c.ownerUid === ctx.actor.uid || ctx.owner) ? <button type="button" className="iconbtn" aria-label="הסרה" onClick={onDelete}><Icon name="x" size={18} /></button> : undefined} chev={!!to} />;
-}
-export function CalendarAddScreen({ ctx }: { ctx: TeamCtx }) {
-  const today = todayISO(); const toast = useToast();
-  const preset = new URLSearchParams(location.search).get('date') || today;
-  const [title, setTitle] = useState('אני בחווה'); const [date, setDate] = useState(preset); const [from, setFrom] = useState('09:00'); const [to, setTo] = useState('');
-  const save = () => saveCalendarItem(ctx.actor, { title: title.trim() === 'אני בחווה' ? `${firstName(ctx.actor.name)} בחווה` : title.trim(), date, time: to ? `${from}–${to}` : from }).then(() => navigate('/manage/calendar', true)).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
-  return (
-    <>
-      <Top backTo="/manage/calendar" backLabel="יומן" title="פריט ביומן" sub="היומן שלך, בצבע שלך. כל המנהלים רואים, כדי לדעת מי בחווה ומתי." />
-      <Field label="מה"><div className="chips">{['אני בחווה', 'פגישת צוות', 'ספק מגיע', 'סיור'].map((t) => <Chip key={t} on={title === t} onClick={() => setTitle(t)}>{t}</Chip>)}</div><Input style={{ marginTop: 10 }} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-      <Field label="מתי"><div className="chips"><Chip on={date === today} onClick={() => setDate(today)}>היום</Chip><Chip on={date === addDays(today, 1)} onClick={() => setDate(addDays(today, 1))}>מחר · {fmtWeekday(addDays(today, 1))} {fmtDate(addDays(today, 1))}</Chip></div><Input type="date" dir="ltr" style={{ marginTop: 10 }} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-      <div className="cols"><Field label="משעה"><Input type="time" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="עד (לא חובה)"><Input type="time" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} /></Field></div>
-      <p className="note">ביומן של {firstName(ctx.actor.name)} · הצבע שלך ביומן המשותף. תזכורות וחזרה שבועית: בשלב הבא.</p>
-      <div className="actions sticky"><Btn size="big" disabled={!title.trim() || !date} onClick={save}>שמירה ליומן</Btn></div>
     </>
   );
 }
@@ -196,16 +169,30 @@ export function ReportsScreen({ ctx }: { ctx: TeamCtx }) {
   const newPeople = people.items.filter((p) => p.createdAt >= from); const approvedV = visits.items.filter((v) => v.status === 'approved' && v.createdAt >= from); const reqV = visits.items.filter((v) => v.createdAt >= from);
   const source = useMemo(() => { const m = new Map<string, number>(); for (const p of people.items) { const s = p.fields?.source || 'לא ענו'; m.set(s, (m.get(s) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [people.items]);
   const label = range === 'month' ? 'החודש' : range === '3m' ? '3 חודשים' : 'השנה';
+  const taskExport = () => ({
+    filename: `משימות ${label}.csv`,
+    headers: ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'],
+    rows: tasks.items.map((task) => [task.title, task.doneBy?.name || '', task.doneAt || '', task.templateId ? 'כן' : '']),
+  });
+  const moneyExport = () => ({
+    filename: `כסף ${label}.csv`,
+    headers: ['סעיף', 'סכום'],
+    rows: [
+      ['תרומות ששולמו', paidD.reduce((sum, donation) => sum + donation.amount, 0)],
+      ['כרטיסים ששולמו', paidT.reduce((sum, ticket) => sum + ticket.price, 0)],
+      ['חובות פתוחים', openSum],
+    ],
+  });
   return (
     <>
       <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="דוחות" sub="משימות, כסף ואנשים לפי תקופה. כל טבלה ניתנת לייצוא לאקסל." />
       <div className="inline pad"><Chips value={range} onChange={setRange} options={[{ value: 'month', label: 'החודש' }, { value: '3m', label: '3 חודשים' }, { value: 'year', label: 'השנה' }]} /></div>
       <div className={desktop ? 'cols' : ''}>
         <div>
-          <Sec title="משימות · מי ביצע" link="ייצוא" onLink={() => downloadCsv(`משימות ${label}.csv`, ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'], tasks.items.map((t) => [t.title, t.doneBy?.name || '', t.doneAt || '', t.templateId ? 'כן' : '']))} />
+          <Sec title="משימות · מי ביצע"><ExportActions getData={taskExport} downloadLabel="ייצוא" /></Sec>
           <Ledger small items={[{ n: tasks.items.length, label: 'בוצעו' }, { n: (tasks.items.length / days).toFixed(1), label: 'ביום' }, ...(recurring.length ? [{ n: `${Math.round((onTime / recurring.length) * 100)}%`, label: 'חוזרות בזמן' }] : []), { n: open.items.filter((t) => t.dueDate && t.dueDate < today).length, label: 'פתוחות באיחור', tone: open.items.some((t) => t.dueDate && t.dueDate < today) ? 'rust' : undefined }]} />
           <div className="bars" style={{ paddingTop: 14 }}>{perPerson.slice(0, 6).map(([n, c]) => <div className="bar" key={n}><span>{n}</span><i style={{ width: `${(c / max) * 100}%` }} /><b>{c}</b></div>)}{!perPerson.length && <p className="lead" style={{ padding: 0 }}>אין משימות שבוצעו בתקופה.</p>}</div>
-          <Sec title="כסף" link="ייצוא" onLink={() => downloadCsv(`כסף ${label}.csv`, ['סעיף', 'סכום'], [['תרומות ששולמו', paidD.reduce((s, d) => s + d.amount, 0)], ['כרטיסים ששולמו', paidT.reduce((s, t) => s + t.price, 0)], ['חובות פתוחים', openSum]])} />
+          <Sec title="כסף"><ExportActions getData={moneyExport} downloadLabel="ייצוא" /></Sec>
           <div className="list">
             <Row center to="/manage/donations" title="תרומות ששולמו" meta={<span>{new Set(paidD.map((d) => d.uid)).size} תורמים · {donations.items.filter((d) => d.receiptWanted && !d.receiptSent).length} קבלות ממתינות</span>} end={<span className="amount">{money(paidD.reduce((s, d) => s + d.amount, 0))}</span>} />
             <Row center to="/manage/events" title="כרטיסים ששולמו" meta={<span>{paidT.length} כרטיסים · {new Set(paidT.map((t) => t.eventId)).size} אירועים</span>} end={<span className="amount">{money(paidT.reduce((s, t) => s + t.price, 0))}</span>} />
@@ -239,18 +226,23 @@ export function ActivityScreen({ ctx }: { ctx: TeamCtx }) {
   const list = acts.items.filter((a) => (!who || a.by.uid === who) && (!q || a.text.includes(q) || a.by.name.includes(q)));
   const byDay = useMemo(() => { const m = new Map<string, typeof list>(); for (const a of list) m.set(a.at.slice(0, 10), [...(m.get(a.at.slice(0, 10)) || []), a]); return [...m.entries()]; }, [list]);
   const kinds: (ActivityKind | 'all')[] = ['all', 'task', 'shopping', 'ticket', 'tab', 'visit', 'donation', 'user', 'event', 'settings'];
+  const activityExport = () => ({
+    filename: 'פעילות.csv',
+    headers: ['מתי', 'מי', 'פעולה', 'מה', 'סוג'],
+    rows: list.map((entry) => [entry.at, entry.by.name, ACTION_LABELS[entry.action] || entry.action, entry.text, KIND_LABELS[entry.kind]]),
+  });
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="כל הפעילות" sub="כל מה שקרה בחווה, לפי זמן. נשמר לתמיד. כאן מוצאים את המקדח אחרי שבוע." end={<Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('פעילות.csv', ['מתי', 'מי', 'פעולה', 'מה', 'סוג'], list.map((a) => [a.at, a.by.name, ACTION_LABELS[a.action] || a.action, a.text, KIND_LABELS[a.kind]]))}>אקסל</Btn>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title="כל הפעילות" sub="כל מה שקרה בחווה, לפי זמן. נשמר לתמיד. כאן מוצאים את המקדח אחרי שבוע." end={<ExportActions getData={activityExport} />} />
       <div className="inline pad"><Input placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} style={{ minHeight: 44, flex: 1, minWidth: 160 }} /></div>
       <div style={{ paddingTop: 10, paddingInline: desktop ? 20 : 0, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <Chips scroll={!desktop} value={kind} onChange={setKind} options={kinds.map((k) => ({ value: k, label: k === 'all' ? 'הכל' : KIND_LABELS[k] }))} />
         {desktop && <><span className="muted">·</span><Chips value={who} onChange={setWho} options={[{ value: '', label: 'כולם' }, ...people.map(([u, n]) => ({ value: u, label: firstName(n) }))]} /></>}
       </div>
       {acts.loading && !list.length && <Loading />}
-      {desktop ? <div className="tablewrap"><table><thead><tr><th>מתי</th><th>מי</th><th>מה</th><th>סוג</th></tr></thead><tbody>{byDay.map(([day, items]) => <>
-        <tr key={day} className="sub"><td colSpan={4} style={{ fontWeight: 700, color: 'var(--ink)', background: 'var(--paper2)' }}>{dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtDayLong(day)}`}</td></tr>
-        {items.map((a) => <tr key={a.id}><td className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtTime(a.at)}</td><td style={{ fontWeight: 600 }}>{a.by.name}</td><td className="wrap">{ACTION_LABELS[a.action] || a.action}: {a.text}</td><td className="muted">{KIND_LABELS[a.kind]}</td></tr>)}</>)}</tbody></table></div>
+      {desktop ? <div className="tablewrap"><table><thead><tr><th>מתי</th><th>מי</th><th>מה</th><th>סוג</th></tr></thead><tbody>{byDay.map(([day, items]) => <Fragment key={day}>
+        <tr className="sub"><td colSpan={4} style={{ fontWeight: 700, color: 'var(--ink)', background: 'var(--paper2)' }}>{dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtDayLong(day)}`}</td></tr>
+        {items.map((a) => <tr key={a.id}><td className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtTime(a.at)}</td><td style={{ fontWeight: 600 }}>{a.by.name}</td><td className="wrap">{ACTION_LABELS[a.action] || a.action}: {a.text}</td><td className="muted">{KIND_LABELS[a.kind]}</td></tr>)}</Fragment>)}</tbody></table></div>
         : byDay.map(([day, items]) => <div key={day}><Sec title={dayLabel(day) === fmtWeekday(day) + ' ' + fmtDate(day) ? fmtDayLong(day) : `${dayLabel(day)}, ${fmtWeekday(day)}`} n={items.length} /><div className="list">{items.map((a) => <Row key={a.id} center start={<Avatar name={a.by.name} size="sm" light />} title={<span style={{ fontSize: 15, fontWeight: 500 }}>{firstName(a.by.name)} · {ACTION_LABELS[a.action] || a.action}: {a.text}</span>} meta={<span>{fmtTime(a.at)} · {KIND_LABELS[a.kind]}</span>} />)}</div></div>)}
       {!acts.loading && !list.length && <Empty title="אין פעילות כזו" />}
     </>
@@ -270,23 +262,28 @@ export function SettingsScreen({ ctx }: { ctx: TeamCtx }) {
         <A to="/manage/settings/donations"><Icon name="heart" />סכומי תרומה<span className="s">{s.donationPresets.map((p) => `${p.amount} ₪`).join(' · ')} + סכום</span><Icon name="chev" className="chev" size={18} /></A>
         <A to="/manage/settings/visit-types"><Icon name="pin" />סוגי ביקור<span className="s">{s.visitTypes.join(', ')}</span><Icon name="chev" className="chev" size={18} /></A>
         <A to="/manage/settings/questions"><Icon name="list" />שאלות הרשמה נוספות<span className="s">{s.registrationFields.length ? s.registrationFields.map((f) => f.label).join(', ') : 'רק שם וטלפון'}</span><Icon name="chev" className="chev" size={18} /></A>
-        <A to="/manage/settings/whatsapp"><Icon name="whatsapp" />הודעות מוכנות לוואטסאפ<span className="s">אישור ביקור, תודה, תזכורות</span><Icon name="chev" className="chev" size={18} /></A>
+        <A to="/manage/settings/whatsapp"><Icon name="whatsapp" />הודעות מוכנות לוואטסאפ<span className="s">אישור ביקור, אישור תשלום ותזכורות</span><Icon name="chev" className="chev" size={18} /></A>
+        <A to="/manage/settings/contact"><Icon name="phone" />פרטי קשר לחווה<span className="s">{s.contact?.phone || s.contact?.whatsapp || 'לא הוגדר'}</span><Icon name="chev" className="chev" size={18} /></A>
         {ctx.owner && <A to="/manage/settings/managers"><Icon name="people" />מנהלים ובעלים<span className="s">{owners} בעלים · {managers} מנהלים</span><Icon name="chev" className="chev" size={18} /></A>}
         <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<span className="s">הנוסח שהאורח מאשר</span><Icon name="chev" className="chev" size={18} /></A>
-        <a href="/admin" target="_blank" rel="noopener"><Icon name="external" />עריכת האתר<span className="s">טקסטים ותמונות באתר התדמית, נפתח בחלון נפרד</span><Icon name="chev" className="chev" size={18} /></a>
+        <CmsEditorLink ctx={ctx} />
       </div>
       <Field label="משפט פתיחה לאורחים" hint="מופיע בראש דף הבית של האורח."><Textarea rows={2} value={intro ?? s.guestIntro} onChange={(e) => setIntro(e.target.value)} /></Field>
-      {intro !== null && intro !== s.guestIntro && <div className="actions"><Btn onClick={() => saveSettings(ctx.actor, { ...s, guestIntro: intro.trim() }).then(() => { setIntro(null); toast({ text: 'נשמר' }, 2000); })}>שמירה</Btn></div>}
+      {intro !== null && intro !== s.guestIntro && <div className="actions"><Btn onClick={() => saveSettingsPart(ctx.actor, { guestIntro: intro.trim() }).then(() => { setIntro(null); toast({ text: 'נשמר' }, 2000); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }))}>שמירה</Btn></div>}
     </>
   );
 }
-export type SettingsPageKey = 'payments' | 'donations' | 'visit-types' | 'questions' | 'whatsapp' | 'managers';
+export type SettingsPageKey = 'payments' | 'donations' | 'visit-types' | 'questions' | 'whatsapp' | 'managers' | 'contact';
 export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKey }) {
   const toast = useToast();
-  const [s, setS] = useState<Settings>(() => structuredClone(ctx.settings));
-  const dirty = JSON.stringify(s) !== JSON.stringify(ctx.settings);
-  const save = () => saveSettings(ctx.actor, s).then(() => { toast({ text: 'נשמר' }, 2000); navigate('/manage/settings', true); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
+  const [draft, setS] = useState<Settings | null>(null);
+  const s = draft ?? ctx.settings;
+  const sections: Partial<Record<SettingsPageKey, keyof Settings>> = { payments: 'payment', donations: 'donationPresets', 'visit-types': 'visitTypes', questions: 'registrationFields', whatsapp: 'templates' };
+  const section = sections[page];
+  const dirty = section && JSON.stringify(s[section]) !== JSON.stringify(ctx.settings[section]);
+  const save = () => section && saveSettingsPart(ctx.actor, { [section]: s[section] }).then(() => { toast({ text: 'נשמר' }, 2000); navigate('/manage/settings', true); }).catch(() => toast({ text: 'לא נשמר', kind: 'error' }));
   const foot = <div className="actions sticky"><Btn size="big" disabled={!dirty} onClick={save}>שמירה</Btn></div>;
+  if (page === 'contact') return <ContactSettings ctx={ctx} />;
   if (page === 'payments') return (
     <>
       <Top backTo="/manage/settings" backLabel="הגדרות" title="תשלומים" sub="מה האורח רואה כשצריך לשלם על כרטיס, תרומה או חשבון דוכן." />
@@ -323,7 +320,7 @@ export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKe
     const setF = (i: number, p: Partial<RegistrationField>) => setS({ ...s, registrationFields: fields.map((f, j) => j === i ? { ...f, ...p } : f) });
     return (
       <>
-        <Top backTo="/manage/settings" backLabel="הגדרות" title="שאלות הרשמה נוספות" sub='בהרשמה שואלים רק שם וטלפון. כל שאלה כאן קופצת בכניסה הבאה כ"השלמת פרטים", ואפשר לדחות.' />
+        <Top backTo="/manage/settings" backLabel="הגדרות" title="שאלות הרשמה נוספות" sub='השאלות מופיעות בהרשמה. נרשמים קיימים יכולים להשלים ולעדכן תשובות ב"החשבון שלי".' />
         {fields.map((f, i) => <div key={f.id} style={{ borderBottom: '1px solid var(--line2)', paddingBottom: 14 }}>
           <Field label={`שאלה ${i + 1}`}><Input value={f.label} onChange={(e) => setF(i, { label: e.target.value })} /></Field>
           <div className="inline pad" style={{ paddingTop: 10 }}><Chips value={f.type} onChange={(type) => setF(i, { type })} options={[{ value: 'text', label: 'טקסט' }, { value: 'choice', label: 'בחירה' }, { value: 'date', label: 'תאריך' }]} /><Chip on={f.required} onClick={() => setF(i, { required: !f.required })}>חובה</Chip><Btn size="xs" kind="quiet" onClick={() => setS({ ...s, registrationFields: fields.filter((_, j) => j !== i) })}>הסרה</Btn></div>
@@ -337,18 +334,54 @@ export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKe
     );
   }
   if (page === 'whatsapp') {
-    const keys: { k: keyof Settings['templates']; t: string }[] = [{ k: 'visitApproved', t: 'אישור ביקור' }, { k: 'donationThanks', t: 'תודה על תרומה' }, { k: 'debtReminder', t: 'תזכורת חוב' }, { k: 'ticketReminder', t: 'תזכורת לאירוע' }, { k: 'vendorInvite', t: 'הזמנת בעל דוכן' }];
+    const keys: { k: keyof Settings['templates']; t: string }[] = [{ k: 'visitApproved', t: 'אישור ביקור' }, { k: 'donationThanks', t: 'תודה על תרומה' }, { k: 'debtReminder', t: 'תזכורת חוב' }, { k: 'ticketReminder', t: 'תזכורת לאירוע' }, { k: 'vendorInvite', t: 'הזמנת בעל דוכן' }, { k: 'paymentConfirmation', t: 'אישור תשלום (וואטסאפ ומייל)' }];
     return (
       <>
         <Top backTo="/manage/settings" backLabel="הגדרות" title="הודעות מוכנות לוואטסאפ" sub="הכפתור באפליקציה פותח וואטסאפ עם הטקסט מוכן. המערכת לא שולחת בעצמה." />
-        <div className="inline pad">{['[שם]', '[תאריך]', '[אירוע]', '[סכום]', '[שעה]'].map((p) => <span key={p} className="pill gold ltr">{p}</span>)}</div>
-        {keys.map(({ k, t }) => <Field key={k} label={t}><Textarea rows={3} value={s.templates[k] || ''} onChange={(e) => setS({ ...s, templates: { ...s.templates, [k]: e.target.value } })} /></Field>)}
+        <div className="inline pad">{['[שם]', '[תאריך]', '[אירוע]', '[סכום]', '[שעה]', '[עבור]'].map((p) => <span key={p} className="pill gold ltr">{p}</span>)}</div>
+        {keys.map(({ k, t }) => <Field key={k} label={t}><Textarea rows={3} maxLength={k === 'paymentConfirmation' ? 2000 : undefined} value={s.templates[k] || ''} onChange={(e) => setS({ ...s, templates: { ...s.templates, [k]: e.target.value } })} /></Field>)}
         <Sec title="תצוגה מקדימה · תזכורת חוב" /><blockquote className="quote">{fillTemplate(s.templates.debtReminder, { 'שם': 'רוני לוי', 'אירוע': 'יריד אוקטובר', 'סכום': 46 })}</blockquote>
         {foot}
       </>
     );
   }
   return <ManagersPage ctx={ctx} />;
+}
+
+function ContactSettings({ ctx }: { ctx: TeamCtx }) {
+  const contact = ctx.settings.contact || {};
+  const [draft, setDraft] = useState<Settings['contact']>();
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const whatsapp = draft?.whatsapp ?? contact.whatsapp ?? '';
+  const phone = draft?.phone ?? contact.phone ?? '';
+  const valid = [whatsapp, phone].every((value) => !value.trim() || contactPhoneOk(value.trim()));
+  const dirty = whatsapp !== (contact.whatsapp || '') || phone !== (contact.phone || '');
+  const save = async () => {
+    if (!draft || !valid || busy) return;
+    setBusy(true);
+    const patch = Object.fromEntries(Object.entries(draft).map(([key, value]) => [key, value.trim()]));
+    try {
+      await saveSettingsPart(ctx.actor, { contact: patch }, 'פרטי הקשר של החווה עודכנו');
+      toast({ text: 'נשמר' }, 2000);
+      navigate('/manage/settings', true);
+    } catch {
+      toast({ text: 'לא נשמר', kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Top backTo="/manage/settings" backLabel="הגדרות" title="פרטי קשר לחווה" sub="המספרים מופיעים בדף הפנייה למנהלים ובמסך חשבון חסום." />
+      <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <Field label="מספר וואטסאפ" hint="אפשר להשאיר ריק כדי להסתיר את הקישור לוואטסאפ."><Input type="tel" dir="ltr" maxLength={25} value={whatsapp} onChange={(e) => setDraft({ ...draft, whatsapp: e.target.value })} /></Field>
+        <Field label="מספר טלפון"><Input type="tel" dir="ltr" maxLength={25} value={phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></Field>
+        {!valid && <p className="note">הזינו מספר טלפון תקין או השאירו את השדה ריק.</p>}
+        <div className="actions sticky"><Btn type="submit" size="big" disabled={!dirty || !valid || busy}>שמירה</Btn></div>
+      </form>
+    </>
+  );
 }
 function AnsweredCount({ f }: { f: RegistrationField }) {
   const people = useList<Profile>('users', { orderBy: [['displayName', 'asc']] });

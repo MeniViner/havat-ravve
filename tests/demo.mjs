@@ -8,6 +8,7 @@ const stub = {
   name: 'stub-firebase',
   setup(b) {
     b.onResolve({ filter: /^firebase\/firestore$/ }, () => ({ path: 'fs', namespace: 'stub' }));
+    b.onResolve({ filter: /^firebase\/auth$/ }, () => ({ path: 'auth', namespace: 'stub' }));
     b.onResolve({ filter: /^\.\/firebase$/ }, () => ({ path: 'app', namespace: 'stub' }));
     b.onLoad({ filter: /^fs$/, namespace: 'stub' }, () => ({ contents: `
       const calls = globalThis.__calls;
@@ -23,7 +24,13 @@ const stub = {
       export const arrayUnion = (...v) => ({ union: v }), arrayRemove = (...v) => ({ remove: v }), increment = (n) => ({ inc: n });
       export const runTransaction = async (db, fn) => { calls.push(['tx']); return fn({ get: async () => ({ exists: () => false, data: () => ({}) }), set: (r) => calls.push(['tx.set', r.path]) }); };
     ` }));
-    b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: 'export const db = {};' }));
+    b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {};' }));
+    b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: `
+      export const db = {}, ownerEmail = 'owner@example.test';
+      export const readyAuth = async () => ({});
+      export const nowIso = () => new Date().toISOString();
+      export const todayKey = () => '', hoursAgoIso = () => '', isGoogleUser = () => false;
+    ` }));
   },
 };
 await build({ entryPoints: ['tests/demo-entry.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.build/demo-test.mjs', plugins: [stub], logLevel: 'silent' });
@@ -36,14 +43,14 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
 assert.deepEqual(getDemo(), { on: false, persona: 'real' }, 'an old mixed state loads as "demo off"');
 
 // ---- demo on: every kind of write stays local, whatever the id looks like
-for (const persona of ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon']) {
+for (const persona of ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new']) {
   setDemo({ on: true, persona });
   calls.length = 0;
   const id = newId('activity');
@@ -51,12 +58,19 @@ for (const persona of ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon'])
   await write.set('tasks', 'a-real-looking-id', { title: 'x' });
   await write.update('tasks', 'demo-task-flag', { done: true });
   await write.update('users', 'someRealUid', { notes: 'x' });
+  await write.merge('users', 'someRealUid', { fields: { example: 'x' } });
   await write.remove('shopping', 'demo-shop-milk');
   await write.batch([{ op: 'set', col: 'activity', id, data: { text: 'x' } }, { op: 'update', col: 'tasks', id: 'realTask', data: { done: true } }, { op: 'set', col: 'events/demo-e-fall/products', id: 'p1', data: {} }]);
   await write.update('tabs', 'demo-tab-roni-oct', { items: push({ name: 'x' }), total: inc(5) });
   assert.deepEqual(writes(), [], `no Firestore write as ${persona}`);
 }
 assert.ok(demoItems('tasks').some((t) => t.id === 'a-real-looking-id'), 'the write landed in the local demo store');
+const signup = { displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
+await createProfile(NEW_DEMO_SESSION, signup);
+await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { receiptPreference: 'email' } });
+await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { city: 'עומר' } });
+assert.deepEqual(demoDoc('users/' + NEW_DEMO_SESSION.uid).fields, { city: 'עומר', source: 'חברים', receiptPreference: 'email' });
+assert.deepEqual(writes(), [], 'registration and profile updates remain in the local sandbox');
 
 // ---- there is no "demo on top of the real account": turning demo on without a persona picks an example person
 setDemo({ on: false });
@@ -76,6 +90,8 @@ calls.length = 0;
 await assert.rejects(write.update('tasks', 'demo-task-flag', { done: true }));
 await assert.rejects(write.set('events/demo-e-fall/products', 'p1', {}));
 await assert.rejects(write.remove('users', 'demo-u-beni'));
+await assert.rejects(write.merge('users', NEW_DEMO_SESSION.uid, { fields: { receiptPreference: 'email' } }));
+await assert.rejects(createProfile(NEW_DEMO_SESSION, signup));
 await assert.rejects(write.update('tabs', 'demo-tab-roni-oct', { total: inc(5) }));
 await assert.rejects(write.batch([{ op: 'set', col: 'activity', id: 'r1', data: {} }, { op: 'update', col: 'tasks', id: 'demo-task-flag', data: {} }]));
 assert.deepEqual(writes(), [], 'a batch with one demo id writes nothing at all');

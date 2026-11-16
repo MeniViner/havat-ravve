@@ -4,11 +4,12 @@
 import { useSyncExternalStore } from 'react';
 import { collections as baseCollections, documents as baseDocuments, U } from './data';
 
-export type Persona = 'real' | 'owner' | 'manager' | 'staff' | 'guest' | 'blocked' | 'anon';
+export type Persona = 'real' | 'owner' | 'manager' | 'staff' | 'guest' | 'blocked' | 'anon' | 'new';
 export type DemoState = { on: boolean; persona: Persona };
 /** 'real' means "not in demo": it is the persona only while demo is off. */
-export const PERSONA_LABELS: Record<Persona, string> = { real: 'החשבון שלי', owner: 'בעלים · בני', manager: 'מנהלת · נועה', staff: 'מתנדב · יואב', guest: 'אורחת · מיכל', blocked: 'חסום · יוסי', anon: 'אורח לא מחובר' };
-export const PERSONA_UID: Record<Persona, string> = { real: '', owner: U.beni, manager: U.noa, staff: U.yoav, guest: U.michal, blocked: U.yossi, anon: '' };
+export const PERSONA_LABELS: Record<Persona, string> = { real: 'החשבון שלי', owner: 'בעלים · בני', manager: 'מנהלת · נועה', staff: 'מתנדב · יואב', guest: 'אורחת · מיכל', blocked: 'חסום · יוסי', anon: 'אורח לא מחובר', new: 'הרשמה חדשה' };
+export const NEW_DEMO_SESSION = { uid: 'demo-u-new', email: 'guest@example.test', displayName: '' };
+export const PERSONA_UID: Record<Persona, string> = { real: '', owner: U.beni, manager: U.noa, staff: U.yoav, guest: U.michal, blocked: U.yossi, anon: '', new: NEW_DEMO_SESSION.uid };
 
 const KEY = 'farm-demo';
 const OV_KEY = 'farm-demo-overrides';

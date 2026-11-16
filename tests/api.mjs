@@ -554,6 +554,10 @@ try {
     // events, vendors, products
     const ev = await w(MGR, 'events.create', { title: 'יום פתוח', start: '2026-12-10T10:00', end: '2026-12-10T14:00', price: 30, published: true });
     ok(ev, 'events.create'); const eventId = ev.json.data.eventId;
+    const publishedEvent = await docOf('events/' + eventId);
+    check(publishedEvent.publishedAt && publishedEvent.publishedAt === publishedEvent.createdAt, 'creating a published event records its publication time');
+    ok(await w(MGR, 'events.update', { eventId, description: 'עדכון לתיאור' }), 'events.update edit without publication');
+    check((await docOf('events/' + eventId)).publishedAt === publishedEvent.publishedAt, 'editing a published event preserves its publication time');
     const cal = await docOf('calendar/event_' + eventId);
     check(cal && cal.date === '2026-12-10' && cal.time === '10:00–14:00' && cal.kind === 'event', 'a published event gets its calendar entry, as the app makes it');
     check((await w(MGR, 'events.create', { title: 'x', start: '2026-12-10T10:00', end: '2026-12-09T10:00' })).status === 400, 'end before start → 400');
@@ -561,6 +565,8 @@ try {
     ok(await w(MGR, 'events.update', { eventId, published: false }), 'events.update unpublish');
     check(!(await docOf('calendar/event_' + eventId)) && (await actsOf(eventId)).includes('unpublished'), 'unpublishing removes the calendar entry and logs "unpublished"');
     ok(await w(MGR, 'events.update', { eventId, published: true, capacity: 80 }), 'events.update publish again');
+    const republishedEvent = await docOf('events/' + eventId);
+    check(republishedEvent.publishedAt > publishedEvent.publishedAt && republishedEvent.publishedAt === republishedEvent.updatedAt, 'republishing records a new publication time');
     const vd = await w(MGR, 'vendors.create', { name: 'גבינות הגליל', phone: '0501111111', product: 'גבינות' });
     ok(vd, 'vendors.create'); const vendorId = vd.json.data.vendorId;
     ok(await w(MGR, 'vendors.update', { vendorId, external: true }), 'vendors.update');
@@ -620,10 +626,18 @@ try {
     ok(await w(MGR, 'calendar.update', { itemId, time: '09:30' }), 'calendar.update');
     const cl = await r(MGR, '/v1/calendar?dateFrom=2026-12-01&dateTo=2026-12-10');
     check(cl.json.data.items.map((x) => x.date).join() === '2026-12-02,2026-12-10', 'calendar.list date range, inclusive, in order', cl.json.data.items.map((x) => x.date));
+    const sharedCalendarKinds = ['presence', 'meeting', 'planning'];
+    for (const kind of sharedCalendarKinds) {
+      const id = `syn-calendar-${kind}`;
+      await seed('calendar', id, { title: kind, date: '2026-11-25', time: '09:00', ownerUid: 'syn-dani-l', ownerName: 'דני לוי', kind, refId: '', createdAt: t0 });
+      const list = await r(MGR, `/v1/calendar?kind=${kind}`);
+      check(list.status === 200 && list.json.data.items.some((item) => item.id === id && item.kind === kind), `calendar.list accepts kind ${kind}`);
+    }
 
     // overview
     const ovm = await r(MGR, '/v1/overview?date=2026-11-25');
     check(ovm.status === 200 && typeof ovm.json.data.tasks.open === 'number' && ovm.json.data.tasks.overdue >= 1 && 'visits' in ovm.json.data && 'payments' in ovm.json.data && ovm.json.data.upcomingEvents.some((e) => e.id === eventId), 'farm.overview for a manager: counts, overdue, payments, events', ovm.json.error);
+    check(sharedCalendarKinds.every((kind) => ovm.json.data.calendarToday.some((item) => item.kind === kind)), 'farm.overview includes new calendar kinds');
     const ovs = await r(STAFF, '/v1/overview');
     check(ovs.status === 200 && !('visits' in ovs.json.data) && !('payments' in ovs.json.data), 'farm.overview for staff has no visits or payments');
 

@@ -16,6 +16,7 @@ const at = (daysFromToday: number, hhmm = '12:00') => {
   return d.toISOString();
 };
 const ago = (hours: number) => new Date(now.getTime() - hours * 3600_000).toISOString();
+export const demoPreviousGuestVisit = ago(24);
 const key = (daysFromToday: number) => { const d = new Date(now.getTime() + daysFromToday * DAY); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 /** Next Saturday that is at least `minDays` away. */
 const nextSat = (minDays: number) => { let d = minDays; while (new Date(now.getTime() + d * DAY).getDay() !== 6) d++; return d; };
@@ -48,9 +49,9 @@ export const profiles: Profile[] = [
   person(U.omer, 44, 'עומר לוי', 'omer.levi@gmail.com', '050-000-0044', 'staff', 20),
   person(U.shira, 51, 'שירה גולן', 'shira.g@gmail.com', '052-000-0051', 'staff', 90),
   person(U.gil, 58, 'גיל ברק', 'gil.b@gmail.com', '054-000-0058', 'staff', 70),
-  person(U.roni, 88, 'רוני לוי', 'roni.levi@gmail.com', '054-000-0088', 'guest', 70, { fields: { city: 'באר שבע', source: 'פייסבוק' } }),
+  person(U.roni, 88, 'רוני לוי', 'roni.levi@gmail.com', '054-000-0088', 'guest', 70, { fields: { city: 'באר שבע', source: 'פייסבוק', receiptPreference: 'whatsapp' } }),
   person(U.orly, 87, 'אורלי לוי', 'orly.l@gmail.com', '054-000-0087', 'guest', 70),
-  person(U.david, 130, 'דוד כהן', 'david.c@gmail.com', '052-000-0130', 'guest', 40, { fields: { city: 'עומר' } }),
+  person(U.david, 130, 'דוד כהן', 'david.c@gmail.com', '052-000-0130', 'guest', 40, { fields: { city: 'עומר', receiptPreference: 'email' } }),
   person(U.michal, 155, 'מיכל ברק', 'michal.b@gmail.com', '054-000-0155', 'guest', 30),
   person(U.yossi, 203, 'יוסי מזרחי', 'yossi.m@gmail.com', '053-000-0203', 'guest', 28, { status: 'blocked', notes: 'לא שילם פעמיים. חוב 80 ₪ מהפסטיבל הקודם.', log: [{ at: ago(6 * 24), by: A.beni, text: 'מצב: נחסם' }] }),
   person(U.ester, 310, 'אסתר כהן', 'ester.c@gmail.com', '050-000-0310', 'guest', 3),
@@ -105,7 +106,8 @@ export const tasks: Task[] = [
   task('demo-task-compost', 'להעביר שקי קומפוסט לחממה', { assignee: A.yoav, dueDate: today, createdBy: A.eliya, createdAt: ago(22), location: loc('tree') }),
   task('demo-task-tables', 'להכין את שולחנות הדוכן לפסטיבל', { assignee: A.noa, dueDate: key(SAT1 - 1), location: loc('stall'), createdAt: ago(40) }),
   task('demo-task-olives', 'לקצור את הזיתים בשורה המזרחית', { assignee: A.eliya, dueDate: key(SAT1 + 1), createdBy: A.eliya, location: loc('olives'), createdAt: ago(50) }),
-  task('demo-task-irrigation', 'בדיקת מערכת ההשקיה', { managersOnly: true, dueDate: key(SAT1 + 2), templateId: T.irrigation, createdAt: ago(30) }),
+  task('demo-task-irrigation', 'תיאום טיפול במערכת ההשקיה', { managersOnly: true, dueDate: key(SAT1 + 2), createdAt: ago(30) }),
+  task(`${T.irrigation}_${today}`, 'בדיקת מערכת ההשקיה', { managersOnly: true, templateId: T.irrigation, dateKey: today, dueDate: today, createdAt: at(0, '00:05') }),
   task('demo-task-paint', 'לצבוע את דלת המחסן', { createdBy: A.noa, createdAt: ago(7 * 24), location: loc('storage') }),
   task('demo-task-sign', 'להדפיס שלטי "כניסה" ו"דוכן" לפסטיבל', { createdBy: A.beni, createdAt: ago(3 * 24), managersOnly: false }),
   task('demo-task-prune', 'גיזום הענפים הנמוכים ליד השער', { createdBy: A.eliya, createdAt: ago(5 * 24), location: loc('gate') }),
@@ -146,7 +148,7 @@ export const shopping: ShoppingItem[] = [
   shop('demo-shop-sugar', 'סוכר', 'super', { createdBy: A.noa, createdAt: ago(72) }),
   shop('demo-shop-soap', 'סבון כלים', 'super', { createdBy: A.dana, createdAt: ago(74) }),
   shop('demo-shop-screws', 'ברגים 4 מ״מ', 'building', { qty: 'קופסה', note: 'לגדר', createdBy: A.eliya, createdAt: ago(50) }),
-  shop('demo-shop-pipe', 'צינור השקיה 16 מ״מ', 'building', { qty: '50 מ׳', createdBy: A.yoav, createdAt: ago(52) }),
+  shop('demo-shop-pipe', 'צינור השקיה 16 מ״מ', 'building', { qty: '50 מ׳', photo: '/assets/rava-wayfinding.webp', createdBy: A.yoav, createdAt: ago(52) }),
   shop('demo-shop-dripper', 'מכוון טפטפות', 'online', { link: 'https://www.example.com/dripper', createdBy: A.beni, createdAt: ago(100) }),
   shop('demo-shop-cabinet', 'ארון מתכת למחסן', 'giveaway', { note: 'ראיתם ברשתות? סמנו נמצא', createdBy: A.beni, createdAt: ago(200) }),
   shop('demo-shop-eggs', 'ביצים', 'super', { qty: '2 תבניות', createdBy: A.dana, createdAt: ago(40), bought: true, boughtBy: A.noa, boughtAt: at(0, '08:40'), expireAt: at(1, '08:40') }),
@@ -163,8 +165,8 @@ const ev = (id: string, title: string, o: Partial<FarmEvent>): FarmEvent => ({
 });
 export const E = { fall: 'demo-e-fall', tour: 'demo-e-tour', hanukkah: 'demo-e-hanukkah', oct: 'demo-e-oct', rosh: 'demo-e-rosh', summer: 'demo-e-summer', shavuot: 'demo-e-shavuot' };
 export const events: FarmEvent[] = [
-  ev(E.fall, 'פסטיבל הסתיו', { description: 'אחר צהריים של סתיו בחווה: דוכני תוצרת ואומנות, סיורים מודרכים בין העצים, פינת חי לילדים ומוזיקה חיה עם השקיעה. דוכן החווה פתוח כל הערב.', image: '/assets/rava-sunset.webp', start: at(SAT1, '16:00'), end: at(SAT1, '21:00'), price: 50, maxPerOrder: 5, capacity: 300, questions: [{ id: 'kids', label: 'מגיעים עם ילדים?', required: false }] }),
-  ev(E.tour, 'סיור שבת בחווה', { description: 'סיור מודרך של שעתיים בין העצים, הדיר והחממה. מתאים למשפחות. נפגשים בשער.', start: at(SAT2, '10:00'), end: at(SAT2, '12:00'), price: 0, maxPerOrder: 6, capacity: 60 }),
+  ev(E.fall, 'פסטיבל הסתיו', { description: 'אחר צהריים של סתיו בחווה: דוכני תוצרת ואומנות, סיורים מודרכים בין העצים, פינת חי לילדים ומוזיקה חיה עם השקיעה. דוכן החווה פתוח כל הערב.', image: '/assets/rava-sunset.webp', start: at(SAT1, '16:00'), end: at(SAT1, '21:00'), price: 50, maxPerOrder: 5, capacity: 300, questions: [{ id: 'kids', label: 'מגיעים עם ילדים?', required: false }], entry: true, stall: true, publishedAt: ago(6 * 24), updatedAt: ago(1) }),
+  ev(E.tour, 'סיור שבת בחווה', { description: 'סיור מודרך של שעתיים בין העצים, הדיר והחממה. מתאים למשפחות. נפגשים בשער.', start: at(SAT2, '10:00'), end: at(SAT2, '12:00'), price: 0, maxPerOrder: 6, capacity: 60, entry: false, stall: false, publishedAt: ago(4) }),
   ev(E.hanukkah, 'יריד חנוכה', { description: '', start: at(SAT3, '16:00'), end: at(SAT3, '20:00'), price: 40, published: false, open: false }),
   ev(E.oct, 'יריד אוקטובר', { description: 'יריד תוצרת של סתיו.', start: at(-24, '16:00'), end: at(-24, '21:00'), price: 40, capacity: 200, open: false }),
   ev(E.rosh, 'סיור ראש השנה', { start: at(-51, '10:00'), end: at(-51, '12:00'), price: 0, open: false }),
@@ -206,6 +208,7 @@ export const tickets: Ticket[] = [
   ...order(E.oct, pr(U.noam), 1, 'paid', at(-26, '12:00'), { entriesPer: [1] }),
   ...order(E.oct, pr(U.shirak), 1, 'paid', at(-25, '12:00'), { entriesPer: [1] }),
   ...order(E.oct, pr(U.yossi), 2, 'pending', at(-25, '12:00'), { entriesPer: [1, 1] }),
+  ...order(E.fall, pr(U.michal), 1, 'pending', at(0, '11:07')),
 ];
 
 // ---------- visits ----------
@@ -296,11 +299,14 @@ export const tabs: Tab[] = [
   tab('demo-tab-michal-oct', E.oct, pr(U.michal), [tabItem('demo-pr-tea', 2, at(-24, '17:20'), A.yoav), tabItem('demo-pr-bread', 2, at(-24, '17:20'), A.yoav)], 'paid', at(-24, '17:20'), A.yoav, { updatedAt: at(-22, '10:00') }),
   tab('demo-tab-walkin-oct', E.oct, { uid: '', displayName: 'עובר אורח', phone: '052-000-0411' }, [tabItem('demo-pr-lemonade', 1, at(-24, '19:00'), A.noa)], 'waived', at(-24, '19:00'), A.noa, { updatedAt: at(-17, '10:00') }),
   tab('demo-tab-noam-oct', E.oct, pr(U.noam), [tabItem('demo-pr-cheese', 1, at(-24, '16:12'), A.yoav)], 'paid', at(-24, '16:12'), A.yoav),
+  tab('demo-tab-noam-empty-fall', E.fall, pr(U.noam), [], 'open', at(-1, '12:00'), A.yoav),
+  tab('demo-tab-michal-unpaid-summer', E.summer, pr(U.michal), [tabItem('demo-pr-tea', 2, at(-122, '18:20'), A.yoav)], 'open', at(-122, '18:20'), A.yoav),
 ];
 
 // ---------- notifications (manager queue) ----------
 const notif = (id: string, type: AppNotification['type'], title: string, text: string, link: string, refId: string, createdAt: string, handled: { by: Actor; at: string } | null = null): AppNotification => ({ id, type, title, text, link, refId, createdAt, handled: !!handled, handledBy: handled?.by || null, handledAt: handled?.at || null });
 export const notifications: AppNotification[] = [
+  notif('demo-n-contact', 'contact', 'יש חניה נגישה?', 'נגיע לפסטיבל הסתיו ונשמח לדעת איפה כדאי לחנות.', '/manage/inbox', U.michal, ago(0.4)),
   notif('demo-n-visit', 'visit', 'בקשת ביקור חדשה', 'משפחת כהן · 8 אנשים · סיור בחווה', '/manage/visits/demo-v-cohen', 'demo-v-cohen', ago(0.7)),
   notif('demo-n-donation', 'donation', 'תרומה · 180 ₪ · מיכל ברק', 'הועבר, ממתין לאישור · לזכר יוסף ברק · צריכה קבלה', '/manage/donations/demo-d-michal', 'demo-d-michal', ago(1)),
   notif('demo-n-tab', 'tab', 'תשלום דוכן הועבר: יריד אוקטובר', 'רוני לוי · 46 ₪', `/manage/events/${E.oct}/tabs/demo-tab-roni-oct`, 'demo-tab-roni-oct', at(-1, '20:14')),
@@ -314,15 +320,23 @@ export const notifications: AppNotification[] = [
 
 // ---------- calendar ----------
 const cal = (id: string, owner: Actor, title: string, date: string, time: string, kind: CalendarItem['kind'] = 'manual', refId = ''): CalendarItem => ({ id, ownerUid: owner.uid, ownerName: owner.name, title, date, time, kind, refId, createdAt: ago(48) });
+const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 2, 12);
+const nextMonthPresenceDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-02`;
 export const calendar: CalendarItem[] = [
   cal('demo-c-1', A.eliya, 'אליה בחווה', key(0), '09:00–14:00'),
   cal('demo-c-2', A.beni, 'בני בחווה', key(1), '08:00–13:00'),
   cal('demo-c-3', A.noa, 'ספק מגיע', key(-1), '11:00'),
-  cal('demo-c-4', A.beni, 'פגישת צוות לפני הפסטיבל', key(THU), '17:00'),
-  cal('demo-c-5', A.noa, 'הכנת שולחנות', key(SAT1 - 1), ''),
+  cal('demo-c-4', A.beni, 'פגישת צוות לפני הפסטיבל', key(0), '10:30–11:30', 'meeting'),
+  cal('demo-c-5', A.noa, 'הכנות לפסטיבל', key(0), '', 'planning'),
   cal('demo-c-6', A.eliya, 'אליה בחווה', key(8), '09:00–14:00'),
   cal('demo-c-7', A.eliya, 'אליה בחווה', key(FRI), ''),
   cal('demo-c-8', A.beni, 'בני בחווה', key(15), ''),
+  cal('demo-c-presence-yoav', A.yoav, 'יואב בחווה', key(0), '08:00–11:00', 'presence'),
+  cal('demo-c-presence-yoav-later', A.yoav, 'יואב בחווה אחר הצהריים', key(0), '15:00–17:00', 'presence'),
+  cal('demo-c-presence-dana', A.dana, 'דנה בחווה', key(0), '08:30–13:30', 'presence'),
+  cal('demo-c-presence-noa', A.noa, 'נועה בחווה', key(0), '10:00–14:00', 'presence'),
+  cal('demo-c-presence-beni', A.beni, 'בני בחווה', key(0), '', 'presence'),
+  cal('demo-c-presence-yoav-next-month', A.yoav, 'יואב בחווה', nextMonthPresenceDate, '09:00–12:00', 'presence'),
   cal('visit_demo-v-kindergarten', A.beni, 'ביקור: גן ילדים "רימון" · 24', key(THU), '09:30', 'visit', 'demo-v-kindergarten'),
   cal('visit_demo-v-photo', A.noa, 'ביקור: חוג צילום באר שבע · 12', key(FRI - 3), 'שקיעה', 'visit', 'demo-v-photo'),
   cal('visit_demo-v-rachel', A.beni, 'אירוע פרטי: יום הולדת 60 לרחל · 30', key(FRI + 7), '11:00', 'visit', 'demo-v-rachel'),
@@ -379,8 +393,9 @@ export const activity: Activity[] = [
 export const settings: Settings = {
   ...DEFAULT_SETTINGS,
   payment: { bit: '050-000-0000', paybox: 'payboxapp.com/ravve', cash: true, note: 'בהעברה לציין את שם האירוע ושם המזמין' },
+  contact: { whatsapp: '050-000-0642', phone: '08-000-0642' },
   registrationFields: [
-    { id: 'city', label: 'יישוב', type: 'text', options: [], required: false },
+    { id: 'city', label: 'יישוב', type: 'text', options: [], required: true },
     { id: 'source', label: 'איך שמעתם עלינו?', type: 'choice', options: ['פייסבוק', 'חברים', 'עברנו ליד', 'אחר'], required: false },
     { id: 'birthday', label: 'תאריך לידה', type: 'date', options: [], required: false },
   ],
@@ -397,4 +412,7 @@ export const collections: Record<string, Record<string, unknown>[]> = {
   ...Object.fromEntries(Object.entries(eventVendors).map(([eid, v]) => [`events/${eid}/vendors`, v])),
   ...Object.fromEntries(Object.entries(products).map(([eid, p]) => [`events/${eid}/products`, p])),
 };
-export const documents: Record<string, unknown> = { 'settings/app': settings };
+export const documents: Record<string, unknown> = {
+  'settings/app': settings,
+  'cms_admins/beni@gmail.com': { email: 'beni@gmail.com', uid: U.beni, role: 'editor', active: true, created_at: ago(24) },
+};

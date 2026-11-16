@@ -3,7 +3,22 @@ import { useState } from 'react';
 import type { AppNotification, FarmEvent, Visit, Donation, CalendarItem, Profile } from '../types';
 import type { TeamCtx } from '../ctx';
 import { Top, Sec, Btn, A, Icon, Avatar, Empty, Chips, Loading, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, useDesktop, useOpenSections, inText } from '../ui';
-import { useHandledNotifications, handleNotification } from '../data';
+import { useHandledNotifications, handleNotification, contactPhoneOk, waLink, telLink } from '../data';
+import { useDemo } from '../demo/store';
+
+export function CmsEditorLink({ ctx, compact }: { ctx: TeamCtx; compact?: boolean }) {
+  const demo = useDemo();
+  const toast = useToast();
+  if (!ctx.cmsEditor) return null;
+  return (
+    <a href={demo.on ? '#farm-site-editor-demo' : '/admin'} target={demo.on ? undefined : '_blank'} rel="noopener"
+      className={compact ? 'btn ghost sm' : undefined}
+      onClick={demo.on ? (e) => { e.preventDefault(); toast({ text: 'עריכת האתר זמינה בחשבון האמיתי' }, 3000); } : undefined}>
+      <Icon name="external" />עריכת אתר החווה
+      {!compact && <Icon name="chev" className="chev" size={18} />}
+    </a>
+  );
+}
 
 type Props = { ctx: TeamCtx; inbox: AppNotification[]; events: FarmEvent[]; visits: Visit[]; donations: Donation[]; people: Profile[]; calendar: CalendarItem[]; templatesCount: number; placesCount: number; vendorsCount: number };
 
@@ -24,7 +39,7 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
     { to: '/manage/people', icon: 'people', title: 'אנשים', sub: `${people.length} נרשמים · ${team} בצוות` },
     { to: '/manage/visits', icon: 'pin', title: 'ביקורים', sub: `${newVisits ? `${newVisits} חדשות · ` : ''}${approvedMonth} מאושרים החודש`, badge: newVisits || undefined },
     { to: '/manage/donations', icon: 'heart', title: 'תרומות', sub: `${money(paidMonth)} החודש${pendingDon ? ` · ${pendingDon} ממתינה` : ''}` },
-    { to: '/manage/calendar', icon: 'calendar', title: 'יומן', sub: todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן' },
+    { to: '/calendar', icon: 'calendar', title: 'יומן', sub: todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן' },
     { to: '/manage/reports', icon: 'chart', title: 'דוחות', sub: 'משימות, תרומות, חובות פתוחים' },
   ];
   return (
@@ -41,24 +56,34 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
           <A to="/manage/vendors"><Icon name="store" />בעלי דוכנים<span className="s">{vendorsCount} ברשימה</span><Icon name="chev" className="chev" size={18} /></A>
           <A to="/manage/activity"><Icon name="history" />כל הפעילות<span className="s">מי עשה מה</span><Icon name="chev" className="chev" size={18} /></A>
           <A to="/manage/settings"><Icon name="sliders" />הגדרות<span className="s">תשלום, תרומות, הודעות</span><Icon name="chev" className="chev" size={18} /></A>
-          <a href="/admin" target="_blank" rel="noopener"><Icon name="external" />עריכת האתר<span className="s">נפתח בחלון נפרד</span><Icon name="chev" className="chev" size={18} /></a>
+          <CmsEditorLink ctx={ctx} />
         </div>
       </>}
     </>
   );
 }
 
-const ICONS: Record<AppNotification['type'], string> = { visit: 'pin', donation: 'heart', join: 'user', order: 'ticket', receipt: 'file', tab: 'store', claim: 'ticket' };
+const ICONS: Record<AppNotification['type'], string> = { visit: 'pin', donation: 'heart', join: 'user', order: 'ticket', receipt: 'file', tab: 'store', claim: 'ticket', contact: 'phone' };
 export function InboxRow({ n, ctx, handled }: { n: AppNotification; ctx: TeamCtx; handled?: boolean }) {
   const toast = useToast(); const desktop = useDesktop();
   const done = () => handleNotification(n, ctx.actor, !handled).then(() => toast({ text: handled ? 'חזר לתור' : 'סומן טופל', action: { label: 'ביטול', onClick: () => handleNotification(n, ctx.actor, !!handled) } }, 4000));
-  const acts = !handled && <><Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn><Btn size="sm" kind="quiet" onClick={done}>טופל</Btn></>;
+  const contact = n.type === 'contact';
+  const sender = contact ? ctx.peopleByUid.get(n.refId) : undefined;
+  const replies = sender && contactPhoneOk(sender.phone) && <>
+    <a className="btn ghost sm" href={waLink(sender.phone)} target="_blank" rel="noopener"><Icon name="whatsapp" size={18} />מענה בוואטסאפ</a>
+    <a className="btn ghost sm" href={telLink(sender.phone)}><Icon name="phone" size={18} />התקשרות</a>
+  </>;
+  const acts = !handled && <>
+    {contact ? replies : <Btn size="sm" to={n.link}>{n.type === 'visit' ? 'אישור ליומן' : n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'אישור תשלום' : n.type === 'receipt' ? 'לקבלה' : 'פתיחה'}</Btn>}
+    <Btn size="sm" kind="quiet" onClick={done}>טופל</Btn>
+  </>;
   return (
     <div className={'row' + (desktop ? ' center' : '')} style={handled ? { color: 'var(--muted)' } : undefined}>
       <span className="iconbtn" style={{ color: 'var(--green2)', width: 36 }}><Icon name={ICONS[n.type] || 'bell'} /></span>
       <div className="main">
-        <A to={n.link} className="title" style={{ display: 'block' }}>{n.title}</A>
-        <div className="meta"><span>{n.text}</span><span>{relTime(n.createdAt)}</span>{handled && n.handledBy && <span>· {firstName(n.handledBy.name)}</span>}</div>
+        {contact ? <div className="title" style={{ overflowWrap: 'anywhere' }}>{n.title}</div> : <A to={n.link} className="title" style={{ display: 'block' }}>{n.title}</A>}
+        {contact && <div className="meta">{sender ? <A to={`/manage/people/${sender.uid}`}>{sender.displayName}</A> : 'פרטי השולח אינם זמינים'}</div>}
+        <div className="meta"><span style={contact ? { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } : undefined}>{n.text}</span><span>{relTime(n.createdAt)}</span>{handled && n.handledBy && <span>· {firstName(n.handledBy.name)}</span>}</div>
         {!handled && !desktop && <div className="inline" style={{ marginTop: 8 }}>{acts}</div>}
       </div>
       {!handled && desktop && <div className="end">{acts}</div>}
@@ -67,19 +92,19 @@ export function InboxRow({ n, ctx, handled }: { n: AppNotification; ctx: TeamCtx
   );
 }
 
-type InboxFilter = 'all' | 'visit' | 'donation' | 'tab' | 'order' | 'handled';
-export function InboxScreen({ ctx, inbox }: { ctx: TeamCtx; inbox: AppNotification[] }) {
+type InboxFilter = 'all' | 'visit' | 'donation' | 'tab' | 'order' | 'contact' | 'handled';
+export function InboxScreen({ ctx, inbox, home }: { ctx: TeamCtx; inbox: AppNotification[]; home?: boolean }) {
   const [filter, setFilter] = useState<InboxFilter>('all');
   const handled = useHandledNotifications(true);
   const desktop = useDesktop();
   const count = (t: AppNotification['type'][]) => inbox.filter((n) => t.includes(n.type)).length;
-  const list = filter === 'handled' ? handled.items : inbox.filter((n) => filter === 'all' ? true : filter === 'visit' ? n.type === 'visit' : filter === 'donation' ? n.type === 'donation' || n.type === 'receipt' : filter === 'tab' ? n.type === 'tab' : n.type === 'order' || n.type === 'claim');
+  const list = filter === 'handled' ? handled.items : inbox.filter((n) => filter === 'all' || filter === n.type || (filter === 'donation' && n.type === 'receipt') || (filter === 'order' && n.type === 'claim'));
   return (
     <>
-      <Top backTo="/manage" backLabel="ניהול" title={<>לטיפול <span className="muted" style={{ fontWeight: 500 }}>· {inbox.length}</span></>} sub='כל מה שמחכה להחלטה של מנהל. פריט נסגר כשעושים את הפעולה או לוחצים "טופל".' />
-      <div style={{ paddingTop: 8 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'פתוחים', n: inbox.length }, { value: 'visit', label: 'ביקורים', n: count(['visit']) }, { value: 'donation', label: 'תרומות', n: count(['donation', 'receipt']) }, { value: 'tab', label: 'דוכן', n: count(['tab']) }, { value: 'order', label: 'הזמנות', n: count(['order', 'claim']) }, { value: 'handled', label: 'טופלו', n: handled.items.length }]} /></div>
+      <Top backTo={home ? undefined : '/manage'} backLabel="ניהול" title={<>לטיפול <span className="muted" style={{ fontWeight: 500 }}>· {inbox.length}</span></>} sub='כל מה שמחכה להחלטה של מנהל. פריט נסגר כשעושים את הפעולה או לוחצים "טופל".' end={home && <CmsEditorLink ctx={ctx} compact />} />
+      <div style={{ paddingTop: 8 }}><Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'פתוחים', n: inbox.length }, { value: 'visit', label: 'ביקורים', n: count(['visit']) }, { value: 'donation', label: 'תרומות', n: count(['donation', 'receipt']) }, { value: 'tab', label: 'דוכן', n: count(['tab']) }, { value: 'order', label: 'הזמנות', n: count(['order', 'claim']) }, { value: 'contact', label: 'פניות', n: count(['contact']) }, { value: 'handled', label: 'טופלו', n: handled.items.length }]} /></div>
       {filter === 'handled' && handled.loading && <Loading />}
-      {list.length ? <div className="list" style={{ marginTop: 8 }}>{list.map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled={filter === 'handled'} />)}</div> : <Empty title={filter === 'handled' ? 'עוד לא טופל כלום' : 'אין כלום שמחכה'} text={filter === 'handled' ? '' : 'בקשות ביקור, תרומות שהועברו וחשבונות דוכן יופיעו כאן.'} />}
+      {list.length ? <div className="list" style={{ marginTop: 8 }}>{list.map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled={filter === 'handled'} />)}</div> : <Empty title={filter === 'handled' ? 'עוד לא טופל כלום' : 'אין כלום שמחכה'} />}
       {filter === 'all' && handled.items.length > 0 && <><Sec title="טופלו לאחרונה" n={handled.items.length} link="הכל" onLink={() => setFilter('handled')} /><div className="list">{handled.items.slice(0, 5).map((n) => <InboxRow key={n.id} n={n} ctx={ctx} handled />)}</div></>}
     </>
   );

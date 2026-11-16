@@ -256,6 +256,7 @@ def('events.create', 'events:write', 'יצירת אירוע', { ...eventFields(t
     title: c.input.title, description: c.input.description || '', image: '', location: c.input.location ?? 'חוות רווה, ליד טנא עומרים',
     start: c.input.start, end: c.input.end, price: c.input.price ?? 0, maxPerOrder: c.input.maxPerOrder, capacity: c.input.capacity,
     open: c.input.open ?? true, published: c.input.published ?? false, questions: [], files: [], createdBy: c.me, createdAt: now, updatedAt: now,
+    ...(c.input.published ? { publishedAt: now } : {}),
   };
   const writes = [c.fs.create('events', id, e), activity(c.fs, c.me, 'event', id, 'created', e.title, { eventId: id })];
   if (e.published) writes.push(eventCalendar(c, id, e));
@@ -270,9 +271,11 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   const next = { ...ev.data, ...patch };
   if (String(next.end) < String(next.start)) throw invalid('end', 'end is before start');
   const action = patch.published !== undefined && patch.published !== !!ev.data.published ? (patch.published ? 'published' : 'unpublished') : 'edited';
+  const now = nowIso();
+  const publication = action === 'published' ? { publishedAt: now } : {};
   return {
-    writes: [c.fs.patch('events', ev.id, { ...patch, updatedAt: nowIso() }, ev.updateTime), activity(c.fs, c.me, 'event', ev.id, action, String(next.title), { eventId: ev.id }), eventCalendar(c, ev.id, next)],
-    refs: [{ col: 'events', id: ev.id, expected: patch }],
+    writes: [c.fs.patch('events', ev.id, { ...patch, ...publication, updatedAt: now }, ev.updateTime), activity(c.fs, c.me, 'event', ev.id, action, String(next.title), { eventId: ev.id }), eventCalendar(c, ev.id, next)],
+    refs: [{ col: 'events', id: ev.id, expected: { ...patch, ...publication } }],
   };
 });
 // deleteEvent() + deleteCalendarRef

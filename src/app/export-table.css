@@ -1,0 +1,74 @@
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+:where(.top, .crumb) .end:has(.export-actions) {
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+}
+
+.sec:has(> .export-actions) {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.export-actions > .btn.sm {
+  min-block-size: 44px;
+}
+
+.sheet-inner.export-sheet {
+  max-inline-size: 960px;
+}
+
+.export-sheet .sheet-head h2 {
+  overflow-wrap: anywhere;
+}
+
+.export-table-scroll {
+  max-block-size: 56dvh;
+  margin: 12px 20px 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.export-table-scroll table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.export-table-scroll :is(th, td) {
+  padding: 8px 12px;
+  border-block-end: 1px solid var(--line2);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.export-table-scroll th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  padding-block: 0;
+  background: var(--paper2);
+}
+
+.export-table-scroll th button {
+  min-block-size: 44px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.export-table-scroll th.sort button {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

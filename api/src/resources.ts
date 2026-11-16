@@ -138,9 +138,9 @@ export const RESOURCES: ResourceDef[] = [
     filters: { handled: { field: 'handled', param: bool('טופל') }, type: { field: 'type', param: en(['visit', 'donation', 'join', 'order', 'receipt', 'tab', 'claim'], 'סוג ההתראה') } },
   },
   {
-    name: 'calendar', col: 'calendar', path: '/v1/calendar', scope: 'calendar:read', he: 'יומן המנהלים: פריטים ידניים, ביקורים מאושרים ואירועים מפורסמים',
+    name: 'calendar', col: 'calendar', path: '/v1/calendar', scope: 'calendar:read', he: 'יומן החווה: נוכחות, פגישות, הכנות לפסטיבל, ביקורים מאושרים ואירועים מפורסמים',
     order: { field: 'date', dir: 'ASCENDING' },
-    filters: { kind: { field: 'kind', param: en(['manual', 'visit', 'event'], 'manual ידני, visit ביקור, event אירוע') } },
+    filters: { kind: { field: 'kind', param: en(['manual', 'visit', 'event', 'presence', 'meeting', 'planning'], 'manual ידני, visit ביקור, event אירוע, presence נוכחות, meeting פגישה, planning הכנות לפסטיבל') } },
     range: { from: 'dateFrom', to: 'dateTo', he: 'תאריך' },
   },
   {

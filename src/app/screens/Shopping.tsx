@@ -9,6 +9,7 @@ import { back, navigate } from '../router';
 import { setBought, addShopping, editShopping, deleteShopping, useShoppingItem, useBoughtHistory } from '../store';
 import { useActivityFor, ACTION_LABELS } from '../activity';
 import { CATS, catOf, fixLink } from './New';
+import { ShoppingPhoto, ShoppingPhotoField } from './ShoppingPhoto';
 
 export function useShopActions(ctx: TeamCtx) {
   const toast = useToast();
@@ -62,12 +63,13 @@ function ShopRow({ i, leaving, fresh, onToggle, sel, keep }: { i: ShoppingItem; 
   if (i.note) meta.push(i.note);
   meta.push(i.bought ? `${firstName(i.boughtBy?.name || '')} · ${fmtTime(i.boughtAt)}` : `${firstName(i.createdBy.name)} · ${relTime(i.createdAt)}`);
   return (
-    <div className={['r-shop', i.urgent && !i.bought ? 'urgent' : '', i.bought ? 'done' : '', leaving ? 'leaving' : '', fresh ? 'fresh' : '', sel ? 'sel' : ''].filter(Boolean).join(' ')}>
+    <div className={['r-shop', i.photo ? 'with-photo' : '', i.urgent && !i.bought ? 'urgent' : '', i.bought ? 'done' : '', leaving ? 'leaving' : '', fresh ? 'fresh' : '', sel ? 'sel' : ''].filter(Boolean).join(' ')}>
       <Check box on={i.bought || !!leaving} onChange={() => onToggle(i)} label={`${i.bought ? 'להחזיר לרשימה' : catOf(i.category).done}: ${i.title}`} />
       <button type="button" className="r-body" tabIndex={-1} aria-hidden="true" onClick={() => onToggle(i)}>
         <span className="r-t">{i.title}</span>
         <span className="r-m">{meta.map((m, k) => <span key={k}>{k > 0 && ' · '}{m}</span>)}</span>
       </button>
+      {i.photo && <ShoppingPhoto photo={i.photo} title={i.title} thumb />}
       <span className="r-q">{i.qty}</span>
       <A className="r-dots" to={`/shopping/${i.id}`} keep={keep} aria-label={`פרטים ועריכה: ${i.title}`}><Icon name="more" /></A>
     </div>
@@ -118,13 +120,26 @@ function ItemForm({ item, ctx }: { item: ShoppingItem; ctx: TeamCtx }) {
   const toast = useToast(); const act = useShopActions(ctx);
   const log = useActivityFor('shopping', item.id);
   const [f, setF] = useState({ title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category, urgent: item.urgent });
+  const [photoEdit, setPhotoEdit] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const dirty = JSON.stringify(f) !== JSON.stringify({ title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category, urgent: item.urgent });
+  const currentPhoto = item.photo || '';
+  const photo = photoEdit ?? currentPhoto;
+  const photoChanged = photo !== currentPhoto;
+  const dirty = photoChanged || JSON.stringify(f) !== JSON.stringify({ title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category, urgent: item.urgent });
   const save = async () => {
+    if (busy) return false;
     if (!f.title.trim()) { setErr('צריך שם לפריט'); return false; }
     if (!dirty) return true;
-    try { await editShopping(ctx.actor, item, { ...f, title: f.title.trim(), qty: f.qty.trim(), note: f.note.trim(), link: fixLink(f.link) }); return true; }
-    catch (e) { setErr((e as Error).message || 'לא נשמר'); return false; }
+    setBusy(true); setErr('');
+    try {
+      await editShopping(ctx.actor, item, {
+        ...f, title: f.title.trim(), qty: f.qty.trim(), note: f.note.trim(), link: fixLink(f.link),
+        ...(photoChanged ? { photo } : {}),
+      });
+      return true;
+    } catch (e) { setErr((e as Error).message || 'לא נשמר'); return false; }
+    finally { setBusy(false); }
   };
   const submit = async () => { if (await save()) { toast({ text: 'נשמר' }, 2000); back('/shopping'); } };
   const mark = async () => { if (!(await save())) return; if (item.bought) act.back(item); else act.bought(item); back('/shopping'); };
@@ -138,6 +153,7 @@ function ItemForm({ item, ctx }: { item: ShoppingItem; ctx: TeamCtx }) {
       <Head backTo="/shopping" backLabel="קניות" title={item.title} over={`${catOf(item.category).label} · ${firstName(item.createdBy.name)} הוסיף/ה ${relTime(item.createdAt)}`} />
       {item.link && <div className="r-actions" style={{ paddingTop: 0 }}><a className="r-btn ghost sm" href={item.link} target="_blank" rel="noopener">לפתוח את הקישור</a></div>}
       <Form onSubmit={submit}>
+        <ShoppingPhotoField photo={photo} title={f.title} busy={busy} onChange={setPhotoEdit} onBusy={setBusy} onError={setErr} />
         <Field label="שם">{(id) => <input id={id} className="r-input" value={f.title} onChange={(e) => { setF({ ...f, title: e.target.value }); setErr(''); }} maxLength={200} />}</Field>
         <Field label="כמה?">{(id) => <input id={id} className="r-input" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} maxLength={40} placeholder="6 קרטונים, 2 חבילות, 50 מטר" />}</Field>
         <Field label="הערה">{(id) => <input id={id} className="r-input" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} maxLength={1000} />}</Field>
@@ -146,12 +162,12 @@ function ItemForm({ item, ctx }: { item: ShoppingItem; ctx: TeamCtx }) {
         <Tick on={f.urgent} onChange={(urgent) => setF({ ...f, urgent })} help="עולה לראש הרשימה">דחוף</Tick>
         {err && <p className="r-err" role="alert">{err}</p>}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          {dirty && <Btn type="submit" kind="ghost">שמירת השינויים</Btn>}
-          <Btn kind="danger" onClick={remove}>מחיקה מהרשימה</Btn>
+          {dirty && <Btn type="submit" kind="ghost" disabled={busy}>שמירת השינויים</Btn>}
+          <Btn kind="danger" onClick={remove} disabled={busy}>מחיקה מהרשימה</Btn>
         </div>
       </Form>
       {log.items.length > 0 && <><Sect title="מה קרה כאן" /><ul className="r-log">{log.items.map((a) => <li key={a.id}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}<span>{whenText(a.at)}</span></li>)}</ul></>}
-      <div className="r-dock"><Btn onClick={mark}>{item.bought ? 'להחזיר לרשימה' : dirty ? `שמירה וסימון: ${catOf(item.category).done}` : catOf(item.category).done}</Btn></div>
+      <div className="r-dock"><Btn onClick={mark} disabled={busy}>{item.bought ? 'להחזיר לרשימה' : dirty ? `שמירה וסימון: ${catOf(item.category).done}` : catOf(item.category).done}</Btn></div>
     </>
   );
 }

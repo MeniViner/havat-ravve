@@ -6,7 +6,8 @@ import type { TeamCtx } from '../ctx';
 import { Top, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chips, Chip, SwitchRow, Days, Avatar, Loading, useToast, fmtDate, fmtMonthYear, firstName, relTime, whenText, todayISO, addDays, money, useDesktop, useSort, Th } from '../ui';
 import { navigate } from '../router';
 import { usePerson, setUserRole, setUserNotes, useRoleInvites, inviteByEmail, removeRoleInvite, saveTemplate, deleteTemplate, useTemplateTasks, usePlace, addPlace, updatePlace, deletePlace, useTasksAtPlace, getPosition, type NewTemplate } from '../store';
-import { useMyTickets, useMyVisits, useMyDonations, useMyTabs, downloadCsv, waLink, telLink, useOpenTickets, useOpenTabs } from '../data';
+import { useMyTickets, useMyVisits, useMyDonations, useMyTabs, waLink, telLink, useOpenTickets, useOpenTabs } from '../data';
+import { ExportActions } from '../ExportTable';
 import { useActivityForUser, ACTION_LABELS } from '../activity';
 import { mapsLink } from './Tasks';
 
@@ -20,11 +21,19 @@ export function PeopleScreen({ ctx, people, selectedId }: { ctx: TeamCtx; people
   const list = useMemo(() => { const s = q.trim().toLowerCase(); return people.filter((p) => filter === 'team' ? p.role !== 'guest' : filter === 'guests' ? p.role === 'guest' : filter === 'debt' ? debts.has(p.uid) : filter === 'blocked' ? p.status === 'blocked' : true).filter((p) => !s || p.displayName.toLowerCase().includes(s) || p.email.includes(s) || p.phone.includes(s) || String(p.customerNumber) === s || Object.values(p.fields || {}).some((v) => v.toLowerCase().includes(s))); }, [people, q, filter, debts]);
   const sorted = desktop ? apply(list, (p, k) => k === 'n' ? p.customerNumber : k === 'created' ? p.createdAt : k === 'role' ? p.role : k === 'debt' ? debts.get(p.uid) || 0 : p.displayName) : [...list].sort((a, b) => a.displayName.localeCompare(b.displayName, 'he'));
   const letters = useMemo(() => { const m = new Map<string, Profile[]>(); for (const p of sorted) { const l = p.displayName.trim()[0] || '?'; m.set(l, [...(m.get(l) || []), p]); } return [...m.entries()]; }, [sorted]);
-  const csv = () => downloadCsv('אנשים.csv', ['#', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'נרשם', ...ctx.settings.registrationFields.map((f) => f.label)], people.map((p) => [p.customerNumber, p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status, fmtDate(p.createdAt), ...ctx.settings.registrationFields.map((f) => p.fields?.[f.id] || '')]));
+  const fields = ctx.settings.registrationFields;
+  const peopleExport = () => ({
+    filename: 'אנשים.csv',
+    headers: ['#', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'נרשם', ...fields.map((field) => field.label)],
+    rows: people.map((person) => [
+      person.customerNumber, person.displayName, person.phone, person.email, ROLE_LABELS[person.role],
+      person.status, fmtDate(person.createdAt), ...fields.map((field) => person.fields?.[field.id] || ''),
+    ]),
+  });
   const chips = <Chips scroll={!desktop} value={filter} onChange={setFilter} options={[{ value: 'all', label: 'הכל', n: people.length }, { value: 'team', label: 'צוות', n: people.filter((p) => p.role !== 'guest').length }, { value: 'guests', label: 'אורחים', n: people.filter((p) => p.role === 'guest').length }, { value: 'debt', label: 'עם חוב', n: debts.size || undefined }, { value: 'blocked', label: 'חסומים', n: people.filter((p) => p.status === 'blocked').length || undefined }]} />;
   return (
     <>
-      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title={<>אנשים <span className="muted" style={{ fontWeight: 500 }}>· {people.length}</span></>} sub={desktop ? 'כל מי שנרשם: צוות ואורחים. מיון לפי עמודה, חיפוש לפי כל שדה.' : 'כל מי שנרשם, לפי א׳–ב׳. מספר הלקוח רק למנהלים.'} end={<><Btn kind="ghost" size="sm" icon="download" onClick={csv}>אקסל</Btn><Btn size="sm" icon="user" to="/manage/people/invite">תפקיד לפי מייל</Btn></>} />
+      <Top backTo={desktop ? undefined : '/manage'} backLabel="ניהול" title={<>אנשים <span className="muted" style={{ fontWeight: 500 }}>· {people.length}</span></>} sub={desktop ? 'כל מי שנרשם: צוות ואורחים. מיון לפי עמודה, חיפוש לפי כל שדה.' : 'כל מי שנרשם, לפי א׳–ב׳. מספר הלקוח רק למנהלים.'} end={<><ExportActions getData={peopleExport} /><Btn size="sm" icon="user" to="/manage/people/invite">תפקיד לפי מייל</Btn></>} />
       <div className="inline pad" style={{ paddingTop: 10 }}><Input placeholder="חיפוש: שם, טלפון, מייל, מספר" value={q} onChange={(e) => setQ(e.target.value)} style={{ minHeight: 44, flex: 1, minWidth: 200 }} />{desktop && chips}</div>
       {!desktop && <div style={{ paddingTop: 10 }}>{chips}</div>}
       {invites.items.length > 0 && !q && filter === 'all' && <A to="/manage/people/invite" className="strip"><Icon name="user" size={18} />{invites.items.length} כתובות הוגדרו ועוד לא נכנסו<span style={{ marginInlineStart: 'auto' }}>פתיחה</span></A>}
@@ -172,9 +181,14 @@ export function PlacesScreen({ ctx, open, selectedId }: { ctx: TeamCtx; open: Ta
   const save = async () => { if (!pos || !name.trim()) return; await addPlace(ctx.actor, name, pos.lat, pos.lng); setName(''); setPos(null); toast({ text: 'המקום נשמר' }, 2000); };
   const lats = ctx.places.map((p) => p.lat), lngs = ctx.places.map((p) => p.lng);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const placesExport = () => ({
+    filename: 'מקומות.csv',
+    headers: ['שם', 'lat', 'lng', 'נשמר'],
+    rows: ctx.places.map((place) => [place.name, place.lat, place.lng, fmtDate(place.createdAt)]),
+  });
   return (
     <>
-      <Top backTo={desktop ? '/tasks' : '/manage'} backLabel={desktop ? 'משימות' : 'ניהול'} title={<>מקומות בחווה <span className="muted" style={{ fontWeight: 500 }}>· {ctx.places.length}</span></>} sub={desktop ? 'נקודות שמורות שנבחרות במשימות. מוסיפים מהטלפון, כשעומדים במקום. כאן עורכים שמות ורואים את המפה.' : 'עומדים במקום, נותנים שם, שומרים. המקום מופיע לבחירה בכל משימה.'} end={desktop ? <Btn kind="ghost" size="sm" icon="download" onClick={() => downloadCsv('מקומות.csv', ['שם', 'lat', 'lng', 'נשמר'], ctx.places.map((p) => [p.name, p.lat, p.lng, fmtDate(p.createdAt)]))}>ייצוא נקודות</Btn> : undefined} />
+      <Top backTo={desktop ? '/tasks' : '/manage'} backLabel={desktop ? 'משימות' : 'ניהול'} title={<>מקומות בחווה <span className="muted" style={{ fontWeight: 500 }}>· {ctx.places.length}</span></>} sub={desktop ? 'נקודות שמורות שנבחרות במשימות. מוסיפים מהטלפון, כשעומדים במקום. כאן עורכים שמות ורואים את המפה.' : 'עומדים במקום, נותנים שם, שומרים. המקום מופיע לבחירה בכל משימה.'} end={<ExportActions getData={placesExport} downloadLabel="ייצוא נקודות" />} />
       {!desktop && <>
         <div className="paybox ok" style={{ marginTop: 12 }}><b style={{ fontSize: 20, fontFamily: 'var(--sans)', fontWeight: 600 }}>אני עומד עכשיו ב…</b>{pos ? <span className="ltr">דיוק {pos.accuracy} מ׳ · {pos.lat.toFixed(4)}°N {pos.lng.toFixed(4)}°E</span> : 'לוחצים "איתור" ואז נותנים שם.'}</div>
         <div className="inline pad"><Input placeholder="שם המקום" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />{pos ? <Btn disabled={!name.trim()} onClick={save}>שמירה כאן</Btn> : <Btn kind="ghost" icon="pin" disabled={busy} onClick={locate}>{busy ? 'מאתר…' : 'איתור'}</Btn>}</div>
