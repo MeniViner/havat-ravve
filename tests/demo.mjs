@@ -17,6 +17,8 @@ const stub = {
       export const doc = (a, b, c) => (c !== undefined ? { path: b + '/' + c } : b !== undefined ? { path: b } : { id: 'real' + (++n), path: a.path + '/real' + n });
       export const query = (c) => c, where = () => 0, orderBy = () => 0, limit = () => 0;
       export const onSnapshot = (ref) => { calls.push(['listen', ref.path]); return () => {}; };
+      export const getDocsFromServer = async (ref) => { calls.push(['get', ref.path]); return { docs: [] }; };
+      export const documentId = () => '__name__';
       export const setDoc = async (ref) => { calls.push(['set', ref.path]); if (globalThis.__server === 'silent') await new Promise(() => {}); if (globalThis.__server === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } };
       export const updateDoc = async (ref) => { calls.push(['update', ref.path]); };
       export const deleteDoc = async (ref) => { calls.push(['delete', ref.path]); };
@@ -43,7 +45,7 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
@@ -109,3 +111,17 @@ assert.equal(syncState().failure?.text, 'אין הרשאה לפעולה הזו',
 globalThis.__server = '';
 
 console.log('PASS: demo mode never reaches Firestore, demo ids are refused outside it, and writes never wait for the server');
+
+// ---- Today: completed rows never push an open task off its group
+{
+  const t = (id, done, extra = {}) => ({ id, title: id, done, dueDate: '', urgent: false, assignee: null, createdAt: '2026-11-01T0' + (id.length % 10) + ':00:00.000Z', ...extra });
+  const rows = [...Array.from({ length: 12 }, (_, i) => t('done' + i, true, { urgent: true })), t('open-a', false), t('open-b', false)];
+  const sorted = [...rows].sort(byPriority('me', '2026-11-18'));
+  assert.deepEqual(sorted.slice(0, 2).map((x) => x.id).sort(), ['open-a', 'open-b'], 'open tasks sort before completed ones, even urgent completed ones');
+  const cut = fit(sorted, 8);
+  assert.ok(cut.shown.some((x) => x.id === 'open-a') && cut.shown.some((x) => x.id === 'open-b'), 'every open task stays visible');
+  assert.equal(cut.shown.length, 8); assert.equal(cut.hidden, 6, 'the hidden count is the completed rows that did not fit');
+  const many = Array.from({ length: 10 }, (_, i) => t('o' + i, false));
+  assert.equal(fit([...many, t('d', true)], 8).shown.length, 10, 'open rows are never cut, even past the limit');
+  console.log('PASS: Today keeps every open task above completed ones');
+}

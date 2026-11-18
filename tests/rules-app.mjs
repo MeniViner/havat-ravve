@@ -71,12 +71,45 @@ try{
  await assertFails(getDocs(collection(vol,'activity')));
  await assertSucceeds(getDocs(collection(beni,'activity')));
  await assertFails(updateDoc(doc(beni,'activity','a1'),{text:'changed'}));
+ // managers-only task history: its own kind, so no volunteer query can return the title
+ const act=(by,kind,refId,extra={})=>({kind,refId,action:'created',text:'סוד של מנהלים',by:actor(by),at:now,subjectUid:'',eventId:'',...extra});
+ await assertSucceeds(setDoc(doc(beni,'activity','p1'),act('beni','task_private','tp1',{subjectUid:'vol'})));   // even assigned to the volunteer
+ await assertSucceeds(setDoc(doc(beni,'activity','p2'),act('beni','task','to1')));                              // an open task, by the same manager
+ await assertFails(getDoc(doc(vol,'activity','p1')));                                                          // by id
+ await assertFails(getDocs(query(collection(vol,'activity'),where('refId','==','tp1'))));                      // by refId
+ await assertFails(getDocs(query(collection(vol,'activity'),where('kind','==','task_private'),where('refId','==','tp1'))));
+ await assertFails(getDocs(query(collection(vol,'activity'),where('kind','in',['task','task_private']),where('refId','==','tp1'))));
+ await assertFails(getDocs(query(collection(vol,'activity'),where('kind','==','task_private'))));              // by kind
+ await assertFails(getDocs(query(collection(vol,'activity'),where('by.uid','==','beni'))));                    // by actor
+ await assertFails(getDocs(query(collection(vol,'activity'),where('subjectUid','==','vol'))));                 // by subject: the assignee neither
+ const volByActor=await getDocs(query(collection(vol,'activity'),where('kind','in',['task','shopping','event','ticket','tab','place']),where('by.uid','==','beni')));
+ assert.deepEqual(volByActor.docs.map((d)=>d.id),['p2']);                                                      // the allowed actor query still never returns it
+ const volOpen=await getDocs(query(collection(vol,'activity'),where('kind','==','task'),where('refId','==','to1')));
+ assert.equal(volOpen.size,1);                                                                                 // an open task's history stays readable
+ const mgrHist=await getDocs(query(collection(beni,'activity'),where('kind','in',['task','task_private']),where('refId','==','tp1')));
+ assert.equal(mgrHist.size,1);                                                                                 // a manager still sees it
+ // a task changing visibility: a manager moves its history between the two kinds, nothing else
+ await assertFails(updateDoc(doc(vol,'activity','p2'),{kind:'task_private'}));
+ await assertFails(updateDoc(doc(beni,'activity','p2'),{kind:'task_private',text:'x'}));
+ await assertFails(updateDoc(doc(beni,'activity','a3'),{kind:'task'}));                                        // only task entries
+ await assertFails(updateDoc(doc(beni,'activity','p2'),{kind:'visit'}));
+ await assertSucceeds(updateDoc(doc(beni,'activity','p2'),{kind:'task_private'}));
+ await assertFails(getDoc(doc(vol,'activity','p2')));                                                          // hidden once the task is managers-only
+ await assertSucceeds(updateDoc(doc(beni,'activity','p1'),{kind:'task'}));
+ await assertSucceeds(getDoc(doc(vol,'activity','p1')));                                                       // shown again once it is open
+ await assertFails(deleteDoc(doc(beni,'activity','p1')));
 
  // --- tasks ---
  await assertFails(setDoc(doc(stranger,'tasks','t0'),task('stranger')));                                      // no profile
  await assertSucceeds(setDoc(doc(vol,'tasks','t1'),task('vol')));
  await assertFails(setDoc(doc(vol,'tasks','t2'),task('vol',{managersOnly:true})));                             // staff cannot create managers-only
  await assertSucceeds(setDoc(doc(beni,'tasks','t2'),task('beni',{managersOnly:true})));
+ // a task may name the event it prepares: optional, a short string
+ await assertSucceeds(setDoc(doc(vol,'tasks','te1'),task('vol',{eventId:'ev-tour'})));
+ await assertFails(setDoc(doc(vol,'tasks','te2'),task('vol',{eventId:7})));
+ await assertFails(setDoc(doc(vol,'tasks','te3'),task('vol',{eventId:'x'.repeat(61)})));
+ await assertSucceeds(updateDoc(doc(vol,'tasks','te1'),{eventId:'',updatedAt:now}));                       // the creator unlinks it
+ await assertSucceeds(updateDoc(doc(beni,'tasks','t2'),{eventId:'ev-tour',updatedAt:now}));                // a manager links an older task
  await assertFails(setDoc(doc(vol,'tasks','t3'),task('vol',{createdBy:actor('beni')})));                       // cannot impersonate
  await assertFails(setDoc(doc(vol,'tasks','t4'),task('vol',{done:true,doneBy:actor('vol'),doneAt:now})));      // created already done
  await assertFails(setDoc(doc(vol,'tasks','t5'),task('vol',{photo:'data:image/svg+xml,<svg/>'})));

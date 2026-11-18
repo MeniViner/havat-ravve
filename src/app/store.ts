@@ -5,7 +5,7 @@ import { doc, runTransaction } from 'firebase/firestore';
 import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
 import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
-import { logActivity } from './activity';
+import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
 
@@ -149,34 +149,37 @@ export const useHistoryTasks = (enabled: boolean, manager: boolean, fromIso: str
 export const useTask = (id: string, enabled = true) => useDoc<Task>('tasks/' + (id || '_'), enabled && !!id);
 export const useTasksAtPlace = (placeId: string, enabled = true) => useList<Task>('tasks', { where: [['location.placeId', '==', placeId]], orderBy: [['createdAt', 'desc']], limit: 50 }, enabled && !!placeId);
 
-export type NewTask = { title: string; note: string; photo: string; location: TaskLocation | null; dueDate: string; managersOnly: boolean; assignee: Actor | null; urgent: boolean };
+export type NewTask = { title: string; note: string; photo: string; location: TaskLocation | null; dueDate: string; managersOnly: boolean; assignee: Actor | null; urgent: boolean; eventId?: string };
 const taskText = (t: { title: string }) => t.title.length > 60 ? t.title.slice(0, 60) + '…' : t.title;
 export async function addTask(actor: Actor, data: NewTask) {
   const now = nowIso();
   const id = newId('tasks');
   await write.set('tasks', id, { ...data, title: data.title.trim(), templateId: null, dateKey: null, createdBy: actor, createdAt: now, done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', updatedAt: now });
-  logActivity(actor, 'task', id, 'created', taskText(data), { subjectUid: data.assignee?.uid });
-  if (data.assignee && data.assignee.uid !== actor.uid) logActivity(actor, 'task', id, 'assigned', `${taskText(data)} ← ${data.assignee.name}`, { subjectUid: data.assignee.uid });
+  logActivity(actor, taskKind(data), id, 'created', taskText(data), { subjectUid: data.assignee?.uid });
+  if (data.assignee && data.assignee.uid !== actor.uid) logActivity(actor, taskKind(data), id, 'assigned', `${taskText(data)} ← ${data.assignee.name}`, { subjectUid: data.assignee.uid });
   return id;
 }
 export async function editTask(actor: Actor, task: Task, data: Partial<NewTask>) {
   await write.update('tasks', task.id, { ...data, updatedAt: nowIso() });
-  if (data.urgent !== undefined && data.urgent !== task.urgent && Object.keys(data).length === 1) { logActivity(actor, 'task', task.id, data.urgent ? 'urgent' : 'edited', `${data.urgent ? 'סומנה דחוף: ' : 'הורד הדחוף: '}${taskText(task)}`); return; }
-  logActivity(actor, 'task', task.id, 'edited', taskText({ title: data.title ?? task.title }));
-  if (data.assignee && data.assignee.uid !== task.assignee?.uid) logActivity(actor, 'task', task.id, 'assigned', `${taskText(task)} ← ${data.assignee.name}`, { subjectUid: data.assignee.uid });
+  const kind = taskKind({ managersOnly: data.managersOnly ?? task.managersOnly });
+  // the history follows the task's visibility: hidden from volunteers once it is managers-only, shown again once it is open
+  if (data.managersOnly !== undefined && data.managersOnly !== task.managersOnly) void reclassifyTaskActivity([task.id], data.managersOnly).catch(sweepAgain);
+  if (data.urgent !== undefined && data.urgent !== task.urgent && Object.keys(data).length === 1) { logActivity(actor, kind, task.id, data.urgent ? 'urgent' : 'edited', `${data.urgent ? 'סומנה דחוף: ' : 'הורד הדחוף: '}${taskText(task)}`); return; }
+  logActivity(actor, kind, task.id, 'edited', taskText({ title: data.title ?? task.title }));
+  if (data.assignee && data.assignee.uid !== task.assignee?.uid) logActivity(actor, kind, task.id, 'assigned', `${taskText(task)} ← ${data.assignee.name}`, { subjectUid: data.assignee.uid });
 }
 export async function setTaskDone(actor: Actor, task: Task, done: boolean) {
   const now = nowIso();
   await write.update('tasks', task.id, done ? { done: true, doneBy: actor, doneAt: now, updatedAt: now } : { done: false, doneBy: null, doneAt: null, updatedAt: now }); // the result photo and note stay: un-ticking by mistake must not destroy them
-  logActivity(actor, 'task', task.id, done ? 'done' : 'undone', taskText(task), { subjectUid: task.assignee?.uid });
+  logActivity(actor, taskKind(task), task.id, done ? 'done' : 'undone', taskText(task), { subjectUid: task.assignee?.uid });
 }
 export async function setTaskDoneDetails(actor: Actor, task: Task, data: { donePhoto?: string; doneNote?: string }) {
   await write.update('tasks', task.id, { ...data, updatedAt: nowIso() });
-  logActivity(actor, 'task', task.id, data.donePhoto !== undefined ? 'photo' : 'note', `${taskText(task)}${data.doneNote ? ': ' + data.doneNote : ''}`);
+  logActivity(actor, taskKind(task), task.id, data.donePhoto !== undefined ? 'photo' : 'note', `${taskText(task)}${data.doneNote ? ': ' + data.doneNote : ''}`);
 }
 export async function deleteTask(actor: Actor, task: Task) {
   await write.remove('tasks', task.id);
-  logActivity(actor, 'task', task.id, 'deleted', taskText(task));
+  logActivity(actor, taskKind(task), task.id, 'deleted', taskText(task));
 }
 export const restoreTask = (task: Task) => { const { id, ...rest } = task; return write.set('tasks', id, rest); };
 

@@ -68,8 +68,10 @@ export async function idempotent(
   }
 }
 
-export type ActivityKind = 'task' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
+export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
 /** The same record logActivity() in src/app/activity.ts writes. */
+/** A managers-only task logs under its own kind, which the Rules keep from volunteers (src/app/activity.ts taskKind). */
+export const taskKind = (t: { managersOnly?: unknown }): ActivityKind => (t.managersOnly ? 'task_private' : 'task');
 export function activity(fs: Firestore, by: Person, kind: ActivityKind, refId: string, action: string, text: string, extra: { subjectUid?: string; eventId?: string } = {}): Write {
   return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' });
 }

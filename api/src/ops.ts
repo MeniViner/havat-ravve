@@ -14,8 +14,9 @@ const TEAM_ROLES = new Set(['owner', 'manager', 'staff']);
 const nowIso = () => new Date().toISOString();
 /** Same truncation the app uses for activity text (store.ts taskText). */
 const taskText = (title: string) => (title.length > 60 ? title.slice(0, 60) + '…' : title);
-/** Activity text for a task. Manager-only titles never go into the log, which team members can read. */
-const activityText = (t: { title: string; managersOnly: boolean }) => (t.managersOnly ? 'משימת מנהלים' : taskText(t.title));
+/** Activity text for a task. A manager-only task logs under 'task_private', which team members cannot read, so its title is kept. */
+const activityText = (t: { title: string }) => taskText(t.title);
+const kindOf = (t: { managersOnly?: unknown }) => (t.managersOnly ? 'task_private' as const : 'task' as const);
 
 /** What callers see of a task: no base64 photos, no manager-only flag for team members. */
 function publicTask(id: string, t: Record<string, unknown>, caller: Caller) {
@@ -34,6 +35,7 @@ function publicTask(id: string, t: Record<string, unknown>, caller: Caller) {
     updatedAt: t.updatedAt,
     hasPhoto: !!t.photo,
     recurring: !!t.templateId,
+    eventId: t.eventId || null,
     ...(seesManagerTasks(caller.actor) ? { managersOnly: !!t.managersOnly } : {}),
   };
 }
@@ -165,7 +167,7 @@ async function resolveAssignee(fs: Firestore, uid: string, tx: string): Promise<
   return { uid: u.id, name: String(u.data.displayName || '').slice(0, 80) };
 }
 
-function activity(fs: Firestore, caller: Caller, refId: string, action: string, text: string, subjectUid = '', kind: 'task' | 'shopping' = 'task'): Write {
+function activity(fs: Firestore, caller: Caller, refId: string, action: string, text: string, subjectUid = '', kind: 'task' | 'task_private' | 'shopping' = 'task'): Write {
   return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '' });
 }
 
@@ -194,7 +196,7 @@ const readBackTask = (fs: Firestore, caller: Caller) => async (data: Record<stri
 
 export async function createTask(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'tasks:create');
-  const input = validate(operation('tasks.create')!.body!, body) as { title: string; assignee: string | null; dueDate: string | null; urgent: boolean; note: string | null; managersOnly: boolean; placeId: string | null };
+  const input = validate(operation('tasks.create')!.body!, body) as { title: string; assignee: string | null; dueDate: string | null; urgent: boolean; note: string | null; managersOnly: boolean; placeId: string | null; eventId: string | null };
   if (input.managersOnly && !seesManagerTasks(caller.actor)) throw new ApiError('FORBIDDEN', 'only managers can create manager-only tasks', { requiredScope: 'tasks:assign' });
   if (input.assignee && input.assignee !== caller.actor.person.uid) requireScope(caller, 'tasks:assign');
 
@@ -206,16 +208,17 @@ export async function createTask(fs: Firestore, caller: Caller, body: Record<str
       if (!p) throw invalid('placeId', 'no such place');
       location = { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
     }
+    if (input.eventId && !(await fs.get('events', input.eventId, tx))) throw invalid('eventId', 'no such event');
     const id = autoId();
     const now = nowIso();
     // exactly the shape addTask() in src/app/store.ts writes, so the app and the Rules accept it
     const task: TaskData = {
       title: input.title, note: input.note || '', photo: '', location, dueDate: input.dueDate || '', managersOnly: input.managersOnly,
       templateId: null, dateKey: null, createdBy: caller.actor.person, createdAt: now, done: false, doneBy: null, doneAt: null,
-      donePhoto: '', doneNote: '', assignee, urgent: input.urgent, updatedAt: now,
+      donePhoto: '', doneNote: '', assignee, urgent: input.urgent, updatedAt: now, ...(input.eventId ? { eventId: input.eventId } : {}),
     };
-    const writes = [fs.create('tasks', id, task), activity(fs, caller, id, 'created', activityText(task), assignee?.uid || '')];
-    if (assignee && assignee.uid !== caller.actor.person.uid) writes.push(activity(fs, caller, id, 'assigned', `${activityText(task)} ← ${assignee.name}`, assignee.uid));
+    const writes = [fs.create('tasks', id, task), activity(fs, caller, id, 'created', activityText(task), assignee?.uid || '', kindOf(task))];
+    if (assignee && assignee.uid !== caller.actor.person.uid) writes.push(activity(fs, caller, id, 'assigned', `${activityText(task)} ← ${assignee.name}`, assignee.uid, kindOf(task)));
     const expected = { title: task.title, dueDate: task.dueDate || null, urgent: task.urgent, assignee, done: false };
     return { status: 201, writes, data: { taskId: id, expected } };
   }, readBackTask(fs, caller));
@@ -236,7 +239,7 @@ export async function assignTask(fs: Firestore, caller: Caller, body: Record<str
     const data = t.data as TaskData;
     const writes = [
       fs.patch('tasks', t.id, { assignee, updatedAt: nowIso() }, t.updateTime),
-      activity(fs, caller, t.id, 'assigned', `${activityText(data)} ← ${assignee.name}`, assignee.uid),
+      activity(fs, caller, t.id, 'assigned', `${activityText(data)} ← ${assignee.name}`, assignee.uid, kindOf(data)),
     ];
     return { writes, data: { taskId: t.id, changed: true, expected } };
   }, readBackTask(fs, caller));
@@ -259,7 +262,7 @@ async function setTaskDone(fs: Firestore, caller: Caller, op: 'tasks.complete' |
       : { done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', updatedAt: now };
     const writes = [
       fs.patch('tasks', t.id, patch, t.updateTime),
-      activity(fs, caller, t.id, done ? 'done' : 'undone', activityText(data), (data.assignee as Person | null)?.uid || ''),
+      activity(fs, caller, t.id, done ? 'done' : 'undone', activityText(data), (data.assignee as Person | null)?.uid || '', kindOf(data)),
     ];
     return { writes, data: { taskId: t.id, changed: true, expected: done ? { done: true, doneBy: caller.actor.person } : { done: false, doneBy: null } } };
   }, readBackTask(fs, caller));

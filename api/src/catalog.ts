@@ -95,6 +95,7 @@ export const OPERATIONS: Operation[] = [
       note: { type: 'string', max: 4000, he: 'הערה / פירוט' },
       managersOnly: { type: 'bool', default: false, he: 'למנהלים בלבד (רק מנהל)' },
       placeId: { type: 'id', he: 'מקום מתוך places.list' },
+      eventId: { type: 'id', he: 'האירוע שהמשימה מכינה, מתוך events.list' },
     },
     requiredScope: 'tasks:create',
     notes: [

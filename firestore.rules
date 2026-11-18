@@ -78,7 +78,7 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /tasks/{id} {
-   function taskShape(){return incoming().keys().hasOnly(['title','note','photo','location','dueDate','managersOnly','templateId','dateKey','createdBy','createdAt','done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','urgent']) && str(incoming().title, 200) && (incoming().assignee == null || (incoming().assignee is map && incoming().assignee.keys().hasOnly(['uid','name']) && str(incoming().assignee.name, 80))) && incoming().urgent is bool && incoming().title.size() >= 1 && str(incoming().note, 4000) && photoOk(incoming().photo) && (incoming().location == null || (incoming().location is map && incoming().location.lat is number && incoming().location.lng is number)) && str(incoming().dueDate, 10) && incoming().managersOnly is bool && (incoming().templateId == null || (str(incoming().templateId, 60) && str(incoming().dateKey, 10) && id == incoming().templateId + '_' + incoming().dateKey)) && incoming().done is bool && photoOk(incoming().donePhoto) && str(incoming().doneNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().managersOnly == false || isManager());}
+   function taskShape(){return incoming().keys().hasOnly(['title','note','photo','location','dueDate','managersOnly','templateId','dateKey','createdBy','createdAt','done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','urgent','eventId']) && str(incoming().get('eventId', ''), 60) && str(incoming().title, 200) && (incoming().assignee == null || (incoming().assignee is map && incoming().assignee.keys().hasOnly(['uid','name']) && str(incoming().assignee.name, 80))) && incoming().urgent is bool && incoming().title.size() >= 1 && str(incoming().note, 4000) && photoOk(incoming().photo) && (incoming().location == null || (incoming().location is map && incoming().location.lat is number && incoming().location.lng is number)) && str(incoming().dueDate, 10) && incoming().managersOnly is bool && (incoming().templateId == null || (str(incoming().templateId, 60) && str(incoming().dateKey, 10) && id == incoming().templateId + '_' + incoming().dateKey)) && incoming().done is bool && photoOk(incoming().donePhoto) && str(incoming().doneNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().managersOnly == false || isManager());}
    function doneShape(){return (incoming().done == false && incoming().doneBy == null && incoming().doneAt == null) || (incoming().done == true && actorOk(incoming().doneBy) && str(incoming().doneAt, 40)) || (incoming().done == true && incoming().doneBy == resource.data.doneBy && incoming().doneAt == resource.data.doneAt);}
    function canSee(){return isStaff() && (resource.data.managersOnly == false || isManager());}
    allow read: if canSee();
@@ -101,10 +101,13 @@ service cloud.firestore {
    allow delete: if isStaff();
   }
   match /activity/{id} {
+   // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
    function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}
-   allow read: if isManager() || (isStaff() && teamKind()) || mine('subjectUid');
-   allow create: if signed() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
-   allow update, delete: if false;
+   allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && resource.data.kind != 'task_private');
+   allow create: if signed() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   // the one change ever allowed: a manager moves a task's history between the open and the managers-only kind when the task changes visibility
+   allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
+   allow delete: if false;
   }
   match /places/{id} {
    allow read: if isStaff();

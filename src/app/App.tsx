@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useProfile, useCmsEditor, canManage, isOwner, isTeam, actorOf, useOpenTasks, useRecentDoneTasks, useOpenShopping, useRecentBought, useTemplates, usePlaces, materializeToday, useTodayInstances, useToday, useOnline, usePeople, useTeam } from './store';
 import { useSettings, useNotifications, useVisits, useDonations, useAllEvents, useCalendar, useVendors } from './data';
 import { useRoute, match, navigate } from './router';
+import { sweepPrivateTaskActivity } from './activity';
 import { Icon, ToastProvider, A, Avatar, Empty, Top, useDesktop, usePageEnter, todayISO } from './ui';
 import type { TeamCtx, GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
@@ -139,6 +140,7 @@ function TeamApp({ user, profile, settings }: { user: Session; profile: Profile;
   const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid }), [user, actor, profile, manager, owner, cmsEditor, settings, places.items, templates.items, team.items, peopleByUid]);
   const guestCtx: GuestCtx = { user, profile, settings };
 
+  useEffect(() => { if (manager && online) void sweepPrivateTaskActivity(); }, [manager, online]);
   useEffect(() => {
     if (templates.loading || instances.loading || instances.error || !templates.items.length) return;
     materializeToday(templates.items, instances.items, actor, today);

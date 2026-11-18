@@ -123,8 +123,9 @@ export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: F
   if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'אירועים שיפורסמו יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
   const isLive = isToday(chosen, today);
   const timing = isLive ? (entry ? ' · השער נפתח חצי שעה לפני' : '') : ` · ${inText(chosen.start)}`;
+  // ticket and sales totals are for managers; a volunteer's phone still holds the tickets (scanning offline needs them), the screen just does not count them
   const ledger = [
-    ...(entry ? [{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }] : []),
+    ...(entry && ctx.manager ? [{ n: arrived, label: 'נכנסו' }, { n: valid.length, label: 'כרטיסים' }] : []),
     ...(stall ? [{ n: openTabs.length, label: 'חשבונות פתוחים', tone: openTabs.length ? 'ochre' as const : undefined }] : []),
   ];
   const cached = [
@@ -136,16 +137,16 @@ export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: F
     <div className="event-hub">
       <Top date={fmtDayLong(chosen.start)} title={isLive ? `היום בחווה: ${chosen.title}` : chosen.title} sub={`${fmtTime(chosen.start)}–${fmtTime(chosen.end)}${timing}`} end={!id ? <A className="iconbtn" to="/more" aria-label="הפרופיל שלי"><Avatar name={ctx.profile.displayName} /></A> : undefined} backTo={id ? '/events-staff' : undefined} backLabel="אירועים" />
       {entry || stall ? <>
-        <Ledger items={ledger} />
+        {ledger.length > 0 && <Ledger items={ledger} />}
         <div className="actions row2" style={{ paddingBottom: 0 }}>
           {entry && <Btn size="big" icon="qr" to={`/scan/${chosen.id}`}>כניסה</Btn>}
           {stall && <Btn size="big" kind={entry ? 'ghost' : 'primary'} icon="store" to={`/stall/${chosen.id}`}>דוכן</Btn>}
         </div>
-        <div className="strip ok"><Icon name="download" size={18} />{tickets.loading || products.loading ? 'מוריד את הנתונים למכשיר…' : `${cached} במכשיר. ${offline} בלי קליטה.`}</div>
+        <div className="strip ok"><Icon name="download" size={18} />{tickets.loading || products.loading ? 'מוריד את הנתונים למכשיר…' : ctx.manager ? `${cached} במכשיר. ${offline} בלי קליטה.` : `הנתונים במכשיר. ${offline} בלי קליטה.`}</div>
       </> : <>
         {chosen.location && <div className="list"><Row center title={chosen.location} start={<Icon name="pin" />} /></div>}
         {chosen.description && <p className="lead">{chosen.description}</p>}
-        <div className="actions"><Btn size="big" icon="list" to="/tasks">למשימות</Btn></div>
+        <div className="actions"><Btn size="big" icon="list" to={`/tasks?event=${encodeURIComponent(chosen.id)}`}>משימות לאירוע</Btn></div>
       </>}
       {entry && scans.length > 0 && <><Sec title="סריקות אחרונות" link="חיפוש אורח" linkTo={`/scan/${chosen.id}/search`} /><div className="list">{scans.map(({ t, s, n }) => <Row key={t.id + s.at} center title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`} meta={<span>כניסה {n}{n > 1 ? ', יצא וחזר' : ''} · {fmtTime(s.at)} · {firstName(s.by.name)}{t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}</span>} />)}</div></>}
       {upcoming.length > 0 && <><Sec title="אירועים קרובים" />{upcoming.slice(0, 4).map((e) => <EventTeaser key={e.id} e={e} to={`/events-staff/${e.id}`} />)}</>}
@@ -219,7 +220,7 @@ function useScanner(eventId: string, ctx: TeamCtx) {
   return { tickets, valid, stats, result, setResult, admit, evaluate, onCode };
 }
 
-function ResultOverlay({ r, stats, settings, origin, onPaid, onAdmitAnyway, onClose, onSearch }: { r: Result; stats: { arrived: number; total: number }; settings: TeamCtx['settings']; origin: 'scan' | 'search'; onPaid: () => void; onAdmitAnyway: () => void; onClose: () => void; onSearch: () => void }) {
+function ResultOverlay({ r, stats, settings, origin, onPaid, onAdmitAnyway, onClose, onSearch }: { r: Result; stats: { arrived: number; total: number } | null; settings: TeamCtx['settings']; origin: 'scan' | 'search'; onPaid: () => void; onAdmitAnyway: () => void; onClose: () => void; onSearch: () => void }) {
   const [left, setLeft] = useState(3);
   const close = useEffectEvent(onClose);
   useEffect(() => {
@@ -235,7 +236,7 @@ function ResultOverlay({ r, stats, settings, origin, onPaid, onAdmitAnyway, onCl
   const pay = settings.payment;
   return (
     <div className={'result ' + r.kind} role="dialog" aria-live="assertive">
-      <div style={{ fontSize: 15, opacity: .85 }}>{stats.arrived} מתוך {stats.total}</div>
+      {stats && <div style={{ fontSize: 15, opacity: .85 }}>{stats.arrived} מתוך {stats.total}</div>}
       <div className="big">{r.title}</div>
       {r.name && <div className="name">{r.name}</div>}
       {r.sub && <div className="sub">{r.sub}</div>}
@@ -254,10 +255,10 @@ export function ScanScreen({ event, ctx }: { event: FarmEvent; ctx: TeamCtx }) {
   const s = useScanner(eventId, ctx);
   return (
     <>
-      <Top backTo={`/events-staff/${eventId}`} backLabel="אירוע" title={`${event.title} · כניסה`} sub={`${s.stats.arrived} נכנסו מתוך ${s.stats.total} · ${s.stats.scans} סריקות · עובד בלי קליטה`} end={event.stall !== false && <Btn kind="quiet" size="sm" icon="store" to={`/stall/${eventId}`}>לדוכן</Btn>} />
+      <Top backTo={`/events-staff/${eventId}`} backLabel="אירוע" title={`${event.title} · כניסה`} sub={ctx.manager ? `${s.stats.arrived} נכנסו מתוך ${s.stats.total} · ${s.stats.scans} סריקות · עובד בלי קליטה` : 'עובד בלי קליטה'} end={event.stall !== false && <Btn kind="quiet" size="sm" icon="store" to={`/stall/${eventId}`}>לדוכן</Btn>} />
       {!s.result && <Camera onCode={s.onCode} hint="מכוונים את הברקוד למסגרת. הזיהוי אוטומטי." />}
       <div className="actions"><Btn kind="ghost" size="big" icon="search" to={`/scan/${eventId}/search`}>חיפוש בשם או טלפון</Btn></div>
-      {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} origin="scan" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => { s.setResult(null); navigate(`/scan/${eventId}/search`); }} />}
+      {s.result && <ResultOverlay r={s.result} stats={ctx.manager ? s.stats : null} settings={ctx.settings} origin="scan" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => { s.setResult(null); navigate(`/scan/${eventId}/search`); }} />}
     </>
   );
 }
@@ -271,7 +272,7 @@ export function ScanSearchScreen({ event, ctx }: { event: FarmEvent; ctx: TeamCt
   const orders = groupedOrders.filter((order) => order.some(matches)).slice(0, 8);
   return (
     <>
-      <Top backTo={`/scan/${eventId}`} backLabel="למצלמה" title="מי בכניסה?" sub={`${event.title} · ${s.stats.arrived} מתוך ${s.stats.total}`} />
+      <Top backTo={`/scan/${eventId}`} backLabel="למצלמה" title="מי בכניסה?" sub={ctx.manager ? `${event.title} · ${s.stats.arrived} מתוך ${s.stats.total}` : event.title} />
       <Field hint="שם או טלפון. מראים רק התאמות קרובות, לא את כל הרשימה."><Input big autoFocus placeholder="חיפוש" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
       {q.trim() && <Sec title={orders.length ? `${orders.length} התאמות` : 'לא נמצא'} />}
       {orders.length > 0 && <div className="list">{orders.map((order) => {
@@ -295,7 +296,7 @@ export function ScanSearchScreen({ event, ctx }: { event: FarmEvent; ctx: TeamCt
       })}</div>}
       <p className="note">{event.stall !== false ? 'לא ברשימה? אפשר לרשום אותו כאורח חדש בדוכן ("לקוח מזדמן"), או לבקש ממנהל להוסיף כרטיס.' : 'לא ברשימה? אפשר לבקש ממנהל להוסיף כרטיס.'}</p>
       {event.stall !== false && <div className="actions"><Btn kind="ghost" icon="store" to={`/stall/${eventId}/pick`}>רישום אורח בלי כרטיס</Btn></div>}
-      {s.result && <ResultOverlay r={s.result} stats={s.stats} settings={ctx.settings} origin="search" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => s.setResult(null)} />}
+      {s.result && <ResultOverlay r={s.result} stats={ctx.manager ? s.stats : null} settings={ctx.settings} origin="search" onClose={() => s.setResult(null)} onPaid={() => s.result?.ticket && s.admit(s.result.ticket, true)} onAdmitAnyway={() => s.result?.ticket && s.admit(s.result.ticket)} onSearch={() => s.setResult(null)} />}
     </>
   );
 }
@@ -532,7 +533,7 @@ function StallAccounts({ event, ctx, tabs, open, onAccount, saving }: { event: F
   return (
     <>
       <Top backTo={`/stall/${event.id}`} backLabel="דוכן" title="חשבונות הדוכן" sub={`${event.title} · על בסיס אמון, משלמים בסוף או בבית`} />
-      <Ledger items={[{ n: money(openTotal), label: 'פתוחים', tone: openTotal ? 'ochre' : undefined }, { n: open.length, label: 'חשבונות פתוחים' }, { n: money(soldToday), label: 'נמכרו היום' }]} small />
+      <Ledger items={ctx.manager ? [{ n: money(openTotal), label: 'פתוחים', tone: openTotal ? 'ochre' : undefined }, { n: open.length, label: 'חשבונות פתוחים' }, { n: money(soldToday), label: 'נמכרו היום' }] : [{ n: open.length, label: 'חשבונות פתוחים' }]} small />
       <Sec title="פתוחים" n={open.length} />
       <div className="list">{open.map((tab) => <div key={tab.id} className="row">
         <Avatar name={tab.guestName} />

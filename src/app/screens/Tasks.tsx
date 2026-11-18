@@ -4,9 +4,10 @@ import type { Task, TaskLocation } from '../types';
 import type { TeamCtx } from '../ctx';
 import { A, Icon, useDesktop, useToast, fmtDate, fmtTime, dayLabel, whenText, firstName, todayISO, addDays, dateKey } from '../ui';
 import { Head, Sect, Tabs, Check, Btn, Form, Empty, useLeaving, useSticky, pickImage } from '../kit';
-import { navigate } from '../router';
+import { navigate, useParam } from '../router';
+import { useEvent } from '../data';
 import { useTask, setTaskDone, setTaskDoneDetails, editTask, addTask, compressPhoto, useHistoryTasks, useBoughtHistory, addShopping } from '../store';
-import { useActivityFor, ACTION_LABELS } from '../activity';
+import { useTaskActivity, ACTION_LABELS } from '../activity';
 
 // ---------- what a task is, in the words the screen uses ----------
 export const mapsLink = (l: TaskLocation) => `https://maps.google.com/?q=${l.lat},${l.lng}`;
@@ -82,8 +83,11 @@ const GROUP_LABEL: Record<Bucket, string> = { late: 'באיחור', today: 'לה
 export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: TeamCtx; open: Task[]; recent: Task[]; loading: boolean; selectedId?: string }) {
   const desktop = useDesktop(); const today = todayISO();
   const act = useTaskActions(ctx); const { leaving, leave } = useLeaving();
+  // "/tasks?event=<id>": only the tasks that prepare one event, from the event's screen
+  const eventId = useParam('event');
+  const { item: event, loading: eventLoading } = useEvent(eventId, !!eventId);
   const lists = useMemo(() => {
-    const sorted = [...open].sort(sortTasks(today));
+    const sorted = open.filter((t) => !eventId || t.eventId === eventId).sort(sortTasks(today));
     return {
       mine: sorted.filter((t) => t.assignee?.uid === ctx.actor.uid),
       free: sorted.filter((t) => !t.assignee && !isRoutine(t)),
@@ -91,9 +95,11 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
       routine: sorted.filter(isRoutine),
       all: sorted,
     };
-  }, [open, today, ctx.actor.uid]);
+  }, [open, today, ctx.actor.uid, eventId]);
   const [saved, setTab] = useSticky<Tab | ''>('tasks-tab', '');
-  const tab: Tab = saved && (desktop || saved !== 'all') ? saved : lists.mine.length ? 'mine' : 'free';
+  // filtered by an event the list is short, so it shows whole instead of split by whose
+  const tab: Tab = eventId ? 'all' : saved && (desktop || saved !== 'all') ? saved : lists.mine.length ? 'mine' : 'free';
+  const suffix = eventId ? `?event=${encodeURIComponent(eventId)}` : '';
   const rows = lists[tab];
   const routineDone = recent.filter((t) => isRoutine(t) && t.dateKey === today);
   const tabs: { id: Tab; label: string; n?: number }[] = [
@@ -104,17 +110,20 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
   const done = (t: Task) => leave(t.id, () => act.done(t));
   const emptyText: Record<Tab, [string, string]> = {
     mine: ['אין עליך משימות כרגע', 'אפשר לקחת אחת מ״פנויות״.'], free: ['אין משימות פנויות', 'כל מה שפתוח כבר אצל מישהו.'],
-    theirs: ['אין משימות אצל אחרים', ''], routine: ['השגרה של היום הושלמה', ''], all: ['אין משימות פתוחות', ''],
+    theirs: ['אין משימות אצל אחרים', ''], routine: ['השגרה של היום הושלמה', ''], all: eventId ? ['אין משימות פתוחות לאירוע הזה', 'משימה שמכינה את האירוע מוסיפים עם "הוספה", ובוחרים בה את האירוע.'] : ['אין משימות פתוחות', ''],
   };
 
   return (
     <>
-      <Head title="משימות" end={<>{!desktop && <Btn small to="/tasks/new">הוספה</Btn>}<A className="r-textlink" to="/history">היסטוריה</A></>} />
-      {desktop && <QuickTask ctx={ctx} />}
-      <Tabs label="של מי המשימות" value={tab} onChange={setTab} items={tabs} />
+      <Head title="משימות" end={<>{(!desktop || eventId) && <Btn small to={`/tasks/new${suffix}`}>הוספה</Btn>}<A className="r-textlink" to="/history">היסטוריה</A></>} />
+      {desktop && !eventId && <QuickTask ctx={ctx} />}
+      {eventId ? <div className="r-filter" role="status">
+        <span>משימות לאירוע <b>{event?.title || (eventLoading ? '…' : 'שנמחק')}</b>{!loading && <> · {lists.all.length}</>}</span>
+        <button type="button" onClick={() => navigate('/tasks', true)} aria-label="הסרת הסינון, חזרה לכל המשימות"><Icon name="x" size={18} /><span>כל המשימות</span></button>
+      </div> : <Tabs label="של מי המשימות" value={tab} onChange={setTab} items={tabs} />}
       {loading ? <div className="r-empty">טוען…</div>
         : rows.length === 0 && !(tab === 'routine' && routineDone.length) ? <Empty title={emptyText[tab][0]}>{emptyText[tab][1]}</Empty>
-          : desktop ? <TaskTable rows={rows} ctx={ctx} today={today} leaving={leaving} onDone={done} onTake={act.take} selectedId={selectedId} />
+          : desktop ? <TaskTable rows={rows} ctx={ctx} today={today} leaving={leaving} onDone={done} onTake={act.take} selectedId={selectedId} suffix={suffix} />
             : tab === 'routine' ? <>
               {rows.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} leaving={leaving.has(t.id)} onDone={done} onTake={act.take} />)}
               {routineDone.map((t) => <DoneLine key={t.id} t={t} />)}
@@ -123,7 +132,7 @@ export function TasksScreen({ ctx, open, recent, loading, selectedId }: { ctx: T
               if (!group.length) return null;
               return <div key={b}><Sect title={GROUP_LABEL[b]} n={group.length} tone={b === 'late' ? 'late' : undefined} />{group.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} leaving={leaving.has(t.id)} onDone={done} onTake={act.take} owner={tab !== 'mine'} />)}</div>;
             })}
-      {!loading && recent.length > 0 && <div style={{ marginTop: 26 }}><A className="r-linkrow" to="/history"><div>בוצעו ביממה האחרונה <span>· {recent.length}</span></div><Icon name="chev" /></A></div>}
+      {!loading && !eventId && recent.length > 0 && <div style={{ marginTop: 26 }}><A className="r-linkrow" to="/history"><div>בוצעו ביממה האחרונה <span>· {recent.length}</span></div><Icon name="chev" /></A></div>}
     </>
   );
 }
@@ -145,8 +154,8 @@ function QuickTask({ ctx }: { ctx: TeamCtx }) {
   );
 }
 
-function TaskTable({ rows, ctx, today, leaving, onDone, onTake, selectedId }: { rows: Task[]; ctx: TeamCtx; today: string; leaving: Set<string>; onDone: (t: Task) => void; onTake: (t: Task) => void; selectedId?: string }) {
-  const openRow = (t: Task) => navigate(`/tasks/${t.id}`, false, true);
+function TaskTable({ rows, ctx, today, leaving, onDone, onTake, selectedId, suffix = '' }: { rows: Task[]; ctx: TeamCtx; today: string; leaving: Set<string>; onDone: (t: Task) => void; onTake: (t: Task) => void; selectedId?: string; suffix?: string }) {
+  const openRow = (t: Task) => navigate(`/tasks/${t.id}${suffix}`, false, true);
   return (
     <table className="r-table">
       <thead><tr><th aria-label="בוצע" /><th>משימה</th><th>איפה</th><th>על מי</th><th>עד מתי</th><th>ביקש/ה</th></tr></thead>
@@ -174,7 +183,8 @@ function TaskTable({ rows, ctx, today, leaving, onDone, onTake, selectedId }: { 
 export function TaskDetail({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const { item: t, loading } = useTask(id);
   const visible = t && (ctx.manager || !t.managersOnly);
-  const log = useActivityFor('task', id, !!visible);
+  const log = useTaskActivity(id, ctx.manager, !!visible);
+  const linked = useEvent(t?.eventId || '', !!visible && !!t?.eventId);
   const act = useTaskActions(ctx); const toast = useToast(); const today = todayISO();
   const [note, setNote] = useState<string | null>(null);
   if (loading) return <><Head backTo="/tasks" backLabel="משימות" title="" /><div className="r-empty">טוען…</div></>;
@@ -203,6 +213,7 @@ export function TaskDetail({ id, ctx }: { id: string; ctx: TeamCtx }) {
           {ctx.manager && !routine && !t.done && <select className="r-input" style={{ minHeight: 44, width: 130, fontSize: 16 }} aria-label="להעביר למישהו" value={t.assignee?.uid || ''} onChange={(e) => assign(e.target.value)}><option value="">פנויה</option>{ctx.team.map((p) => <option key={p.uid} value={p.uid}>{firstName(p.displayName)}</option>)}</select>}</div>
         {place && <div><dt>איפה</dt><dd>{place}</dd>{t.location && <a className="r-btn ghost sm" href={mapsLink(t.location)} target="_blank" rel="noopener">ניווט</a>}</div>}
         {(due.text || routine) && <div><dt>עד מתי</dt><dd className={due.late ? 'late' : ''}>{routine ? `היום${ctx.templates.find((x) => x.id === t.templateId)?.time ? ', עד ' + ctx.templates.find((x) => x.id === t.templateId)!.time : ''}` : due.late ? `היה ${dayLabel(t.dueDate)}` : due.text}</dd></div>}
+        {t.eventId && <div><dt>אירוע</dt><dd>{linked.item?.title || (linked.loading ? '…' : 'אירוע שנמחק')}</dd><A className="r-btn ghost sm" to={`/tasks?event=${encodeURIComponent(t.eventId)}`}>כל ההכנות</A></div>}
         {!routine && <div><dt>ביקש/ה</dt><dd>{t.createdBy.name}<small>{whenText(t.createdAt)}</small></dd></div>}
       </dl>
       {log.items.length > 0 && <><Sect title="מה קרה כאן" /><ul className="r-log">{log.items.map((a) => <li key={a.id}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}<span>{whenText(a.at)}</span></li>)}</ul></>}

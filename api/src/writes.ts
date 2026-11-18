@@ -6,7 +6,7 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, project, readBackRefs, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, project, readBackRefs, taskKind, whereEq,
 } from './core';
 import { autoId } from './util';
 
@@ -65,6 +65,7 @@ async function placeLocation(c: Ctx, placeId: string) {
 def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, תאריך יעד, דחיפות, מיקום, למנהלים בלבד', { ifUpdatedAt: IF_UPDATED_AT as Param,
   taskId: req(), title: str(200, 'כותרת', false, 1), note: str(4000, 'הערה'), dueDate: date('תאריך יעד'), clearDueDate: bool('true מסיר את תאריך היעד'),
   urgent: bool('דחוף'), managersOnly: bool('למנהלים בלבד (רק מנהל)'), placeId: opt('מקום מתוך places.list'), clearPlace: bool('true מסיר את המיקום'),
+  eventId: opt('האירוע שהמשימה מכינה, מתוך events.list'), clearEvent: bool('true מנתק את המשימה מהאירוע'),
 }, async (c) => {
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
@@ -74,11 +75,19 @@ def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, ת
   if ('managersOnly' in patch && !isManager(c.caller)) throw forbidden('only managers can make a task manager-only');
   if (c.input.placeId) patch.location = await placeLocation(c, c.input.placeId);
   if (c.input.clearPlace) patch.location = null;
+  if (c.input.eventId) { await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event'); patch.eventId = c.input.eventId; }
+  if (c.input.clearEvent) patch.eventId = '';
   needSome(patch);
   const onlyUrgent = Object.keys(patch).length === 1 && 'urgent' in patch;
   const writes = [c.fs.patch('tasks', t.id, { ...patch, updatedAt: nowIso() }, t.updateTime)];
-  if (onlyUrgent && patch.urgent !== !!t.data.urgent) writes.push(activity(c.fs, c.me, 'task', t.id, patch.urgent ? 'urgent' : 'edited', `${patch.urgent ? 'סומנה דחוף: ' : 'הורד הדחוף: '}${taskText(t.data as { title: string })}`));
-  else if (!onlyUrgent) writes.push(activity(c.fs, c.me, 'task', t.id, 'edited', taskText({ title: patch.title ?? t.data.title })));
+  const kind = taskKind({ managersOnly: patch.managersOnly ?? t.data.managersOnly });
+  // the history follows the task's visibility, as editTask() in the app does
+  if ('managersOnly' in patch && !!patch.managersOnly !== !!t.data.managersOnly) {
+    const from = patch.managersOnly ? 'task' : 'task_private';
+    for (const a of await whereEq(c.fs, 'activity', { kind: from, refId: t.id }, 300)) writes.push(c.fs.patch('activity', a.id, { kind }));
+  }
+  if (onlyUrgent && patch.urgent !== !!t.data.urgent) writes.push(activity(c.fs, c.me, kind, t.id, patch.urgent ? 'urgent' : 'edited', `${patch.urgent ? 'סומנה דחוף: ' : 'הורד הדחוף: '}${taskText(t.data as { title: string })}`));
+  else if (!onlyUrgent) writes.push(activity(c.fs, c.me, kind, t.id, 'edited', taskText({ title: patch.title ?? t.data.title })));
   return { writes, refs: [{ col: 'tasks', id: t.id, expected: patch }] };
 });
 
@@ -87,7 +96,7 @@ def('tasks.setDoneNote', 'tasks:complete', 'הערת ביצוע למשימה (מ
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
   const writes = [c.fs.patch('tasks', t.id, { doneNote: c.input.note, updatedAt: nowIso() }, t.updateTime),
-    activity(c.fs, c.me, 'task', t.id, 'note', `${taskText(t.data as { title: string })}${c.input.note ? ': ' + c.input.note : ''}`)];
+    activity(c.fs, c.me, taskKind(t.data), t.id, 'note', `${taskText(t.data as { title: string })}${c.input.note ? ': ' + c.input.note : ''}`)];
   return { writes, refs: [{ col: 'tasks', id: t.id, expected: { doneNote: c.input.note } }] };
 });
 
@@ -96,7 +105,7 @@ def('tasks.delete', 'tasks:edit', 'מחיקת משימה', { ifUpdatedAt: IF_UPD
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
   ownsTask(c, t);
-  return { writes: [c.fs.remove('tasks', t.id, t.updateTime), activity(c.fs, c.me, 'task', t.id, 'deleted', taskText(t.data as { title: string }))], refs: [{ col: 'tasks', id: t.id, gone: true }], data: { deleted: project('tasks', t.id, t.data) } };
+  return { writes: [c.fs.remove('tasks', t.id, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'deleted', taskText(t.data as { title: string }))], refs: [{ col: 'tasks', id: t.id, gone: true }], data: { deleted: project('tasks', t.id, t.data) } };
 }, ['Destructive: confirm with the user first. "deleted" holds the task as it was.']);
 
 // ======================= recurring templates =======================
