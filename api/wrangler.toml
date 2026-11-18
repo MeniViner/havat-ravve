@@ -17,7 +17,9 @@ FIRESTORE_PROJECT_ID = "havat-ravve"
 PRODUCTION_APPROVED = "havat-ravve"
 # Automatic payment-confirmation email through Brevo (src/email.ts). Off unless "true"; with it off, or with
 # BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.
-EMAIL_ENABLED = "false"
+# Turned on 2026-11-18 after one sample email to the sender address (Brevo message accepted at 15:55 UTC).
+# To stop sending: set "false" here and deploy (npx wrangler deploy --config api/wrangler.toml).
+EMAIL_ENABLED = "true"
 
 # The email outbox runs every 5 minutes: 288 short runs a day, inside the Workers Free limits.
 [triggers]
