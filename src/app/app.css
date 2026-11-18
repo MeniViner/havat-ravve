@@ -233,6 +233,7 @@ tr.checking td{opacity:.35;transition:opacity .3s .1s}
 .actions.row2{flex-direction:row;flex-wrap:wrap}
 .actions.row2 .btn{flex:1 1 150px;padding-inline:12px}
 .inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pad{padding-inline:20px}
 .inline.pad{padding:8px 20px 0}
 
 /* ---------- forms ---------- */

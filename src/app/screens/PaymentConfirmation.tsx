@@ -3,6 +3,7 @@ import type { TeamCtx } from '../ctx';
 import type { PaymentConfirmation as Confirmation, Profile, ReceiptPreference } from '../types';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD, RECEIPT_PREFERENCE_LABELS } from '../types';
 import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference, waLink } from '../data';
+import { useDoc } from '../db';
 import { updateOwnProfile } from '../store';
 import { Btn, Field, Icon, Pill, Sec, Select, money, useToast, whenText } from '../ui';
 
@@ -74,10 +75,23 @@ export function ReceiptPreferenceSection({ profile }: { profile: Profile }) {
   );
 }
 
-export function PaymentConfirmationActions({ ctx, collection, ids, uid, name, phone, amount, purpose, event, paid, confirmation }: {
+/** The Worker's automatic email for one payment (api/src/email.ts): order_<orderId>, donation_<id> or tab_<id>. */
+type EmailJob = { id: string; status: 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'; reason?: string | null; to?: string; sentAt?: string; updatedAt: string };
+const SKIP_TEXT: Record<string, string> = {
+  whatsapp: 'ההעדפה היא וואטסאפ', no_preference: 'לא נבחרה דרך שליחה', no_address: 'אין כתובת מייל תקינה', not_paid: 'התשלום בוטל לפני השליחה', manual: 'סומן ידנית',
+};
+function EmailStatus({ job }: { job: EmailJob }) {
+  if (job.status === 'sent') return <div className="meta" style={{ marginBlockStart: 6 }}><Pill tone="ok">נשלח במייל אוטומטית</Pill> {job.sentAt && whenText(job.sentAt)}{job.to && <> · <bdi>{job.to}</bdi></>}</div>;
+  if (job.status === 'queued' || job.status === 'sending') return <div className="meta" style={{ marginBlockStart: 6 }}><Pill tone="ochre">מייל אוטומטי בתור</Pill>{job.reason ? ' · ניסיון נוסף בקרוב' : ''}</div>;
+  if (job.status === 'failed') return <div className="meta" style={{ marginBlockStart: 6 }}><Pill tone="rust">המייל האוטומטי נכשל</Pill> {job.reason === 'rejected' ? 'הכתובת נדחתה' : 'שירות המייל לא זמין'} · אפשר לשלוח ידנית</div>;
+  return <div className="meta" style={{ marginBlockStart: 6 }}>מייל אוטומטי לא נשלח · {SKIP_TEXT[job.reason || ''] || 'לא נדרש'}</div>;
+}
+
+export function PaymentConfirmationActions({ ctx, collection, ids, uid, name, phone, amount, purpose, event, paid, confirmation, emailJob }: {
   ctx: TeamCtx; collection: 'tickets' | 'donations' | 'tabs'; ids: string[]; uid: string; name: string; phone: string;
-  amount: number; purpose: string; event?: string; paid: boolean; confirmation?: Confirmation;
+  amount: number; purpose: string; event?: string; paid: boolean; confirmation?: Confirmation; emailJob?: string;
 }) {
+  const job = useDoc<EmailJob>('email_outbox/' + (emailJob || '_'), ctx.manager && paid && !!emailJob).item;
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const profile = ctx.peopleByUid.get(uid);
@@ -111,6 +125,7 @@ export function PaymentConfirmationActions({ ctx, collection, ids, uid, name, ph
       {confirmation
         ? <div className="meta" style={{ marginBlockStart: 6 }}><Pill tone="ok">אישור נשלח</Pill> {confirmation.by.name} · {whenText(confirmation.at)}</div>
         : paid && (whatsapp || email) && <Btn kind="quiet" size="xs" disabled={busy} onClick={mark}>סימון שהאישור נשלח</Btn>}
+      {paid && job && <EmailStatus job={job} />}
     </div>
   );
 }

@@ -15,6 +15,13 @@ preview_urls = false
 # app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
 FIRESTORE_PROJECT_ID = "havat-ravve"
 PRODUCTION_APPROVED = "havat-ravve"
+# Automatic payment-confirmation email through Brevo (src/email.ts). Off unless "true"; with it off, or with
+# BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.
+EMAIL_ENABLED = "false"
+
+# The email outbox runs every 5 minutes: 288 short runs a day, inside the Workers Free limits.
+[triggers]
+crons = ["*/5 * * * *"]
 
 # Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
 [[kv_namespaces]]

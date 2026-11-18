@@ -221,7 +221,7 @@ export function EventGuestsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
       uid={first.ownerUid} name={first.ownerName} phone={first.ownerPhone} amount={first.price * valid.length}
       purpose={`כרטיסים לאירוע ${e.title}`} event={e.title}
       paid={valid.every((ticket) => ticket.paymentStatus === 'paid' || ticket.paymentStatus === 'paid_onsite')}
-      confirmation={valid.find((ticket) => ticket.paymentConfirmation)?.paymentConfirmation} />;
+      confirmation={valid.find((ticket) => ticket.paymentConfirmation)?.paymentConfirmation} emailJob={'order_' + first.orderId} />;
   };
   const actions = (o: Ticket[]) => { const t = o[0]; const valid = o.filter((x) => x.status === 'valid'); if (!valid.length) return null; return <>{t.paymentStatus === 'claimed' && <Btn size="xs" onClick={() => pay(o, 'paid')}>אישור תשלום</Btn>}{t.paymentStatus === 'pending' && <><a className="btn ghost xs" href={remind(o)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a><Btn size="xs" kind="ghost" onClick={() => pay(o, 'paid')}>סימון שולם</Btn></>}<a className="btn quiet xs" href={telLink(t.ownerPhone)}><Icon name="phone" size={14} /></a><Btn size="xs" kind="quiet" onClick={() => cancel(o)}>ביטול</Btn></>; };
   return (
@@ -434,7 +434,7 @@ export function TabDetailScreen({ eventId, tid, ctx }: { eventId: string; tid: s
       {t.total > 0 && <div className="pad">
         <PaymentConfirmationActions ctx={ctx} collection="tabs" ids={[t.id]} uid={t.guestUid} name={t.guestName} phone={t.guestPhone}
           amount={t.total} event={t.eventTitle} purpose={`חשבון הדוכן באירוע ${t.eventTitle}`}
-          paid={t.status === 'paid'} confirmation={t.paymentConfirmation} />
+          paid={t.status === 'paid'} confirmation={t.paymentConfirmation} emailJob={'tab_' + t.id} />
       </div>}
       <Sec title="פריטים" n={t.items.length} />
       <div className="list">{t.items.map((i, idx) => <Row key={idx} center title={<>{i.name}{i.qty > 1 ? ` ×${i.qty}` : ''}</>} meta={<span>{fmtTime(i.at)} · {firstName(i.by.name)}</span>} end={<><span className="amount">{money(i.price * i.qty)}</span>{t.status !== 'paid' && <button type="button" className="iconbtn" aria-label="הסרה" onClick={() => { const r = prompt('למה מסירים? (לא חובה)'); if (r !== null) removeTabItem(ctx.actor, t, idx, r); }}><Icon name="x" size={18} /></button>}</>} />)}</div>

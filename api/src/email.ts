@@ -1,0 +1,281 @@
+// Automatic payment-confirmation email through Brevo, run by a Cron Trigger (Workers Free plan).
+//
+// Each run is bounded (well under the 50 subrequests a free invocation may make):
+//  1. scan:  tickets, donations and stall accounts whose paidAt is after the cursor. paidAt is the server's
+//            commit time of the settle (app and Worker both stamp it), so a gate that was offline and syncs
+//            an hour later still lands after the cursor. One job per payment, under a stable id
+//            (order_<orderId>, donation_<id>, tab_<id>) created with an exists:false precondition.
+//  2. send:  up to BATCH due jobs. Each job is claimed with an updateTime precondition (the lease), checked
+//            again at send time (still paid, no manual confirmation, the guest's current preference is email
+//            with a valid address), sent with an idempotency key derived from the job id, and its outcome
+//            and Brevo's message id recorded. Rate limits and outages retry with bounded backoff that stays
+//            inside Brevo's idempotency window.
+// Nothing runs, and nothing is read, while EMAIL_ENABLED is not "true" or a Brevo secret is missing.
+import { type Doc, type Env, Firestore, type Write } from './firestore';
+import { whereEq } from './core';
+import { sha256hex } from './util';
+
+export const OUTBOX = 'email_outbox';
+const STATE = '_state';
+const BATCH = 5;
+const SCAN_LIMIT = 50;
+/** Re-read the last two minutes on every scan: a commit can become visible just after a later one. */
+const OVERLAP_MS = 2 * 60_000;
+/** After 20 minutes without a run (the switch was off, or an outage) start from now instead of mailing a backlog.
+ *  While the switch is off no run records anything, so turning it back on always starts fresh. */
+const GAP_MS = 20 * 60_000;
+/** Time for an undo, or for a manager who confirms by hand, before the email goes. */
+const GRACE_MS = 3 * 60_000;
+/** An order paid ticket by ticket at the gate waits this long for the rest before confirming what was paid. */
+const ORDER_WAIT_MS = 30 * 60_000;
+const LEASE_MS = 2 * 60_000;
+/** Attempts 2 and 3 go on the next runs (the cron is every 5 minutes). No attempt starts later than SEND_WINDOW_MS
+ *  after the first one, so a resend after a lost answer stays inside Brevo's idempotency window (15–30 minutes). */
+const RETRY_S = 4 * 60;
+const MAX_ATTEMPTS = 3;
+const SEND_WINDOW_MS = 12 * 60_000;
+const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
+const SENDER_NAME = 'חוות רווה';
+const SUBJECT = 'אישור תשלום מחוות רווה';
+const DEFAULT_TEMPLATE = 'שלום [שם], קיבלנו את התשלום בסך [סכום] עבור [עבור]. תודה מחוות רווה!';
+/** The same check the app uses for an email destination (data.ts receiptDestination). */
+const EMAIL_RE = /^[^\s@?&/#]+@[^\s@?&/#]+\.[^\s@?&/#]+$/;
+const SELF_TEST_KEY = 'email-self-test-v1';
+
+export type JobKind = 'order' | 'donation' | 'tab';
+export type JobStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled';
+const SOURCE: Record<JobKind, 'tickets' | 'donations' | 'tabs'> = { order: 'tickets', donation: 'donations', tab: 'tabs' };
+
+export const emailEnabled = (env: Env) => env.EMAIL_ENABLED === 'true' && !!env.BREVO_API_KEY && !!env.BREVO_SENDER_EMAIL;
+const testMode = (env: Env) => !!env.FIRESTORE_EMULATOR_HOST && env.TEST_FAULTS === '1';
+const brevoUrl = (env: Env) => (testMode(env) && env.BREVO_API_URL ? env.BREVO_API_URL : BREVO_URL);
+const fast = (env: Env) => testMode(env) && env.EMAIL_TEST_FAST === '1';
+const iso = (ms: number) => new Date(ms).toISOString();
+/** Firestore timestamps carry microseconds; compare them as milliseconds. */
+const ms = (t: unknown) => Date.parse(String(t || '').replace(/(\.\d{3})\d+/, '$1'));
+const money = (n: number) => `${n.toLocaleString('he-IL')} ₪`;
+const PAID = new Set(['paid', 'paid_onsite']);
+
+/** A UUID-shaped key (Brevo asks for one) that is the same for every attempt of one job. */
+export async function idempotencyKey(jobId: string) {
+  const h = await sha256hex('havat-ravve/payment-confirmation/' + jobId);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+type Stats = { enqueued: number; sent: number; failed: number; skipped: number; cancelled: number; retried: number; waiting: number };
+
+export async function runEmail(env: Env, nowMs = Date.now()): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { cron: 'email' };
+  if (env.EMAIL_SELF_TEST === 'once') out.selfTest = await selfTest(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
+  if (!emailEnabled(env)) return { ...out, enabled: false };
+  const fs = new Firestore(env);
+  const stats: Stats = { enqueued: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0, retried: 0, waiting: 0 };
+  out.enabled = true;
+  out.scan = await scan(fs, nowMs, stats);
+  await sendDue(fs, env, nowMs, stats);
+  return { ...out, ...stats };
+}
+
+// ---------- 1. scan settled payments ----------
+type Cursors = { tickets: string; donations: string; tabs: string };
+/** Where a full page ended, exactly: many payments can share one commit time (one order, a rush at the gate). */
+type Page = { at: string; name: string };
+type Candidate = { id: string; kind: JobKind; refId: string; uid: string; paidAt: string };
+
+/** Settled after `since`; or, continuing a full page, strictly after the exact (paidAt, document) where it ended. */
+async function paidSince(fs: Firestore, col: string, since: string, page?: Page): Promise<Doc[]> {
+  return fs.query({
+    from: [{ collectionId: col }],
+    ...(page ? {} : { where: { fieldFilter: { field: { fieldPath: 'paidAt' }, op: 'GREATER_THAN', value: { timestampValue: since } } } }),
+    orderBy: [{ field: { fieldPath: 'paidAt' }, direction: 'ASCENDING' }, { field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+    ...(page ? { startAt: { values: [{ timestampValue: page.at }, { referenceValue: page.name }], before: false } } : {}),
+    limit: SCAN_LIMIT,
+  });
+}
+
+async function scan(fs: Firestore, nowMs: number, stats: Stats): Promise<string> {
+  const state = await fs.get(OUTBOX, STATE);
+  const now = iso(nowMs);
+  const last = state ? ms(state.data.lastRunAt) : NaN;
+  if (!state || !(nowMs - last < GAP_MS)) {
+    // first run, or a run after a long pause: payments settled before now are history and are never mailed
+    const cursors: Cursors = { tickets: now, donations: now, tabs: now };
+    const w = state ? fs.patch(OUTBOX, STATE, { cursors, pages: {}, lastRunAt: now, resetAt: now }, state.updateTime) : fs.create(OUTBOX, STATE, { cursors, pages: {}, lastRunAt: now, resetAt: now });
+    await fs.commit([w]);
+    return state ? 'reset after a pause' : 'started';
+  }
+  const cur = state.data.cursors as Cursors;
+  const pages = (state.data.pages || {}) as Partial<Record<keyof Cursors, Page | null>>;
+  const nextPages: Partial<Record<keyof Cursors, Page | null>> = {};
+  // the overlap never reaches back past the moment mailing started: what was paid before that is history
+  const floor = ms(state.data.resetAt) || 0;
+  const next: Cursors = { ...cur };
+  const found: Candidate[] = [];
+  for (const col of ['tickets', 'donations', 'tabs'] as const) {
+    const page = pages[col] || undefined;
+    const docs = await paidSince(fs, col, iso(Math.max(ms(cur[col]) - OVERLAP_MS, floor)), page);
+    // a full page continues next run right after its last document (no overlap, so it always moves forward);
+    // a short page means everything up to (now - overlap) was seen
+    const lastDoc = docs[docs.length - 1];
+    nextPages[col] = docs.length === SCAN_LIMIT ? { at: String(lastDoc.data.paidAt), name: lastDoc.name } : null;
+    next[col] = iso(docs.length === SCAN_LIMIT ? ms(lastDoc.data.paidAt) : Math.max(ms(cur[col]), nowMs - OVERLAP_MS));
+    for (const d of docs) {
+      const x = d.data;
+      const paidAt = String(x.paidAt);
+      if (col === 'tickets' && x.status === 'valid' && Number(x.price) > 0 && PAID.has(String(x.paymentStatus)) && x.orderId) found.push({ id: 'order_' + x.orderId, kind: 'order', refId: String(x.orderId), uid: String(x.ownerUid), paidAt });
+      if (col === 'donations' && x.paymentStatus === 'paid' && Number(x.amount) > 0) found.push({ id: 'donation_' + d.id, kind: 'donation', refId: d.id, uid: String(x.uid), paidAt });
+      if (col === 'tabs' && x.status === 'paid' && Number(x.total) > 0) found.push({ id: 'tab_' + d.id, kind: 'tab', refId: d.id, uid: String(x.guestUid), paidAt });
+    }
+  }
+  const byId = new Map<string, Candidate>();
+  for (const c of found) if (!byId.has(c.id) || ms(byId.get(c.id)!.paidAt) < ms(c.paidAt)) byId.set(c.id, c);
+  const existing = new Map((byId.size ? await fs.getMany(OUTBOX, [...byId.keys()]) : []).map((d) => [d.id, d]));
+  const writes: Write[] = [];
+  for (const c of byId.values()) {
+    const job = existing.get(c.id);
+    if (!job) {
+      writes.push(fs.create(OUTBOX, c.id, { kind: c.kind, col: SOURCE[c.kind], refId: c.refId, uid: c.uid, paidAt: c.paidAt, status: 'queued', attempts: 0, nextAt: iso(nowMs + GRACE_MS), createdAt: now, updatedAt: now }));
+      stats.enqueued++;
+    } else if (job.data.status === 'skipped' && job.data.reason === 'not_paid' && ms(c.paidAt) > ms(job.data.paidAt)) {
+      // undone within the grace time, then settled again: confirm the new settle
+      writes.push(fs.patch(OUTBOX, c.id, { paidAt: c.paidAt, status: 'queued', reason: null, attempts: 0, firstAttemptAt: null, nextAt: iso(nowMs + GRACE_MS), createdAt: now, updatedAt: now }, job.updateTime));
+      stats.enqueued++;
+    }
+  }
+  // jobs and the cursor move together: if another run raced this one, neither moves and the next run redoes it
+  writes.push(fs.patch(OUTBOX, STATE, { cursors: next, pages: nextPages, lastRunAt: now }, state.updateTime));
+  try { await fs.commit(writes); } catch (e) { stats.enqueued = 0; return 'scan raced: ' + (e instanceof Error ? e.message.slice(0, 80) : 'error'); }
+  return 'ok';
+}
+
+// ---------- 2. send due jobs ----------
+type Settlement = { status: 'send'; amount: number; purpose: string; event: string; name: string } | { status: 'manual' | 'not_paid' | 'wait' };
+
+async function settlement(fs: Firestore, job: Doc, nowMs: number): Promise<Settlement> {
+  const j = job.data;
+  if (j.kind === 'order') {
+    const tickets = (await whereEq(fs, 'tickets', { orderId: j.refId }, 50)).filter((t) => t.data.status === 'valid' && Number(t.data.price) > 0);
+    if (tickets.some((t) => t.data.paymentConfirmation)) return { status: 'manual' };
+    const paid = tickets.filter((t) => PAID.has(String(t.data.paymentStatus)));
+    if (!paid.length) return { status: 'not_paid' };
+    if (paid.length < tickets.length && nowMs - ms(j.createdAt) < ORDER_WAIT_MS) return { status: 'wait' };
+    const t = paid[0].data;
+    return { status: 'send', amount: paid.reduce((s, x) => s + Number(x.data.price), 0), purpose: `כרטיסים לאירוע ${t.eventTitle}`, event: String(t.eventTitle || ''), name: String(t.ownerName || '') };
+  }
+  const d = await fs.get(SOURCE[j.kind as JobKind], String(j.refId));
+  if (!d) return { status: 'not_paid' };
+  if (d.data.paymentConfirmation) return { status: 'manual' };
+  if (j.kind === 'donation') return d.data.paymentStatus === 'paid' ? { status: 'send', amount: Number(d.data.amount), purpose: 'תרומה לחווה', event: '', name: String(d.data.name || '') } : { status: 'not_paid' };
+  return d.data.status === 'paid' && Number(d.data.total) > 0
+    ? { status: 'send', amount: Number(d.data.total), purpose: `חשבון הדוכן באירוע ${d.data.eventTitle}`, event: String(d.data.eventTitle || ''), name: String(d.data.guestName || '') }
+    : { status: 'not_paid' };
+}
+
+async function sendDue(fs: Firestore, env: Env, nowMs: number, stats: Stats) {
+  const now = iso(nowMs);
+  const due = await fs.query({
+    from: [{ collectionId: OUTBOX }],
+    where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: { arrayValue: { values: [{ stringValue: 'queued' }, { stringValue: 'sending' }] } } } },
+      { fieldFilter: { field: { fieldPath: 'nextAt' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: fast(env) ? iso(nowMs + GRACE_MS) : now } } },
+    ] } },
+    orderBy: [{ field: { fieldPath: 'nextAt' }, direction: 'ASCENDING' }],
+    limit: BATCH,
+  });
+  if (!due.length) return;
+  const settings = (await fs.get('settings', 'app'))?.data;
+  const template = String((settings?.templates as Record<string, unknown> | undefined)?.paymentConfirmation || '').trim() || DEFAULT_TEMPLATE;
+  for (const job of due) {
+    const attempts = Number(job.data.attempts || 0) + 1;
+    const claimedAt = Date.now();
+    const firstAttemptAt = String(job.data.firstAttemptAt || '') || iso(claimedAt);
+    // the lease: only the run whose precondition holds may send this job, and only it may record the outcome
+    let lease: string | undefined;
+    try {
+      const r = await fs.commit([fs.patch(OUTBOX, job.id, { status: 'sending', attempts, firstAttemptAt, nextAt: iso(claimedAt + LEASE_MS), updatedAt: iso(claimedAt) }, job.updateTime)]) as { writeResults?: { updateTime?: string }[] };
+      lease = r?.writeResults?.[0]?.updateTime;
+    } catch { continue; }
+    const finish = (data: Record<string, unknown>) => fs.commit([fs.patch(OUTBOX, job.id, { ...data, updatedAt: iso(Date.now()) }, lease)]);
+    try {
+      // a lease that ran out (a run that died mid-send), or attempts that drifted past Brevo's deduplication
+      // window: a resend could reach the guest twice, so the job goes to the managers instead
+      if (attempts > MAX_ATTEMPTS || claimedAt - ms(firstAttemptAt) > SEND_WINDOW_MS) { await finish({ status: 'failed', reason: 'expired', nextAt: null }); stats.failed++; continue; }
+      const s = await settlement(fs, job, nowMs);
+      if (s.status === 'manual') { await finish({ status: 'cancelled', reason: 'manual', nextAt: null }); stats.cancelled++; continue; }
+      if (s.status === 'not_paid') { await finish({ status: 'skipped', reason: 'not_paid', nextAt: null }); stats.skipped++; continue; }
+      if (s.status !== 'send') { await finish({ status: 'queued', attempts: attempts - 1, firstAttemptAt: null, nextAt: iso(nowMs + (fast(env) ? 0 : 5 * 60_000)) }); stats.waiting++; continue; }
+      // the guest's preference and address as they are now, not as they were at payment time
+      const profile = (await fs.get('users', String(job.data.uid)))?.data;
+      const pref = (profile?.fields as Record<string, unknown> | undefined)?.receiptPreference;
+      const to = String(profile?.email || '').trim();
+      if (pref !== 'email') { await finish({ status: 'skipped', reason: pref === 'whatsapp' ? 'whatsapp' : 'no_preference', nextAt: null }); stats.skipped++; continue; }
+      if (!EMAIL_RE.test(to)) { await finish({ status: 'skipped', reason: 'no_address', nextAt: null }); stats.skipped++; continue; }
+      const name = String(profile?.displayName || s.name);
+      const text = fill(template, { 'שם': name, 'סכום': money(s.amount), 'עבור': s.purpose, 'אירוע': s.event });
+      const r = await brevoSend(env, { to, name, subject: SUBJECT, text, key: await idempotencyKey(job.id) });
+      if (r.ok) { await finish({ status: 'sent', to, messageId: r.messageId, amount: s.amount, sentAt: iso(Date.now()), nextAt: null, reason: r.duplicate ? 'duplicate_key' : null }); stats.sent++; continue; }
+      if (r.retry && attempts < MAX_ATTEMPTS) {
+        const wait = fast(env) ? 0 : Math.max(RETRY_S, Math.min(r.retryAfter, RETRY_S)) * 1000;
+        await finish({ status: 'queued', reason: r.reason, nextAt: iso(nowMs + wait) }); stats.retried++; continue;
+      }
+      await finish({ status: 'failed', reason: r.reason, error: r.error, to, nextAt: null }); stats.failed++;
+    } catch (e) {
+      // our own read or write failed: the lease expires and a later run tries again (a sent mail is deduplicated by its key)
+      console.log(JSON.stringify({ cron: 'email', job: job.id, internal: (e instanceof Error ? e.message : String(e)).slice(0, 200) }));
+    }
+  }
+}
+
+const fill = (t: string, vars: Record<string, string>) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`[${k}]`, v), t);
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+export function emailHtml(text: string) {
+  const body = text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>`
+    + `<body style="margin:0;padding:0;background:#f5f1e8"><div dir="rtl" lang="he" style="max-width:560px;margin:0 auto;padding:28px 20px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#2b2a26;text-align:right">`
+    + body + `<p style="margin:24px 0 0;color:#7a7468;font-size:13px">${esc(SENDER_NAME)}</p></div></body></html>`;
+}
+
+type SendResult = { ok: true; messageId: string | null; duplicate: boolean } | { ok: false; retry: boolean; reason: string; error: string; retryAfter: number };
+
+async function brevoSend(env: Env, m: { to: string; name: string; subject: string; text: string; key: string }): Promise<SendResult> {
+  let res: Response;
+  try {
+    res = await fetch(brevoUrl(env), {
+      method: 'POST',
+      headers: { 'api-key': env.BREVO_API_KEY!, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        sender: { name: SENDER_NAME, email: env.BREVO_SENDER_EMAIL },
+        to: [{ email: m.to, name: m.name }],
+        subject: m.subject, htmlContent: emailHtml(m.text), textContent: m.text,
+        headers: { idempotencyKey: m.key }, tags: ['payment-confirmation'],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    return { ok: false, retry: true, reason: 'provider_unreachable', error: (e instanceof Error ? e.name : 'error').slice(0, 60), retryAfter: 0 };
+  }
+  let j: { messageId?: string; code?: string; message?: string } = {};
+  try { j = await res.json(); } catch { /* empty or not json */ }
+  if (res.ok) return { ok: true, messageId: j.messageId || null, duplicate: false };
+  // the same key inside Brevo's window: this mail was already accepted once
+  if (res.status === 400 && j.code === 'duplicate_parameter') return { ok: true, messageId: null, duplicate: true };
+  const error = `${res.status} ${j.code || ''} ${(j.message || '').slice(0, 160)}`.trim();
+  if (res.status === 429) return { ok: false, retry: true, reason: 'rate_limited', error, retryAfter: Number(res.headers.get('retry-after')) || 0 };
+  if (res.status >= 500) return { ok: false, retry: true, reason: 'provider_error', error, retryAfter: 0 };
+  return { ok: false, retry: false, reason: res.status === 401 || res.status === 403 ? 'provider_auth' : 'rejected', error, retryAfter: 0 };
+}
+
+// ---------- one sample email to the sender address itself ----------
+/** Sends exactly one sample confirmation to BREVO_SENDER_EMAIL, guarded in TOKEN_KV. Reads and writes no Firestore data. */
+async function selfTest(env: Env): Promise<string> {
+  if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) return 'skipped: Brevo secrets missing';
+  if (!env.TOKEN_KV) return 'skipped: no TOKEN_KV binding';
+  if (await env.TOKEN_KV.get(SELF_TEST_KEY)) return 'already done';
+  await env.TOKEN_KV.put(SELF_TEST_KEY, JSON.stringify({ state: 'sending', at: iso(Date.now()) }));
+  const text = fill(DEFAULT_TEMPLATE, { 'שם': 'בדיקת מערכת', 'סכום': money(1), 'עבור': 'בדיקת שליחה אוטומטית', 'אירוע': '' });
+  const r = await brevoSend(env, { to: env.BREVO_SENDER_EMAIL, name: SENDER_NAME, subject: '[בדיקה] ' + SUBJECT, text, key: await idempotencyKey('self-test-v1') });
+  const result = r.ok ? { state: 'sent', messageId: r.messageId, at: iso(Date.now()) } : { state: 'failed', error: r.error, at: iso(Date.now()) };
+  await env.TOKEN_KV.put(SELF_TEST_KEY, JSON.stringify(result));
+  return r.ok ? 'sent ' + (r.messageId || '(duplicate key)') : 'failed ' + r.error;
+}

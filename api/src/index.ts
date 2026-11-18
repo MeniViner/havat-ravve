@@ -11,6 +11,7 @@ import { WRITE_DEFS } from './writes';
 import { getSettings, overview } from './overview';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
+import { runEmail } from './email';
 
 const MAX_BODY = 16 * 1024;
 
@@ -124,5 +125,12 @@ export default {
       if (ctx) ctx.waitUntil(p); else await p;
     }
     return res;
+  },
+  /** Cron Trigger (wrangler.toml [triggers]): the payment-confirmation email outbox. Does nothing while EMAIL_ENABLED is off. */
+  async scheduled(_event: unknown, env: Env) {
+    const started = Date.now();
+    // one line per run for `wrangler tail`: counts and job ids only, never addresses, keys or message bodies
+    try { console.log(JSON.stringify({ ...(await runEmail(env)), wallMs: Date.now() - started })); }
+    catch (e) { console.log(JSON.stringify({ cron: 'email', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300), wallMs: Date.now() - started })); }
   },
 };

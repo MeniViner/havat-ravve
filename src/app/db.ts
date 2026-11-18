@@ -3,7 +3,7 @@
 // Screens never import firebase/firestore directly.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment,
+  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment, serverTimestamp,
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -125,13 +125,15 @@ function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<void>
 }
 
 /** Field changes that must not depend on the copy this phone happens to hold: two phones can add to the same list at once. */
-type FieldOp = { __op: 'union' | 'remove'; values: unknown[] } | { __op: 'inc'; by: number };
+type FieldOp = { __op: 'union' | 'remove'; values: unknown[] } | { __op: 'inc'; by: number } | { __op: 'now' };
 export const push = (...values: unknown[]): FieldOp => ({ __op: 'union', values });
 export const pull = (...values: unknown[]): FieldOp => ({ __op: 'remove', values });
 export const inc = (by: number): FieldOp => ({ __op: 'inc', by });
+/** The server's time when the write arrives (also for a write queued offline). Demo mode: this device's time. */
+export const serverNow = (): FieldOp => ({ __op: 'now' });
 const isOp = (v: unknown): v is FieldOp => !!v && typeof v === 'object' && '__op' in (v as object);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const toFirestore = (patch: Record<string, unknown>) => Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, !isOp(v) ? v : v.__op === 'inc' ? increment(v.by) : v.__op === 'union' ? arrayUnion(...v.values) : arrayRemove(...v.values)]));
+const toFirestore = (patch: Record<string, unknown>) => Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, !isOp(v) ? v : v.__op === 'now' ? serverTimestamp() : v.__op === 'inc' ? increment(v.by) : v.__op === 'union' ? arrayUnion(...v.values) : arrayRemove(...v.values)]));
 const isMap = (value: unknown): value is Row => !!value && typeof value === 'object' && !Array.isArray(value);
 function mergeLocal(current: Row, patch: Row): Row {
   const merged = Object.entries(patch).map(([key, value]) => {
@@ -144,6 +146,7 @@ function applyLocal(cur: Record<string, unknown>, patch: Record<string, unknown>
   const out: Record<string, unknown> = { ...cur };
   for (const [k, v] of Object.entries(patch)) {
     if (!isOp(v)) { out[k] = v; continue; }
+    if (v.__op === 'now') { out[k] = new Date().toISOString(); continue; }
     if (v.__op === 'inc') out[k] = Math.round(((Number(cur[k]) || 0) + v.by) * 100) / 100;
     else {
       const list = Array.isArray(cur[k]) ? (cur[k] as unknown[]) : [];

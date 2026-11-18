@@ -59,3 +59,41 @@ Automated: both typechecks, the build, `npm test` (core, demo, Today ordering), 
 | Guest event page shows no registered count | guest | 390×844 | Pass |
 
 Not verified here: anything that needs a physical phone (camera, autofocus, native install, gate use without reception).
+
+# Part B: Worker configuration and payment-confirmation email
+
+## Stage 5: live bindings in `api/wrangler.toml`
+
+| Check | Result |
+| --- | --- |
+| Live version `3336fb66` bindings: TOKEN_KV, FILE_BUCKET (R2 `havat-ravve-files`), RATE_LIMITER, AUTH_LIMITER, FIRESTORE_PROJECT_ID, PRODUCTION_APPROVED | Read with `wrangler versions view` |
+| `FILE_BUCKET` was the only live binding missing from the file; added with a comment | Pass |
+| `wrangler deploy --dry-run` lists the same six bindings (plus `EMAIL_ENABLED` after Stage 6) | Pass |
+| Secrets (names only): API_CREDENTIALS, GCP_SERVICE_ACCOUNT, BREVO_API_KEY, BREVO_SENDER_EMAIL; recorded in the file header, values never in git | Pass |
+
+## Stage 6: automatic payment-confirmation email (Brevo)
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Switch off: nothing queued, nothing sent, no outbox state | API test | Pass |
+| First run starts at now; a payment settled before it is never mailed | API test | Pass |
+| Worker `tickets.setOrderPayment` stamps `paidAt` with the server time | API test | Pass |
+| One paid order → exactly one email, Brevo message id recorded | API test | Pass |
+| Content: settings template, Hebrew RTL HTML + text, escaped, no "receipt" or "invoice" | API test | Pass |
+| api-key header, configured sender, UUID idempotency key | API test | Pass |
+| WhatsApp preference → nothing sent (skipped) | API test | Pass |
+| Address Brevo rejects → failed after one call, no retry | API test | Pass |
+| Rate limited (429) → queued, retried and sent on the next run | API test | Pass |
+| Manual confirmation before the claim → cancelled, nothing sent | API test | Pass |
+| Settling the same order again plus more runs → nothing sent again | API test | Pass |
+| Self-test: exactly one sample mail to the sender address over every run | API test | Pass |
+| 51 payments sharing one server time → all queued across two runs (paging never stalls) | API test | Pass |
+| Request logs carry no Brevo key and no addresses | API test | Pass |
+| Rules: `paidAt` only on a settling write, only `request.time`, never on create, not by a guest claim | rules test | Pass |
+| Rules: old clients without `paidAt` still settle (gate `paid_onsite`) | rules test | Pass |
+| Rules: guests, volunteers and signed-out users cannot read the outbox; nobody writes it from the app; managers read it | rules test | Pass |
+| Worker-written tickets, tabs and donations (now with `paidAt`) still pass the app's rules when rewritten as stored | API test | Pass |
+| Manager donation page shows "נשלח במייל אוטומטית · time · address" and "מייל אוטומטי לא נשלח · ההעדפה היא וואטסאפ" (demo data) | 390×844, 1280×800 | Pass |
+| Payment-confirmation block on donation and tab pages had no side gutter (`.pad` had no CSS rule since round 1); fixed | 390×844 | Pass |
+
+Automated totals: `npm test` 4/4 suites, `npm run test:rules` 3/3 suites, `npm run test:api` 285 passed, 0 failed. An independent review found six defects (scan paging could stall, off→on within a day mailed the backlog, retries could outlast Brevo's idempotency window, endless re-claims after an internal failure, an overlapping run could overwrite an outcome, undoing a cancellation lost the email); all fixed before release.
