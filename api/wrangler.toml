@@ -1,5 +1,8 @@
 # Havat Ravve API. Deploys to <name>.<account>.workers.dev on the free plan.
-# Secrets (never in this file or in git): `npx wrangler secret put API_CREDENTIALS` and `GCP_SERVICE_ACCOUNT`.
+# Secrets (never in this file or in git), set with `npx wrangler secret put <NAME> --config api/wrangler.toml`:
+# API_CREDENTIALS, GCP_SERVICE_ACCOUNT, BREVO_API_KEY, BREVO_SENDER_EMAIL. A deploy keeps existing secrets.
+# Every binding below must match the live Worker: a deploy removes anything this file does not list.
+# Check with `npx wrangler deploy --config api/wrangler.toml --dry-run` before each deploy.
 # Local values go in api/.dev.vars (git-ignored); see api/.dev.vars.example.
 name = "havat-ravve-api"
 main = "src/index.ts"
@@ -12,11 +15,24 @@ preview_urls = false
 # app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
 FIRESTORE_PROJECT_ID = "havat-ravve"
 PRODUCTION_APPROVED = "havat-ravve"
+# Automatic payment-confirmation email through Brevo (src/email.ts). Off unless "true"; with it off, or with
+# BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.
+EMAIL_ENABLED = "false"
+
+# The email outbox runs every 5 minutes: 288 short runs a day, inside the Workers Free limits.
+[triggers]
+crons = ["*/5 * * * *"]
 
 # Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
 [[kv_namespaces]]
 binding = "TOKEN_KV"
 id = "d275887525684d4b896d982838dad120"
+
+# Private file storage (R2, free tier). Attached in the Cloudflare dashboard on 2026-11-16 and kept here,
+# because a deploy removes every binding this file does not list. No route reads or writes it yet.
+[[r2_buckets]]
+binding = "FILE_BUCKET"
+bucket_name = "havat-ravve-files"
 
 # Rate limits (Workers Rate Limiting, free): per credential, and failed authentications per client IP.
 [[ratelimits]]

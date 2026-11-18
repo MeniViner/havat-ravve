@@ -18,6 +18,7 @@ const stub = {
       export const query = (c) => c, where = () => 0, orderBy = () => 0, limit = () => 0;
       export const onSnapshot = (ref) => { calls.push(['listen', ref.path]); return () => {}; };
       export const getDocsFromServer = async (ref) => { calls.push(['get', ref.path]); return { docs: [] }; };
+      export const serverTimestamp = () => ({ __serverTimestamp: true });
       export const documentId = () => '__name__';
       export const setDoc = async (ref) => { calls.push(['set', ref.path]); if (globalThis.__server === 'silent') await new Promise(() => {}); if (globalThis.__server === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } };
       export const updateDoc = async (ref) => { calls.push(['update', ref.path]); };

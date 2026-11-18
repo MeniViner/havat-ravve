@@ -20,7 +20,7 @@ const section = (s) => console.log('\n' + s);
 
 // ---------- emulator helpers (admin access with "Bearer owner") ----------
 const enc = (v) => v === null ? { nullValue: null } : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'string' ? { stringValue: v } : Array.isArray(v) ? { arrayValue: { values: v.map(enc) } } : { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, enc(x)])) } };
-const dec = (v) => 'nullValue' in v ? null : 'booleanValue' in v ? v.booleanValue : 'integerValue' in v ? Number(v.integerValue) : 'doubleValue' in v ? Number(v.doubleValue) : 'stringValue' in v ? v.stringValue : 'arrayValue' in v ? (v.arrayValue.values || []).map(dec) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, dec(x)])) : null;
+const dec = (v) => 'nullValue' in v ? null : 'timestampValue' in v ? v.timestampValue : 'booleanValue' in v ? v.booleanValue : 'integerValue' in v ? Number(v.integerValue) : 'doubleValue' in v ? Number(v.doubleValue) : 'stringValue' in v ? v.stringValue : 'arrayValue' in v ? (v.arrayValue.values || []).map(dec) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, dec(x)])) : null;
 const admin = { authorization: 'Bearer owner', 'content-type': 'application/json' };
 async function seed(col, id, data) {
   const r = await fetch(`${DOCS}/${col}/${id}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, enc(v)])) }) });
@@ -88,8 +88,8 @@ const listening = (port) => new Promise((resolve) => {
   s.once('connect', () => { s.destroy(); resolve(true); });
   s.once('error', () => resolve(false));
 });
-function startWorker(port, vars) {
-  const args = ['wrangler', 'dev', '--config', 'api/wrangler.toml', '--ip', '127.0.0.1', '--port', String(port), '--inspector-port', String(port + 1000), '--show-interactive-dev-session=false', '--log-level', 'log'];
+function startWorker(port, vars, extra = []) {
+  const args = ['wrangler', 'dev', '--config', 'api/wrangler.toml', '--ip', '127.0.0.1', '--port', String(port), '--inspector-port', String(port + 1000), '--show-interactive-dev-session=false', '--log-level', 'log', ...extra];
   for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
   // detached: npx, wrangler and workerd share one process group, so stopWorker can end all of them
   const p = spawn('npx', args, { env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
@@ -675,13 +675,17 @@ try {
 
     // every document the API wrote passes the app's own Rules: a manager rewrites it unchanged
     const { assertSucceeds } = require('@firebase/rules-unit-testing');
-    const { doc: fdoc, setDoc } = require('firebase/firestore');
+    const { doc: fdoc, setDoc, Timestamp } = require('firebase/firestore');
+    // the stored document exactly as the app's SDK would hold it: a server timestamp (paidAt) stays a Timestamp
+    const tsOf = (t) => { const [, frac = ''] = /\.(\d+)Z$/.exec(t) || []; return new Timestamp(Math.floor(Date.parse(t.replace(/\.\d+Z$/, 'Z')) / 1000), Number(frac.padEnd(9, '0').slice(0, 9))); };
+    const decSdk = (v) => 'timestampValue' in v ? tsOf(v.timestampValue) : 'arrayValue' in v ? (v.arrayValue.values || []).map(decSdk) : 'mapValue' in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, decSdk(x)])) : dec(v);
+    const sdkDocOf = async (path) => { const j = await fetch(`${DOCS}/${path}`, { headers: admin }).then((x) => x.json()); return Object.fromEntries(Object.entries(j.fields || {}).map(([k, v]) => [k, decSdk(v)])); };
     const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
     const dani = rulesEnv.authenticatedContext('syn-dani-l', claims('syn-dani-l@synthetic.invalid')).firestore();
     const paths = ['tasks/' + taskId, 'task_templates/' + tplId, 'events/' + eventId, 'vendors/' + vendorId, 'tickets/syn-ord1-1', 'tickets/syn-ord2-1', 'tabs/' + tabId, 'visits/syn-visit', 'donations/syn-donation', 'notifications/syn-n-other', 'calendar/event_' + eventId, 'users/syn-dani-c', 'settings/app'];
     let passed = 0;
     for (const p of paths) {
-      try { await assertSucceeds(setDoc(fdoc(dani, ...p.split('/')), await docOf(p))); passed++; } catch (e) { console.error('  Rules rejected', p, String(e).slice(0, 200)); }
+      try { await assertSucceeds(setDoc(fdoc(dani, ...p.split('/')), await sdkDocOf(p))); passed++; } catch (e) { console.error('  Rules rejected', p, String(e).slice(0, 200)); }
     }
     check(passed === paths.length, `the app's Rules accept every document the API wrote (${passed}/${paths.length} collections)`);
     const myActs = (await where('activity', 'by', { uid: 'syn-dani-l', name: 'דני לוי' }));
@@ -863,6 +867,135 @@ for (const [i, [approved, expectLocked]] of [['', true], ['some-other-project', 
     if (expectLocked) check(own && r.status === 503 && j.error.code === 'PRODUCTION_LOCKED', label, { answeredByThisWorker: own, ...j });
     else check(own && j.ok === false && j.error?.code !== 'PRODUCTION_LOCKED', label, { answeredByThisWorker: own, ...j });
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); }
+}
+
+// payment-confirmation email: the cron outbox (api/src/email.ts) against a mock Brevo endpoint.
+// Synthetic people, tickets, donations and tabs in the emulator only. Each run is started with /__scheduled.
+section('payment-confirmation email (cron outbox → mock Brevo)');
+{
+  const brevo = { calls: [], rateLimited: new Set(), seenKeys: new Set() };
+  const brevoMock = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const j = JSON.parse(body || '{}');
+      const to = j.to?.[0]?.email || '';
+      const key = j.headers?.idempotencyKey || '';
+      brevo.calls.push({ to, key, apiKey: req.headers['api-key'], subject: j.subject, html: j.htmlContent, text: j.textContent, sender: j.sender });
+      const send = (status, o, h = {}) => { res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(o)); };
+      if (to.startsWith('bad')) return send(400, { code: 'invalid_parameter', message: 'email is not valid in to' });
+      if (to.startsWith('rate') && !brevo.rateLimited.has(to)) { brevo.rateLimited.add(to); return send(429, { code: 'too_many_requests', message: 'slow down' }, { 'retry-after': '1' }); }
+      if (brevo.seenKeys.has(key)) return send(400, { code: 'duplicate_parameter', message: 'idempotency key already used' });
+      brevo.seenKeys.add(key);
+      send(201, { messageId: `<mock-${brevo.calls.length}@smtp-relay.mailin.fr>` });
+    });
+  });
+  await new Promise((r) => brevoMock.listen(0, '127.0.0.1', r));
+  const brevoUrl = `http://127.0.0.1:${brevoMock.address().port}/v3/smtp/email`;
+  const persist = fs.mkdtempSync('/tmp/hr-email-kv-');
+  const emailVars = (enabled) => ({
+    FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS),
+    EMAIL_ENABLED: enabled ? 'true' : 'false', EMAIL_TEST_FAST: '1', BREVO_API_URL: brevoUrl,
+    BREVO_API_KEY: 'synthetic-brevo-key', BREVO_SENDER_EMAIL: 'sender@synthetic.test', ...(enabled ? { EMAIL_SELF_TEST: 'once' } : {}),
+  });
+  const getDocAdmin = async (col, id) => { const r = await fetch(`${DOCS}/${col}/${id}`, { headers: admin }); if (r.status === 404) return null; const d = await r.json(); return Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, dec(v)])); };
+  /** Like the app's serverTimestamp(): paidAt is the server's time of this write. */
+  async function seedPaid(col, id, data) {
+    const r = await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes: [{
+      update: { name: `projects/${PROJECT}/databases/(default)/documents/${col}/${id}`, fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, enc(v)])) },
+      updateTransforms: [{ fieldPath: 'paidAt', setToServerValue: 'REQUEST_TIME' }],
+    }] }) });
+    if (!r.ok) throw new Error('seedPaid failed ' + (await r.text()));
+  }
+  const nowS = new Date().toISOString();
+  const person = (uid, email, pref) => ({ uid, email, displayName: 'אורח ' + uid.slice(3), phone: '0501234567', role: 'guest', status: 'active', customerNumber: 7, acceptedTermsAt: nowS, createdAt: nowS, updatedAt: nowS, ...(pref ? { fields: { receiptPreference: pref } } : {}) });
+  const ticket = (orderId, uid, i, extra = {}) => ({ eventId: 'em-event', eventTitle: 'יריד החורף', orderId, index: i, total: 2, ownerUid: uid, ownerName: 'אורח', ownerPhone: '0501234567', holderName: '', secret: 'ab'.repeat(12), price: 50, paymentStatus: 'pending', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: nowS, updatedAt: nowS, ...extra });
+  const donation = (uid, extra = {}) => ({ uid, name: 'אורח', phone: '', amount: 180, label: 'חי', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt: nowS, updatedAt: nowS, ...extra });
+  const tab = (uid) => ({ eventId: 'em-event', eventTitle: 'יריד החורף', guestUid: uid, guestName: 'אורח', guestPhone: '', ticketId: '', items: [], total: 64, status: 'paid', createdBy: { uid: 'x', name: 'x' }, createdAt: nowS, updatedAt: nowS });
+  await seed('users', 'em-mail', person('em-mail', 'mail@synthetic.test', 'email'));
+  await seed('users', 'em-wa', person('em-wa', 'wa@synthetic.test', 'whatsapp'));
+  await seed('users', 'em-bad', person('em-bad', 'bad@synthetic.test', 'email'));
+  await seed('users', 'em-rate', person('em-rate', 'rate@synthetic.test', 'email'));
+  await seed('users', 'em-manual', person('em-manual', 'manual@synthetic.test', 'email'));
+  await seed('users', 'em-old', person('em-old', 'old@synthetic.test', 'email'));
+  await seed('settings', 'app', { templates: { paymentConfirmation: 'שלום [שם],\nקיבלנו [סכום] עבור [עבור].\n\nתודה <3 מחוות רווה' } });
+  const run = async (port) => { const r = await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`); return r.status; };
+  const outbox = (id) => getDocAdmin('email_outbox', id);
+
+  // 1. switch off: a settled payment is neither queued nor sent, and the cron reads nothing
+  const offPort = PORT + 20;
+  const off = startWorker(offPort, emailVars(false), ['--test-scheduled', '--persist-to', persist]);
+  try {
+    await waitUp(`http://127.0.0.1:${offPort}`);
+    await seedPaid('donations', 'em-d-off', donation('em-mail'));
+    const st = await run(offPort);
+    check(st === 200 && brevo.calls.length === 0 && !(await outbox('_state')) && !(await outbox('donation_em-d-off')), 'EMAIL_ENABLED off → nothing queued, nothing sent, no outbox state', { st, calls: brevo.calls.length });
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(off).catch((e) => { failures++; console.error(e); }); }
+
+  // 2. switch on
+  const onPort = PORT + 21;
+  const on = startWorker(onPort, emailVars(true), ['--test-scheduled', '--persist-to', persist]);
+  try {
+    await waitUp(`http://127.0.0.1:${onPort}`);
+    await seedPaid('donations', 'em-d-old', donation('em-old'));         // settled before mailing started: history
+    await new Promise((r) => setTimeout(r, 50));
+    await run(onPort);
+    const state = await outbox('_state');
+    const selfTests = brevo.calls.filter((c) => c.to === 'sender@synthetic.test');
+    check(!!state?.resetAt && state.cursors?.tickets === state.resetAt, 'first run starts the cursor at now', state);
+    check(selfTests.length === 1 && selfTests[0].subject.startsWith('[בדיקה]') && !(await outbox('donation_em-d-old')), 'first run: one self-test mail to the sender address only, older payments never mailed', brevo.calls.map((c) => c.to));
+    const base = brevo.calls.length;
+
+    // the Worker path settles an order; the app path (serverTimestamp) settles the rest
+    await seed('tickets', 'em-t1', ticket('em-o1', 'em-mail', 1));
+    await seed('tickets', 'em-t2', ticket('em-o1', 'em-mail', 2));
+    const paid = await fetch(`http://127.0.0.1:${onPort}/v1/actions/tickets.setOrderPayment`, { method: 'POST', headers: { authorization: 'Bearer ' + KEYS.owner, 'content-type': 'application/json', 'idempotency-key': randomUUID() }, body: JSON.stringify({ orderId: 'em-o1', paymentStatus: 'paid' }) });
+    const em1 = await getDocAdmin('tickets', 'em-t1');
+    check(paid.status === 200 && typeof em1.paidAt === 'string' && em1.paidAt.length > 0, 'tickets.setOrderPayment (Worker) stamps paidAt with the server time', { status: paid.status, paidAt: em1?.paidAt });
+    await seedPaid('donations', 'em-d-wa', donation('em-wa'));
+    await seedPaid('tabs', 'em-tab-bad', tab('em-bad'));
+    await seedPaid('tickets', 'em-t3', ticket('em-o2', 'em-rate', 1, { total: 1, paymentStatus: 'paid_onsite' }));
+    // confirmed by hand (WhatsApp) right after it was settled, before any run claimed the job
+    await seedPaid('donations', 'em-d-man', donation('em-manual', { paymentConfirmation: { by: { uid: 'm', name: 'מנהלת' }, at: nowS } }));
+
+    await run(onPort);
+    const after1 = brevo.calls.slice(base);
+    const o1 = await outbox('order_em-o1');
+    const mailO1 = after1.filter((c) => c.to === 'mail@synthetic.test');
+    check(o1?.status === 'sent' && /^<mock-\d+@/.test(o1.messageId) && mailO1.length === 1, 'a paid order → exactly one email, Brevo message id recorded', { o1, calls: after1.map((c) => c.to) });
+    const m = mailO1[0] || {};
+    check(m.subject === 'אישור תשלום מחוות רווה' && m.text?.includes('קיבלנו 100 ₪ עבור כרטיסים לאירוע יריד החורף') && m.html?.includes('dir="rtl"') && m.html?.includes('&lt;3') && !/קבלה|חשבונית/.test(m.subject + m.text + m.html), 'content: settings template, Hebrew RTL, escaped, never called a receipt or invoice', { subject: m.subject, text: m.text });
+    check(m.apiKey === 'synthetic-brevo-key' && m.sender?.email === 'sender@synthetic.test' && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/.test(m.key), 'sent with the api-key header, the configured sender and a UUID idempotency key', { key: m.key, sender: m.sender });
+    const wa = await outbox('donation_em-d-wa');
+    check(wa?.status === 'skipped' && wa.reason === 'whatsapp' && !after1.some((c) => c.to === 'wa@synthetic.test'), 'WhatsApp preference → nothing sent, job skipped', wa);
+    const bad = await outbox('tab_em-tab-bad');
+    check(bad?.status === 'failed' && bad.reason === 'rejected' && after1.filter((c) => c.to === 'bad@synthetic.test').length === 1, 'an address Brevo rejects → fails cleanly after one call, no retry', bad);
+    const rate = await outbox('order_em-o2');
+    check(rate?.status === 'queued' && rate.reason === 'rate_limited' && rate.attempts === 1, 'rate-limited (429) → queued again for a retry', rate);
+    const man = await outbox('donation_em-d-man');
+    check(man?.status === 'cancelled' && man.reason === 'manual' && !after1.some((c) => c.to === 'manual@synthetic.test'), 'a manual confirmation recorded before the claim → job cancelled, nothing sent', man);
+
+    // retry, then a replay of the settle
+    await run(onPort);
+    const rate2 = await outbox('order_em-o2');
+    check(rate2?.status === 'sent' && brevo.calls.filter((c) => c.to === 'rate@synthetic.test').length === 2, 'the rate-limited job is retried and sent on the next run', rate2);
+    const replay = await fetch(`http://127.0.0.1:${onPort}/v1/actions/tickets.setOrderPayment`, { method: 'POST', headers: { authorization: 'Bearer ' + KEYS.owner, 'content-type': 'application/json', 'idempotency-key': randomUUID() }, body: JSON.stringify({ orderId: 'em-o1', paymentStatus: 'paid' }) });
+    const before = brevo.calls.length;
+    await run(onPort); await run(onPort);
+    check(replay.status === 200 && brevo.calls.length === before && brevo.calls.filter((c) => c.to === 'mail@synthetic.test').length === 1 && (await outbox('order_em-o1')).messageId === o1.messageId, 'settling the same order again and two more runs → nothing sent again', { calls: brevo.calls.length - before });
+    check(brevo.calls.every((c) => c.to !== 'old@synthetic.test') && brevo.calls.filter((c) => c.to === 'sender@synthetic.test').length === 1, 'across every run: no history mailed, the self-test sent exactly once');
+    // 51 payments in one commit share one server time: a full page must continue, not stall on the same 50
+    const many = Array.from({ length: 51 }, (_, i) => ({
+      update: { name: `projects/${PROJECT}/databases/(default)/documents/donations/em-bulk-${String(i).padStart(2, '0')}`, fields: Object.fromEntries(Object.entries(donation('em-wa')).map(([k, v]) => [k, enc(v)])) },
+      updateTransforms: [{ fieldPath: 'paidAt', setToServerValue: 'REQUEST_TIME' }],
+    }));
+    const bulk = await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes: many }) });
+    await run(onPort); await run(onPort);
+    const jobs = await Promise.all(Array.from({ length: 51 }, (_, i) => outbox(`donation_em-bulk-${String(i).padStart(2, '0')}`)));
+    check(bulk.ok && jobs.every(Boolean), '51 payments with the same server time → every one queued across two runs (paging never stalls)', { missing: jobs.filter((j) => !j).length });
+    const lines = on.logs.map((l) => JSON.stringify(l)).join('\n');
+    check(!lines.includes('synthetic-brevo-key') && !lines.includes('@synthetic.test'), 'request logs carry no Brevo key and no addresses');
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(on).catch((e) => { failures++; console.error(e); }); brevoMock.close(); fs.rmSync(persist, { recursive: true, force: true }); }
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

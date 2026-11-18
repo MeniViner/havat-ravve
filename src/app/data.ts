@@ -1,5 +1,5 @@
 // Data access for events, tickets, visits, donations, stalls, settings, notifications and calendar.
-import { useList, useDoc, write, newId, push, pull, inc } from './db';
+import { useList, useDoc, write, newId, push, pull, inc, serverNow } from './db';
 import { nowIso } from './firebase';
 import { logActivity } from './activity';
 import type {
@@ -19,6 +19,9 @@ export function receiptPreference(profile?: Pick<Profile, 'fields' | 'phone' | '
   const value = profile?.fields?.[RECEIPT_PREFERENCE_FIELD];
   return profile && (value === 'whatsapp' || value === 'email') && receiptDestination(profile, value) ? value : undefined;
 }
+
+/** A write that settles a payment stamps paidAt, which the Worker's confirmation email follows. */
+const paidStamp = (status: string) => (status === 'paid' || status === 'paid_onsite' ? { paidAt: serverNow() } : {});
 
 // ---------- settings ----------
 export function useSettings() {
@@ -60,7 +63,7 @@ export const useTicketsOfEvents = (eventIds: string[], enabled: boolean) => useL
 /** Puts every ticket of an order back exactly as it was (undo of "paid" or of a cancellation). */
 export async function restoreOrder(actor: Actor, before: Ticket[]) {
   const now = nowIso();
-  await write.batch(before.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: t.paymentStatus, status: t.status, updatedAt: now } })));
+  await write.batch(before.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: t.paymentStatus, status: t.status, ...paidStamp(t.paymentStatus), updatedAt: now } })));
   const t = before[0];
   if (t) logActivity(actor, 'ticket', t.orderId, 'edited', `בוטלה הפעולה האחרונה · ${t.ownerName} · ${t.eventTitle}`, { subjectUid: t.ownerUid, eventId: t.eventId });
 }
@@ -92,17 +95,17 @@ export function parseQr(s: string): { id: string; secret: string } | null {
 export async function recordScan(ticket: Ticket, actor: Actor, paidOnsite = false) {
   const now = nowIso();
   // increments on the server's copy: two gates scanning the same ticket both count, and nothing is refused
-  await write.update('tickets', ticket.id, { scans: push({ at: now, by: actor }), entries: inc(1), ...(paidOnsite ? { paymentStatus: 'paid_onsite' } : {}), updatedAt: now });
+  await write.update('tickets', ticket.id, { scans: push({ at: now, by: actor }), entries: inc(1), ...(paidOnsite ? { paymentStatus: 'paid_onsite', paidAt: serverNow() } : {}), updatedAt: now });
   logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticket.holderName || ticket.ownerName} · כניסה ${ticket.entries + 1}${paidOnsite ? ' · שולם במקום' : ''}`, { subjectUid: ticket.ownerUid, eventId: ticket.eventId });
 }
 export async function setTicketPayment(actor: Actor, ticket: Ticket, paymentStatus: PaymentStatus) {
-  await write.update('tickets', ticket.id, { paymentStatus, updatedAt: nowIso() });
+  await write.update('tickets', ticket.id, { paymentStatus, ...paidStamp(paymentStatus), updatedAt: nowIso() });
   logActivity(actor, 'ticket', ticket.id, paymentStatus === 'cancelled' ? 'cancelled' : 'paid', `${ticket.ownerName} · ${ticket.eventTitle}`, { subjectUid: ticket.ownerUid, eventId: ticket.eventId });
 }
 /** Marks a whole order (all tickets with the same orderId) with one payment status. */
 export async function setOrderPayment(actor: Actor, tickets: Ticket[], paymentStatus: PaymentStatus) {
   const now = nowIso();
-  await write.batch(tickets.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus, updatedAt: now } })));
+  await write.batch(tickets.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus, ...paidStamp(paymentStatus), updatedAt: now } })));
   const t = tickets[0];
   if (t) logActivity(actor, 'ticket', t.orderId, 'paid', `${t.ownerName} · ${t.eventTitle} · ${t.price * tickets.length} ₪ · ${tickets.length} כרטיסים`, { subjectUid: t.ownerUid, eventId: t.eventId });
 }
@@ -112,7 +115,7 @@ export async function payOrderOnsite(actor: Actor, tickets: Ticket[]) {
   const owing = tickets.filter((t) => t.status === 'valid' && (t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'));
   if (!owing.length) return;
   const now = nowIso();
-  await write.batch(owing.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: 'paid_onsite', updatedAt: now } })));
+  await write.batch(owing.map((t) => ({ op: 'update' as const, col: 'tickets', id: t.id, data: { paymentStatus: 'paid_onsite', paidAt: serverNow(), updatedAt: now } })));
   const t = owing[0];
   logActivity(actor, 'ticket', t.orderId, 'paid', `${t.ownerName} · ${t.eventTitle} · ${t.price * owing.length} ₪ · שולם במקום`, { subjectUid: t.ownerUid, eventId: t.eventId });
 }
@@ -192,7 +195,7 @@ export async function claimDonationPaid(d: Donation) {
   await notify('claim', 'תרומה הועברה', `${d.name} סימן/ה שהעביר/ה ${d.amount} ₪`, `/manage/donations/${d.id}`, d.id).catch(() => {});
 }
 export async function setDonation(actor: Actor, d: Donation, patch: Partial<Pick<Donation, 'paymentStatus' | 'receiptSent'>>) {
-  await write.update('donations', d.id, { ...patch, updatedAt: nowIso() });
+  await write.update('donations', d.id, { ...patch, ...(patch.paymentStatus ? paidStamp(patch.paymentStatus) : {}), updatedAt: nowIso() });
   logActivity(actor, 'donation', d.id, patch.receiptSent ? 'receipt' : patch.paymentStatus === 'paid' ? 'paid' : 'edited', `${d.name} · ${d.amount} ₪`, { subjectUid: d.uid });
 }
 
@@ -281,7 +284,7 @@ export async function removeTabItem(actor: Actor, tab: Tab, index: number, reaso
   logActivity(actor, 'tab', tab.id, 'removed', `${tab.guestName}: ${item.name}${reason ? ' · "' + reason + '"' : ''}`, { subjectUid: tab.guestUid, eventId: tab.eventId });
 }
 export async function setTabStatus(actor: Actor, tab: Tab, status: TabStatus, note = '') {
-  await write.update('tabs', tab.id, { status, updatedAt: nowIso() });
+  await write.update('tabs', tab.id, { status, ...paidStamp(status), updatedAt: nowIso() });
   logActivity(actor, 'tab', tab.id, status === 'paid' ? 'paid' : status === 'waived' ? 'waived' : 'edited', `${tab.guestName} · ${tab.total} ₪ · ${tab.eventTitle}${note ? ' · "' + note + '"' : ''}`, { subjectUid: tab.guestUid, eventId: tab.eventId });
 }
 export async function claimTabPaid(tab: Tab) {

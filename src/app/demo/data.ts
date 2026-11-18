@@ -244,6 +244,12 @@ export const donations: Donation[] = [
   don('demo-d-sep', pr(U.noam), 360, 'לב', at(-40, '12:00')),
 ];
 
+// ---------- automatic payment-confirmation email (the Worker's outbox) ----------
+const emailOutbox = [
+  { id: 'donation_demo-d-david', kind: 'donation', col: 'donations', refId: 'demo-d-david', uid: U.david, status: 'sent', to: 'david.c@gmail.com', messageId: '<demo@smtp-relay.mailin.fr>', attempts: 1, sentAt: at(-9, '12:05'), createdAt: at(-9, '12:00'), updatedAt: at(-9, '12:05') },
+  { id: 'donation_demo-d-oct1', kind: 'donation', col: 'donations', refId: 'demo-d-oct1', uid: U.roni, status: 'skipped', reason: 'whatsapp', attempts: 1, createdAt: at(-24, '18:00'), updatedAt: at(-24, '18:05') },
+];
+
 // ---------- vendors ----------
 const vendor = (id: string, name: string, phone: string, product: string, notes = ''): Vendor => ({ id, name, phone, product, external: true, notes, createdAt: ago(200 * 24), updatedAt: ago(10 * 24) });
 export const V = { raz: 'demo-vd-raz', honey: 'demo-vd-honey', winery: 'demo-vd-winery', bakery: 'demo-vd-bakery', ceramics: 'demo-vd-ceramics', oil: 'demo-vd-oil', jewelry: 'demo-vd-jewelry', herbs: 'demo-vd-herbs', farm: 'demo-vd-farm' };
@@ -412,7 +418,7 @@ export const settings: Settings = {
 
 /** Everything the demo store serves, keyed by Firestore collection path. */
 export const collections: Record<string, Record<string, unknown>[]> = {
-  users: profiles, role_invites: roleInvites, tasks, task_templates: templates, shopping, places, events, tickets, visits, donations, vendors, tabs, notifications, calendar, activity,
+  users: profiles, role_invites: roleInvites, tasks, task_templates: templates, shopping, places, events, tickets, visits, donations, vendors, tabs, notifications, calendar, activity, email_outbox: emailOutbox,
   ...Object.fromEntries(Object.entries(eventVendors).map(([eid, v]) => [`events/${eid}/vendors`, v])),
   ...Object.fromEntries(Object.entries(products).map(([eid, p]) => [`events/${eid}/products`, p])),
 };

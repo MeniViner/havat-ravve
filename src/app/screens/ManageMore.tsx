@@ -138,7 +138,7 @@ export function DonationDetailScreen({ id, ctx, panel }: { id: string; ctx: Team
       <dl className="kv"><dt>קבלה</dt><dd>{d.receiptWanted ? <>{d.receiptSent ? <Pill tone="ok">נשלחה</Pill> : <Pill tone="ochre">צריך/ה קבלה</Pill>} על שם: {d.receiptName || d.name}</> : <span className="muted">לא ביקש/ה</span>}</dd><dt>אמצעי</dt><dd>{d.paymentStatus === 'claimed' ? `סימן/ה "העברתי" · ${whenText(d.updatedAt)}` : d.paymentStatus === 'pending' ? 'עוד לא סימן/ה שהעביר/ה' : PAYMENT_LABELS[d.paymentStatus]}</dd></dl>
       <div className="pad">
         <PaymentConfirmationActions ctx={ctx} collection="donations" ids={[d.id]} uid={d.uid} name={d.name} phone={d.phone}
-          amount={d.amount} purpose="תרומה לחווה" paid={d.paymentStatus === 'paid'} confirmation={d.paymentConfirmation} />
+          amount={d.amount} purpose="תרומה לחווה" paid={d.paymentStatus === 'paid'} confirmation={d.paymentConfirmation} emailJob={'donation_' + d.id} />
       </div>
       <div className="inline pad" style={{ paddingTop: 12 }}>{d.phone && <><a className="btn ghost sm" href={waLink(d.phone, fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': d.amount }))} target="_blank" rel="noopener"><Icon name="whatsapp" size={18} />תודה בוואטסאפ</a><a className="btn ghost sm" href={telLink(d.phone)}><Icon name="phone" size={18} />התקשרות</a></>}</div>
       <Sec title="היסטוריה" />

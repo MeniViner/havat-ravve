@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';const require=createRequire(import.met
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,getDocFromCache,getDocs,collection,updateDoc,deleteDoc,query,where,arrayUnion,increment,disableNetwork,enableNetwork,writeBatch}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocFromCache,getDocs,collection,updateDoc,deleteDoc,query,where,arrayUnion,increment,disableNetwork,enableNetwork,writeBatch,serverTimestamp,Timestamp}=require('firebase/firestore');
 
 const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
 const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
@@ -454,5 +454,37 @@ try{
  // item history: the kind is part of the query, so a volunteer can read it for a task
  await assertSucceeds(getDocs(query(collection(vol,'activity'),where('kind','==','task'),where('refId','==','t1'))));
  await assertFails(getDocs(query(collection(vol,'activity'),where('refId','==','t1'))));
+ // paidAt: only a write that settles the payment may set it, and only to the server's time
+ const longAgo=Timestamp.fromDate(new Date('2026-01-01T00:00:00Z'));
+ await assertFails(setDoc(doc(guest,'tickets','pa0'),tk('guest',{paidAt:serverTimestamp()})));              // never on create
+ for(const id of ['pa1','pa2','pa3','pa4']) await assertSucceeds(setDoc(doc(guest,'tickets',id),tk('guest')));
+ await assertFails(updateDoc(doc(guest,'tickets','pa1'),{paymentStatus:'claimed',paidAt:serverTimestamp(),updatedAt:now})); // a claim is not a settle
+ await assertFails(updateDoc(doc(vol,'tickets','pa1'),{paymentStatus:'paid_onsite',paidAt:longAgo,updatedAt:now}));         // no back-dated stamp
+ await assertFails(updateDoc(doc(vol,'tickets','pa1'),{paymentStatus:'paid_onsite',paidAt:now,updatedAt:now}));             // not a client string
+ await assertSucceeds(updateDoc(doc(vol,'tickets','pa1'),{paymentStatus:'paid_onsite',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(vol,'tickets','pa2'),{scans:arrayUnion({at:now,by:actor('vol')}),entries:increment(1),paymentStatus:'paid_onsite',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'tickets','pa3'),{paidAt:serverTimestamp(),updatedAt:now}));                          // still pending: no stamp
+ await assertSucceeds(updateDoc(doc(beni,'tickets','pa3'),{paymentStatus:'paid',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(vol,'tickets','pa4'),{paymentStatus:'paid_onsite',updatedAt:now}));                     // an old client without paidAt still works
+ await assertSucceeds(setDoc(doc(guest,'donations','dpa'),dn));
+ await assertFails(setDoc(doc(guest,'donations','dpa0'),{...dn,paidAt:serverTimestamp()}));
+ await assertFails(updateDoc(doc(guest,'donations','dpa'),{paymentStatus:'claimed',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(beni,'donations','dpa'),{paymentStatus:'paid',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertSucceeds(setDoc(doc(vol,'tabs','tbpa'),tb));
+ await assertFails(updateDoc(doc(vol,'tabs','tbpa'),{items:[],total:0,paidAt:serverTimestamp(),updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'tabs','tbpa'),{status:'claimed',paidAt:serverTimestamp(),updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(vol,'tabs','tbpa'),{status:'paid',paidAt:serverTimestamp(),updatedAt:now}));
+ // the email outbox: managers read it, nobody writes it from the app, guests and volunteers never see it
+ await env2.withSecurityRulesDisabled(async(c)=>{await setDoc(doc(c.firestore(),'email_outbox','order_o1'),{kind:'order',refId:'o1',uid:'guest',status:'sent',to:'guest@example.com',updatedAt:now});});
+ await assertFails(getDoc(doc(guest,'email_outbox','order_o1')));
+ await assertFails(getDocs(query(collection(guest,'email_outbox'),where('uid','==','guest'))));
+ await assertFails(getDoc(doc(vol,'email_outbox','order_o1')));
+ await assertFails(getDoc(doc(anon,'email_outbox','order_o1')));
+ await assertSucceeds(getDoc(doc(beni,'email_outbox','order_o1')));
+ await assertSucceeds(getDocs(collection(beni,'email_outbox')));
+ await assertFails(setDoc(doc(guest,'email_outbox','order_forged'),{kind:'order',refId:'x',uid:'guest',status:'queued'}));
+ await assertFails(updateDoc(doc(guest,'email_outbox','order_o1'),{status:'queued'}));
+ await assertFails(updateDoc(doc(beni,'email_outbox','order_o1'),{status:'cancelled'}));
+ await assertFails(deleteDoc(doc(owner,'email_outbox','order_o1')));
  console.log('PASS: guest side rules — settings, published events, ticket ownership/payment/scan rules, visits, donations, stall tabs, notifications, calendar.');
 }finally{await env2.cleanup();}

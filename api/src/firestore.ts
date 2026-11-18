@@ -23,6 +23,15 @@ export type Env = {
   AUTH_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   /** Must equal FIRESTORE_PROJECT_ID to serve a production project. Meni approved havat-ravve on 2026-11-12. */
   PRODUCTION_APPROVED?: string;
+  /** Automatic payment-confirmation email (email.ts). Off unless "true" and both Brevo secrets are set. */
+  EMAIL_ENABLED?: string;
+  BREVO_API_KEY?: string;
+  BREVO_SENDER_EMAIL?: string;
+  /** "once": the next cron run sends one sample confirmation to BREVO_SENDER_EMAIL itself (guarded in TOKEN_KV). */
+  EMAIL_SELF_TEST?: string;
+  /** Test mode only (emulator + TEST_FAULTS): a mock Brevo endpoint, and no grace or backoff delays. */
+  BREVO_API_URL?: string;
+  EMAIL_TEST_FAST?: string;
 };
 
 /** Production projects. Served only when PRODUCTION_APPROVED names the same project (an explicit, approved step). */
@@ -300,8 +309,13 @@ export class Firestore {
   remove(col: string, id: string, updateTime?: string): Write {
     return { delete: this.name(col, id), ...(updateTime ? { currentDocument: { updateTime } } : {}) };
   }
-  patch(col: string, id: string, data: Record<string, unknown>, updateTime?: string): Write {
-    return { update: { name: this.name(col, id), fields: encFields(data) }, updateMask: { fieldPaths: Object.keys(data) }, currentDocument: updateTime ? { updateTime } : { exists: true } };
+  /** Updates the given fields; `serverTime` fields are set to the commit's server time (REQUEST_TIME). */
+  patch(col: string, id: string, data: Record<string, unknown>, updateTime?: string, serverTime: string[] = []): Write {
+    return {
+      update: { name: this.name(col, id), fields: encFields(data) }, updateMask: { fieldPaths: Object.keys(data) },
+      ...(serverTime.length ? { updateTransforms: serverTime.map((fieldPath) => ({ fieldPath, setToServerValue: 'REQUEST_TIME' })) } : {}),
+      currentDocument: updateTime ? { updateTime } : { exists: true },
+    };
   }
 }
 

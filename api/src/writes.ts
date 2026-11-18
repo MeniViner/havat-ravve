@@ -6,7 +6,7 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, project, readBackRefs, taskKind, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
 } from './core';
 import { autoId } from './util';
 
@@ -346,7 +346,7 @@ def('tickets.setOrderPayment', 'tickets:write', 'סימון תשלום על הז
   const now = nowIso();
   const t = list[0].data;
   return {
-    writes: [...list.map((x) => c.fs.patch('tickets', x.id, { paymentStatus: c.input.paymentStatus, updatedAt: now }, x.updateTime)),
+    writes: [...list.map((x) => c.fs.patch('tickets', x.id, { paymentStatus: c.input.paymentStatus, updatedAt: now }, x.updateTime, paidStamp(c.input.paymentStatus))),
       activity(c.fs, c.me, 'ticket', c.input.orderId, 'paid', `${t.ownerName} · ${t.eventTitle} · ${Number(t.price) * list.length} ₪ · ${list.length} כרטיסים`, { subjectUid: String(t.ownerUid), eventId: String(t.eventId) })],
     refs: list.map((x) => ({ col: 'tickets', id: x.id, expected: { paymentStatus: c.input.paymentStatus } })),
   };
@@ -367,7 +367,7 @@ def('tickets.setPayment', 'tickets:write', 'סימון תשלום על כרטי�
   const t = await mustGet(c.fs, 'tickets', c.input.ticketId, c.tx, 'ticket');
   fresh(t, c.input.ifUpdatedAt);
   return {
-    writes: [c.fs.patch('tickets', t.id, { paymentStatus: c.input.paymentStatus, updatedAt: nowIso() }, t.updateTime),
+    writes: [c.fs.patch('tickets', t.id, { paymentStatus: c.input.paymentStatus, updatedAt: nowIso() }, t.updateTime, paidStamp(c.input.paymentStatus)),
       activity(c.fs, c.me, 'ticket', t.id, c.input.paymentStatus === 'cancelled' ? 'cancelled' : 'paid', `${t.data.ownerName} · ${t.data.eventTitle}`, { subjectUid: String(t.data.ownerUid), eventId: String(t.data.eventId) })],
     refs: [{ col: 'tickets', id: t.id, expected: { paymentStatus: c.input.paymentStatus } }],
   };
@@ -438,7 +438,7 @@ def('tabs.setStatus', 'tabs:settle', 'סגירת חשבון בדוכן: שולם
   const s = c.input.status as string;
   const d = tab.data;
   return {
-    writes: [c.fs.patch('tabs', tab.id, { status: s, updatedAt: nowIso() }, tab.updateTime),
+    writes: [c.fs.patch('tabs', tab.id, { status: s, updatedAt: nowIso() }, tab.updateTime, paidStamp(s)),
       activity(c.fs, c.me, 'tab', tab.id, s === 'paid' ? 'paid' : s === 'waived' ? 'waived' : 'edited', `${d.guestName} · ${d.total} ₪ · ${d.eventTitle}${c.input.note ? ' · "' + c.input.note + '"' : ''}`, { subjectUid: String(d.guestUid), eventId: String(d.eventId) })],
     refs: [{ col: 'tabs', id: tab.id, expected: { status: s } }],
   };
@@ -475,7 +475,7 @@ def('donations.setPayment', 'donations:write', 'אישור תשלום תרומה
   const d = await mustGet(c.fs, 'donations', c.input.donationId, c.tx, 'donation');
   fresh(d, c.input.ifUpdatedAt);
   const ps = c.input.paymentStatus as string;
-  const writes: Write[] = [c.fs.patch('donations', d.id, { paymentStatus: ps, updatedAt: nowIso() }, d.updateTime),
+  const writes: Write[] = [c.fs.patch('donations', d.id, { paymentStatus: ps, updatedAt: nowIso() }, d.updateTime, paidStamp(ps)),
     activity(c.fs, c.me, 'donation', d.id, ps === 'paid' ? 'paid' : 'edited', `${d.data.name} · ${d.data.amount} ₪`, { subjectUid: String(d.data.uid) })];
   if (ps === 'paid') writes.push(...await closeNotifications(c, d.id));
   return { writes, refs: [{ col: 'donations', id: d.id, expected: { paymentStatus: ps } }] };
