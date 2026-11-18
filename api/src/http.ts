@@ -34,10 +34,11 @@ export class ApiError extends Error {
 
 export const invalid = (field: string, message: string) => new ApiError('VALIDATION_FAILED', message, { field });
 
-export type Meta = { requestId: string; started: number };
+/** keyVersion: which key authenticated the request ('previous' = a rotated key still inside its grace period). */
+export type Meta = { requestId: string; started: number; keyVersion?: 'current' | 'previous' };
 
 export function ok(meta: Meta, data: unknown, status = 200): Response {
-  return json(status, { ok: true, data, meta: { catalogVersion: CATALOG_VERSION, requestId: meta.requestId, durationMs: Date.now() - meta.started } }, meta);
+  return json(status, { ok: true, data, meta: { catalogVersion: CATALOG_VERSION, requestId: meta.requestId, durationMs: Date.now() - meta.started, ...(meta.keyVersion ? { keyVersion: meta.keyVersion } : {}) } }, meta);
 }
 
 export function fail(meta: Meta, e: ApiError): Response {

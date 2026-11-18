@@ -20,7 +20,7 @@ export type ActorDef = {
   person: { uid: string; name: string };
 };
 
-export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope> };
+export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous' };
 
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
@@ -54,7 +54,11 @@ export const seesManagerTasks = (a: ActorDef) => a.role === 'owner' || a.role ==
  * One key per person (or per assistant). Revoking sets "disabled"; rotating replaces "sha256" (same id,
  * same actors); "expiresAt" (ISO time) ends a key on its own. Managed with api/scripts/keys.mjs.
  */
-type CredentialDef = { id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string };
+type CredentialDef = {
+  id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string;
+  /** During a rotation the replaced key keeps working until previousUntil, so the client can switch over. */
+  previousSha256?: string; previousUntil?: string;
+};
 
 function credentials(raw: string | undefined): CredentialDef[] {
   if (!raw) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
@@ -93,7 +97,13 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   const presented = await sha256hex(m[1]);
   // compare against every credential so timing does not reveal which one matched
   let found: CredentialDef | null = null;
-  for (const c of credentials(rawCredentials)) if (sameHex(presented, c.sha256) && !found) found = c;
+  let keyVersion: 'current' | 'previous' = 'current';
+  const now = Date.now();
+  for (const c of credentials(rawCredentials)) {
+    const cur = sameHex(presented, c.sha256);
+    const prev = !!c.previousSha256 && /^[0-9a-f]{64}$/.test(c.previousSha256) && sameHex(presented, c.previousSha256) && Date.parse(c.previousUntil || '') > now;
+    if ((cur || prev) && !found) { found = c; keyVersion = cur ? 'current' : 'previous'; }
+  }
   if (!found) throw new ApiError('UNAUTHENTICATED', 'unknown API key');
   if (found.disabled) throw new ApiError('UNAUTHENTICATED', 'this API key was revoked', { credential: found.id });
   if (found.expiresAt && !(Date.parse(found.expiresAt) > Date.now())) throw new ApiError('UNAUTHENTICATED', 'this API key has expired', { credential: found.id });
@@ -103,7 +113,7 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   if (!found.actors.includes(actorId)) throw new ApiError('FORBIDDEN', `credential ${found.id} may not act as ${actorId}`, { actor: actorId });
   const actor = /^user:[A-Za-z0-9_-]{1,128}$/.test(actorId) ? await userActor(actorId, loadProfile) : ACTORS[actorId];
   if (!actor) throw new ApiError('FORBIDDEN', `actor ${actorId} is not registered or not an active team member`, { actor: actorId });
-  return { credentialId: found.id, actor, scopes: new Set(ROLE_SCOPES[actor.role]) };
+  return { credentialId: found.id, actor, scopes: new Set(ROLE_SCOPES[actor.role]), keyVersion };
 }
 
 export function requireScope(c: Caller, scope: Scope) {

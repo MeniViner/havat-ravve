@@ -18,3 +18,4 @@ service-account*.json
 
 # API key registry (hashes and metadata only)
 api/.keys*.json
+api/.fixtures*.json

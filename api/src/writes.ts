@@ -43,7 +43,9 @@ const given = (input: Input, keys: string[]) => Object.fromEntries(keys.filter((
 function needSome(patch: Record<string, unknown>) { if (!Object.keys(patch).length) throw invalid('body', 'nothing to change: send at least one field'); }
 const taskText = (t: { title: unknown }) => { const s = String(t.title); return s.length > 60 ? s.slice(0, 60) + '…' : s; };
 const ROLE_HE: Record<string, string> = { owner: 'בעלים', manager: 'מנהל/ת', staff: 'מתנדב/ת', guest: 'אורח/ת' };
-const hhmm = (s: string) => s.slice(11, 16);
+/** Event times as farm time "YYYY-MM-DDTHH:mm": the API stores them that way, the app stores ISO UTC ("…Z"). */
+const farmTime = (s: string) => (/(Z|[+-]\d\d:\d\d)$/.test(s) ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(s)).replace(' ', 'T') : s.slice(0, 16));
+const hhmm = (s: string) => farmTime(s).slice(11, 16);
 
 // ======================= tasks =======================
 
@@ -254,7 +256,7 @@ const eventFields = (required: boolean): Record<string, Param> => ({
 /** ManageEvents.tsx save(): a published event has a calendar entry "event_<id>" (time "HH:mm–HH:mm"), an unpublished one none. */
 function eventCalendar(c: Ctx, id: string, e: Record<string, unknown>): Write {
   if (!e.published) return c.fs.remove('calendar', `event_${id}`);
-  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: String(e.start).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
+  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: farmTime(String(e.start)).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
 }
 // saveEvent() (new) + upsertCalendarRef
 def('events.create', 'events:write', 'יצירת אירוע', { ...eventFields(true), maxPerOrder: { type: 'int', min: 1, max: 20, default: 5, he: 'מקסימום כרטיסים להזמנה' } }, async (c) => {
@@ -410,6 +412,8 @@ def('tabs.addItem', 'tabs:write', 'רישום מוצר שאורח לקח מהד�
   const tab = await mustGet(c.fs, 'tabs', c.input.tabId, c.tx, 'tab');
   fresh(tab, c.input.ifUpdatedAt);
   const p = await mustGet(c.fs, `events/${tab.data.eventId}/products`, c.input.productId, c.tx, 'product');
+  // the stall screen only offers active products; an inactive one is not for sale
+  if (p.data.active === false) throw invalid('productId', 'this product is not active (not for sale)');
   const item: TabItem = { productId: p.id, name: String(p.data.name), price: Number(p.data.price), qty: c.input.qty, at: nowIso(), by: c.me };
   const items = [...((tab.data.items as TabItem[]) || []), item];
   return {
