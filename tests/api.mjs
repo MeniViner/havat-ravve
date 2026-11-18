@@ -588,6 +588,12 @@ try {
     ok(await w(MGR, 'events.update', { eventId, published: true, capacity: 80 }), 'events.update publish again');
     const republishedEvent = await docOf('events/' + eventId);
     check(republishedEvent.publishedAt > publishedEvent.publishedAt && republishedEvent.publishedAt === republishedEvent.updatedAt, 'republishing records a new publication time');
+    // an event the app created stores ISO UTC times; edited through the API, its calendar entry is still in farm time
+    const appEv = { ...republishedEvent, title: 'ערב אחרי חצות', start: '2030-05-01T21:30:00.000Z', end: '2030-05-02T01:00:00.000Z', published: true };
+    await seed('events', 'syn-app-night', appEv);
+    ok(await w(MGR, 'events.update', { eventId: 'syn-app-night', description: 'נערך דרך העוזר' }), 'events.update on an event the app created');
+    const nightCal = await docOf('calendar/event_syn-app-night');
+    check(nightCal?.date === '2030-05-02' && nightCal?.time === '00:30–04:00', 'its calendar entry: farm day and farm hours (00:30 → the next day), not UTC', nightCal);
     const vd = await w(MGR, 'vendors.create', { name: 'גבינות הגליל', phone: '0501111111', product: 'גבינות' });
     ok(vd, 'vendors.create'); const vendorId = vd.json.data.vendorId;
     ok(await w(MGR, 'vendors.update', { vendorId, external: true }), 'vendors.update');
