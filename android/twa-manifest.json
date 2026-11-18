@@ -1,8 +1,8 @@
 {
-  "packageId": "app.web.havat_ravve.twa",
+  "packageId": "com.menis10tec.havatravve",
   "host": "havat-ravve.web.app",
-  "name": "חוות רווה · צוות",
-  "launcherName": "צוות רווה",
+  "name": "חוות רווה",
+  "launcherName": "חוות רווה",
   "display": "standalone",
   "orientation": "portrait",
   "themeColor": "#283a2e",
@@ -17,7 +17,10 @@
   "iconUrl": "https://havat-ravve.web.app/assets/app-icon-512.png",
   "maskableIconUrl": "https://havat-ravve.web.app/assets/app-icon-512.png",
   "splashScreenFadeOutDuration": 300,
-  "signingKey": { "path": "../../havat-ravve-upload.keystore", "alias": "upload" },
+  "signingKey": {
+    "path": "~/.havat-ravve/android/havat-ravve-upload.keystore",
+    "alias": "upload"
+  },
   "appVersionName": "1.0.0",
   "appVersionCode": 1,
   "shortcuts": [],
@@ -25,11 +28,18 @@
   "webManifestUrl": "https://havat-ravve.web.app/app.webmanifest",
   "fallbackType": "customtabs",
   "features": {},
-  "alphaDependencies": { "enabled": false },
+  "alphaDependencies": {
+    "enabled": false
+  },
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
   "fullScopeUrl": "https://havat-ravve.web.app/",
-  "minSdkVersion": 21,
-  "fingerprints": []
+  "minSdkVersion": 24,
+  "fingerprints": [
+    {
+      "name": "upload",
+      "value": "8A:CC:85:9E:6F:73:DC:6D:CC:43:09:8E:F2:0F:89:68:8F:5F:B5:07:58:6E:04:9D:0A:E7:E2:A8:94:5F:0B:DE"
+    }
+  ]
 }

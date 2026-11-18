@@ -60,6 +60,15 @@ service cloud.firestore {
    allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()));
    allow delete: if isOwner();
   }
+  // Account deletion request: the person themselves, stamped with the server's time. The Worker removes the
+  // account after 30 days (api/src/accounts.ts); until then deleting this document cancels the request.
+  match /account_deletions/{id} {
+   allow get: if self(id) || isManager();
+   allow list: if isManager();
+   allow create: if self(id) && !isOwner() && incoming().keys().hasOnly(['uid','email','requestedAt']) && incoming().keys().hasAll(['uid','email','requestedAt']) && incoming().uid == id && incoming().email == request.auth.token.email && incoming().requestedAt == request.time;
+   allow update: if false;
+   allow delete: if self(id) || isManager();
+  }
   match /counters/{name} {
    allow read: if google();
    allow create: if google() && name == 'users' && incoming().keys().hasOnly(['value']) && incoming().value == 1;

@@ -174,6 +174,26 @@ try{
  await assertSucceeds(setDoc(doc(guest,'shopping','s1'),{...s1,bought:true,boughtBy:actor('guest'),boughtAt:now,expireAt:now,updatedAt:now}));
  await assertSucceeds(deleteDoc(doc(guest,'shopping','s3')));                                                  // staff may delete
 
+ // --- account deletion requests ---
+ const delReq=(uid,email,at=serverTimestamp())=>({uid,email,requestedAt:at});
+ await assertFails(setDoc(doc(anon,'account_deletions','x'),delReq('x','x@example.com')));
+ await assertFails(setDoc(doc(stranger,'account_deletions','guest'),delReq('guest','guest@example.com')));          // only for yourself
+ await assertFails(setDoc(doc(stranger,'account_deletions','stranger'),delReq('stranger','other@example.com')));   // your own email
+ await assertFails(setDoc(doc(stranger,'account_deletions','stranger'),delReq('stranger','stranger@example.com',Timestamp.fromDate(new Date(Date.now()-40*86400000))))); // never a back-dated time
+ await assertFails(setDoc(doc(stranger,'account_deletions','stranger'),{...delReq('stranger','stranger@example.com'),note:'x'}));
+ await assertFails(setDoc(doc(stranger,'account_deletions','stranger'),{uid:'stranger',email:'stranger@example.com'}));
+ await assertFails(setDoc(doc(owner,'account_deletions','owner'),delReq('owner','meniviner@gmail.com')));          // the owner cannot delete the account from the app
+ await assertSucceeds(setDoc(doc(stranger,'account_deletions','stranger'),delReq('stranger','stranger@example.com')));
+ await assertSucceeds(getDoc(doc(stranger,'account_deletions','stranger')));
+ await assertFails(updateDoc(doc(stranger,'account_deletions','stranger'),{email:'stranger@example.com'}));
+ await assertFails(getDoc(doc(vol,'account_deletions','stranger')));
+ await assertFails(getDocs(collection(vol,'account_deletions')));
+ await assertSucceeds(getDocs(collection(beni,'account_deletions')));                                            // managers see pending deletions
+ await assertSucceeds(deleteDoc(doc(stranger,'account_deletions','stranger')));                                   // cancel
+ await assertSucceeds(setDoc(doc(stranger,'account_deletions','stranger'),delReq('stranger','stranger@example.com')));
+ await assertFails(deleteDoc(doc(vol,'account_deletions','stranger')));
+ await assertSucceeds(deleteDoc(doc(beni,'account_deletions','stranger')));
+
  // --- places ---
  await assertFails(setDoc(doc(vol,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('vol'),createdAt:now}));
  await assertSucceeds(setDoc(doc(beni,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('beni'),createdAt:now}));
@@ -184,7 +204,7 @@ try{
  await assertFails(setDoc(doc(vol,'tasks','t9'),task('vol')));
  await assertFails(getDocs(collection(vol,'shopping')));
 
- console.log('PASS: team app rules — profiles, bootstrap owner, join codes, manager limits, task visibility, done-only edits, recurring ids, shopping, places, blocking.');
+ console.log('PASS: team app rules — profiles, bootstrap owner, join codes, manager limits, task visibility, done-only edits, recurring ids, shopping, account deletion requests, places, blocking.');
 }finally{await env.cleanup();}
 
 // ---------- guest side: events, tickets, visits, donations, tabs, notifications ----------

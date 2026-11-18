@@ -165,7 +165,7 @@ function real(col: string, id: string) {
 export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collection(db, col)).id);
 type WriteOpts = { quiet?: boolean; wait?: boolean };
 export const write = {
-  async set(col: string, id: string, data: Record<string, unknown>, o: WriteOpts = {}) { if (demoOnly()) return demoSet(col, id, data); await settle(setDoc(real(col, id), data), o.quiet); },
+  async set(col: string, id: string, data: Record<string, unknown>, o: WriteOpts = {}) { if (demoOnly()) return demoSet(col, id, applyLocal({}, data)); await settle(setDoc(real(col, id), toFirestore(data)), o.quiet); },
   async merge(col: string, id: string, data: Record<string, unknown>) {
     if (demoOnly()) return demoSet(col, id, mergeLocal(demoDoc(col + '/' + id) || {}, data));
     await settle(setDoc(real(col, id), data, { merge: true }));

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.menis10tec.havatravve",
+      "sha256_cert_fingerprints": [
+        "8A:CC:85:9E:6F:73:DC:6D:CC:43:09:8E:F2:0F:89:68:8F:5F:B5:07:58:6E:04:9D:0A:E7:E2:A8:94:5F:0B:DE"
+      ]
+    }
+  }
+]

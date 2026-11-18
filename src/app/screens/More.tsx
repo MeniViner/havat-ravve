@@ -7,6 +7,7 @@ import { navigate } from '../router';
 import { signOutUser } from '../firebase';
 import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
 import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
+import { DeleteAccountLink } from './Account';
 import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
 
 const PREF_KEY = 'farm-prefs';
@@ -31,6 +32,7 @@ export function MoreScreen({ ctx }: { ctx: TeamCtx }) {
         <InstallHint />
         <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A>
         <a href="/" target="_blank" rel="noopener"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a>
+        <DeleteAccountLink />
       </div>
       <DemoSection role={ctx.owner ? 'owner' : ctx.manager ? 'manager' : ctx.profile.role} />
       <SignOut />

@@ -13,6 +13,7 @@ import { useDemo, setDemo } from '../demo/store';
 import { demoPreviousGuestVisit } from '../demo/data';
 import { ProfileSection, NotificationsSection, InstallHint, SignOut, DemoSection } from './More';
 import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
+import { DeleteAccountLink } from './Account';
 import { ReceiptChoice, ReceiptPreferenceSection, canChooseReceipt, saveReceiptPreference, useReceiptChoice } from './PaymentConfirmation';
 
 const needLogin = (ctx: GuestCtx, next: string) => { if (ctx.profile) return false; navigate('/login?next=' + encodeURIComponent(next)); return true; };
@@ -407,7 +408,7 @@ export function DonatePage({ ctx }: { ctx: GuestCtx }) {
 export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
   const uid = ctx.profile?.uid || '';
   const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const tabs = useMyTabs(uid, !!uid);
-  if (!ctx.profile) return <><Top title="החשבון שלי" /><Empty title="עוד לא נכנסתם" text="נכנסים פעם אחת עם Google, וזה נשמר בטלפון." action={<Btn to="/login?next=/me/account">כניסה</Btn>} /><div className="links" style={{ marginTop: 20 }}><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A></div><DemoSection role="guest" /></>;
+  if (!ctx.profile) return <><Top title="החשבון שלי" /><Empty title="עוד לא נכנסתם" text="נכנסים פעם אחת עם Google, וזה נשמר בטלפון." action={<Btn to="/login?next=/me/account">כניסה</Btn>} /><div className="links" style={{ marginTop: 20 }}><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><DeleteAccountLink /></div><DemoSection role="guest" /></>;
   const p = ctx.profile;
   const missing = signupQuestions(ctx.settings.registrationFields).filter((f) => !answerOf(p.fields, f).trim());
   const orders = [...new Map(tickets.items.map((t) => [t.orderId, t])).values()];
@@ -428,7 +429,7 @@ export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
       <ReceiptPreferenceSection profile={p} />
       <NotificationsSection team={false} />
       <Sec title="עוד" />
-      <div className="links"><A to="/contact"><Icon name="phone" />פנייה למנהלים<Icon name="chev" className="chev" size={18} /></A><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a></div>
+      <div className="links"><A to="/contact"><Icon name="phone" />פנייה למנהלים<Icon name="chev" className="chev" size={18} /></A><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><DeleteAccountLink /><a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a></div>
       <DemoSection role={p.role} />
       <SignOut />
     </>
@@ -469,18 +470,32 @@ export function ContactPage({ ctx }: { ctx: GuestCtx }) {
   );
 }
 
-// ---------- terms ----------
+// ---------- terms and privacy (public: /app/terms, /app/privacy) ----------
+const POLICY_UPDATED = '19 בנובמבר 2026';
 export function TermsPage() {
+  const link = (to: string, text: string) => <A to={to} style={{ textDecoration: 'underline' }}>{text}</A>;
+  const sections: [string, React.ReactNode][] = [
+    ['מי אנחנו', 'חוות רווה, ליד טנא עומרים, מפעילה את האפליקציה ואת האתר havat-ravve.web.app. האפליקציה משמשת את צוות החווה, מתנדבים ואורחים: משימות, קניות, אירועים וכרטיסים, ביקורים ותרומות.'],
+    ['איזה מידע נשמר', <>
+      <b>חשבון:</b> השם, כתובת המייל וחשבון Google שאיתו נכנסתם, מספר הטלפון והתשובות שמילאתם בהרשמה.<br />
+      <b>פעילות:</b> כרטיסים שהזמנתם, ביקורים שתיאמתם, תרומות (סכום, הקדשה, שם לקבלה), חשבונות בדוכן, ומצב התשלום. אין סליקה באפליקציה, ופרטי כרטיס אשראי לא נשמרים בה.<br />
+      <b>צוות:</b> משימות וקניות, תמונות שצילמתם למשימה או לקנייה, מקומות בחווה (המיקום נקרא רק כשמסמנים מקום), והיסטוריה של מי עשה מה.<br />
+      <b>בטלפון:</b> עותק של הנתונים נשמר במכשיר כדי שהאפליקציה תעבוד בלי קליטה. המצלמה משמשת לסריקת כרטיסים ולצילום תמונות; הסריקה עצמה לא נשמרת. אין באפליקציה פרסומות, ואין כלי מעקב או סטטיסטיקה.
+    </>],
+    ['למה משמש המידע', 'תפעול החווה: הכרטיסים שלכם, הביקורים והתרומות, ולצוות: משימות ופריטים לצד שמכם. יצירת קשר אתכם בנוגע לפעילות שלכם, ושליחת אישור תשלום בוואטסאפ או במייל, לפי מה שבחרתם. המידע לא נמכר ולא משמש לפרסום.'],
+    ['מי רואה מה', 'חברי צוות רואים את שמות חברי הצוות האחרים ליד משימות, ובאירוע את שמות האורחים בכניסה ובדוכן. מנהלי החווה רואים את פרטי הקשר של הנרשמים ואת התשלומים. אורחים רואים רק את הפעילות של עצמם.'],
+    ['ספקים שמעבדים מידע בשבילנו', 'Google Firebase: כניסה עם Google, מסד הנתונים (שמור בשרתים בישראל) ואחסון האתר. Cloudflare: שרת קטן שדרכו עובדים הכלים של מנהלי החווה, כולל עוזר דיגיטלי שפועל בהרשאה שלהם, ושולח את אישורי התשלום במייל. Brevo: שליחת אישור התשלום במייל, רק למי שבחר מייל. כשמנהל שולח לכם הודעה בוואטסאפ, היא יוצאת מהוואטסאפ שלו.'],
+    ['אבטחה', 'כל התעבורה מוצפנת (HTTPS). כל אחד רואה ומשנה רק מה שהתפקיד שלו מתיר, וזה נאכף בשרת ולא רק במסך. מפתחות הגישה לשרתים לא נשמרים בקוד.'],
+    ['כמה זמן נשמר ומחיקה', <>המידע נשמר כל עוד החשבון פעיל. אפשר למחוק את החשבון בעצמכם בכל עת: החשבון שלי ← מחיקת החשבון, או בעמוד {link('/delete-account', 'מחיקת חשבון')}. החשבון נמחק לצמיתות 30 יום אחרי הבקשה, ועד אז אפשר לבטל. סכומים ותאריכים של תשלומים ותרומות נשארים בלי שם, להנהלת החשבונות.</>],
+    ['הזכויות שלכם', <>לפי חוק הגנת הפרטיות אפשר לעיין במידע שלכם, לתקן אותו ולבקש למחוק אותו. את השם, הטלפון ופרטי ההרשמה מתקנים בעצמכם בחשבון. לכל בקשה אחרת: {link('/contact', 'פנייה למנהלים')}.</>],
+    ['גיל', 'ההרשמה מיועדת לבני 18 ומעלה. ילדים מגיעים לאירועים עם הורה שמזמין בשבילם.'],
+    ['תנאי שימוש', 'משתמשים באפליקציה רק לפעילות של החווה ובהתאם לתפקיד. כרטיסים, ביקורים ותרומות כפופים לתנאים שמופיעים בכל אירוע או טופס. אין להעביר את החשבון לאחר. החווה רשאית להשעות חשבון שמשמש לרעה.'],
+    ['שינויים', 'אם המדיניות תשתנה, נעדכן כאן את התאריך, ועל שינוי מהותי נודיע באפליקציה.'],
+  ];
   return (
     <>
-      <Top back title="תנאי שימוש ופרטיות" sub="טיוטה · נובמבר 2026 · טרם עברה בדיקה משפטית" />
-      {[
-        ['מה האפליקציה', 'האפליקציה של חוות רווה משמשת את צוות החווה, מתנדבים ואורחים לניהול משימות, קניות, אירועים, ביקורים ותרומות.'],
-        ['הרשמה ופרטים', 'ההרשמה נעשית באמצעות חשבון Google. אנחנו שומרים את השם שכתבתם, מספר הטלפון וכתובת המייל, ובהמשך פרטים נוספים שתבחרו למסור.'],
-        ['למה משמש המידע', 'תפעול שוטף: כרטיסים שהזמנתם, ביקורים שתיאמתם, תרומות, ולצוות: משימות ופריטים לצד שמכם. יצירת קשר אתכם בנוגע לפעילותכם בחווה. עדכונים על אירועים בהתראות, במייל, בוואטסאפ או ב־SMS. אפשר להפסיק בכל עת דרך "החשבון שלי".'],
-        ['מי רואה מה', 'חברי צוות רואים את שמות חברי הצוות האחרים ליד משימות. מנהלי החווה רואים את פרטי הקשר של הנרשמים. המידע אינו נמכר ואינו מועבר לגורמים חיצוניים, למעט ספקי התשתית (Google Firebase) וספקי תשלום כשיופעלו.'],
-        ['הסרה', 'אפשר לבקש מהמנהלים למחוק את החשבון והפרטים בכל עת.'],
-      ].map(([h, t]) => <div key={h}><Sec title={h} /><p className="lead ink">{t}</p></div>)}
+      <Top back title="תנאי שימוש ופרטיות" sub={`חוות רווה · עודכן ב־${POLICY_UPDATED}`} />
+      {sections.map(([h, t]) => <div key={h}><Sec title={h} /><p className="lead ink">{t}</p></div>)}
     </>
   );
 }
