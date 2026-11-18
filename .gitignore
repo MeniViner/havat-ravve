@@ -19,3 +19,12 @@ service-account*.json
 # API key registry (hashes and metadata only)
 api/.keys*.json
 api/.fixtures*.json
+
+# Android (Trusted Web Activity). The signing key never enters git.
+*.jks
+*.keystore
+android/**/build/
+android/.gradle/
+android/local.properties
+android/*.apk
+android/*.aab

@@ -10,6 +10,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs\"",
     "test:api": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/api.mjs\"",
     "test:api:remote": "node tests/api-remote.mjs",
+    "play:check": "node scripts/play-check.mjs",
     "typecheck:api": "tsc --noEmit -p api",
     "api:dev": "wrangler dev --config api/wrangler.toml",
     "dev": "npm run build && firebase emulators:start --only hosting,firestore,auth --project demo-havat-ravve",
