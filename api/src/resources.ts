@@ -31,9 +31,9 @@ export type ResourceDef = {
 };
 
 /**
- * The app writes the real title of a manager-only task into the activity log, which staff can read, so
- * the title leaks there. For staff, task entries keep their text only while the task exists and is not
- * manager-only; otherwise the text becomes generic. (Deleted tasks can't be checked, so they are hidden too.)
+ * A manager-only task logs as 'task_private', which staff never receive. Entries written before that kind
+ * existed may still carry such a title under 'task'. For staff, task entries keep their text only while the
+ * task exists and is not manager-only; otherwise the text becomes generic. (Deleted tasks can't be checked.)
  */
 async function redactTaskActivity(fs: Firestore, c: Caller, items: Record<string, unknown>[]) {
   if (isManager(c)) return items;
@@ -50,7 +50,7 @@ const en = (values: string[], he: string): Param => ({ type: 'enum', values, he 
 
 export const PAYMENT = ['free', 'pending', 'claimed', 'paid', 'paid_onsite', 'cancelled'];
 export const TEAM_KINDS = ['task', 'shopping', 'event', 'ticket', 'tab', 'place'];
-const ALL_KINDS = [...TEAM_KINDS, 'visit', 'donation', 'user', 'settings'];
+const ALL_KINDS = [...TEAM_KINDS, 'task_private', 'visit', 'donation', 'user', 'settings'];
 
 export const RESOURCES: ResourceDef[] = [
   {
@@ -147,7 +147,7 @@ export const RESOURCES: ResourceDef[] = [
     name: 'activity', col: 'activity', path: '/v1/activity', scope: 'activity:read', he: 'יומן הפעילות: מי עשה מה ומתי, בכל המערכת',
     order: { field: 'at', dir: 'DESCENDING' },
     filters: {
-      kind: { field: 'kind', param: en(ALL_KINDS, 'task, shopping, event, ticket, tab, place, visit, donation, user, settings') },
+      kind: { field: 'kind', param: en(ALL_KINDS, 'task, task_private (manager-only task, managers only), shopping, event, ticket, tab, place, visit, donation, user, settings') },
       refId: { field: 'refId', param: id('הרשומה שהפעולה עליה') }, subjectUid: { field: 'subjectUid', param: id('האדם שהפעולה נוגעת אליו') },
       eventId: { field: 'eventId', param: id('אירוע') }, byUid: { field: 'by.uid', param: id('מי ביצע') },
       action: { field: 'action', param: s('created, edited, done, undone, deleted, assigned, bought, paid, approved...') },

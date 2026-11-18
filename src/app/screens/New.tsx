@@ -7,6 +7,7 @@ import { useToast, todayISO, addDays, fmtDayShort } from '../ui';
 import { Head, Seg, Field, Tick, Btn, Form, Empty, pickImage, deferDelete, useSticky } from '../kit';
 import { back, navigate, param } from '../router';
 import { addTask, editTask, deleteTask, useTask, compressPhoto, getPosition, addShopping, useBoughtHistory } from '../store';
+import { useAllEvents } from '../data';
 import { ShoppingPhotoField } from './ShoppingPhoto';
 
 export const CATS: { id: ShoppingCategory; label: string; hint: string; done: string }[] = [
@@ -47,6 +48,13 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
   const [date, setDate] = useState(existing?.dueDate || addDays(today, 2));
   const [urgent, setUrgent] = useState(existing?.urgent || false);
   const [managersOnly, setManagersOnly] = useState(existing?.managersOnly || false);
+  const [eventId, setEventId] = useState(existing ? existing.eventId || '' : param('event'));
+  const allEvents = useAllEvents(true);
+  // upcoming and running events, soonest first; a past event stays listed only when the task is already linked to it
+  const eventOptions = useMemo(() => {
+    const now = new Date().toISOString();
+    return allEvents.items.filter((e) => e.end >= now || e.id === eventId).sort((a, b) => a.start.localeCompare(b.start));
+  }, [allEvents.items, eventId]);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!existing) titleRef.current?.focus(); }, []);
@@ -72,13 +80,15 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
     if (!t) { setErr('צריך לכתוב מה לעשות'); titleRef.current?.focus(); return; }
     if (where === 'here' && !here) { setErr('עוד מאתר את המקום. רגע, או לבחור מקום מהרשימה.'); return; }
     const p = ctx.team.find((x) => x.uid === who);
-    const data = { title: t, note: note.trim(), photo, location: location(), dueDate: when === 'none' ? '' : when === 'today' ? today : when === 'tomorrow' ? addDays(today, 1) : date, managersOnly, assignee: p ? { uid: p.uid, name: p.displayName } : who === ctx.actor.uid ? ctx.actor : null, urgent };
+    const data = { title: t, note: note.trim(), photo, location: location(), dueDate: when === 'none' ? '' : when === 'today' ? today : when === 'tomorrow' ? addDays(today, 1) : date, managersOnly, assignee: p ? { uid: p.uid, name: p.displayName } : who === ctx.actor.uid ? ctx.actor : null, urgent,
+      // sent only when it changes: an older task has no eventId at all, and an unchanged field must stay out of the diff the rules check
+      ...(eventId !== (existing?.eventId || '') ? { eventId } : {}) };
     setBusy(true); setErr('');
     try {
       if (existing) { await editTask(ctx.actor, existing, data); toast({ text: 'נשמר' }, 2000); back(`/tasks/${existing.id}`); return; }
       await addTask(ctx.actor, data);
       toast({ text: `נוספה: ${t}` }, 2500);
-      setTitle(''); setNote(''); setPhoto(''); setUrgent(false);
+      setTitle(''); setNote(''); setPhoto(''); setUrgent(false); // the event stays: several tasks for one event are added in a row
       titleRef.current?.focus();
     } catch (e) { setErr((e as Error).message || 'לא נשמר'); } finally { setBusy(false); }
   };
@@ -102,6 +112,7 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
       <h2 className="r-optional">{existing ? 'פרטים' : 'אפשר גם, לא חובה'}</h2>
       <Field label="על מי?">{(id) => <select id={id} className="r-input" value={who} onChange={(e) => setWho(e.target.value)}><option value="">פנויה, מי שיכול לוקח</option><option value={ctx.actor.uid}>עליי</option>{others.map((p) => <option key={p.uid} value={p.uid}>{p.displayName}</option>)}</select>}</Field>
       <Field label="איפה?" help={locating || undefined}>{(id) => <select id={id} className="r-input" value={where} onChange={(e) => pickWhere(e.target.value)}><option value="">בלי מקום</option><option value="here">כאן, איפה שאני עומד/ת</option>{where === 'keep' && <option value="keep">{existing?.location?.placeName || 'הנקודה שנשמרה'}</option>}{ctx.places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}</Field>
+      {(eventOptions.length > 0 || eventId) && <Field label="לאיזה אירוע?" help="המשימה תופיע ברשימת ההכנות של האירוע">{(id) => <select id={id} className="r-input" value={eventId} onChange={(e) => setEventId(e.target.value)}><option value="">לא קשור לאירוע</option>{eventOptions.map((e) => <option key={e.id} value={e.id}>{e.title} · {fmtDayShort(e.start)}</option>)}{eventId && !eventOptions.some((e) => e.id === eventId) && <option value={eventId}>{allEvents.loading ? 'טוען…' : 'אירוע שנמחק'}</option>}</select>}</Field>}
       <Seg label="עד מתי?" value={when} onChange={setWhen} options={[{ value: 'none', label: 'בלי תאריך' }, { value: 'today', label: 'היום' }, { value: 'tomorrow', label: 'מחר' }, { value: 'date', label: when === 'date' ? fmtDayShort(date) : 'תאריך' }]} />
       {when === 'date' && <Field label="באיזה תאריך?">{(id) => <input id={id} type="date" className="r-input" dir="ltr" min={today} value={date} onChange={(e) => setDate(e.target.value || date)} />}</Field>}
       <Tick on={urgent} onChange={setUrgent} help="עולה לראש הרשימה אצל כולם">דחוף</Tick>

@@ -3,7 +3,7 @@
 // Screens never import firebase/firestore directly.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  collection, doc, onSnapshot, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment,
+  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment,
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -37,7 +37,7 @@ export function applySpec<T extends Row>(rows: T[], spec: Spec): T[] {
   return out;
 }
 const toConstraints = (spec: Spec): QueryConstraint[] => [
-  ...(spec.where || []).map(([f, op, v]) => where(f, op, v)),
+  ...(spec.where || []).map(([f, op, v]) => where(f === '__id__' ? documentId() : f, op, v)),
   ...(spec.orderBy || []).map(([f, d]) => orderBy(f, d)),
   ...(spec.limit ? [limit(spec.limit)] : []),
 ];
@@ -80,6 +80,14 @@ export function useDoc<T extends Row>(path: string, enabled = true): { item: T |
   }, [fs, local, path, enabled, v]);
 }
 
+/** One read from the server, no listener, never the local cache (which may hold only part of the answer). For maintenance work.
+ *  Field '__id__' means the document id. */
+export async function readOnce<T extends Row>(path: string, spec: Spec): Promise<T[]> {
+  if (demoOnly()) return applySpec(demoItems(path) as T[], spec);
+  const snap = await getDocsFromServer(query(collection(db, path), ...toConstraints(spec)));
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as DocumentData) }) as unknown as T);
+}
+
 // ---------- writes ----------
 // The farm has almost no reception, so no screen may wait for the server. A write is applied to the local cache at once
 // (Firestore does that itself) and every list updates immediately. `settle` gives the server a short moment to answer:
@@ -99,11 +107,12 @@ const setSync = (next: Partial<SyncState>) => { sync = { ...sync, ...next }; syn
 export const useSync = () => useSyncExternalStore((l) => { syncListeners.add(l); return () => syncListeners.delete(l); }, () => sync);
 export const syncState = () => sync;
 let failureId = 0;
-function settle(p: Promise<unknown>, quiet = false): Promise<void> {
+function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<void> {
   setSync({ pending: sync.pending + 1 });
   return new Promise<void>((resolve, reject) => {
     let answered = false;
-    const timer = setTimeout(() => { answered = true; resolve(); }, navigator.onLine ? 1500 : 0);
+    // `wait`: maintenance work that must know the server stored it; it resolves only on the server's answer
+    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(); }, navigator.onLine ? 1500 : 0);
     p.then(
       () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(); },
       (e) => {
@@ -151,7 +160,7 @@ function real(col: string, id: string) {
   return doc(db, col, id);
 }
 export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collection(db, col)).id);
-type WriteOpts = { quiet?: boolean };
+type WriteOpts = { quiet?: boolean; wait?: boolean };
 export const write = {
   async set(col: string, id: string, data: Record<string, unknown>, o: WriteOpts = {}) { if (demoOnly()) return demoSet(col, id, data); await settle(setDoc(real(col, id), data), o.quiet); },
   async merge(col: string, id: string, data: Record<string, unknown>) {
@@ -170,6 +179,6 @@ export const write = {
     const refs = ops.map((x) => real(x.col, x.id)); // throws before anything is queued if one of them is a demo id
     const b = writeBatch(db);
     ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], x.data!) : x.op === 'update' ? b.update(refs[i], toFirestore(x.data!)) : b.delete(refs[i]); });
-    await settle(b.commit(), o.quiet);
+    await settle(b.commit(), o.quiet, o.wait);
   },
 };

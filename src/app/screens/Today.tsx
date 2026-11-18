@@ -5,6 +5,8 @@ import { Top, Ledger, Sec, Row, Chk, Pill, Avatar, Btn, A, Icon, fmtDayLong, fmt
 import { setTaskDone, editTask } from '../store';
 import { ShopLine, useMarkBought, taskMeta } from './legacy';
 import { WeekPresenceStrip } from './CalendarGrid';
+import { byPriority, fit } from '../taskOrder';
+export { byPriority, fit };
 
 type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingItem[]; events: FarmEvent[]; calendar: CalendarItem[]; inbox: AppNotification[]; loading: boolean };
 
@@ -42,6 +44,7 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
   const myOpen = myToday.filter((t) => !t.done).length;
   // The free ratio is currently unassigned open work out of all visible open and completed-today tasks.
   const freeOpen = free.filter((t) => !t.done).length;
+  const mine = fit(myToday, 8); const freeRows = fit(free, desktop ? 12 : 8); const theirRows = fit(theirs, 10);
   const markBought = useMarkBought(ctx);
   const { isOpen, toggle } = useOpenSections(['free', 'theirs', 'inbox', 'shop'], 'today2', ['theirs']);
   const toggleDone = (task: Task, done: boolean) => startTransition(async () => {
@@ -71,18 +74,19 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
         <div>
           {/* what is on me comes first, in its own box, so nobody has to hunt for it in the shared list */}
           <section className="minebox" aria-label="המשימות שעליך">
-            <header><h2>עליך{myToday.length > 0 && <span className="n"> · {myToday.length}</span>}</h2><A to="/tasks">כל המשימות</A></header>
-            {loading && !todays.length ? null : myToday.length ? <div className="list">{myToday.slice(0, 8).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>
+            <header><h2>עליך{myOpen > 0 && <span className="n"> · {myOpen}</span>}</h2><A to="/tasks">כל המשימות</A></header>
+            {loading && !todays.length ? null : myToday.length ? <div className="list">{mine.shown.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>
               : <p className="none">{free.length ? 'אין כרגע משימות עליך. אפשר לקחת אחת מהפנויות למטה.' : 'אין כרגע משימות עליך.'}</p>}
+            <MoreDone n={mine.hidden} className="more" />
             {myLater > 0 && <A to="/tasks" className="more">ועוד {myLater} עליך בימים הבאים</A>}
           </section>
           {(free.length > 0 || !loading) && <section className="today-free" aria-label="משימות פנויות">
             <Sec serif title="פנויות" n={freeOpen} open={isOpen('free')} onToggle={() => toggle('free')} />
-            {isOpen('free') && (free.length ? <div className="list">{free.slice(0, desktop ? 12 : 8).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div> : <p className="lead">אין משימות פנויות כרגע.</p>)}
+            {isOpen('free') && (free.length ? <><div className="list">{freeRows.shown.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div><MoreDone n={freeRows.hidden} /></> : <p className="lead">אין משימות פנויות כרגע.</p>)}
           </section>}
           {theirs.length > 0 && <section className="today-others" aria-label="משימות אצל אחרים">
-            <Sec title="אצל אחרים" n={theirs.length} open={isOpen('theirs')} onToggle={() => toggle('theirs')} />
-            {isOpen('theirs') && <div className="list">{theirs.slice(0, 10).map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div>}
+            <Sec title="אצל אחרים" n={theirs.filter((t) => !t.done).length} open={isOpen('theirs')} onToggle={() => toggle('theirs')} />
+            {isOpen('theirs') && <><div className="list">{theirRows.shown.map((t) => <TaskRow key={t.id} t={t} ctx={ctx} today={today} onDone={(v) => toggleDone(t, v)} />)}</div><MoreDone n={theirRows.hidden} /></>}
           </section>}
           <A to="/history" className="today-history">היסטוריה</A>
         </div>
@@ -110,10 +114,10 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
   );
 }
 
-export const byPriority = (uid: string, today: string) => (a: Task, b: Task) => {
-  const score = (t: Task) => (t.dueDate && t.dueDate < today ? -1 : 0) + (t.urgent ? -4 : 0) + (t.assignee?.uid === uid ? -2 : 0) + (t.dueDate === today ? -1 : 0);
-  return score(a) - score(b) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-};
+function MoreDone({ n, className = 'note-more' }: { n: number; className?: string }) {
+  if (!n) return null;
+  return <A to="/tasks" className={className}>ועוד {n === 1 ? 'אחת שבוצעה' : `${n} שבוצעו`} היום · לכל המשימות</A>;
+}
 
 /**
  * One task. The end of the row always answers "whose is it": a gold "עליך", someone's name, or a button to take it.

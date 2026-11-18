@@ -255,7 +255,7 @@ try {
     check(missing.status === 404, 'assign a missing task → 404');
     const mo = await api('POST', '/v1/actions/tasks.assign', { key: KEYS.owner, idem: randomUUID(), body: { taskId: 'syn-managers-only', assignee: 'syn-dani-l' } });
     const moAct = await where('activity', 'refId', 'syn-managers-only');
-    check(mo.status === 200 && moAct.length === 1 && !moAct[0].text.includes('סוד'), 'assigning a manager-only task does not leak its title into activity', moAct);
+    check(mo.status === 200 && moAct.length === 1 && moAct[0].kind === 'task_private', 'assigning a manager-only task logs under task_private, which staff cannot read', moAct);
   }
 
   section('manager-only visibility');
@@ -503,6 +503,21 @@ try {
     check((await create(KEYS.users, { title: 'סודי', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 403, 'staff cannot create a manager-only task');
     const mo = await create(KEYS.users, { title: 'משימת הנהלה', managersOnly: true }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' });
     check(mo.status === 201 && (await r(STAFF, '/v1/tasks/' + mo.json.data.taskId)).status === 404, 'a manager-only task from the API is hidden from staff');
+    await seed('events', 'syn-event', { title: 'סיור סינתטי', description: '', image: '', location: '', start: '2026-12-12T10:00', end: '2026-12-12T12:00', price: 0, maxPerOrder: 4, capacity: 40, open: true, published: true, questions: [], entry: false, stall: false, createdBy: { uid: 'synthetic-owner', name: 'x' }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const evTask = await create(KEYS.users, { title: 'להכין מפות לסיור', eventId: 'syn-event' }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' });
+    check(evTask.status === 201 && (await docOf('tasks/' + evTask.json.data.taskId)).eventId === 'syn-event' && evTask.json.data.task.eventId === 'syn-event', 'tasks.create links a task to an event', evTask.json);
+    check((await create(KEYS.users, { title: 'x', eventId: 'no-such-event' }, randomUUID(), { 'x-actor-id': 'user:syn-ronit' })).status === 400, 'tasks.create with an unknown event → 400');
+    ok(await w(STAFF, 'tasks.edit', { taskId: evTask.json.data.taskId, clearEvent: true }), 'tasks.edit clearEvent');
+    check((await docOf('tasks/' + evTask.json.data.taskId)).eventId === '', 'the task is no longer linked');
+    const moId = mo.json.data.taskId;
+    const kindsOf = async (refId) => (await where('activity', 'refId', refId)).map((a) => a.kind).sort().join();
+    check((await kindsOf(moId)) === 'task_private', 'a manager-only task logs as task_private, with its real title', await kindsOf(moId));
+    check(!(await r(STAFF, '/v1/activity?refId=' + moId)).json.data.items.length, 'staff: no history of a manager-only task by refId');
+    check((await r(STAFF, '/v1/activity?kind=task_private')).status >= 400 || !(await r(STAFF, '/v1/activity?kind=task_private')).json.data.items.length, 'staff: kind=task_private returns nothing');
+    ok(await w(MGR, 'tasks.edit', { taskId: moId, managersOnly: false }), 'tasks.edit: open the task to everyone');
+    check((await kindsOf(moId)) === 'task,task', 'its history moves to the open kind with it', await kindsOf(moId));
+    ok(await w(MGR, 'tasks.edit', { taskId: moId, managersOnly: true }), 'tasks.edit: back to managers only');
+    check((await kindsOf(moId)) === 'task_private,task_private,task_private', 'and back again', await kindsOf(moId));
     ok(await w(STAFF, 'tasks.edit', { taskId, title: 'לנקות את הדיר היום', dueDate: '2026-11-20' }), 'tasks.edit by the creator (staff)');
     check((await w(U('syn-dani-c'), 'tasks.edit', { taskId, title: 'x' })).status === 403 || true, '(dani-c has no key binding; skipped)');
     const other = (await create(KEYS.users, { title: 'של המנהל' }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' })).json.data.taskId;

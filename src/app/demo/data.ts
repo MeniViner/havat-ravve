@@ -110,7 +110,10 @@ export const tasks: Task[] = [
   task(`${T.irrigation}_${today}`, 'בדיקת מערכת ההשקיה', { managersOnly: true, templateId: T.irrigation, dateKey: today, dueDate: today, createdAt: at(0, '00:05') }),
   task('demo-task-paint', 'לצבוע את דלת המחסן', { createdBy: A.noa, createdAt: ago(7 * 24), location: loc('storage') }),
   task('demo-task-sign', 'להדפיס שלטי "כניסה" ו"דוכן" לפסטיבל', { createdBy: A.beni, createdAt: ago(3 * 24), managersOnly: false }),
-  task('demo-task-prune', 'גיזום הענפים הנמוכים ליד השער', { createdBy: A.eliya, createdAt: ago(5 * 24), location: loc('gate') }),
+  task('demo-task-prune', 'גיזום הענפים הנמוכים ליד השער', { createdBy: A.eliya, createdAt: ago(5 * 24), location: loc('gate'), eventId: 'demo-e-tour' }),
+  // the Saturday tour has no entry and no stall: its screen links to these
+  task('demo-task-tour-map', 'להדפיס מפות לסיור השבת', { createdBy: A.noa, assignee: A.noa, dueDate: key(SAT2 - 1), createdAt: ago(2 * 24), eventId: 'demo-e-tour' }),
+  task('demo-task-tour-path', 'לפנות את השביל לחממה לקראת הסיור', { createdBy: A.beni, dueDate: key(SAT2 - 1), createdAt: ago(26), location: loc('tree'), eventId: 'demo-e-tour' }),
   // done today
   task(`${T.gate}_${today}`, 'פתיחת השער ובדיקת הברזים', { templateId: T.gate, dateKey: today, dueDate: today, location: loc('gate'), done: true, doneBy: A.noa, doneAt: at(0, '07:10'), createdAt: at(0, '00:05') }),
   task(`${T.goats}_${today}`, 'האכלת העיזים', { templateId: T.goats, dateKey: today, dueDate: today, location: loc('goats'), done: true, doneBy: A.yoav, doneAt: at(0, '07:45'), createdAt: at(0, '00:05') }),
@@ -348,6 +351,7 @@ export const calendar: CalendarItem[] = [
 let aseq = 0;
 const act = (kind: Activity['kind'], refId: string, action: string, text: string, by: Actor, atIso: string, extra: { subjectUid?: string; eventId?: string } = {}): Activity => ({ id: `demo-a-${++aseq}`, kind, refId, action, text, by, at: atIso, subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' });
 export const activity: Activity[] = [
+  act('task_private', 'demo-task-irrigation', 'created', 'תיאום טיפול במערכת ההשקיה', A.beni, ago(30)),
   act('shopping', 'demo-shop-milk', 'edited', 'סימנה דחוף: חלב 3% · 6 קרטונים', A.dana, at(0, '10:40')),
   act('donation', 'demo-d-michal', 'claimed', '180 ₪ · לזכר יוסף ברק', A.michal, at(0, '10:31'), { subjectUid: U.michal }),
   act('donation', 'demo-d-michal', 'created', '180 ₪ · לזכר יוסף ברק', A.michal, at(0, '10:30'), { subjectUid: U.michal }),

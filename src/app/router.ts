@@ -19,6 +19,8 @@ window.addEventListener('popstate', () => {
 export const useRoute = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, current);
 export const href = (path: string) => BASE + (path === '/' ? '' : path);
 export const param = (name: string) => new URLSearchParams(location.search).get(name) || '';
+/** A query parameter that re-renders when it changes ("/tasks?event=x" → "/tasks" keeps the same route). */
+export const useParam = (name: string) => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => param(name));
 
 /** `keepScroll`: for a side panel that opens next to the list, where the list must not jump. */
 export function navigate(path: string, replace = false, keepScroll = false) {

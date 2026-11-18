@@ -47,6 +47,8 @@ export type Task = {
   doneNote: string;
   assignee: Actor | null;
   urgent: boolean;
+  /** The event this task prepares for. Missing or '' on older tasks and on tasks written by the Worker without one. */
+  eventId?: string;
   updatedAt: string;
 };
 
@@ -84,9 +86,9 @@ export type ShoppingItem = {
 };
 
 export type RoleInvite = { id: string; email: string; role: 'staff' | 'manager' | 'owner'; createdBy: Actor; createdAt: string };
-export type ActivityKind = 'task' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
+export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
 export type Activity = { id: string; kind: ActivityKind; refId: string; action: string; text: string; by: Actor; at: string; subjectUid: string; eventId: string };
-export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
+export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
 export type Invite = { code: string; role: 'staff'; active: boolean; createdBy: Actor; createdAt: string; usedBy: string[] };
 
 export const CATEGORY_LABELS: Record<ShoppingCategory, string> = { super: 'סופר', building: 'חומרי בניין', online: 'אינטרנט', giveaway: 'מוצרי מסירה' };
