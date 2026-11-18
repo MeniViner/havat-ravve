@@ -11,6 +11,7 @@ import { WRITE_DEFS } from './writes';
 import { getSettings, overview } from './overview';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
+import { runAccountDeletions } from './accounts';
 import { runEmail } from './email';
 
 const MAX_BODY = 16 * 1024;
@@ -134,5 +135,8 @@ export default {
     // one line per run for `wrangler tail`: counts and job ids only, never addresses, keys or message bodies
     try { console.log(JSON.stringify({ ...(await runEmail(env)), wallMs: Date.now() - started })); }
     catch (e) { console.log(JSON.stringify({ cron: 'email', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300), wallMs: Date.now() - started })); }
+    // account deletion after the grace period: uids are never logged, only counts
+    try { console.log(JSON.stringify(await runAccountDeletions(env))); }
+    catch (e) { console.log(JSON.stringify({ cron: 'accounts', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
   },
 };

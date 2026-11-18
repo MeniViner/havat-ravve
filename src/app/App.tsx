@@ -24,6 +24,7 @@ import { VisitsScreen, VisitDetailScreen, DonationsScreen, DonationDetailScreen,
 import { CalendarScreen, CalendarEditor } from './screens/Calendar';
 import { calendarRange, shiftCalendarDay } from './screens/CalendarGrid';
 import { InstallBanner } from './InstallBanner';
+import { DeleteAccountPage, DeletionScheduledPage, useDeletionRequest } from './screens/Account';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
@@ -111,12 +112,13 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   if (route === '/visit') return <VisitPage ctx={ctx} />;
   if (route === '/donate') return <DonatePage ctx={ctx} />;
   if (route === '/contact') return <ContactPage ctx={ctx} />;
-  if (route === '/terms') return <TermsPage />;
+  if (route === '/terms' || route === '/privacy') return <TermsPage />;
+  if (route === '/delete-account') return <DeleteAccountPage ctx={ctx} />;
   return null;
 }
 
 /** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
-const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|visit|donate|contact|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
+const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|privacy|delete-account|visit|donate|contact|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
 
 // ---------- team app ----------
 function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
@@ -244,6 +246,8 @@ export default function App() {
   const { profile, loading: profileLoading, missing, error: profileError } = useProfile(user);
   const { settings, loading: settingsLoading, error: settingsError } = useSettings();
   const demo = useDemo();
+  // a scheduled deletion locks the account (screens/Account.tsx); it never blocks the first render
+  const deletion = useDeletionRequest(user && profile ? user.uid : undefined);
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
     if (loading || profileLoading || demo.on) return;
@@ -259,6 +263,7 @@ export default function App() {
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
     return <ToastProvider><DemoStrip /><OnboardingPage key={user.uid} user={user} fields={settings.registrationFields} /></ToastProvider>;
   }
+  if (user && profile && deletion.item) return <ToastProvider><DemoStrip /><DeletionScheduledPage profile={profile} request={deletion.item} /></ToastProvider>;
   if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} contact={settings.contact} /></ToastProvider>;
   if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;
   return <ToastProvider><GuestApp user={user} profile={profile} settings={settings} /></ToastProvider>;

@@ -5,6 +5,7 @@
 // Statuses: pass, fail (fix in code), owner (needs the farm owner), pending (later step).
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execSync } from 'node:child_process';
 
 const args = new Set(process.argv.slice(2));
@@ -57,13 +58,14 @@ const twa = readJson('android/twa-manifest.json');
 if (!twa) add('TWA', 'android/twa-manifest.json parses', 'fail', 'missing or invalid JSON');
 else {
   ok('TWA', 'packageId is a valid Android application id', /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(twa.packageId), twa.packageId);
-  add('TWA', 'package name approved by the owner (permanent once uploaded)', 'owner', `proposed: ${twa.packageId}`);
+  // permanent once uploaded; approved by the owner on 2026-11-19
+  ok('TWA', 'package name is the approved one (permanent once uploaded)', twa.packageId === 'com.menis10tec.havatravve', twa.packageId);
   ok('TWA', 'host matches site.config.json origin', twa.host === host, `${twa.host} vs ${host}`);
   ok('TWA', 'startUrl matches the web manifest start_url', m && twa.startUrl === m.start_url, `${twa.startUrl} vs ${m?.start_url}`);
   ok('TWA', 'webManifestUrl and icons are on the same origin', [twa.webManifestUrl, twa.iconUrl, twa.maskableIconUrl].every((u) => String(u).startsWith(origin + '/')));
   ok('TWA', 'colors match the web manifest', m && twa.themeColor === m.theme_color && twa.backgroundColor === m.background_color);
   ok('TWA', 'notifications off (push is out of scope)', twa.enableNotifications === false);
-  const keyPath = twa.signingKey?.path ? path.resolve('android', twa.signingKey.path) : '';
+  const keyPath = twa.signingKey?.path ? path.resolve('android', twa.signingKey.path.replace(/^~(?=\/)/, os.homedir())) : '';
   ok('TWA', 'signing key path is outside the repository', keyPath && !keyPath.startsWith(path.resolve('.') + path.sep), twa.signingKey?.path);
   const prints = (twa.fingerprints || []).map((f) => f.value).filter(Boolean);
   if (!prints.length) add('TWA', 'SHA-256 signing fingerprint(s) listed (upload key + Play App Signing key)', 'owner', 'add after the Play Console app exists');
@@ -89,7 +91,7 @@ ok('Android', 'no keystore or build output tracked in git', !/\.(jks|keystore|ap
 const app = read('src/app/App.tsx');
 const guest = read('src/app/screens/Guest.tsx');
 ok('Policy', 'privacy page reachable signed out (/app/terms)', /function guestRoutes[\s\S]*?route === '\/terms'/.test(app), 'add /terms to guestRoutes');
-add('Policy', 'privacy text reviewed (page still says draft)', /טיוטה|טרם עברה בדיקה משפטית/.test(guest) ? 'owner' : 'pass', 'legal review, then remove "טיוטה"');
+ok('Policy', 'privacy page is final (no "draft" marker)', !/טיוטה|טרם עברה בדיקה משפטית/.test(guest), 'remove "טיוטה" once the text is final');
 const src = execSync('git ls-files src', { encoding: 'utf8' }).split('\n').filter((f) => /\.(tsx?|mjs)$/.test(f)).map(read).join('\n');
 ok('Policy', 'account deletion can be requested inside the app', /deleteAccount|accountDeletion|delete_requests|מחיקת (ה)?חשבון/.test(src), 'only "ask the managers" in the terms text; Play requires an in-app path');
 ok('Policy', 'account deletion has a public web link (Data safety form)', /route === '\/(delete-account|account-deletion)'/.test(app), 'Play requires a web URL that works without the app');

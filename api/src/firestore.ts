@@ -32,6 +32,8 @@ export type Env = {
   /** Test mode only (emulator + TEST_FAULTS): a mock Brevo endpoint, and no grace or backoff delays. */
   BREVO_API_URL?: string;
   EMAIL_TEST_FAST?: string;
+  /** Tests only: the Firebase Auth emulator (account deletion). */
+  FIREBASE_AUTH_EMULATOR_HOST?: string;
 };
 
 /** Production projects. Served only when PRODUCTION_APPROVED names the same project (an explicit, approved step). */
@@ -117,7 +119,8 @@ async function googleToken(saJson: string, tokenUrl: string, kv?: KV): Promise<{
 }
 
 async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ token: string; source: TokenSource }> {
-  const key = 'gtoken:' + sa.client_email;
+  // v2: the token also carries the Identity Toolkit scope (account deletion), so older cached tokens are not reused
+  const key = 'gtoken2:' + sa.client_email;
   if (kv) {
     try {
       const hit = JSON.parse((await kv.get(key)) || 'null') as { token: string; expiresAt: number } | null;
@@ -136,7 +139,7 @@ async function signAndExchange(sa: ServiceAccount, tokenUrl: string): Promise<{ 
 
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64urlJson({ alg: 'RS256', typ: 'JWT', ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) }) + '.' +
-    b64urlJson({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/datastore', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+    b64urlJson({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await signingKey(sa.private_key), new TextEncoder().encode(unsigned));
   const assertion = unsigned + '.' + b64urlBytes(new Uint8Array(sig));
 
@@ -180,6 +183,9 @@ export class Firestore {
 
   get root() { return `projects/${this.project}/databases/(default)/documents`; }
   name(col: string, id: string) { return `${this.root}/${col}/${id}`; }
+
+  /** The Authorization header value for Google APIs (Firestore, Identity Toolkit). Emulator: the owner token. */
+  bearer(): Promise<string> { return this.authorization(); }
 
   private async authorization(): Promise<string> {
     if (this.emulator) {

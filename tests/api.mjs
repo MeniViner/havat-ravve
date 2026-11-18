@@ -73,7 +73,7 @@ const mock = http.createServer((req, res) => {
     const [h, p, s] = assertion.split('.');
     const v = createVerify('RSA-SHA256'); v.update(h + '.' + p);
     const claims = JSON.parse(Buffer.from(p || '', 'base64url').toString() || '{}');
-    const ok = v.verify(publicKey, Buffer.from(s || '', 'base64url')) && claims.iss === SA.client_email && claims.scope === 'https://www.googleapis.com/auth/datastore' && claims.exp - claims.iat === 3600;
+    const ok = v.verify(publicKey, Buffer.from(s || '', 'base64url')) && claims.iss === SA.client_email && claims.scope === 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit' && claims.exp - claims.iat === 3600;
     if (ok) tokenHits.valid++;
     res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
     res.end(JSON.stringify(ok ? { access_token: 'synthetic-token', expires_in: 3599, token_type: 'Bearer' } : { error: 'invalid_grant' }));
@@ -1017,6 +1017,56 @@ section('payment-confirmation email (cron outbox → mock Brevo)');
     const lines = on.logs.map((l) => JSON.stringify(l)).join('\n');
     check(!lines.includes('synthetic-brevo-key') && !lines.includes('@synthetic.test'), 'request logs carry no Brevo key and no addresses');
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(on).catch((e) => { failures++; console.error(e); }); brevoMock.close(); fs.rmSync(persist, { recursive: true, force: true }); }
+}
+
+
+// Account deletion: a request older than 30 days removes the Auth account (Auth emulator) and the profile,
+// and strips names and phones from the person's records. Synthetic data in the emulators only.
+section('account deletion (cron, 30 days after the request)');
+{
+  const AUTH = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (!AUTH) { failures++; console.error('FIREBASE_AUTH_EMULATOR_HOST is not set; run with npm run test:api'); }
+  else {
+    const authBase = `http://${AUTH}/identitytoolkit.googleapis.com/v1`;
+    const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json()).localId;
+    const authExists = async (uid) => ((await (await fetch(`${authBase}/projects/${PROJECT}/accounts:lookup`, { method: 'POST', headers: admin, body: JSON.stringify({ localId: [uid] }) })).json()).users || []).length === 1;
+    const get = async (col, id) => { const r = await fetch(`${DOCS}/${col}/${id}`, { headers: admin }); return r.status === 404 ? null : Object.fromEntries(Object.entries((await r.json()).fields || {}).map(([k, v]) => [k, dec(v)])); };
+    const request = async (uid, email, daysAgo) => {
+      const r = await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes: [{ update: { name: `projects/${PROJECT}/databases/(default)/documents/account_deletions/${uid}`, fields: { uid: { stringValue: uid }, email: { stringValue: email }, requestedAt: { timestampValue: new Date(Date.now() - daysAgo * 86400000).toISOString() } } } }] }) });
+      if (!r.ok) throw new Error('request seed failed ' + (await r.text()));
+    };
+    const t = new Date().toISOString();
+    const gone = await signUp('gone@synthetic.test'); const stays = await signUp('stays@synthetic.test');
+    for (const [uid, email] of [[gone, 'gone@synthetic.test'], [stays, 'stays@synthetic.test']]) {
+      await seed('users', uid, { uid, email, displayName: 'אורחת ' + email.slice(0, 4), phone: '0509999999', role: 'guest', status: 'active', customerNumber: 9, acceptedTermsAt: t, createdAt: t, updatedAt: t });
+      await seed('tickets', 'del-t-' + uid, { eventId: 'del-ev', eventTitle: 'ערב', orderId: 'del-o-' + uid, index: 1, total: 1, ownerUid: uid, ownerName: 'אורחת', ownerPhone: '0509999999', holderName: 'חברה', secret: 's', price: 50, paymentStatus: 'paid', status: 'valid', scans: [], entries: 0, answers: { city: 'עומר' }, createdAt: t, updatedAt: t });
+      await seed('visits', 'del-v-' + uid, { uid, name: 'אורחת', phone: '0509999999', date: '2030-01-01', people: 2, type: 'סיור', note: 'פרטי', status: 'new', managerNote: '', handledBy: null, createdAt: t, updatedAt: t });
+      await seed('donations', 'del-d-' + uid, { uid, name: 'אורחת', phone: '0509999999', amount: 180, label: 'חי', note: 'פרטי', memorial: 'לזכר סבא', receiptWanted: true, receiptName: 'אורחת בע"מ', receiptSent: false, paymentStatus: 'paid', createdAt: t, updatedAt: t });
+      await seed('tabs', 'del-tab-' + uid, { eventId: 'del-ev', eventTitle: 'ערב', guestUid: uid, guestName: 'אורחת', guestPhone: '0509999999', ticketId: '', items: [], total: 40, status: 'paid', createdBy: { uid: 'x', name: 'x' }, createdAt: t, updatedAt: t });
+      await seed('email_outbox', 'donation_del-d-' + uid, { kind: 'donation', uid, status: 'sent', to: email, messageId: '<m>' });
+    }
+    await request(gone, 'gone@synthetic.test', 31);
+    await request(stays, 'stays@synthetic.test', 2);
+    const port = PORT + 22;
+    const w = startWorker(port, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, FIREBASE_AUTH_EMULATOR_HOST: AUTH, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' }, ['--test-scheduled']);
+    try {
+      await waitUp(`http://127.0.0.1:${port}`);
+      check(await authExists(gone) && await authExists(stays), 'both synthetic Auth accounts exist before the run');
+      const st = (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+      check(st === 200 && !(await authExists(gone)), 'a request older than 30 days → the Firebase Auth account is deleted', { st });
+      check(!(await get('users', gone)) && !(await get('account_deletions', gone)), '… and the profile and the request are removed');
+      const tk = await get('tickets', 'del-t-' + gone), vs = await get('visits', 'del-v-' + gone), dn = await get('donations', 'del-d-' + gone), tb = await get('tabs', 'del-tab-' + gone), ob = await get('email_outbox', 'donation_del-d-' + gone);
+      check(tk.ownerName === 'חשבון שנמחק' && tk.ownerPhone === '' && tk.holderName === '' && Object.keys(tk.answers || {}).length === 0 && tk.price === 50 && tk.paymentStatus === 'paid', 'ticket: name, phone, holder and answers removed; price and payment kept', tk);
+      check(vs.name === 'חשבון שנמחק' && vs.phone === '' && vs.note === '', 'visit: name, phone and note removed', vs);
+      check(dn.name === 'חשבון שנמחק' && dn.phone === '' && dn.note === '' && dn.receiptName === '' && dn.amount === 180 && dn.memorial === 'לזכר סבא', 'donation: personal fields removed; amount and dedication kept', dn);
+      check(tb.guestName === 'חשבון שנמחק' && tb.guestPhone === '' && tb.total === 40, 'stall account: name and phone removed; total kept', tb);
+      check(ob.to === '' && ob.status === 'sent', 'email outbox job keeps its outcome without the address', ob);
+      const keep = await get('users', stays), keepT = await get('tickets', 'del-t-' + stays);
+      check(await authExists(stays) && keep?.phone === '0509999999' && keepT.ownerName === 'אורחת' && !!(await get('account_deletions', stays)), 'a request from 2 days ago is untouched (account, profile, records, request)');
+      const st2 = (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+      check(st2 === 200 && await authExists(stays), 'a second run changes nothing more');
+    } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); }
+  }
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);
