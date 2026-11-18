@@ -1,5 +1,8 @@
 # Havat Ravve API. Deploys to <name>.<account>.workers.dev on the free plan.
-# Secrets (never in this file or in git): `npx wrangler secret put API_CREDENTIALS` and `GCP_SERVICE_ACCOUNT`.
+# Secrets (never in this file or in git), set with `npx wrangler secret put <NAME> --config api/wrangler.toml`:
+# API_CREDENTIALS, GCP_SERVICE_ACCOUNT, BREVO_API_KEY, BREVO_SENDER_EMAIL. A deploy keeps existing secrets.
+# Every binding below must match the live Worker: a deploy removes anything this file does not list.
+# Check with `npx wrangler deploy --config api/wrangler.toml --dry-run` before each deploy.
 # Local values go in api/.dev.vars (git-ignored); see api/.dev.vars.example.
 name = "havat-ravve-api"
 main = "src/index.ts"
@@ -17,6 +20,12 @@ PRODUCTION_APPROVED = "havat-ravve"
 [[kv_namespaces]]
 binding = "TOKEN_KV"
 id = "d275887525684d4b896d982838dad120"
+
+# Private file storage (R2, free tier). Attached in the Cloudflare dashboard on 2026-11-16 and kept here,
+# because a deploy removes every binding this file does not list. No route reads or writes it yet.
+[[r2_buckets]]
+binding = "FILE_BUCKET"
+bucket_name = "havat-ravve-files"
 
 # Rate limits (Workers Rate Limiting, free): per credential, and failed authentications per client IP.
 [[ratelimits]]
