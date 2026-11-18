@@ -33,8 +33,13 @@ function publicTask(id: string, t: Record<string, unknown>, caller: Caller) {
     createdBy: t.createdBy ?? null,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
+    location: t.location ?? null,
+    doneNote: t.doneNote || '',
     hasPhoto: !!t.photo,
+    hasDonePhoto: !!t.donePhoto,
     recurring: !!t.templateId,
+    templateId: t.templateId ?? null,
+    dateKey: t.dateKey ?? null,
     eventId: t.eventId || null,
     ...(seesManagerTasks(caller.actor) ? { managersOnly: !!t.managersOnly } : {}),
   };
