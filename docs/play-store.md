@@ -32,8 +32,10 @@ The signing key (`*.keystore`, `*.jks`) never enters git; `.gitignore` covers it
 
 In the app: My account → "מחיקת החשבון" (`/app/delete-account`, also the public web link for Play). The request is `account_deletions/{uid}` with the server's time; the account is locked and shows a cancel button. After 30 days the Worker cron (`api/src/accounts.ts`) deletes the Firebase Auth user, the profile and the request, and replaces names, phones and notes on the person's tickets, visits, donations and stall accounts. Amounts and dates stay. The Worker's service account needs permission `firebaseauth.users.delete` (custom role `authUserDeleter`).
 
-## Still in Play Console
+## Play Console status (2026-11-19)
 
-Data safety form, content rating, target audience (18+), store listing (icon 512, feature graphic 1024×500, phone screenshots), and the first upload to internal testing.
+Done: all App content declarations (privacy policy, app access with the demo link for reviewers, ads, content rating, target audience 18+, data safety, government, financial, health), category "Events", contact details, the default store listing (Hebrew texts, icon, feature graphic, six phone screenshots from demo mode), and release 1 (1.0.0) saved as a draft on internal testing. The Play App Signing fingerprint is in `fingerprints`.
+
+Still open: add testers and roll out internal testing, then a closed test with at least 12 testers for 14 days (new personal developer accounts) before applying for production.
 
 New apps must target Android API 36. The check reads `targetSdk` from the generated Android project once it exists. [Target API level requirements](https://developer.android.com/google/play/requirements/target-sdk), [Account deletion requirements](https://support.google.com/googleplay/android-developer/answer/13327111)
