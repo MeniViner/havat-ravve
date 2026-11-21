@@ -25,6 +25,9 @@ import { CalendarScreen, CalendarEditor } from './screens/Calendar';
 import { calendarRange, shiftCalendarDay } from './screens/CalendarGrid';
 import { InstallBanner } from './InstallBanner';
 import { DeleteAccountPage, DeletionScheduledPage, useDeletionRequest } from './screens/Account';
+import { V2Root } from './v2/App';
+import { FirstEntry, SuspendedScreen } from './v2/screens/system';
+import { V2DemoStrip } from './v2/DemoChrome';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
@@ -50,22 +53,6 @@ function Rail({ route, items, manage, profile, role }: { route: string; items: N
     </aside>
   );
 }
-const PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new', 'real'];
-/** The green bar that marks demo mode. Switching persona happens right here, from any screen. */
-export function DemoStrip() {
-  const demo = useDemo();
-  const [open, setOpen] = useState(false);
-  if (!demo.on) return null;
-  // 'real' ("החשבון שלי") leaves demo: there is no mixed mode
-  const pick = (persona: Persona) => { setOpen(false); setDemo(persona === 'real' ? { on: false } : { on: true, persona }); navigate('/', true); };
-  return (
-    <div className="demobar">
-      <div className="strip demo"><Icon name="eye" size={16} /><span>מצב הדגמה · <b>{PERSONA_LABELS[demo.persona]}</b> · לא נשמר בשרת</span><button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'סגירה' : 'החלפת דמות'}</button><button type="button" onClick={() => { setOpen(false); setDemo({ on: false }); navigate('/', true); }}>הסתרה</button></div>
-      {open && <div className="demopick" role="group" aria-label="לעבור באפליקציה בתור">{PERSONAS.map((p) => <button key={p} type="button" className={'chip ' + (p === demo.persona ? 'on' : '')} aria-pressed={p === demo.persona} onClick={() => pick(p)}>{PERSONA_LABELS[p]}</button>)}</div>}
-    </div>
-  );
-}
-
 /** Phone: one screen at a time. Desktop: rail + content, and a detail page opens as a side panel next to its list. */
 function Shell({ nav, manage, profile, role, online, master, detail, narrow, center }: { nav: NavItem[]; manage?: NavItem[]; profile: Profile | null; role?: string; online: boolean; master: ReactNode; detail?: ReactNode; narrow?: boolean; center?: boolean }) {
   const route = useRoute(); const desktop = useDesktop();
@@ -84,7 +71,7 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
     <div className="app">
       <Rail route={route} items={nav} manage={manage} profile={profile} role={role} />
       <div className="shellmain" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: desktop ? 'row' : 'column' }}>
-        <div style={{ flex: 1, minWidth: 0 }}><DemoStrip /><main className={cls}><Guard resetKey={route}><div ref={pageRef} className="page">{content}</div></Guard></main></div>
+        <div style={{ flex: 1, minWidth: 0 }}><V2DemoStrip /><main className={cls}><Guard resetKey={route}><div ref={pageRef} className="page">{content}</div></Guard></main></div>
         {desktop && detail && <aside className="panel"><Guard resetKey={route}><div className="screen page-in" key={route}>{detail}</div></Guard></aside>}
       </div>
       {!desktop && <BottomNav route={route} items={nav} />}
@@ -117,124 +104,6 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   return null;
 }
 
-/** Single-column pages (forms, settings, a profile, an event-day screen) keep a readable width on a wide screen. */
-const NARROW = /^\/(more|history|events-staff|scan|stall|me|terms|privacy|delete-account|visit|donate|contact|login|events)(\/|$)|^\/calendar\/(new$|[^/]+\/edit$)|^\/manage\/(settings(\/|$)|calendar\/new$)|^\/manage\/events\/(new$|[^/]+\/(edit|products\/[^/]+|tabs\/[^/]+)$)|^\/manage\/vendors\/[^/]+$/;
-
-// ---------- team app ----------
-function TeamApp({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
-  const route = useRoute(); const online = useOnline(); const desktop = useDesktop();
-  const manager = canManage(profile, user.email); const owner = isOwner(profile, user.email);
-  const cmsEditor = useCmsEditor(user, manager);
-  const actor = useMemo(() => actorOf(user, profile), [user.uid, profile.displayName]);
-  const today = useToday(); useHiddenVersion();
-  const openAll = useOpenTasks(true, manager); const recent = useRecentDoneTasks(true, manager);
-  const shoppingAll = useOpenShopping(true); const bought = useRecentBought(true);
-  // yesterday's unticked chores are not today's work; rows waiting out their undo window are already gone for the user
-  const open = useMemo(() => ({ ...openAll, items: openAll.items.filter((t) => !isHidden(t.id) && !(t.templateId && t.dateKey && t.dateKey < today)) }), [openAll, today, isHidden]);
-  const shopping = { ...shoppingAll, items: shoppingAll.items.filter((i) => !isHidden(i.id)) };
-  const team = useTeam(true); const instances = useTodayInstances(true, manager, today);
-  const templates = useTemplates(true, manager); const places = usePlaces(true); const events = useAllEvents(true);
-  const inbox = useNotifications(manager); const people = usePeople(manager); const visits = useVisits(manager); const donations = useDonations(manager); const vendors = useVendors(manager);
-  const peopleByUid = useMemo(() => new Map(people.items.map((p) => [p.uid, p])), [people.items]);
-  const week = calendarRange('week', today);
-  const calendar = useCalendar(true, week.from, manager ? shiftCalendarDay(today, 14) : week.to);
-  const calendarItems = calendar.items.filter((item) => !isHidden(item.id));
-  const ctx: TeamCtx = useMemo(() => ({ user, actor, profile, manager, owner, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid }), [user, actor, profile, manager, owner, cmsEditor, settings, places.items, templates.items, team.items, peopleByUid]);
-  const guestCtx: GuestCtx = { user, profile, settings };
-
-  useEffect(() => { if (manager && online) void sweepPrivateTaskActivity(); }, [manager, online]);
-  useEffect(() => {
-    if (templates.loading || instances.loading || instances.error || !templates.items.length) return;
-    materializeToday(templates.items, instances.items, actor, today);
-  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor]);
-
-  const myOpen = open.items.filter((t) => t.assignee?.uid === actor.uid).length;
-  const nav: NavItem[] = [
-    { path: '/', icon: 'home', label: 'היום' },
-    { path: '/tasks', icon: 'list', label: 'משימות', badge: myOpen || undefined, match: (r) => r.startsWith('/tasks') || r.startsWith('/history') },
-    { path: '/shopping', icon: 'cart', label: 'קניות', badge: shopping.items.filter((i) => i.urgent).length || undefined },
-    { path: '/calendar', icon: 'calendar', label: 'יומן', match: isCalendarRoute },
-    manager && !desktop ? { path: '/manage', icon: 'people', label: 'ניהול', badge: inbox.items.length || undefined, match: (r) => r.startsWith('/manage') && !isCalendarRoute(r) } : { path: '/events-staff', icon: 'qr', label: 'אירועים', match: (r) => r.startsWith('/events-staff') || r.startsWith('/scan') || r.startsWith('/stall') },
-  ];
-  const manageNav: NavItem[] | undefined = manager ? [
-    { path: '/manage/inbox', icon: 'bell', label: 'לטיפול', badge: inbox.items.length || undefined },
-    { path: '/manage/events', icon: 'ticket', label: 'אירועים' }, { path: '/manage/people', icon: 'people', label: 'אנשים' }, { path: '/manage/visits', icon: 'pin', label: 'ביקורים' },
-    { path: '/manage/donations', icon: 'heart', label: 'תרומות' }, { path: '/manage/reports', icon: 'chart', label: 'דוחות' }, { path: '/manage/settings', icon: 'sliders', label: 'הגדרות' },
-  ] : undefined;
-
-  const today_ = <TodayScreen ctx={ctx} open={open.items} recent={recent.items} shopping={shopping.items} events={events.items} calendar={calendarItems} inbox={inbox.items} loading={open.loading} />;
-  const tasks = (sel?: string) => <TasksScreen ctx={ctx} open={open.items} recent={recent.items} loading={open.loading} selectedId={sel} />;
-  const shop = (sel?: string) => <ShoppingScreen ctx={ctx} open={shopping.items} recent={bought.items} loading={shopping.loading} selectedId={sel} />;
-  let m: Record<string, string> | null;
-  const r = route;
-  // master + optional detail (desktop shows both; phone shows the detail)
-  let master: ReactNode = today_; let detail: ReactNode | undefined;
-  if (r === '/') master = today_;
-  else if (r === '/tasks') master = tasks();
-  else if (r === '/tasks/new' || r === '/new') { master = tasks(); detail = <NewScreen ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id/edit'))) { master = tasks(m.id); detail = <TaskEditScreen key={m.id} id={m.id} ctx={ctx} />; }
-  else if ((m = match(r, '/tasks/:id'))) { master = tasks(m.id); detail = <TaskDetail key={m.id} id={m.id} ctx={ctx} />; }
-  else if ((m = match(r, '/history/:tab')) || r === '/history') master = <HistoryScreen ctx={ctx} tab={m?.tab === 'shopping' ? 'shopping' : 'tasks'} />;
-  else if (r === '/shopping') master = shop();
-  else if (r === '/shopping/new') { master = shop(); detail = <NewScreen ctx={ctx} initial="shop" />; }
-  else if ((m = match(r, '/shopping/:id'))) { master = shop(m.id); detail = <ShopItemScreen key={m.id} id={m.id} ctx={ctx} />; }
-  else if (r === '/more') master = <MoreScreen ctx={ctx} />;
-  else if (r === '/events-staff') master = <StaffEventsScreen ctx={ctx} events={events.items} />;
-  else if ((m = match(r, '/events-staff/:id'))) master = <StaffEventsScreen ctx={ctx} events={events.items} id={m.id} />;
-  else if ((m = match(r, '/scan/:id/search'))) master = <EventModuleGate eventId={m.id} module="entry">{(event) => <ScanSearchScreen key={event.id} event={event} ctx={ctx} />}</EventModuleGate>;
-  else if ((m = match(r, '/scan/:id'))) master = <EventModuleGate eventId={m.id} module="entry">{(event) => <ScanScreen key={event.id} event={event} ctx={ctx} />}</EventModuleGate>;
-  else if ((m = match(r, '/stall/:id/pick'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} mode="pick" />}</EventModuleGate>;
-  else if ((m = match(r, '/stall/:id/tabs'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} mode="tabs" />}</EventModuleGate>;
-  else if ((m = match(r, '/stall/:id'))) master = <EventModuleGate eventId={m.id} module="stall">{(event) => <StallScreen key={ctx.actor.uid + '/' + event.id} event={event} ctx={ctx} />}</EventModuleGate>;
-  else if (r === '/calendar' || r === '/manage/calendar') master = <CalendarScreen ctx={ctx} />;
-  else if (r === '/calendar/new' || r === '/manage/calendar/new') master = <CalendarEditor ctx={ctx} />;
-  else if ((m = match(r, '/calendar/:id/edit'))) master = <CalendarEditor key={m.id} id={m.id} ctx={ctx} />;
-  else if ((m = match(r, '/calendar/:view/:date'))) master = <CalendarScreen ctx={ctx} view={m.view} date={m.date} />;
-  else if (guestRoutes(r, guestCtx)) master = guestRoutes(r, guestCtx);
-  else if (r.startsWith('/manage') && manager) {
-    const mh = <ManageHomeScreen ctx={ctx} inbox={inbox.items} events={events.items} visits={visits.items} donations={donations.items} people={people.items} calendar={calendarItems} templatesCount={templates.items.filter((t) => t.active).length} placesCount={places.items.length} vendorsCount={vendors.items.length} />;
-    if (r === '/manage') master = desktop ? <InboxScreen ctx={ctx} inbox={inbox.items} home /> : mh;
-    else if (r === '/manage/inbox') master = <InboxScreen ctx={ctx} inbox={inbox.items} />;
-    else if (r === '/manage/events') master = <EventsListScreen ctx={ctx} />;
-    else if (r === '/manage/events/new') master = <EventEditor ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/edit'))) master = <EventEditor key={m.id} id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/guests'))) master = <EventGuestsScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/entry'))) master = <EventEntryScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/vendors'))) master = <EventVendorsScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/products/new'))) master = <ProductEditor eventId={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/products/:pid'))) master = <ProductEditor key={m.id + '/' + m.pid} eventId={m.id} pid={m.pid} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/products'))) master = <EventProductsScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/tabs/:tid'))) master = <TabDetailScreen key={m.tid} eventId={m.id} tid={m.tid} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/tabs'))) master = <EventTabsScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/report'))) master = <EventReportScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/files'))) master = <EventFilesScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id/activity'))) master = <EventActivityScreen id={m.id} ctx={ctx} />;
-    else if ((m = match(r, '/manage/events/:id'))) master = <EventHubScreen id={m.id} ctx={ctx} />;
-    else if (r === '/manage/vendors') master = <VendorsScreen ctx={ctx} />;
-    else if (r === '/manage/vendors/new') master = <VendorEditor ctx={ctx} />;
-    else if ((m = match(r, '/manage/vendors/:id'))) master = <VendorEditor key={m.id} id={m.id} ctx={ctx} />;
-    else if (r === '/manage/people') master = <PeopleScreen ctx={ctx} people={people.items} />;
-    else if (r === '/manage/people/invite') { master = <PeopleScreen ctx={ctx} people={people.items} />; detail = <InviteRoleScreen ctx={ctx} />; }
-    else if ((m = match(r, '/manage/people/:uid'))) { master = <PeopleScreen ctx={ctx} people={people.items} selectedId={m.uid} />; detail = <PersonScreen key={m.uid} uid={m.uid} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/templates') master = <TemplatesScreen ctx={ctx} />;
-    else if (r === '/manage/templates/new') { master = <TemplatesScreen ctx={ctx} />; detail = <TemplateEditor ctx={ctx} />; }
-    else if ((m = match(r, '/manage/templates/:id'))) { master = <TemplatesScreen ctx={ctx} selectedId={m.id} />; detail = <TemplateEditor key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/places') master = <PlacesScreen ctx={ctx} open={open.items} />;
-    else if ((m = match(r, '/manage/places/:id'))) { master = <PlacesScreen ctx={ctx} open={open.items} selectedId={m.id} />; detail = <PlaceEditor key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/visits') master = <VisitsScreen ctx={ctx} visits={visits.items} />;
-    else if ((m = match(r, '/manage/visits/:id'))) { master = <VisitsScreen ctx={ctx} visits={visits.items} selectedId={m.id} />; detail = <VisitDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/donations') master = <DonationsScreen ctx={ctx} donations={donations.items} />;
-    else if ((m = match(r, '/manage/donations/:id'))) { master = <DonationsScreen ctx={ctx} donations={donations.items} selectedId={m.id} />; detail = <DonationDetailScreen key={m.id} id={m.id} ctx={ctx} panel={desktop} />; }
-    else if (r === '/manage/reports') master = <ReportsScreen ctx={ctx} />;
-    else if (r === '/manage/activity') master = <ActivityScreen ctx={ctx} />;
-    else if (r === '/manage/settings') master = <SettingsScreen ctx={ctx} />;
-    else if ((m = match(r, '/manage/settings/:page'))) master = <SettingsPage key={m.page} ctx={ctx} page={m.page as SettingsPageKey} />;
-    else master = mh;
-  }
-  const banner = open.error ? <div className="strip rust"><Icon name="info" size={18} />{open.error.includes('index') ? 'המערכת עדיין מתכוננת (אינדקסים). נסו שוב בעוד דקה.' : open.error}</div> : null;
-  return <Shell nav={nav} manage={manageNav} profile={profile} role={owner ? ROLE_LABELS.owner : manager ? ROLE_LABELS.manager : ROLE_LABELS[profile.role]} online={online} master={<>{banner}{master}</>} detail={detail} narrow={NARROW.test(r)} />;
-}
-
 function Splash() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(t); }, []);
@@ -261,10 +130,12 @@ export default function App() {
   if (user && (missing || !profile)) {
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
-    return <ToastProvider><DemoStrip /><OnboardingPage key={user.uid} user={user} fields={settings.registrationFields} /></ToastProvider>;
+    return <ToastProvider><V2DemoStrip /><FirstEntry key={user.uid} user={user} settings={settings} /></ToastProvider>;
   }
-  if (user && profile && deletion.item) return <ToastProvider><DemoStrip /><DeletionScheduledPage profile={profile} request={deletion.item} /></ToastProvider>;
-  if (user && profile && profile.status === 'blocked') return <ToastProvider><DemoStrip /><BlockedPage profile={profile} contact={settings.contact} /></ToastProvider>;
-  if (user && profile && isTeam(profile, user.email)) return <ToastProvider><TeamApp user={user} profile={profile} settings={settings} /></ToastProvider>;
+  if (user && profile && deletion.item) return <ToastProvider><V2DemoStrip /><DeletionScheduledPage profile={profile} request={deletion.item} /></ToastProvider>;
+  // X2: a suspended account (any role) sees the new suspended screen
+  if (user && profile && profile.status === 'blocked') return <ToastProvider><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></ToastProvider>;
+  // staff, managers, owners and vendors: the redesigned app
+  if (user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
   return <ToastProvider><GuestApp user={user} profile={profile} settings={settings} /></ToastProvider>;
 }

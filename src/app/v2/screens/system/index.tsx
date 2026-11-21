@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { Placeholder } from '../../placeholder';
+import { OnboardingPage as LegacyOnboarding } from '../../../screens/Guest';
 
 /** L6-Me,C12-Profile */
 export function ProfileScreen(p: ScreenProps): ReactNode { return <Placeholder name="ProfileScreen" ids="L6-Me,C12-Profile" params={p.params} />; }
@@ -27,4 +28,9 @@ export function DemoSheet(_: { open: boolean; onClose: () => void }): ReactNode 
 /** X2: suspended account (blocked status). Rendered by the shell instead of the app. */
 export function SuspendedScreen(_: { ctx: { profile: import('../../../types').Profile; settings: import('../../../types').Settings } }): ReactNode { return null; }
 
+/** First entry for an account without a profile. C9 for someone a manager added (role invite) and for ?demo=new;
+ *  everyone else keeps the legacy guest registration. Placeholder: legacy registration. */
+export function FirstEntry(p: { user: import('../../../firebase').Session; settings: import('../../../types').Settings }): ReactNode {
+  return <LegacyOnboarding user={p.user} fields={p.settings.registrationFields} />;
+}
 export type { V2Ctx };
