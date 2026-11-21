@@ -19,12 +19,12 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | C8-Offline | staff | regular | /tasks | demo:offline |
 | X1-Refused | staff | regular | /tasks | demo:refuseNext; click:לקחת |
 | B4-Receive | staff | regular | /tasks |  |
-| P1-Root | manager | regular | /tasks |  |
-| P6-Full | manager | regular | /tasks | fullpage |
-| P2-List | manager | regular | /projects |  |
-| P3-Project | manager | regular | /projects/demo-p-festival |  |
-| P4-Step | manager | regular | /projects/demo-p-festival/steps/demo-ps-police |  |
-| P5-New | manager | regular | /projects/new |  |
+| P1-Root | owner | regular | /tasks |  |
+| P6-Full | owner | regular | /tasks | fullpage |
+| P2-List | owner | regular | /projects |  |
+| P3-Project | owner | regular | /projects/demo-p-festival |  |
+| P4-Step | owner | regular | /projects/demo-p-festival/steps/demo-ps-police |  |
+| P5-New | owner | regular | /projects/new | fill:לאן רוצים להגיע=מערכת השקיה חדשה; fill:עד מתי=סוף דצמבר; fill:צעד 1=למדוד את השטח ולשרטט; click:צעד נוסף; fill:צעד 2=לקבל שלוש הצעות מחיר; click:צעד נוסף; fill:צעד 3=לאשר תקציב עם אליה; click:צעד נוסף; fill:צעד 4=להזמין ולהתקין |
 | L1-Templates | manager | regular | /manage/recurring |  |
 | L2-Template | manager | regular | /manage/recurring/demo-tpl-pots |  |
 | L3-Places | staff | regular | /places |  |
