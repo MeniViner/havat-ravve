@@ -132,9 +132,9 @@ export type ShoppingTrip = {
 };
 
 export type RoleInvite = { id: string; email: string; role: 'staff' | 'manager' | 'owner'; createdBy: Actor; createdAt: string };
-export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
+export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings' | 'project';
 export type Activity = { id: string; kind: ActivityKind; refId: string; action: string; text: string; by: Actor; at: string; subjectUid: string; eventId: string };
-export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
+export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט' };
 export type Invite = { code: string; role: 'staff'; active: boolean; createdBy: Actor; createdAt: string; usedBy: string[] };
 
 export const CATEGORY_LABELS: Record<ShoppingCategory, string> = { super: 'סופר', building: 'חומרי בניין', online: 'אינטרנט', giveaway: 'מוצרי מסירה' };
@@ -235,6 +235,8 @@ export type CalendarItem = { id: string; ownerUid: string; ownerName: string; ti
 export type Project = {
   id: string; title: string; goal: string; deadline: string; deadlineText?: string;
   members: Actor[]; status: 'active' | 'done'; createdBy: Actor; createdAt: string; updatedAt: string;
+  /** uids of members (rules and queries); short name for compact places (P4, P6); when the last step was done. */
+  memberUids?: string[]; short?: string; doneAt?: string | null;
 };
 /** projects/{pid}/steps/{sid} */
 export type ProjectStep = {
