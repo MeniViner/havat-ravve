@@ -12,6 +12,7 @@ import { readyAuth } from '../../firebase';
 import type { Activity, CalendarItem, FarmEvent, Place, Profile, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
 import type { V2Ctx } from '../ctx';
+import { gw } from '../gender';
 
 // ---------- small date helpers (Israeli calendar day keys) ----------
 const keyToUtc = (k: string) => { const [y, m, d] = k.split('-').map(Number); return Date.UTC(y, m - 1, d); };
@@ -271,7 +272,7 @@ export function searchAll(ctx: V2Ctx, data: ReturnType<typeof useSearchData>, q:
       const owes = data.unpaid.filter((t) => t.ownerUid === p.uid && t.status === 'valid');
       const sum = owes.reduce((s, t) => s + (Number(t.price) || 0), 0);
       const visit = data.visits.find((v) => v.uid === p.uid && v.status === 'new');
-      const extra = sum ? owes[0].eventTitle : visit ? 'בקשת ביקור' : '';
+      const extra = sum ? owes[0].eventTitle : visit ? gw(p.displayName, 'ביקש ביקור', 'ביקשה ביקור', p) : '';
       const role = ROLE_TAG[p.role];
       out.push({ id: p.uid, kind: 'people', title: p.displayName, meta: [p.phone, extra].filter(Boolean).join(' · '), initials: p.displayName,
         tag: sum ? { text: `${Math.round(sum).toLocaleString('en-US')} ₪`, tone: 'waiting' } : role ? { text: role, tone: 'warm' } : undefined, href: `/manage/people/${p.uid}` });
