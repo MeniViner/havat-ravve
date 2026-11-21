@@ -4,6 +4,7 @@
 // Model and rules: docs/redesign-data/vendor.md.
 import { useMemo } from 'react';
 import { useDoc, useList, write, newId, push, transact, ConflictError } from '../../db';
+import { isFemale } from '../gender';
 import { nowIso, nowMs, todayKey } from '../../clock';
 import { logActivity } from '../../activity';
 import { fillTemplate } from '../../data';
@@ -47,8 +48,8 @@ type Live = { id?: string; entered?: number };
 /** Gendered word: g(fem, 'אישר', 'אישרה'). */
 export const g = (fem: boolean | undefined, m: string, f: string) => (fem ? f : m);
 /** Team members carry no gender field; Hebrew first names ending in ה / ית are read as feminine (נועה, דנה). */
-const MALE_H = ['אליה', 'יהודה', 'משה', 'אריה', 'שמעיה', 'יונה', 'נוה'];
-export const femName = (name: string) => { const f = (name || '').trim().split(/\s+/)[0] || ''; return !MALE_H.includes(f) && (/ה$/.test(f) || /ית$/.test(f)); };
+/** Gendered wording for a person without an explicit `fem`: the app-wide rule (src/app/v2/gender.ts). */
+export const femName = (name: string) => isFemale(name);
 export const first = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
 /** "רז ותמר", "נועה, אורלי ודנה". */
 export const andList = (names: string[]) => names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} ו${names[names.length - 1]}`;

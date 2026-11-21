@@ -147,7 +147,7 @@ function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
     } catch (x) { toast.refused(errText(x)); }
   };
   return (
-    <AppScreen variant="detail" gap={12} bar={<BottomBar><Button size="bar" grow icon="message" onClick={() => setPick(true)}>הזמנה לאירוע</Button></BottomBar>}>
+    <AppScreen variant="detail" gap={10} bar={<BottomBar><Button size="bar" grow icon="message" onClick={() => setPick(true)}>הזמנה לאירוע</Button></BottomBar>}>
       <TopBar back={{ label: 'בעלי דוכנים', onClick: () => back('/manage/vendors') }} end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => navigate(`/manage/vendors/${v.id}?edit=1`)}>עריכה</Button>} />
       <div className="vendor-titlerow"><PageTitle size="detail">{v.name}</PageTitle>{v.external === false ? <Tag tone="warm">של החווה</Tag> : <Tag>חיצוני</Tag>}</div>
       {v.phone && (
@@ -156,7 +156,7 @@ function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
           <Button variant="outline" size="tall" icon="phone" iconSize={18} onClick={() => open(telUrl(v.phone))}>התקשרות</Button>
         </div>
       )}
-      <DetailList>
+      <DetailList className="vendor-dl50">
         {v.contact && <DetailRow term="איש קשר" action={v.external !== false ? <TextLink onClick={() => navigate(`/manage/vendors/${v.id}/access`)}>גישה</TextLink> : undefined}>{v.contact}</DetailRow>}
         {v.phone && <DetailRow term="טלפון"><span dir="ltr">{v.phone}</span></DetailRow>}
         {(v.sells || v.product) && <DetailRow term="מוכר">{v.sells || v.product}</DetailRow>}
@@ -230,7 +230,7 @@ export function VendorAccess({ ctx, params }: ScreenProps) {
     catch (x) { toast.refused(errText(x)); }
   };
   return (
-    <AppScreen variant="detail" gap={12}>
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: vd.name, onClick: () => back(`/manage/vendors/${vd.id}`) }} />
       <PageTitle>גישה לאפליקציה</PageTitle>
       {people.length ? (
@@ -363,7 +363,7 @@ export function VendorsToday({ ctx, params }: ScreenProps) {
     catch (x) { toast.refused(errText(x)); }
   };
   return (
-    <AppScreen variant="detail" gap={12}>
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: 'האירוע חי', onClick: () => back(`/manage/events/${eid}/live`) }}
         end={<Button icon="megaphone" iconSize={18} onClick={() => navigate(`/manage/broadcasts/new?audience=vendors&event=${eid}`)}>הודעה</Button>} />
       <PageTitle>הדוכנים היום</PageTitle>

@@ -56,7 +56,7 @@ function Stall({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
         </div>
         {!ctx.helper && <Button variant="outline" icon="edit" iconSize={16} onClick={() => navigate('/vendor/stall?edit=1')}>עריכה</Button>}
       </Card>
-      <DetailList>
+      <DetailList className="vendor-dl50">
         <DetailRow term="מוכרים">{v.sells || v.product || '—'}</DetailRow>
         {v.phone && <DetailRow term="טלפון"><span dir="ltr">{v.phone}</span></DetailRow>}
         <DetailRow term="צריך">{needsText(v.needs) || 'שום דבר מיוחד'}</DetailRow>
