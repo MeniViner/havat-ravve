@@ -144,10 +144,11 @@ t('staffing stations and stats', () => {
 });
 
 // ---------- M6 live ----------
-t('live numbers and scan parts', () => {
-  const n = L.liveNumbers({ entered: 212, paidAtGate: 34, tickets: 640, stallTabs: 18, stallSold: 1240 }, [], []);
-  assert.deepEqual([n.entered, n.total, n.notArrived, n.paidAtGate, n.stallTabs, n.stallSold], [212, 640, 428, 34, 18, 1240]);
-  assert.equal(L.shareLabel(n.share), 'שליש מהכרטיסים נכנסו');
+t('M6 tiles, share label and scan parts', () => {
+  const tabs = [{ status: 'paid', items: [{}], total: 40 }, { status: 'open', items: [], total: 0 }, { status: 'waived', items: [{}], total: 12 }, { status: 'open', items: [{}], total: 18 }];
+  assert.deepEqual(L.dayTiles({ paidAtGate: 34 }, [], tabs), { paidAtGate: 34, stallTabs: 2, stallSold: 58 });
+  assert.equal(L.dayTiles(null, [{ paymentStatus: 'paid_onsite' }, { paymentStatus: 'paid' }], []).paidAtGate, 1);
+  assert.equal(L.shareLabel(212 / 640), 'שליש מהכרטיסים נכנסו');
   assert.equal(L.scanPart({ meta: '' }, { index: 2, total: 3 }), '2/3');
   assert.equal(L.scanPart({ meta: 'כרטיס 1 מתוך 2' }), '1/2');
   assert.equal(L.scanPart({ meta: 'כרטיס אחד' }), '1/1');

@@ -12,8 +12,8 @@ import {
 import { eventCalendarFields } from '../../calendarRef';
 import { notify } from './notify';
 import { dayName, ddmm } from '../format';
-import type { Actor, AppNotification, CalendarItem, FarmEvent, GateScan, PaymentStatus, Product, Staffing, Tab, Task, Ticket } from '../../types';
-import { hoursText, type EventDebt, type Live } from '../screens/events/logic';
+import type { Actor, AppNotification, CalendarItem, FarmEvent, PaymentStatus, Product, Staffing, Tab, Task, Ticket } from '../../types';
+import { hoursText, type EventDebt } from '../screens/events/logic';
 
 // ---------- listeners ----------
 const none = <T,>() => ({ items: [] as T[], loading: false, error: '' });
@@ -29,8 +29,6 @@ export const useTabsIn = (ids: string[], enabled = true) => {
 };
 export const useEventTasks = (eventId: string, enabled = true) => useList<Task>('tasks', { where: [['eventId', '==', eventId]] }, enabled && !!eventId);
 export const useStaffing = (eventId: string, enabled = true) => useList<Staffing>(`events/${eventId || '_'}/staffing`, {}, enabled && !!eventId);
-export const useLiveCounters = (eventId: string, enabled = true) => useDoc<Live & { id: string }>(`events/${eventId || '_'}/counters/live`, enabled && !!eventId);
-export const useRecentScans = (eventId: string, n = 3, enabled = true) => useList<GateScan>(`events/${eventId || '_'}/scans`, { orderBy: [['at', 'desc']], limit: n }, enabled && !!eventId);
 /** Presence entries of one day (V4 "פנויים באותו יום"). */
 export function usePresenceOn(dateKey: string, enabled = true) {
   const r = useList<CalendarItem>('calendar', { where: [['date', '==', dateKey]] }, enabled && !!dateKey);

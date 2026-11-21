@@ -12,12 +12,13 @@ import {
 } from '../../../data';
 import { nowMs, useClockVersion } from '../../../clock';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
-import { useEventTasks, useStaffing, useFiles, useLiveCounters, useRecentScans, approveOrders, addGuestOrder, stampReminder } from '../../data/events';
+import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
-  filterOrders, ticketsWord, liveNumbers, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
+  filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
   isPaid, type EventTab, type GuestFilter, type Order,
 } from './logic';
+import { useCounters, useScans, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
 import { DEFAULT_SETTINGS, PAYMENT_LABELS, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
 
@@ -268,11 +269,13 @@ function AddGuestSheet({ ctx, e, open, onClose }: { ctx: V2Ctx; e: FarmEvent; op
 
 // ---------- M6 יום האירוע ----------
 function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
-  const counters = useLiveCounters(e.id, ctx.manager);
-  const scans = useRecentScans(e.id, 3, ctx.manager);
+  const counters = useCounters(e.id, ctx.manager);
+  const scans = useScans(e.id, 3, ctx.manager);
   const tickets = useEventTickets(e.id, ctx.manager);
   const tabs = useEventTabs(e.id, ctx.manager);
-  const L = liveNumbers(counters.item, tickets.items, tabs.items);
+  const live = liveOf(tickets.items, counters.item);
+  const share = live.total ? live.entered / live.total : 0;
+  const L = { ...live, ...dayTiles(counters.item, tickets.items, tabs.items) };
   return (
     <>
       <Hero className="events-livehero" aria-label="כניסה">
@@ -280,9 +283,9 @@ function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           <HeroNumber>{num(L.entered)}</HeroNumber>
           <span className="events-livehero__of">נכנסו מתוך {num(L.total)} כרטיסים</span>
         </div>
-        <Bar tone="hero" value={L.share} label={shareLabel(L.share)} />
+        <Bar tone="hero" value={share} label={shareLabel(share)} />
         <div className="k-hero__split">
-          <span>{num(L.notArrived)} עוד לא הגיעו</span>
+          <span>{num(L.waiting)} עוד לא הגיעו</span>
           <a className="k-hero__link" {...link(`/manage/events/${e.id}/live`)}>מסך חי מלא</a>
         </div>
       </Hero>
@@ -318,7 +321,9 @@ function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const tickets = useEventTickets(e.id, ctx.manager);
   const tabs = useEventTabs(e.id, ctx.manager);
   const donations = useDonations(ctx.manager);
-  const S = eventSummary(tickets.items, tabs.items);
+  const counters = useCounters(e.id, ctx.manager);
+  // arrivals: counters/live from the gate (event-day data) when the event used it, the tickets otherwise
+  const S = { ...eventSummary(tickets.items, tabs.items), arrived: liveOf(tickets.items, counters.item).entered };
   const debts = debtsOf(e.id, tickets.items, tabs.items);
   const T = debtTotals(debts);
   const top = topSold(tabs.items);

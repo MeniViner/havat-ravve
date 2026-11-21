@@ -47,7 +47,7 @@ Rules requested (exact shape changes):
 - `tabShape()`: add `'reminderSentAt'` and `'claimedAt'` the same way. Guest branch: allow `changed().hasOnly(['status','claimedAt','updatedAt'])` for open → claimed.
 - products `write`: add `'unit'` to `hasOnly`, with `(!('unit' in incoming()) || str(incoming().unit, 20))`.
 - files `write`: add `'mime'` and `'size'` to `hasOnly`, and let `url` be `str(incoming().url, 700000) && (incoming().url.matches('https://.*') || incoming().url.matches('data:(image/(jpeg|webp|png)|application/pdf);base64,.*'))`. A document stays under the 1 MiB limit.
-- `events/{id}/counters/live`: M6 reads it (staff). It may carry optional `tickets`, `stallTabs` and `stallSold` (written by the gate and stall, event-day area). When they are missing, M6 counts from the tickets and tabs it already listens to.
+- `events/{id}/counters/live`, `counters/cash`, `events/{id}.closed`: owned by the event-day area (`src/app/v2/data/eventday.ts`, see `eventday.md`). M6 and M7 read them through its hooks (`useCounters`, `useScans`, `liveNumbers`); no rule change from this area. M7 counts arrivals from `counters/live.entered` when the gate used it, and an event with `closed` reads as ended.
 
 ## Reads (listeners)
 
@@ -58,8 +58,8 @@ Rules requested (exact shape changes):
 | `tickets` / `tabs` | `eventId ==` (data.ts `useEventTickets` / `useEventTabs`) | M4-M7, N12, V5 |
 | `tasks` | `eventId ==` | M4 "משימות הכנה" |
 | `events/{id}/staffing`, `/files`, `/products`, `/vendors` | all | V4, V3, N9, M4 |
-| `events/{id}/counters/live` | doc | M6 |
-| `events/{id}/scans` | `orderBy at desc, limit 3` | M6 "סריקות אחרונות" |
+| `events/{id}/counters/live` | doc (`eventday.ts useCounters`) | M6, M7 arrivals |
+| `events/{id}/scans` | `orderBy at desc, limit 3` (`eventday.ts useScans`) | M6 "סריקות אחרונות" |
 | `calendar` | `date ==`, filtered to `kind == 'presence'` | V4 "פנויים באותו יום" |
 
 No new composite index: every query is a single-field filter, or one `orderBy` without a filter.

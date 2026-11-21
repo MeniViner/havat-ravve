@@ -4,7 +4,7 @@
 import { A, E, U, profiles, settings } from '../data';
 import type { Slice, Seed, Row } from './types';
 import { put, drop, patch } from './types';
-import type { Actor, Ticket, Tab, TabItem, GateScan } from '../../types';
+import type { Actor, Ticket, Tab, TabItem } from '../../types';
 
 const ANCHOR_MS = new Date('2026-11-19T10:30:00+02:00').getTime();
 const ago = (h: number) => new Date(ANCHOR_MS - h * 3600_000).toISOString();
@@ -52,9 +52,10 @@ function festival(seed: Seed, scenario: string) {
     done('demo-t-fest-map', 'לשרטט מפת הצבה לדוכנים', A.noa, 4),
   ]);
 
-  // V4 staffing builds on the farm slice's festival crew (gate / stall / parking, 6 people, F6 "6 בצוות האירוע").
-  // Parking needs a third person, so M4 reads "6 משובצים · בחניה חסר מישהו" and V4 shows the parking card short.
-  patch(seed, `events/${E.fall}/staffing`, 'parking', { needed: 3 });
+  // V4 staffing builds on the rows the farm slice (all days: 6 people, F6 "6 בצוות האירוע") and the event-day slice
+  // (event day and after: the V4 people, parking empty) already seed. On a regular day parking needs a third person,
+  // so M4 reads "6 משובצים · בחניה חסר מישהו" and V4 shows the parking card short.
+  if (scenario === 'regular') patch(seed, `events/${E.fall}/staffing`, 'parking', { needed: 3 });
   // V4 "4 פנויים באותו יום": team at the farm on the festival day, not assigned (regular day only: the event day has its own presence)
   if (scenario === 'regular') {
     const pres = (id: string, a: Actor, time: string): Row => ({ id, ownerUid: a.uid, ownerName: a.name, title: `${a.name.split(' ')[0]} בחווה`, date: FEST, time, kind: 'presence', refId: '', createdAt: ago(30) });
@@ -72,36 +73,7 @@ function festival(seed: Seed, scenario: string) {
     file('demo-f-insurance', 'ביטוח צד שלישי', 'doc', TINY_PDF, A.eliya, '2026-11-03', 'application/pdf'),
     file('demo-f-suppliers', 'רשימת ספקים וטלפונים', 'image', '/assets/rava-sunset.webp', A.beni, '2026-11-16', 'image/webp'),
   ]);
-
-  // M6 live counters and the last scans, unless the event-day slice already wrote them
-  if (scenario === 'eventDay') {
-    const extra = { tickets: 640, stallTabs: 18, stallSold: 1240 };
-    const C = `events/${E.fall}/counters`;
-    const docKey = `${C}/live`;
-    const existing = (seed.collections[C] || []).find((r) => r.id === 'live') || seed.documents[docKey];
-    if (existing) {
-      if (seed.documents[docKey]) seed.documents[docKey] = { ...extra, ...seed.documents[docKey] };
-      patch(seed, C, 'live', { ...extra, ...((seed.collections[C] || []).find((r) => r.id === 'live') || {}) });
-    } else {
-      put(seed, C, [{ id: 'live', entered: 212, paidAtGate: 34, payLater: 3, payLaterAmount: 150, rejected: 2, scans: 217, perHalfHour: { '16:00': 38, '16:30': 71, '17:00': 103 }, ...extra }]);
-    }
-    const S = `events/${E.fall}/scans`;
-    if (!(seed.collections[S] || []).length) {
-      const scan = (n: number, t: string, ticketId: string, orderId: string, name: string, meta: string, result: GateScan['result'], by: Actor, more: Partial<GateScan> = {}): GateScan =>
-        ({ id: `demo-scan-${n}`, eventId: E.fall, ticketId, orderId, name, meta, result, by, at: on(FEST, t), ...more });
-      put(seed, S, [
-        scan(1, '17:20', 'demo-o-2-2', 'demo-o-2', 'מיכל ברק', 'כרטיס 2 מתוך 3', 'ok', A.yoav),
-        scan(2, '17:19', 'demo-o-3-1', 'demo-o-3', 'דוד כהן', 'כרטיס 1 מתוך 4', 'ok', A.yoav),
-        scan(3, '17:18', 'demo-o-7-1', 'demo-o-7', 'שירה כץ', 'כרטיס אחד · 50 ₪ מזומן', 'paidAtGate', A.noa, { amount: 50, method: 'cash' }),
-        scan(4, '17:11', 'demo-o-1-1', 'demo-o-1', 'רוני לוי', '3 כרטיסים · 150 ₪', 'payLater', A.yoav, { amount: 150 }),
-        scan(5, '17:07', 'demo-o-5-1', 'demo-o-5', 'אורלי לוי', 'כרטיס אחד', 'ok', A.noa),
-        scan(6, '17:02', 'demo-o-9-1', 'demo-o-9', 'יוסי מזרחי', 'ההזמנה בוטלה ב־17.11 (נועה ביטלה; 6 כרטיסים · 300 ₪ · לא שולם)', 'rejected', A.yoav, { reason: 'cancelled' }),
-        scan(7, '16:58', '', 'demo-o-6', 'נועם אדרי', 'כרטיס 2 מתוך 2', 'ok', A.noa),
-        scan(8, '16:55', '', 'demo-o-6', 'נועם אדרי', 'כרטיס 1 מתוך 2', 'ok', A.noa),
-        scan(9, '16:51', '', '', 'רחל שטרן', 'כרטיס אחד · 50 ₪ ביט', 'paidAtGate', A.yoav, { amount: 50, method: 'bit' }),
-      ] as unknown as Row[]);
-    }
-  }
+  // M6 reads counters/live and the scans seeded by the live slice (event-day area); nothing added here.
 }
 
 // ---------- the October fair: 96 registered, 81 came, 650 ₪ tickets, 1,180 ₪ stall, 4 open debts (616 ₪) ----------

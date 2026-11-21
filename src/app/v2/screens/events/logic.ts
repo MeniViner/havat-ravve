@@ -1,6 +1,6 @@
 // Events area: pure helpers (no data access), shared by the screens and tests/v2-events.mjs.
 // Numbers here are what the screens show: summary sums (M7), debts (V5, M3, M7), guests (M5), staffing (V4, M4), live (M6).
-import type { FarmEvent, Ticket, Tab, TabItem, Staffing, CalendarItem, LiveCounters, GateScan, Debt, PaymentStatus } from '../../../types';
+import type { FarmEvent, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
 import { MONTHS, dayName, ddmm, hhmm, inDays, money, firstName, keyOf } from '../../format';
 
 const TZ = 'Asia/Jerusalem';
@@ -302,17 +302,14 @@ export function staffingMeta(st: { assigned: number; missing: number; missingNam
 export const hoursText = (h: string) => h.replace(/\s*-\s*/, '–');
 
 // ---------- live (M6) ----------
-export type Live = LiveCounters & { tickets?: number; stallTabs?: number; stallSold?: number };
-export function liveNumbers(c: Partial<Live> | null, tickets: Ticket[], tabs: Tab[]) {
-  const s = guestStats(tickets);
-  const total = c?.tickets ?? s.tickets;
-  const entered = c?.entered ?? s.arrived;
+// Entered / total / waiting come from the event-day data (data/eventday.ts liveNumbers over counters/live).
+/** M6 tiles: paid at the gate (counters/live, else the tickets) and the stall (tabs with something in them). */
+export function dayTiles(c: { paidAtGate?: number } | null, tickets: Ticket[], tabs: Tab[]) {
   const open = tabs.filter((t) => t.status !== 'waived' && (t.items.length || t.total));
   return {
-    total, entered, notArrived: Math.max(0, total - entered), share: total ? entered / total : 0,
     paidAtGate: c?.paidAtGate ?? tickets.filter((t) => t.paymentStatus === 'paid_onsite').length,
-    stallTabs: c?.stallTabs ?? open.length,
-    stallSold: c?.stallSold ?? open.reduce((x, t) => x + t.total, 0),
+    stallTabs: open.length,
+    stallSold: open.reduce((x, t) => x + t.total, 0),
   };
 }
 /** "2/3" for a scan: from the ticket, or from the scan text ("כרטיס 2 מתוך 3", "כרטיס אחד"). */
