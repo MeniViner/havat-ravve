@@ -4,6 +4,7 @@ import { AppScreen, RootHead, go, useToast } from '../../core';
 import { AddChip, Button, CaptureBar, CheckButton, EmptyState, ListCard, Row, Tabs, Tag, TextLink } from '../../kit';
 import { hhmm } from '../../format';
 import { todayKey } from '../../../clock';
+import { useParam } from '../../../router';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingCategory, ShoppingItem } from '../../../types';
 import {
@@ -30,7 +31,9 @@ const doneBy = (i: ShoppingItem) => {
 };
 
 export function ShoppingRoot({ ctx, params }: ScreenProps) {
-  const key = (LISTS.some((l) => l.key === params.list) ? params.list : 'super') as ListKey;
+  // the shell re-resolves params only when the path changes; a tab only changes ?list=, so read it live
+  const list = useParam('list') || params.list;
+  const key = (LISTS.some((l) => l.key === list) ? list : 'super') as ListKey;
   const cat = catOfKey(key);
   const today = todayKey();
   const { open, history } = useShopping();
