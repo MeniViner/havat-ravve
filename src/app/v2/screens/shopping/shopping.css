@@ -1,0 +1,67 @@
+/* Shopping area (S1-S4, S6-S8). Only what the kit does not cover; tokens from .v2. */
+
+/* S1: "אני בסופר, מתחילים" (48 high, 16/600, icon gap 8) and the dashed suggestions row */
+.v2 .shopping-tripbtn { font-size: 16px; gap: 8px; }
+.shopping-chips { display: flex; gap: 8px; overflow: hidden; }
+
+/* a ticked row folds away before it moves to "נקנה היום" */
+@media (prefers-reduced-motion: no-preference) {
+  .v2 .shopping-leaving { animation: shopping-fold .42s ease-in forwards; overflow: hidden; }
+  @keyframes shopping-fold {
+    0%, 45% { opacity: 1; max-height: 64px; }
+    100% { opacity: 0; max-height: 0; }
+  }
+}
+
+/* S4 */
+.v2 .shopping-title { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.shopping-attach { display: flex; gap: 8px; }
+.v2 .shopping-attach .k-btn { font-size: 15px; }
+.shopping-photo { display: block; width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.shopping-history { display: flex; flex-direction: column; gap: 4px; }
+.v2 .k-btn.shopping-delete { padding: 0 18px; }
+
+/* S6: trip */
+.k-screen.shopping-trip .k-screen__body { padding-top: 10px; gap: 12px; }
+.shopping-trip__top { display: flex; align-items: center; justify-content: space-between; }
+.shopping-trip__top > span { font-size: 15px; font-weight: 600; }
+.shopping-trip__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.shopping-trip__head h1 { margin: 0; font-size: 34px; line-height: 1.1; font-weight: 700; }
+.shopping-trip__head span { font-size: 15px; color: var(--soft); }
+.shopping-trip-row {
+  display: flex; align-items: center; gap: 10px; min-height: 64px; padding-block: 0;
+  padding-inline-start: 12px; padding-inline-end: 6px; border-top: 1px solid var(--line);
+}
+.shopping-trip-row__check { flex: none; width: 52px; height: 52px; border: 0; background: transparent; padding: 10px; display: flex; align-items: center; justify-content: center; }
+.shopping-trip-row__box {
+  display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; box-sizing: border-box;
+  border-radius: 8px; border: 2.5px solid var(--ink); color: #FFFFFF;
+}
+.shopping-trip-row__box--on { border: 0; background: var(--selected); }
+@media (prefers-reduced-motion: no-preference) {
+  .shopping-trip-row__box--on .k-icon { animation: shopping-pop .18s ease-out; }
+  @keyframes shopping-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+}
+.shopping-trip-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shopping-trip-row__title { font-size: 19px; font-weight: 600; line-height: 1.25; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.shopping-trip-row--done .shopping-trip-row__title { text-decoration: line-through; color: var(--soft); }
+.shopping-trip-row__meta { font-size: 15px; color: var(--soft); }
+.shopping-trip-row__none {
+  flex: none; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--soft); font-size: 15px;
+}
+.shopping-trip-row__none[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; }
+.v2 .k-tag.shopping-live { background: var(--amber); color: var(--ink); padding: 0 6px; }
+
+/* S7: trip closed */
+.v2 .shopping-done-title { margin-top: 12px; }
+.shopping-stats { display: flex; gap: 8px; }
+.shopping-stat { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; }
+.shopping-stat b { font-size: 30px; line-height: 1.1; }
+.shopping-stat span { font-size: 14px; color: var(--soft); }
+.shopping-done-mark { flex: none; display: flex; color: var(--selected); }
+.v2 .shopping-plain .k-row__title { font-weight: 500; }
+
+/* S8: search 48 high with a 1px line; "שוב" */
+.v2 .shopping-search { height: 48px; border-width: 1px; }
+.v2 .k-btn.shopping-again { gap: 4px; }
