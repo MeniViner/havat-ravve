@@ -199,7 +199,7 @@ export const deleteTemplate = (id: string) => write.remove('task_templates', id)
 export const useTodayInstances = (enabled: boolean, manager: boolean, key: string) => useList<Task>('tasks', { where: [...staffOnly(manager)!, ['dateKey', '==', key]] }, enabled);
 /** Creates today's missing instances of due recurring templates (id = templateId_date, so two phones create the same document).
  *  No transaction: it has to work without reception. If the document already exists on the server the rules refuse the second write, quietly. */
-export function materializeToday(templates: Template[], existing: Task[], actor: Actor, key: string) {
+export function materializeToday(templates: Template[], existing: Task[], actor: Actor, key: string, places: Place[] = []) {
   const weekday = new Date(key + 'T12:00:00').getDay();
   const have = new Set(existing.map((t) => t.id));
   for (const t of templates) {
@@ -207,7 +207,10 @@ export function materializeToday(templates: Template[], existing: Task[], actor:
     const id = `${t.id}_${key}`;
     if (have.has(id)) continue;
     const now = nowIso();
-    write.set('tasks', id, { title: t.title, note: t.note, photo: '', location: null, dueDate: key, managersOnly: t.managersOnly, templateId: t.id, dateKey: key, createdBy: actor, createdAt: now, done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', assignee: null, urgent: false, updatedAt: now }, { quiet: true }).catch(() => {});
+    // v2: the template's place and default person go onto the day's task, so queries by person and place see them
+    const pl = t.placeId ? places.find((p) => p.id === t.placeId) : undefined;
+    const location = pl && typeof pl.lat === 'number' ? { lat: pl.lat, lng: pl.lng, placeId: pl.id, placeName: pl.name } : null;
+    write.set('tasks', id, { title: t.title, note: t.note, photo: '', location, dueDate: key, managersOnly: t.managersOnly, templateId: t.id, dateKey: key, createdBy: actor, createdAt: now, done: false, doneBy: null, doneAt: null, donePhoto: '', doneNote: '', assignee: t.assignee || null, urgent: false, updatedAt: now }, { quiet: true }).catch(() => {});
   }
 }
 /** The calendar day in Israel, kept current while the app stays open overnight or comes back from the background. */

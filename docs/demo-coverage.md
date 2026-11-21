@@ -5,19 +5,19 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 
 | id | persona | scenario | route | steps |
 |---|---|---|---|---|
-| T1-Root | staff | regular | /tasks |  |
-| T2-Time | staff | regular | /tasks?view=time |  |
-| T4-Done | staff | regular | /tasks | click:בוצע |
+| T1-Root | staff | regular | /tasks | click:קראתי |
+| T2-Time | staff | regular | /tasks?view=time | click:קראתי |
+| T4-Done | staff | regular | /tasks | click:קראתי; button:בוצע |
 | T3-Task | staff | regular | /tasks/demo-t-toolbox |  |
 | C3-TaskLinks | staff | regular | /tasks/demo-t-tables |  |
-| C4-Assign | manager | regular | /tasks/demo-t-tap/assign |  |
-| T5-Add | staff | regular | /new |  |
+| C4-Assign | owner | regular | /tasks/demo-t-tap/assign |  |
+| T5-Add | staff | regular | /new?text=לתקן את הברז ליד החממה |  |
 | T6-History | staff | regular | /tasks/history |  |
-| L5-MineEmpty | staff | regular | /tasks?view=mine | demo:empty |
+| L5-MineEmpty | staff | regular | /tasks?view=mine | click:קראתי; demo:empty |
 | C6-DonePhoto | staff | regular | /tasks/demo-t-toolbox/done |  |
 | C7-DayEnd | staff | regular | /day |  |
-| C8-Offline | staff | regular | /tasks | demo:offline |
-| X1-Refused | staff | regular | /tasks | demo:refuseNext; click:לקחת |
+| C8-Offline | staff | regular | /tasks | click:קראתי; demo:offline |
+| X1-Refused | staff | regular | /tasks | click:קראתי; demo:refuseNext; click:לקחת |
 | B4-Receive | staff | regular | /tasks |  |
 | P1-Root | owner | regular | /tasks |  |
 | P6-Full | owner | regular | /tasks | fullpage |
@@ -28,12 +28,12 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | L1-Templates | manager | regular | /manage/recurring |  |
 | L2-Template | manager | regular | /manage/recurring/demo-tpl-pots |  |
 | L3-Places | staff | regular | /places |  |
-| L4-Place | manager | regular | /places/demo-p-stall |  |
+| L4-Place | manager | regular | /places/demo-p-greenhouse |  |
 | S1-Root | staff | regular | /shopping |  |
 | S2-Wish | staff | regular | /shopping?list=wish |  |
 | S3-Empty | staff | regular | /shopping?list=online |  |
 | S4-Item | staff | regular | /shopping/demo-s-milk |  |
-| S5-Add | staff | regular | /new?kind=shopping |  |
+| S5-Add | staff | regular | /new?kind=shopping&text=2 שקי מלט לגדר, דחוף |  |
 | S6-Trip | staff | eventDay | /shopping/trip |  |
 | S7-TripEnd | staff | afterEvent | /shopping/trip/done |  |
 | S8-History | staff | regular | /shopping/history |  |
@@ -50,9 +50,9 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | E3-Ok | staff | eventDay | /event/gate | click:QR תקין |
 | E4-Pay | staff | eventDay | /event/gate | click:QR לא שולם |
 | E5-Bad | staff | eventDay | /event/gate | click:QR מבוטל |
-| E6-Search | staff | eventDay | /event/gate/search |  |
+| E6-Search | staff | eventDay | /event/gate/search | fill:שם או טלפון=מיכל |
 | E7-StallWho | staff | eventDay | /event/stall |  |
-| E8-StallSell | staff | eventDay | /event/stall/demo-tab-roni-fest |  |
+| E8-StallSell | staff | eventDay | /event/stall/demo-tab-roni-fest | click:לימונדה; click:לימונדה; click:עוגת תפוחים |
 | E9-Tabs | manager | eventDay | /event/stall/tabs |  |
 | M1-Root | owner | regular | /manage |  |
 | M2-Inbox | manager | regular | /manage/inbox |  |
@@ -62,13 +62,13 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | M6-Live | manager | eventDay | /manage/events/demo-e-festival?tab=day |  |
 | M7-Summary | manager | afterEvent | /manage/events/demo-e-october?tab=summary |  |
 | M8-People | manager | regular | /manage/people |  |
-| M9-Person | manager | regular | /manage/people/demo-u-david |  |
+| M9-Person | owner | regular | /manage/people/demo-u-michal |  |
 | M10-Reports | manager | regular | /manage/reports |  |
 | N1-Visits | manager | regular | /manage/visits |  |
 | N2-Visit | manager | regular | /manage/visits/demo-vi-cohen |  |
 | N3-Donations | manager | regular | /manage/donations |  |
 | N4-Donation | manager | regular | /manage/donations/demo-d-michal |  |
-| N5-Settings | manager | regular | /manage/settings |  |
+| N5-Settings | owner | regular | /manage/settings |  |
 | N6-Payments | owner | regular | /manage/settings/payments |  |
 | N7-Messages | manager | regular | /manage/settings/messages |  |
 | N8-Vendors | manager | regular | /manage/events/demo-e-festival/vendors |  |
@@ -76,7 +76,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | N10-Product | manager | regular | /manage/events/demo-e-festival/products/demo-pr-lemonade |  |
 | N11-EventEdit | manager | regular | /manage/events/demo-e-festival/edit |  |
 | N12-Tab | manager | regular | /manage/events/demo-e-october/tabs/demo-tab-roni-oct |  |
-| N13-Invite | manager | regular | /manage/people/invite |  |
+| N13-Invite | owner | regular | /manage/people/invite |  |
 | N14-Activity | manager | regular | /manage/activity |  |
 | G1-Amounts | owner | regular | /manage/settings/donation-amounts |  |
 | G2-VisitTypes | manager | regular | /manage/settings/visit-types |  |

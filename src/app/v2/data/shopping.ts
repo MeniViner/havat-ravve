@@ -7,7 +7,7 @@ import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
 import { logActivity, useActivityFor } from '../../activity';
 import { useDemo, useDemoStates } from '../../demo/store';
 import { notify } from './notify';
-import { deferDelete, isHidden, useHiddenVersion } from '../../kit';
+import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import type { Activity, Actor, Profile, ShoppingCategory, ShoppingItem, ShoppingTrip } from '../../types';
 
 // ---------- lists ----------

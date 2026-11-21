@@ -8,6 +8,7 @@ import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces
 import { useAllEvents } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { todayKey, useClockVersion } from '../clock';
+import { sweepPrivateTaskActivity } from '../activity';
 import type { Profile, Settings, Staffing } from '../types';
 import type { Session } from '../firebase';
 import type { TeamCtx } from '../ctx';
@@ -17,6 +18,9 @@ import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from '
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet } from './screens/system';
 import * as legacy from './legacy';
+import { Guard } from '../guard';
+import { AppScreen as Frame2 } from './core';
+import { EmptyState, Button } from './kit';
 
 const VIEW_AS_STAFF = 'farm-view-as-staff';
 export const setViewAsStaff = (on: boolean) => { try { on ? sessionStorage.setItem(VIEW_AS_STAFF, '1') : sessionStorage.removeItem(VIEW_AS_STAFF); } catch { /* private mode */ } location.reload(); };
@@ -50,9 +54,15 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
   </> : null;
   const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
+  const route = useRoute();
   return (
     <ChromeProvider value={{ top, nav: navNode }}>
-      {children}
+      <Guard resetKey={route} fallback={() => (
+        <Frame2 variant="plain">
+          <EmptyState variant="fill" icon="help" title="המסך הזה נתקע" text="שאר האפליקציה עובדת. אפשר לחזור אחורה או לטעון מחדש."
+            action={<Button variant="outline" onClick={() => location.reload()}>טעינה מחדש</Button>} />
+        </Frame2>
+      )}>{children}</Guard>
       {demo.on && <DemoSheet open={sheet} onClose={() => setSheet(false)} />}
     </ChromeProvider>
   );
@@ -81,11 +91,15 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const crew = !!eventToday && (manager || staffing.items.some((s) => s.people?.some((p) => p.uid === user.uid)));
   useEffect(() => {
     if (viewAsStaff || templates.loading || instances.loading || instances.error || !templates.items.length) return;
-    materializeToday(templates.items, instances.items, actor, today);
-  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor]);
+    materializeToday(templates.items, instances.items, actor, today, places.items);
+  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor, places.items.length]);
 
   const base: TeamCtx = { user, actor, profile, manager: manager && !viewAsStaff, owner: owner && !viewAsStaff, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid };
   const ctx: V2Ctx = { ...base, role, vendorId: '', helper: false, today, eventToday, crew, viewAsStaff };
+
+  // one-time move of private-task history for managers (kept from the old shell)
+  const online = useOnline();
+  useEffect(() => { if (manager && online) void sweepPrivateTaskActivity(); }, [manager, online]);
 
   const redirect = redirectOf(route, search, role);
   useEffect(() => { if (redirect) navigate(redirect, true); }, [redirect]);
