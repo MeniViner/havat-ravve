@@ -90,7 +90,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | V5-Debts | manager | afterEvent | /manage/events/demo-e-october/debts |  |
 | V6-VendorApp | manager | regular | /manage/vendors/demo-v-raz/access |  |
 | V7-VendorsDay | manager | eventDay | /manage/events/demo-e-festival/vendors/today |  |
-| B1-Compose | manager | regular | /manage/broadcasts/new |  |
+| B1-Compose | owner | regular | /manage/broadcasts/new | fill:תוכן ההודעה=מחר מתחילים ב־15:30 ולא ב־16:00. להגיע עם כובע ומים. |
 | B2-Sent | manager | regular | /manage/broadcasts |  |
 | B3-Read | manager | regular | /manage/broadcasts/demo-b-1 |  |
 | Y1-Live | manager | eventDay | /manage/events/demo-e-festival/live |  |
