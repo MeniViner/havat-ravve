@@ -205,7 +205,7 @@ export function materializeToday(templates: Template[], existing: Task[], actor:
   for (const t of templates) {
     if (!t.active || !(t.days.length === 0 || t.days.includes(weekday))) continue;
     const id = `${t.id}_${key}`;
-    if (have.has(id)) continue;
+    if (have.has(id) || t.skip?.includes(key)) continue; // skip: a manager deleted this day's instance
     const now = nowIso();
     // v2: the template's place and default person go onto the day's task, so queries by person and place see them
     const pl = t.placeId ? places.find((p) => p.id === t.placeId) : undefined;

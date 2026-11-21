@@ -1,7 +1,7 @@
 // S4-Item: one item. Quantity stepper, list, who added it, note, photo / link, what happened so far. "נקנה" and "מחיקה".
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppScreen, go, useExternal, useToast } from '../../core';
-import { BottomBar, Button, DetailList, DetailRow, EmptyState, History, PageTitle, SectionTitle, Stepper, Tag, TopBar } from '../../kit';
+import { BottomBar, Button, ConfirmSheet, DetailList, DetailRow, EmptyState, History, PageTitle, SectionTitle, Stepper, Tag, TopBar } from '../../kit';
 import { dayTime, ddmm } from '../../format';
 import { back } from '../../../router';
 import { compressPhoto } from '../../../store';
@@ -51,7 +51,9 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
     if (bought) toast.show({ text: `${doneWord(item.category)}: ${item.title}`, actions: [{ label: 'ביטול', onClick: () => { setItemBought(ctx.actor, { ...item, bought: true }, false, null).catch(fail); } }] });
     onBack();
   };
+  const [askDelete, setAskDelete] = useState(false);
   const remove = () => {
+    setAskDelete(false);
     const undo = deleteShopItem(ctx.actor, item);
     toast.show({ text: `נמחק: ${item.title}`, check: false, duration: 6000, actions: [{ label: 'ביטול', onClick: undo }] });
     onBack();
@@ -65,7 +67,7 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
     <AppScreen variant="detail" bar={
       <BottomBar>
         <Button size="bar" grow icon={item.bought ? undefined : 'check'} onClick={mark}>{item.bought ? 'להחזיר לרשימה' : doneWord(item.category)}</Button>
-        <Button variant="secondary" size="bar" className="shopping-delete" onClick={remove}>מחיקה</Button>
+        <Button variant="secondary" size="bar" className="shopping-delete" onClick={() => setAskDelete(true)}>מחיקה</Button>
       </BottomBar>
     }>
       <TopBar back={{ label: 'קניות', onClick: onBack }}
@@ -90,6 +92,8 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
           <History items={lines} />
         </section>
       )}
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק מהרשימה?"
+        text={`"${item.title}" יימחק מהרשימה של כולם.`} confirmLabel="מחיקה" onConfirm={remove} />
     </AppScreen>
   );
 }

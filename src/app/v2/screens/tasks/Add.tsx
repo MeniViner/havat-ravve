@@ -2,16 +2,16 @@
 // The capture bars open it with ?text=, ?photo=1 or ?camera=1 (a camera shot), ?mic=1 and, from shopping, ?kind=shopping&list=; C3 opens it with ?kind=shopping&task=<id>.
 import { useEffect, useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, useToast } from '../../core';
+import { AppScreen, go, useRemove, useToast } from '../../core';
 import {
-  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState,
+  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState, ConfirmSheet,
 } from '../../kit';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
-  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, type TaskInput,
+  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, deleteTaskV2, type TaskInput,
 } from '../../data/tasks';
 import { catOfKey } from '../../data/shopping';
 import { useFail, usePhotoPicker, takeStashedPhoto, dictate } from './shared';
@@ -51,6 +51,8 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   const [showNote, setShowNote] = useState(!!(task?.note || item?.note));
   const [urgent, setUrgent] = useState<boolean | null>(task ? task.urgent : item ? item.urgent : null);
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
 
   // ---- task fields
   const sugId = useMemo(() => suggestPlace(text, ctx.places), [text, ctx.places]);
@@ -186,6 +188,9 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
             </Card>
           )}
           {extras}
+          {task && canDeleteTask(task, ctx.user.uid, ctx.manager) && (
+            <Button variant="danger" size="tall" className="tasks-delete" onClick={() => setAskDelete(true)}>מחיקת המשימה</Button>
+          )}
         </>
       ) : (
         <>
@@ -201,6 +206,11 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
           </Inline>
           {extras}
         </>
+      )}
+      {task && (
+        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את המשימה?"
+          text={task.templateId ? `רק המשימה של היום תימחק. "${task.title}" תמשיך לחזור בימים הבאים.` : `"${task.title}" תימחק מהרשימה של כולם.`}
+          confirmLabel="מחיקה" onConfirm={() => remove(() => deleteTaskV2(ctx.actor, task, ctx.templates), { text: 'המשימה נמחקה', after: () => go('/tasks', true) })} />
       )}
     </AppScreen>
   );

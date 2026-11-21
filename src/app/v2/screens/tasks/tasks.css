@@ -97,3 +97,4 @@
 .tasks-qty > :first-child { flex: 1; min-width: 0; }
 .tasks-qty .k-field { gap: 8px; }
 .tasks-hidden { display: none; }
+.tasks-delete { align-self: flex-start; margin-top: 8px; }

@@ -1,8 +1,8 @@
 // F4-Presence: when I am at the farm. Pick days, hours (all day / morning / afternoon / other), a note; my existing entries.
 import { useMemo, useState } from 'react';
-import { AppScreen, useToast } from '../../core';
+import { AppScreen, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { BottomBar, Button, ChoiceChip, Field, FormHeader } from '../../kit';
+import { BottomBar, Button, ChoiceChip, ConfirmSheet, Field, FormHeader } from '../../kit';
 import { DAY_LETTERS } from '../../format';
 import type { ScreenProps } from '../../ctx';
 import { removePresence, savePresence, useCalendarRange } from '../../data/farm';
@@ -57,15 +57,13 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
       back('/farm');
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
   }
-  async function remove() {
-    if (!editing) return;
-    try { await removePresence(editing); toast.show({ text: 'הוסר מהיומן' }); back('/farm'); } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
-  }
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
 
   const bar = (
     <BottomBar column={!!editing}>
       <Button size="bar" grow={!editing} block={!!editing} disabled={!ok} onClick={save}>{saveLabel(days.length)}</Button>
-      {editing && <Button variant="danger" onClick={remove}>הסרה מהיומן</Button>}
+      {editing && <Button variant="danger" onClick={() => setAskDelete(true)}>הסרה מהיומן</Button>}
     </BottomBar>
   );
   const fromBad = !!h.from && !normTime(h.from), toBad = !!h.to && !normTime(h.to);
@@ -104,6 +102,9 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
           </ul>
         </section>
       )}
+      <ConfirmSheet open={askDelete && !!editing} onClose={() => setAskDelete(false)} title="להסיר מהיומן?"
+        text="היום הזה יוסר מהיומן של הצוות." confirmLabel="הסרה"
+        onConfirm={() => remove(() => removePresence(editing), { text: 'הוסר מהיומן', after: () => back('/farm') })} />
     </AppScreen>
   );
 }

@@ -2,12 +2,12 @@
 // template due that weekday becomes a task "<templateId>_<date>". Old template fields stay; assignee / placeId are optional.
 import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, useToast } from '../../core';
-import { TopBar, PageTitle, Button, Card, Toggle, FormHeader, Field, FieldRow, ChoiceGroup, ChoiceChip, BottomBar, Row, EmptyState } from '../../kit';
+import { AppScreen, go, useRemove, useToast } from '../../core';
+import { TopBar, PageTitle, Button, Card, Toggle, FormHeader, Field, FieldRow, ChoiceGroup, ChoiceChip, BottomBar, Row, EmptyState, ConfirmSheet } from '../../kit';
 import { back } from '../../../router';
 import { DAY_LETTERS } from '../../format';
 import type { Template } from '../../../types';
-import { templateMeta, setTemplateActive, saveTemplateV2, removeTemplate, restoreTemplate, daysToSave } from '../../data/tasks';
+import { templateMeta, setTemplateActive, saveTemplateV2, removeTemplate, daysToSave } from '../../data/tasks';
 import { to, useFail } from './shared';
 import './tasks.css';
 
@@ -84,19 +84,13 @@ function TemplateForm({ ctx, existing }: ScreenProps & { existing?: Template }) 
       back('/manage/recurring');
     } catch (e) { fail(e); setBusy(false); }
   };
-  const remove = async () => {
-    if (!existing) return;
-    try {
-      await removeTemplate(existing.id);
-      toast.show({ text: `נמחקה: ${existing.title}`, actions: [{ label: 'ביטול', onClick: () => { restoreTemplate(existing).catch(fail); } }] });
-      back('/manage/recurring');
-    } catch (e) { fail(e); }
-  };
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   return (
     <AppScreen variant="form" gap={16} bar={
       <BottomBar>
         <Button size="bar" grow disabled={busy || !title.trim() || !days.length || placeBad || timeBad} onClick={save}>שמירה</Button>
-        {existing && <Button variant="secondary" size="bar" onClick={remove}>מחיקה</Button>}
+        {existing && <Button variant="secondary" size="bar" onClick={() => setAskDelete(true)}>מחיקה</Button>}
       </BottomBar>
     }>
       <FormHeader title="משימה חוזרת" onCancel={() => back('/manage/recurring')} />
@@ -123,6 +117,11 @@ function TemplateForm({ ctx, existing }: ScreenProps & { existing?: Template }) 
           <Row title="פעילה" meta="כשכבויה, לא נוצרת משימה בבוקר" minHeight={58} actions={<Toggle checked={active} onChange={setActive} label="פעילה" />} />
         </ul>
       </Card>
+      {existing && (
+        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את המשימה החוזרת?"
+          text={`"${existing.title}" לא תיווצר יותר. משימות שכבר נוצרו נשארות.`} confirmLabel="מחיקה"
+          onConfirm={() => remove(() => removeTemplate(existing.id), { text: 'המשימה החוזרת נמחקה', after: () => go('/manage/recurring', true) })} />
+      )}
     </AppScreen>
   );
 }

@@ -1,14 +1,14 @@
 // L3 (places on the farm) and L4 (one place): saved points that tasks and recurring tasks hang on.
 import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, go, mapsUrl, useExternal, useToast } from '../../core';
-import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader } from '../../kit';
+import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../core';
+import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, ConfirmSheet } from '../../kit';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import { useEvent } from '../../../data';
 import { useClockVersion, nowMs } from '../../../clock';
 import type { Place, Task } from '../../../types';
-import { useRootTasks, useTasksAt, placeMeta, sortPlaces, rowMeta, createPlace, savePlace, removePlace, restorePlace, type PlaceV2 } from '../../data/tasks';
+import { useRootTasks, useTasksAt, placeMeta, sortPlaces, rowMeta, createPlace, savePlace, removePlace, type PlaceV2 } from '../../data/tasks';
 import { to, useFail, usePhotoPicker } from './shared';
 import './tasks.css';
 
@@ -94,17 +94,12 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
     try { await savePlace(ctx.actor, p, { name, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, photo }); toast.show({ text: 'נשמר' }); back('/places'); }
     catch (e) { fail(e); setBusy(false); }
   };
-  const remove = async () => {
-    try {
-      await removePlace(ctx.actor, p);
-      toast.show({ text: `נמחק: ${p.name}`, actions: [{ label: 'ביטול', onClick: () => { restorePlace(p).catch(fail); } }] });
-      back('/places');
-    } catch (e) { fail(e); }
-  };
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   return (
     <AppScreen variant="detail" bar={<BottomBar><Button size="bar" grow disabled={busy || !name.trim()} onClick={save}>שמירה</Button></BottomBar>}>
       {pick.input}
-      <TopBar back={{ label: 'מקומות', ...to('/places') }} end={ctx.manager ? <Button variant="quiet" onClick={remove}>מחיקה</Button> : undefined} />
+      <TopBar back={{ label: 'מקומות', ...to('/places') }} end={ctx.manager ? <Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button> : undefined} />
       <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} />
       <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(pos.lat, pos.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(pos.lat, pos.lng)); }}>
         {photo && <img src={photo} alt="" />}
@@ -124,6 +119,9 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
       ) : (
         <Card as="section"><SectionHeader title="משימות במקום הזה" /><p className="tasks-meta" style={{ margin: '0 14px 14px' }}>אין משימות פתוחות כאן</p></Card>
       )}
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את המקום?"
+        text={`"${p.name}" יימחק מהרשימה. משימות שקשורות אליו נשארות.`} confirmLabel="מחיקה"
+        onConfirm={() => remove(() => removePlace(ctx.actor, p), { text: 'המקום נמחק', after: () => go('/places', true) })} />
     </AppScreen>
   );
 }

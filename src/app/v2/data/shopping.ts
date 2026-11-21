@@ -276,5 +276,7 @@ export async function closeTrip(actor: Actor, trip: ShoppingTrip, view: TripView
     link: `/shopping/trip/done?id=${trip.id}`, refId: trip.id, by: actor, push: false,
   });
 }
+/** A manager deletes a trip (from S7). The items keep what happened to them: bought stays bought. */
+export const deleteTrip = (trip: ShoppingTrip) => write.remove('shopping_trips', trip.id);
 /** S7 "טעות? לחזור לקנייה". */
 export const reopenTrip = (trip: ShoppingTrip) => write.update('shopping_trips', trip.id, { closedAt: null });

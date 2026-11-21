@@ -546,6 +546,21 @@ export async function updateTask(actor: Actor, t: Task, data: Partial<TaskInput>
   if (data.assignee && data.assignee.uid !== t.assignee?.uid && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
 }
 
+/** Who may delete a task: a manager, or the person who created it (rules: tasks delete). A recurring day's instance
+ *  is the manager's (it also writes the template's skip list), whoever happened to create it that morning. */
+export const canDeleteTask = (t: Task, uid: string, manager: boolean) => manager || (!t.templateId && t.createdBy?.uid === uid);
+/** Deletes a task. A recurring day's instance would be created again by materializeToday, so the template remembers the day
+ *  (skip, only today and later kept) in the same batch. */
+export async function deleteTaskV2(actor: Actor, t: Task, templates: Template[]) {
+  const tpl = t.templateId ? templates.find((x) => x.id === t.templateId) : undefined;
+  if (tpl && t.dateKey) {
+    const today = todayKey();
+    const skip = [...new Set([...(tpl.skip || []).filter((d) => d >= today), t.dateKey])].sort().slice(-30);
+    await write.batch([{ op: 'remove', col: 'tasks', id: t.id }, { op: 'update', col: 'task_templates', id: tpl.id, data: { skip, updatedAt: nowIso() } }]);
+  } else await write.remove('tasks', t.id);
+  logActivity(actor, taskKind(t), t.id, 'deleted', t.title.length > 60 ? t.title.slice(0, 60) + '…' : t.title);
+}
+
 export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
 /** S5 add: the existing ShoppingItem shape plus an optional taskId; the task gets shoppingId back (C3). */
 /** The shopping area owns the shopping collection: adding goes through its addShopItem (urgent items tell the team,
@@ -578,7 +593,6 @@ export async function saveTemplateV2(actor: Actor, data: TemplateInput, existing
 }
 export const setTemplateActive = (t: Template, active: boolean) => write.update('task_templates', t.id, { active, updatedAt: nowIso() });
 export const removeTemplate = (id: string) => write.remove('task_templates', id);
-export const restoreTemplate = (t: Template) => { const { id, ...rest } = t; return write.set('task_templates', id, rest as Record<string, unknown>); };
 
 // ---------- places (L3, L4) ----------
 export type PlaceV2 = Place & { photo?: string; accuracy?: number; updatedAt?: string };
@@ -601,6 +615,5 @@ export async function removePlace(actor: Actor, p: PlaceV2) {
   await write.remove('places', p.id);
   logActivity(actor, 'place', p.id, 'deleted', p.name);
 }
-export const restorePlace = (p: PlaceV2) => { const { id, ...rest } = p; return write.set('places', id, rest as Record<string, unknown>); };
 
 export { daysFromToday };

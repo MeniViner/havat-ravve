@@ -1,8 +1,8 @@
 // C11-CalItem: new (or edit) calendar item: what, when, hours, who sees, participants, reminder. Managers; volunteers go to F4.
 import { useEffect, useState } from 'react';
-import { AppScreen, go, useToast } from '../../core';
+import { AppScreen, go, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { BottomBar, Button, ChoiceChip, EmptyState, Field, FormHeader, ListCard, Row, Toggle } from '../../kit';
+import { BottomBar, Button, ChoiceChip, ConfirmSheet, EmptyState, Field, FormHeader, ListCard, Row, Toggle } from '../../kit';
 import type { ScreenProps } from '../../ctx';
 import { deleteCalItem, saveCalItem, useCalItem, type FarmCalItem } from '../../data/farm';
 import { addDays, firstOf, hoursOf, hoursValid, isPresence, nextDays, normTime } from './logic';
@@ -65,14 +65,12 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
       back(`/farm/calendar?view=day&date=${date}`);
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
   }
-  async function remove() {
-    if (!existing) return;
-    try { await deleteCalItem(existing.id); toast.show({ text: 'הפריט הוסר מהיומן' }); back(`/farm/calendar?view=day&date=${date}`); } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
-  }
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   const bar = (
     <BottomBar column={!!existing}>
       <Button size="bar" grow={!existing} block={!!existing} disabled={!ok} onClick={save}>{existing ? 'שמירה' : 'הוספה ליומן'}</Button>
-      {existing && <Button variant="danger" onClick={remove}>מחיקה מהיומן</Button>}
+      {existing && <Button variant="danger" onClick={() => setAskDelete(true)}>מחיקה מהיומן</Button>}
     </BottomBar>
   );
   return (
@@ -104,6 +102,11 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
       <ListCard>
         <Row minHeight={58} title="להזכיר שעה לפני" meta="התראה למי שמשתתף" actions={<Toggle checked={reminder} onChange={setReminder} label="להזכיר שעה לפני" />} />
       </ListCard>
+      {existing && (
+        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק מהיומן?"
+          text={`"${existing.title}" יימחק מהיומן של כולם.`} confirmLabel="מחיקה"
+          onConfirm={() => remove(() => deleteCalItem(existing.id), { text: 'הפריט הוסר מהיומן', after: () => back(`/farm/calendar?view=day&date=${date}`) })} />
+      )}
     </AppScreen>
   );
 }

@@ -94,6 +94,8 @@ export type Template = {
   /** v2 (optional): who it is on by default (null = whoever is free) and where. */
   assignee?: Actor | null;
   placeId?: string;
+  /** Days (YYYY-MM-DD) whose instance a manager deleted: materializeToday does not create it again. Only today and later are kept. */
+  skip?: string[];
 };
 
 export type ShoppingCategory = 'super' | 'building' | 'online' | 'giveaway';
