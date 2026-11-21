@@ -1,8 +1,8 @@
 // M1 manage root and M2 inbox ("לטיפול").
-import { useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, RootHead, go, useExternal, useV2, waUrl, telUrl } from '../../core';
-import { Button, Card, Chip, ChipRow, EmptyState, Hero, HeroNumber, Icon, PageTitle, TextLink, Tile, TileGrid, TopBar, type IconName } from '../../kit';
+import { AppScreen, RootHead, go, useExternal, useRemove, useV2, waUrl, telUrl } from '../../core';
+import { Button, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Hero, HeroNumber, Icon, IconButton, PageTitle, TextLink, Tile, TileGrid, TopBar, type IconName } from '../../kit';
 import { agoLong, ago, dayName, ddmm, dayOverline, inDays, money, longDate, firstName } from '../../format';
 import { nowIso } from '../../../clock';
 import { useUpcomingEvents, contactPhoneOk } from '../../../data';
@@ -10,7 +10,7 @@ import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } fro
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
   inboxGroup, inboxSummary, donationTotals, approvedSoon, isTeam, gw, timeFromNote, needsReceipt, fillTemplate,
-  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, type PayItem, type InboxGroup,
+  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, deleteVendorRequest, type PayItem, type InboxGroup,
 } from '../../data/manage';
 import { lnk, PlainLink } from './shared';
 
@@ -121,7 +121,10 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
   );
 }
 
+/** The card's delete (M3): set by the card's wrapper, shown as a quiet X at the end of the head. */
+const OnDelete = createContext<(() => void) | null>(null);
 function CardShell({ icon, over, title, meta, children, done }: { icon: IconName; over: ReactNode; title: ReactNode; meta?: ReactNode; children?: ReactNode; done?: boolean }) {
+  const onDelete = useContext(OnDelete);
   return (
     <Card as="section" pad="md" layout="col" className={done ? 'manage-item--done' : undefined}>
       <div className="manage-item__head">
@@ -131,13 +134,34 @@ function CardShell({ icon, over, title, meta, children, done }: { icon: IconName
           <span className="manage-item__title">{title}</span>
           {meta ? <span className="manage-item__meta">{meta}</span> : null}
         </div>
+        {onDelete && <IconButton className="manage-item__del" icon="close" variant="quiet" label="מחיקה מהרשימה" onClick={onDelete} />}
       </div>
       {children && <div className="manage-item__acts">{children}</div>}
     </Card>
   );
 }
 
+/** Wraps a card with its delete and the one confirmation. */
+function Deletable({ title, text, run, children }: { title: string; text: string; run: () => Promise<unknown>; children: ReactNode }) {
+  const [ask, setAsk] = useState(false);
+  const remove = useRemove();
+  return (
+    <OnDelete.Provider value={() => setAsk(true)}>
+      {children}
+      <ConfirmSheet open={ask} onClose={() => setAsk(false)} title={title} text={text} confirmLabel="מחיקה"
+        onConfirm={() => remove(run, { after: () => setAsk(false) })} />
+    </OnDelete.Provider>
+  );
+}
+
 function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
+  return (
+    <Deletable title="למחוק את הבקשה?" text={`הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`} run={() => deleteVendorRequest(r)}>
+      <VendorCardBody r={r} eventId={eventId} />
+    </Deletable>
+  );
+}
+function VendorCardBody({ r, eventId }: { r: VendorRequest; eventId: string }) {
   return (
     <CardShell icon="stall" over={`בקשה מדוכן · ${agoLong(r.createdAt)}`} title={`${r.vendorName} · ${VREQ[r.kind]}`} meta={r.text || undefined}>
       <Button {...lnk(`/manage/events/${eventId}/vendors/today`)}>פרטים</Button>
@@ -145,7 +169,14 @@ function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
   );
 }
 
-function InboxCard({ n, r, open, handled }: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+  return (
+    <Deletable title="למחוק מהרשימה?" text="הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים." run={() => deleteInboxItem(p.n)}>
+      <InboxCardBody {...p} />
+    </Deletable>
+  );
+}
+function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
   const { actor, peopleByUid, settings } = useV2();
   const run = useRun();
   const ext = useExternal();

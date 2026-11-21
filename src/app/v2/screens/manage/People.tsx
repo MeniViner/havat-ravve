@@ -1,10 +1,10 @@
 // M8 people directory, M9 person file, N13 role by email.
 import { useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, go, useExternal, waUrl, telUrl } from '../../core';
+import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
 import {
   Avatar, BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, PageTitle, Row, SearchField,
-  Segmented, Tag, TopBar,
+  Segmented, Tag, TopBar, ConfirmSheet,
 } from '../../kit';
 import { MONTHS, money, relDay, dayName, ddmm, keyOf } from '../../format';
 import { nowMs } from '../../../clock';
@@ -14,7 +14,7 @@ import type { Profile, Role, Ticket } from '../../../types';
 import {
   usePeople, usePerson, useRoleInvites, useOpenTickets, useOpenTabs, useMyTickets, useMyVisits, useMyDonations, useMyTabs,
   debtsByPerson, letterGroups, personMatches, isTeam, isFemale, gw, roleWord, allowedRoles, canBlock, inviteRolesFor, emailOk,
-  changeRole, toggleBlock, inviteRole, cancelInvite, useRun,
+  changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson,
 } from '../../data/manage';
 import { lnk, ExcelButton, Loading, NotFound } from './shared';
 
@@ -82,6 +82,8 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
   const tickets = useMyTickets(uid, true).items, visits = useMyVisits(uid, true).items, donations = useMyDonations(uid, true).items, tabs = useMyTabs(uid, true).items;
   const run = useRun();
   const ext = useExternal();
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   if (loading) return <Loading back={{ label: 'אנשים', path: '/manage/people' }} />;
   if (!p) return <NotFound back={{ label: 'אנשים', path: '/manage/people' }} title="האדם לא נמצא" />;
   const female = isFemale(p.displayName);
@@ -148,6 +150,10 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
         {rows.length ? rows.map((r) => <Row key={r.key} {...lnk(r.path)} title={r.title} tags={r.tag} meta={r.meta} />)
           : <Row title={<span className="k-soft" style={{ fontWeight: 400 }}>עוד לא היה כלום</span>} />}
       </ListCard>
+      {canDeletePerson(me, p) && <div><Button variant="danger" onClick={() => setAskDelete(true)}>{`מחיקת ${p.displayName}`}</Button></div>}
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title={`למחוק את ${p.displayName}?`}
+        text={`${gw(p.displayName, 'הוא יימחק', 'היא תימחק')} מהאפליקציה. הכרטיסים, התרומות והביקורים נשארים. ${gw(p.displayName, 'אם ייכנס', 'אם תיכנס')} שוב עם אותו חשבון גוגל, ${gw(p.displayName, 'יתחיל', 'תתחיל')} מההתחלה כמו ${gw(p.displayName, 'חדש', 'חדשה')}.`}
+        confirmLabel="מחיקה" onConfirm={() => remove(() => deletePerson(ctx.actor, p), { text: `${p.displayName} ${gw(p.displayName, 'נמחק', 'נמחקה')}`, after: () => go('/manage/people', true) })} />
     </AppScreen>
   );
 }

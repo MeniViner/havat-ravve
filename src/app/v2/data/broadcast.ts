@@ -127,6 +127,9 @@ export async function resendBroadcast(actor: Actor, b: Broadcast, receipts: Rece
 }
 
 /** The card appeared on this phone: a receipt without `at` (B3 tells "עוד לא נכנס לאפליקציה" from "ראה ולא קרא"). */
+/** The owner deletes a broadcast. The read receipts under it are left (nobody can list them without the broadcast), and so are
+ *  the copies in each person's notifications: those belong to the person. */
+export const deleteBroadcast = (b: Broadcast) => write.remove('broadcasts', b.id);
 export async function markSeen(actor: Actor, broadcastId: string) {
   // a merge, so a "read" written meanwhile on another phone is never turned back into "seen"
   await write.merge(`broadcasts/${broadcastId}/reads`, actor.uid, { id: actor.uid, uid: actor.uid, name: actor.name, seenAt: nowIso() });

@@ -141,6 +141,12 @@ export async function saveProject(ctx: Who, project: ProjectDoc, loaded: StepDoc
   for (const a of newlyAssigned) void notifyAssigned(me, project, a.id, a.title, a.n, total, a.uid);
 }
 
+/** The owner deletes a whole project: every step (done ones too, which only the owner may delete) and the project, in one batch. */
+export async function deleteProject(project: ProjectDoc, steps: Pick<StepDoc, 'id'>[]) {
+  const col = stepsPath(project.id);
+  await write.batch([...steps.map((s) => ({ op: 'remove' as const, col, id: s.id })), { op: 'remove' as const, col: PROJECTS, id: project.id }]);
+}
+
 /** "לקחת": only if the step is still free and open. */
 export async function takeStep(ctx: Who, pid: string, sid: string) {
   const me = ctx.actor; const at = nowIso();

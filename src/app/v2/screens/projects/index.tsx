@@ -2,10 +2,10 @@
 // Managers and owners only (routes are manager-gated; the block renders nothing for staff).
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
-import { AppScreen, go, useToast } from '../../core';
+import { AppScreen, go, useRemove, useToast } from '../../core';
 import {
   TopBar, PageTitle, FormHeader, Button, IconButton, Tag, Avatar, AvatarStack, Card, ProgressSegments, Chip, ChipRow,
-  Hero, Icon, DetailList, DetailRow, Quote, SectionHeader, Row, BottomBar, Field, TextAreaField, Sheet, RadioList, RadioRow,
+  Hero, Icon, DetailList, DetailRow, Quote, SectionHeader, Row, BottomBar, Field, TextAreaField, Sheet, RadioList, RadioRow, ConfirmSheet,
 } from '../../kit';
 import { href as appHref, back, useParam } from '../../../router';
 import { isConflict } from '../../../db';
@@ -15,7 +15,7 @@ import { gw } from '../../gender';
 import type { Actor } from '../../../types';
 import {
   useProjects, useProject, useSteps, projectLink, stepLink,
-  createProject, saveProject, takeStep, releaseStep, completeStep, reopenStep, postUpdate, splitStep, updateStep,
+  createProject, saveProject, deleteProject, takeStep, releaseStep, completeStep, reopenStep, postUpdate, splitStep, updateStep,
   type ProjectDoc, type StepDoc, type DraftStep,
 } from '../../data/projects';
 import {
@@ -309,6 +309,8 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
   const [error, setError] = useState('');
   const [picking, setPicking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   const focusKey = useRef<number | null>(null);
   // managers and owners only: staff cannot read projects under the rules, so a step is never given to them
   const managers = useMemo(() => {
@@ -372,6 +374,12 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
       </div>
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={addRow}>צעד נוסף</Button>
       <span className="projects-hint">צעד בלי מנהל נשאר פנוי, וכל מנהל יכול לקחת אותו.</span>
+      {editing && ctx.owner && project.item && <div><Button variant="danger" onClick={() => setAskDelete(true)}>מחיקת הפרויקט</Button></div>}
+      {editing && project.item && (
+        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את הפרויקט?"
+          text={`"${project.item.title}" יימחק עם כל הצעדים שלו, גם אלה שכבר בוצעו.`} confirmLabel="מחיקה"
+          onConfirm={() => remove(() => deleteProject(project.item!, steps.items), { text: 'הפרויקט נמחק', after: () => go('/projects', true) })} />
+      )}
       <Sheet open={!!picked} onClose={() => setPicking(null)} title={`על מי צעד ${pickedN}`}>
         <RadioList label="על מי">
           <RadioRow compact checked={!picked?.assignee} title="פנוי" meta="כל מנהל יכול לקחת אותו" onSelect={() => { if (picked) setRow(picked.key, { assignee: null }); setPicking(null); }} />

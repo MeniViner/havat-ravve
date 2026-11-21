@@ -1,12 +1,12 @@
 // N1 visit requests and N2 one request.
 import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, useExternal, useToast, waUrl, telUrl } from '../../core';
-import { BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, IconButton, ListCard, PageTitle, Quote, Row, Tag, TopBar } from '../../kit';
+import { AppScreen, go, useExternal, useRemove, useToast, waUrl, telUrl } from '../../core';
+import { BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, IconButton, ListCard, PageTitle, Quote, Row, Tag, TopBar, ConfirmSheet } from '../../kit';
 import { agoLong, dayName, ddmm, longDate, firstName } from '../../format';
 import { contactPhoneOk } from '../../../data';
 import type { Visit, CalendarItem } from '../../../types';
-import { useVisits, useVisit, useCalendar, useNotifications, visitBuckets, timeFromNote, gw, decide, fillTemplate, useRun } from '../../data/manage';
+import { useVisits, useVisit, useCalendar, useNotifications, visitBuckets, timeFromNote, gw, decide, fillTemplate, useRun, deleteVisit } from '../../data/manage';
 import { lnk, Loading, NotFound } from './shared';
 
 // ---------- N1 ----------
@@ -53,6 +53,8 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
   const run = useRun();
   const toast = useToast();
   const ext = useExternal();
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   if (loading) return <Loading back={{ label: 'ביקורים', path: '/manage/visits' }} />;
   if (!v) return <NotFound back={{ label: 'ביקורים', path: '/manage/visits' }} title="הבקשה לא נמצאה" />;
   const n = note ?? v.managerNote;
@@ -77,7 +79,7 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
     : <BottomBar><Button size="bar" grow onClick={() => decideAs('approved')}>אישור ליומן</Button>{v.status === 'new' && <Button size="bar" variant="secondary" onClick={() => decideAs('rejected')}>לא מתאים</Button>}</BottomBar>;
   return (
     <AppScreen variant="detail" bar={bar}>
-      <TopBar back={{ label: 'ביקורים', ...lnk('/manage/visits') }} />
+      <TopBar back={{ label: 'ביקורים', ...lnk('/manage/visits') }} end={<Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button>} />
       <div className="manage-titled">
         <span className="k-meta">{over}</span>
         <PageTitle size="detail" className="k-h1--detail-tight">{v.name}</PageTitle>
@@ -102,6 +104,9 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
       </ListCard>
       <Field label="שעה והערה לאורח" value={n} onChange={(e) => setNote(e.target.value)} placeholder="נפגשים בשער ב־10:00"
         hint={v.status === 'approved' && n !== v.managerNote ? 'שעה שכותבים כאן נכנסת גם ליומן.' : undefined} />
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את הבקשה?"
+        text={`הבקשה של ${v.name} תימחק${v.status === 'approved' ? ', וגם הביקור ביומן' : ''}. ${gw(contact, 'הוא לא יקבל', 'היא לא תקבל')} על זה הודעה.`} confirmLabel="מחיקה"
+        onConfirm={() => remove(() => deleteVisit(ctx.actor, v, open), { text: 'הבקשה נמחקה', after: () => go('/manage/visits', true) })} />
     </AppScreen>
   );
 }

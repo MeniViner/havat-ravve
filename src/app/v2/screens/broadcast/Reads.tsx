@@ -1,11 +1,11 @@
 // B3-Read: who read a broadcast and who not yet, WhatsApp per person, "לשלוח שוב" (only to those without a receipt).
 import { useMemo, useState, type ReactNode } from 'react';
-import { AppScreen, go, useExternal, useToast, waUrl } from '../../core';
-import { Avatar, EmptyState, Hero, IconButton, ListCard, Row, TextLink, TopBar } from '../../kit';
+import { AppScreen, go, useExternal, useRemove, useToast, waUrl } from '../../core';
+import { Avatar, Button, ConfirmSheet, EmptyState, Hero, IconButton, ListCard, Row, TextLink, TopBar } from '../../kit';
 import { dayTime, hhmm, initials, keyOf } from '../../format';
 import type { ScreenProps } from '../../ctx';
 import type { Profile } from '../../../types';
-import { firstName, isRead, resendBroadcast, sentLine, useBroadcast, usePresenceToday, useReceipts, type Receipt } from '../../data/broadcast';
+import { deleteBroadcast, firstName, isRead, resendBroadcast, sentLine, useBroadcast, usePresenceToday, useReceipts, type Receipt } from '../../data/broadcast';
 
 const SHOWN = 3;
 
@@ -16,6 +16,8 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
   const presence = usePresenceToday(ctx.today, ctx.manager);
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
 
   const { unread, read } = useMemo(() => {
     const byUid = new Map(receipts.items.map((r) => [r.uid || r.id, r]));
@@ -49,7 +51,7 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); } finally { setBusy(false); }
   }
 
-  const backBar = <TopBar back={{ label: 'הודעות', onClick: () => go('/manage/broadcasts') }} />;
+  const backBar = <TopBar back={{ label: 'הודעות', onClick: () => go('/manage/broadcasts') }} end={b && ctx.owner ? <Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button> : undefined} />;
   if (!b) return <AppScreen variant="detail" gap={10}>{backBar}{!loading && <EmptyState variant="card" icon="megaphone" title="ההודעה לא נמצאה" />}</AppScreen>;
   const shown = all ? read : read.slice(0, SHOWN);
   return (
@@ -70,6 +72,9 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
       <ListCard title="קראו" count={read.length} end={!all && read.length > SHOWN ? <TextLink onClick={() => setAll(true)}>עוד {read.length - SHOWN}</TextLink> : undefined}>
         {shown.map((r) => <Row key={r.uid} minHeight={50} leading={<Avatar initials={initials(r.name)} size={32} />} title={r.name} meta={<span className="k-num">{r.at ? (keyOf(r.at) === keyOf(b.createdAt) ? hhmm(r.at) : dayTime(r.at)) : ''}</span>} />)}
       </ListCard>
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את ההודעה?"
+        text="ההודעה תימחק מהרשימה ומהמסך של הצוות. מי שכבר קיבל אותה עדיין רואה אותה בהתראות שלו." confirmLabel="מחיקה"
+        onConfirm={() => remove(() => deleteBroadcast(b), { text: 'ההודעה נמחקה', after: () => go('/manage/broadcasts', true) })} />
     </AppScreen>
   );
 }

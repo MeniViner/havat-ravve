@@ -1,10 +1,10 @@
 // M10 reports, N3 donations, N4 one donation.
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, useExternal, waUrl, telUrl } from '../../core';
+import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
 import {
   BarList, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, Icon, ListCard, PageTitle, Quote, Row, SectionHeader,
-  StatRow, StatTile, Tag, TopBar,
+  StatRow, StatTile, Tag, TopBar, ConfirmSheet,
 } from '../../kit';
 import { money, num, dayTime, ddmm, daysFromToday, relDay, firstName, keyOf } from '../../format';
 import { contactPhoneOk } from '../../../data';
@@ -13,7 +13,7 @@ import type { Donation } from '../../../types';
 import {
   useActivityAll, useDonations, useDonation, useTicketsSince, useOpenTickets, useOpenTabs, useNotifications, useMyTickets, useMyVisits, useMyDonations,
   buildReport, periodStart, donationTotals, needsReceipt, awaitsApproval, gw, fillTemplate, markPaymentConfirmation,
-  approvePayment, paymentNotArrived, undoApproval, markReceipt, useRun, type Period,
+  approvePayment, paymentNotArrived, undoApproval, markReceipt, useRun, deleteDonation, type Period,
 } from '../../data/manage';
 import { lnk, ExcelButton, Loading, NotFound } from './shared';
 
@@ -115,6 +115,8 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
   const tickets = useMyTickets(d?.uid || '', !!d?.uid).items, visits = useMyVisits(d?.uid || '', !!d?.uid).items, donations = useMyDonations(d?.uid || '', !!d?.uid).items;
   const run = useRun();
   const ext = useExternal();
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   if (loading) return <Loading back={{ label: 'תרומות', path: '/manage/donations' }} />;
   if (!d) return <NotFound back={{ label: 'תרומות', path: '/manage/donations' }} title="התרומה לא נמצאה" />;
   const paid = d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite';
@@ -138,7 +140,7 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
       : undefined;
   return (
     <AppScreen variant="detail" bar={bar}>
-      <TopBar back={{ label: 'תרומות', ...lnk('/manage/donations') }} />
+      <TopBar back={{ label: 'תרומות', ...lnk('/manage/donations') }} end={<Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button>} />
       <div className="manage-titled">
         <span className="k-meta">תרומה · {dayTime(d.createdAt)}</span>
         <PageTitle size="detail" className="k-h1--detail-tight">{money(d.amount)} · {d.name}</PageTitle>
@@ -166,6 +168,9 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
           {more.map((m) => <Row key={m.key} minHeight={50} {...lnk(m.path)} title={m.title} meta={m.meta} />)}
         </ListCard>
       )}
+      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את התרומה?"
+        text={`התרומה של ${d.name} על ${money(d.amount)} תימחק מהרשימה ומהדוחות.`} confirmLabel="מחיקה"
+        onConfirm={() => remove(() => deleteDonation(ctx.actor, d, open), { text: 'התרומה נמחקה', after: () => go('/manage/donations', true) })} />
     </AppScreen>
   );
 }

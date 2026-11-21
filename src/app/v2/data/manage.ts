@@ -2,14 +2,15 @@
 // Every write goes through the existing helpers in data.ts / store.ts (they write through db.ts), so the documents keep
 // exactly the shape the rules and the guest app expect. New settings keys are optional and live next to the old ones.
 import { useCallback } from 'react';
-import { useList, isConflict } from '../../db';
+import { useList, isConflict, readOnce, write } from '../../db';
+import { logActivity } from '../../activity';
 import { nowIso } from '../../clock';
 import {
   useNotifications, useHandledNotifications, handleNotification, handleNotificationsFor, decideVisit, setDonation, setTabStatus,
   setOrderPayment, saveSettingsPart, useOpenTickets, useOpenTabs, useDonations, useDonation, useVisits, useVisit, useCalendar,
   useMyTickets, useMyVisits, useMyDonations, useMyTabs, downloadCsv, useTab, fillTemplate, markPaymentConfirmation,
 } from '../../data';
-import { usePeople, usePerson, useRoleInvites, setUserRole, inviteByEmail, removeRoleInvite } from '../../store';
+import { usePeople, usePerson, useRoleInvites, setUserRole, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
 import { useActivityByKind } from '../../activity';
 import { notify } from './notify';
 import { useToast } from '../core';
@@ -121,6 +122,41 @@ export async function changeRole(actor: Actor, p: Profile, role: Role) {
 export const toggleBlock = (actor: Actor, p: Profile) => setUserRole(actor, p, p.role, p.status === 'blocked' ? 'active' : 'blocked');
 export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role']) => inviteByEmail(actor, email, role);
 export const cancelInvite = (email: string) => removeRoleInvite(email);
+
+// ---------- deletes (each behind the ConfirmSheet) ----------
+/** The inbox items about a record (visit, donation, order): every one of them, also the handled ones, when the server answers;
+ *  offline, the open ones this screen already has. */
+async function inboxFor(refId: string, open: AppNotification[]) {
+  try { return await readOnce<AppNotification>('notifications', { where: [['refId', '==', refId]] }); }
+  catch { return open.filter((n) => n.refId === refId); }
+}
+/** A visit request, its calendar entry (visit_<id>) and its inbox items. */
+export async function deleteVisit(actor: Actor, v: Visit, open: AppNotification[]) {
+  const inbox = await inboxFor(v.id, open);
+  await write.batch([
+    { op: 'remove', col: 'visits', id: v.id }, { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
+    ...inbox.map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id })),
+  ]);
+  logActivity(actor, 'visit', v.id, 'deleted', `${v.name} · ${v.date}`, { subjectUid: v.uid });
+}
+/** A donation and its inbox items. */
+export async function deleteDonation(actor: Actor, d: Donation, open: AppNotification[]) {
+  const inbox = await inboxFor(d.id, open);
+  await write.batch([{ op: 'remove', col: 'donations', id: d.id }, ...inbox.map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id }))]);
+  logActivity(actor, 'donation', d.id, 'deleted', `${d.name} · ${d.amount} ₪`, { subjectUid: d.uid });
+}
+/** One inbox item (M3). What it points at stays. */
+export const deleteInboxItem = (n: AppNotification) => write.remove('notifications', n.id);
+/** A stall's request on the event day (M2). */
+export const deleteVendorRequest = (r: VendorRequest) => write.remove(`events/${r.eventId}/vendor_requests`, r.id);
+/** The owner deletes a person: the profile and a role waiting for their email. Their tickets, donations and visits stay.
+ *  The Google account stays too, so signing in again starts over as a new person (first entry). */
+export async function deletePerson(actor: Actor, p: Profile) {
+  await write.batch([{ op: 'remove', col: 'users', id: p.uid }, ...(p.email ? [{ op: 'remove' as const, col: 'role_invites', id: p.email.toLowerCase() }] : [])]);
+  logActivity(actor, 'user', p.uid, 'deleted', `${p.displayName} נמחק/ה מהאפליקציה`, { subjectUid: p.uid });
+}
+/** Who may delete a person: the owner, never themselves and never the farm's own owner account. */
+export const canDeletePerson = (me: { owner: boolean; uid: string }, p: Profile) => me.owner && p.uid !== me.uid && !isOwnerEmail(p.email);
 
 // ---------- settings (N6, N7, G1-G5) ----------
 /** Merges one section into settings/app and logs it (saveSettingsPart). Extra keys are optional and ignored by older readers. */
