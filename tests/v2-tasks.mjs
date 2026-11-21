@@ -184,15 +184,17 @@ await test('by place: urgent places first, then the longest waiting, no place la
   assert.equal(g[3].title, 'בלי מקום');
 });
 
-await test('by place: a task ticked in this session stays struck through in its place (T4), never in "בלי מקום"', () => {
+await test('by place: a task ticked in this session stays struck through in its place (T4), "בלי מקום" included', () => {
   const toolbox = task({ id: 'toolbox', assignee: yoav, location: loc(shed), createdAt: ago(30), done: true, doneBy: yoav, doneAt: ago(0) });
   const paint = task({ id: 'paint', location: loc(shed), createdAt: ago(2) });
   const nowhere = task({ id: 'nowhere', done: true, doneBy: yoav, doneAt: ago(0) });
   const old = task({ id: 'old', location: loc(green), done: true, doneBy: noa, doneAt: ago(3) });
   const g = T.groupByPlace([paint, toolbox, nowhere, old], yoav.uid, TODAY, undefined, new Set(['toolbox', 'nowhere']));
-  assert.deepEqual(g.map((x) => x.key), ['p-shed']);
+  assert.deepEqual(g.map((x) => x.key), ['p-shed', '_none']);
   assert.deepEqual(g[0].rows.map((t) => t.id), ['toolbox', 'paint'], 'the done one keeps its first place');
   assert.equal(g[0].open, 1);
+  assert.deepEqual(g[1].rows.map((t) => t.id), ['nowhere'], 'a task without a place ticked here stays too');
+  assert.equal(g[1].open, 0);
 });
 
 await test('places list (L3): most open everyday tasks first, then none, then routine places, event-only places last', () => {

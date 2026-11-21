@@ -325,10 +325,10 @@ Screenshots: [8-account](shots/8-account.jpg), [8-donation-thanks](shots/8-donat
 
 After round 2: `npm test`, all `tests/v2-*.mjs` against the dev server, `tsc --noEmit -p .`, `npm run typecheck:api` and `npm run build` pass. Firestore rules were not changed, so `npm run test:rules` was not rerun.
 
-## Open decisions for Meni
+## Decided after the run
 
-1. T1 "לפי מקום": a task ticked under "בלי מקום" leaves the list at once, while T4 says a ticked row stays visible, struck through. The code does this on purpose (`groupByPlace`, test "never in בלי מקום"). Keep it, or keep the row like in the other places?
-2. X1 for a write kept offline and refused after sync (someone else took the task meanwhile) reads "לא נשמר. אין הרשאה לפעולה הזו". The design (X1-Refused) has only the named form ("נועה לקחה את המשימה לפני רגע"). Name the taker here too, or keep the general text?
+1. T1 "לפי מקום": a task ticked under "בלי מקום" used to leave the list at once, while T4 says a ticked row stays visible, struck through. No artboard or written rule makes "בלי מקום" an exception, so it now follows T4 like the other groups (`groupByPlace`, test updated in `tests/v2-tasks.mjs`).
+2. A take kept offline and refused after sync (someone else took the task meanwhile) shows the general X1 text "לא נשמר. אין הרשאה לפעולה הזו". The named form ("נועה לקחה את המשימה לפני רגע") appears when the conflict is known at the moment of the tap, online. This is logged as an added state; naming the taker after a late refusal would need the queued write to read the task again.
 
 ## Notes (not defects)
 

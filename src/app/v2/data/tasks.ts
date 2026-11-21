@@ -163,7 +163,7 @@ export function ordered(rows: Task[], uid: string, today: string) {
   return [...open, ...done];
 }
 /** T1 "לפי מקום": open tasks for today (future-dated ones wait in "לפי זמן"), by place. Done tasks stay out, except the
- *  ones ticked in this session (`kept`): those stay struck through in their place (T4), never in "בלי מקום".
+ *  ones ticked in this session (`kept`): those stay struck through in their group (T4), "בלי מקום" included.
  *  Places with an urgent task first, then the place whose task has waited longest; tasks without a place last.
  *  `open` is the count the header shows (open tasks only). `nameOf` gives the saved place's current name. */
 export function groupByPlace(tasks: Task[], uid: string, today: string, nameOf: (placeId: string) => string | undefined = () => undefined, kept: ReadonlySet<string> = new Set()): Group[] {
@@ -173,7 +173,7 @@ export function groupByPlace(tasks: Task[], uid: string, today: string, nameOf: 
     if (!t.done && t.dueDate && t.dueDate > today) continue;
     const pid = t.location?.placeId || '';
     const key = pid || (t.location?.placeName ? 'n:' + t.location.placeName : '_none');
-    if (t.done && (!kept.has(t.id) || key === '_none')) continue;
+    if (t.done && !kept.has(t.id)) continue;
     const g: G = map.get(key) || { key, title: (pid && nameOf(pid)) || t.location?.placeName || 'בלי מקום', placeId: pid || undefined, rows: [], oldest: '9999', urgent: false, open: 0 };
     g.rows.push(t);
     // a task ticked a moment ago still holds its group's place in the order
