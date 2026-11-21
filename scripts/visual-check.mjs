@@ -5,7 +5,7 @@
 //   node scripts/visual-check.mjs [ids...] [--base=http://localhost:5173] [--out=docs/visual-check] [--design=havat-raveh-redesign/design]
 //
 // Rows come from docs/demo-coverage.md (id | persona | scenario | route | steps).
-// steps (separated by ";"): click:<text> · fill:<placeholder or label>=<text> · wait:<ms> · scroll:<px> · demo:<offline|refuseNext|empty> · fullpage
+// steps (separated by ";"): click:<text> · button:<accessible name> · fill:<placeholder or label>=<text> · wait:<ms> · scroll:<px> · demo:<offline|refuseNext|empty> · fullpage
 // Output per screen: <out>/<id>.actual.png (2x), <out>/<id>.pair.jpg (design | app, 1x), and <out>/results.json (diff score 0..1).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,12 +50,15 @@ for (const r of rows) {
     for (const s of steps) {
       const [k, ...rest] = s.split(':'); const v = rest.join(':');
       if (k === 'click') await page.getByText(v, { exact: false }).first().click();
+      else if (k === 'button') await page.getByRole('button', { name: v }).first().click();
       else if (k === 'fill') { const [label, text] = v.split('='); const el = page.getByPlaceholder(label).or(page.getByLabel(label)).first(); await el.fill(text); }
       else if (k === 'wait') await page.waitForTimeout(Number(v));
       else if (k === 'scroll') await page.mouse.wheel(0, Number(v));
       await page.waitForTimeout(250);
     }
     const full = steps.includes('fullpage');
+    // the v2 screen body scrolls on its own: let it grow so a full-page shot shows everything
+    if (full) await page.addStyleTag({ content: '.k-screen{height:auto!important;min-height:100dvh;overflow:visible!important}.k-screen__body{overflow:visible!important}' });
     const actual = path.join(OUT, `${r.id}.actual.png`);
     await page.screenshot({ path: actual, fullPage: full });
     const designPng = path.join(DESIGN, 'png', `${r.id}.png`);

@@ -81,8 +81,8 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const crew = !!eventToday && (manager || staffing.items.some((s) => s.people?.some((p) => p.uid === user.uid)));
   useEffect(() => {
     if (viewAsStaff || templates.loading || instances.loading || instances.error || !templates.items.length) return;
-    materializeToday(templates.items, instances.items, actor, today);
-  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor]);
+    materializeToday(templates.items, instances.items, actor, today, places.items);
+  }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor, places.items.length]);
 
   const base: TeamCtx = { user, actor, profile, manager: manager && !viewAsStaff, owner: owner && !viewAsStaff, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid };
   const ctx: V2Ctx = { ...base, role, vendorId: '', helper: false, today, eventToday, crew, viewAsStaff };

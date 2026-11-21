@@ -7,11 +7,11 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 |---|---|---|---|---|
 | T1-Root | staff | regular | /tasks | click:קראתי |
 | T2-Time | staff | regular | /tasks?view=time | click:קראתי |
-| T4-Done | staff | regular | /tasks | click:קראתי; click:בוצע |
+| T4-Done | staff | regular | /tasks | click:קראתי; button:בוצע |
 | T3-Task | staff | regular | /tasks/demo-t-toolbox |  |
 | C3-TaskLinks | staff | regular | /tasks/demo-t-tables |  |
-| C4-Assign | manager | regular | /tasks/demo-t-tap/assign |  |
-| T5-Add | staff | regular | /new |  |
+| C4-Assign | owner | regular | /tasks/demo-t-tap/assign |  |
+| T5-Add | staff | regular | /new?text=לתקן את הברז ליד החממה |  |
 | T6-History | staff | regular | /tasks/history |  |
 | L5-MineEmpty | staff | regular | /tasks?view=mine | click:קראתי; demo:empty |
 | C6-DonePhoto | staff | regular | /tasks/demo-t-toolbox/done |  |
@@ -28,12 +28,12 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | L1-Templates | manager | regular | /manage/recurring |  |
 | L2-Template | manager | regular | /manage/recurring/demo-tpl-pots |  |
 | L3-Places | staff | regular | /places |  |
-| L4-Place | manager | regular | /places/demo-p-stall |  |
+| L4-Place | manager | regular | /places/demo-p-greenhouse |  |
 | S1-Root | staff | regular | /shopping |  |
 | S2-Wish | staff | regular | /shopping?list=wish |  |
 | S3-Empty | staff | regular | /shopping?list=online |  |
 | S4-Item | staff | regular | /shopping/demo-s-milk |  |
-| S5-Add | staff | regular | /new?kind=shopping |  |
+| S5-Add | staff | regular | /new?kind=shopping&text=2 שקי מלט לגדר, דחוף |  |
 | S6-Trip | staff | eventDay | /shopping/trip |  |
 | S7-TripEnd | staff | afterEvent | /shopping/trip/done |  |
 | S8-History | staff | regular | /shopping/history |  |
