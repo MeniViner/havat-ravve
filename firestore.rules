@@ -136,7 +136,7 @@ service cloud.firestore {
    allow delete: if canSee() && (isManager() || resource.data.createdBy.uid == uid());
   }
   match /task_templates/{id} {
-   function templateShape(){return incoming().keys().hasOnly(['title','note','days','time','active','managersOnly','createdBy','createdAt','updatedAt','assignee','placeId']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 4000) && incoming().days is list && incoming().days.size() <= 7 && str(incoming().time, 5) && incoming().active is bool && incoming().managersOnly is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().get('assignee', null) == null || actorMap(incoming().assignee)) && str(incoming().get('placeId', ''), 80);}
+   function templateShape(){return incoming().keys().hasOnly(['title','note','days','time','active','managersOnly','createdBy','createdAt','updatedAt','assignee','placeId','skip']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 4000) && incoming().days is list && incoming().days.size() <= 7 && str(incoming().time, 5) && incoming().active is bool && incoming().managersOnly is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().get('assignee', null) == null || actorMap(incoming().assignee)) && str(incoming().get('placeId', ''), 80) && (!('skip' in incoming()) || (incoming().skip is list && incoming().skip.size() <= 30));}
    allow read: if isStaff() && (resource.data.managersOnly == false || isManager());
    allow create: if isManager() && templateShape() && actorOk(incoming().createdBy);
    allow update: if isManager() && templateShape() && incoming().createdBy == resource.data.createdBy;
@@ -150,13 +150,13 @@ service cloud.firestore {
    allow update: if isStaff() && itemShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && (incoming().bought == resource.data.bought || incoming().bought == false || actorOk(incoming().boughtBy));
    allow delete: if isStaff();
   }
-  // S6, S7: a shopping trip. Only the shopper writes it; nobody deletes it
+  // S6, S7: a shopping trip. Only the shopper writes it; a manager may delete it (the items keep what happened to them)
   match /shopping_trips/{id} {
    function tripShape(){return incoming().keys().hasOnly(['id','by','list','startedAt','closedAt','bought','missing']) && incoming().get('id', id) == id && incoming().list in ['super','building','online','giveaway'] && str(incoming().startedAt, 40) && (incoming().closedAt == null || str(incoming().closedAt, 40)) && incoming().bought is list && incoming().bought.size() <= 200 && incoming().missing is list && incoming().missing.size() <= 200;}
    allow read: if isStaff();
    allow create: if isStaff() && tripShape() && actorOk(incoming().by) && incoming().closedAt == null;
    allow update: if isStaff() && tripShape() && resource.data.by.uid == uid() && incoming().by == resource.data.by && incoming().startedAt == resource.data.startedAt && incoming().list == resource.data.list;
-   allow delete: if false;
+   allow delete: if isManager();
   }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
@@ -191,7 +191,8 @@ service cloud.firestore {
     allow read: if isManager();
     allow create: if isManager() && stepShape() && incoming().done == false && incoming().get('doneBy', null) == null && incoming().get('doneAt', null) == null && incoming().get('updates', []).size() == 0 && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
     allow update: if isManager() && stepShape() && changed().hasOnly(['n','title','assignee','due','note','done','doneBy','doneAt','updates','updatedAt']) && doneOk() && updatesOk();
-    allow delete: if isManager() && resource.data.done == false;
+    // managers delete open steps; the owner deletes any step (deleting a whole project takes its done steps too)
+    allow delete: if isManager() && (resource.data.done == false || isOwner());
    }
   }
   // ---------- Guest side: events, tickets, visits, donations, stalls ----------

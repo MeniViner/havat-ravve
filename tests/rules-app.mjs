@@ -670,7 +670,7 @@ try{
  await v2no(updateDoc(doc(vol,'shopping_trips','tr1'),{list:'building'}),'trips list changed');
  await v2no(updateDoc(doc(vol,'shopping_trips','tr1'),{bought:Array.from({length:201},(_,i)=>'i'+i)}),'trips 201 bought ids');
  await v2no(deleteDoc(doc(vol,'shopping_trips','tr1')),'trips delete by shopper');
- await v2no(deleteDoc(doc(owner,'shopping_trips','tr1')),'trips delete by owner');
+ await v2no(deleteDoc(doc(dana,'shopping_trips','tr1')),'trips delete by another staff');
  for(const [who,db_] of [['owner',owner],['manager',mgr],['staff',vol]]) await v2ok(getDoc(doc(db_,'shopping_trips','trip-vol')),`trips ${who} reads`);
  for(const [who,db_] of [['vendor',raz],['helper',tamar],['guest',guest],['blocked',blk],['anon',anon]]){
   await v2no(getDoc(doc(db_,'shopping_trips','trip-vol')),`trips ${who} reads`);
@@ -967,6 +967,66 @@ try{
   await expect(team,getDoc(doc(db_,'shopping_trips','trip-vol')),`boundary ${who} reads a trip`);
   await expect(boss,getDoc(doc(db_,'projects','p1')),`boundary ${who} reads a project`);
  }
+ // ---------------- deletes everywhere (2026-11-21): every manager item deletable behind a confirmation ----------------
+ await env3.withSecurityRulesDisabled(async(c)=>{
+  const f=c.firestore();const put=(p,d)=>setDoc(doc(f,p),d);
+  await put('task_templates/tpl-skip',{title:'האכלה',note:'',days:[],time:'07:00',active:true,managersOnly:false,createdBy:A('mgr'),createdAt:now,updatedAt:now});
+  await put('tasks/tpl-skip_2030-01-02',task('vol',{templateId:'tpl-skip',dateKey:'2030-01-02'}));
+  await put('tasks/tpl-skip_2030-01-03',task('vol',{templateId:'tpl-skip',dateKey:'2030-01-03'}));
+  await put('shopping_trips/tr-del',trip('vol',{id:'tr-del',closedAt:now}));
+  await put('projects/p9',project({id:'p9'}));await put('projects/p9/steps/s1',step('s1',{projectId:'p9'}));await put('projects/p9/steps/s2',step('s2',{projectId:'p9',done:true,doneBy:A('mgr'),doneAt:now}));
+  await put('vendors/v-del',{name:'דוכן למחיקה',phone:'0520000001',external:true,events:['ev-day'],createdAt:now,updatedAt:now});
+  await put('vendors/v-del/private/main',{notes:'x',updatedAt:now});
+  await put('events/ev-day/vendors/v-del',{vendorId:'v-del',name:'דוכן למחיקה',confirmed:false,notes:'',status:'invited',updatedAt:now});
+  await put('vendor_invites/code-del-0001',{code:'code-del-0001',vendorId:'v-del',vendorName:'דוכן למחיקה',role:'owner',name:'יוסי',phone:'',active:false,usedBy:'vdel',usedAt:now,createdBy:A('mgr'),createdAt:now});
+  await put('users/vdel',P('vdel','vendor',{vendorId:'v-del',helper:false,addedBy:'mgr',inviteCode:'code-del-0001'}));
+  await put('users/gone',P('gone','staff'));await put('role_invites/gone@example.com',{email:'gone@example.com',role:'staff',createdBy:A('mgr'),createdAt:now});
+  await put('broadcasts/b-del',bc('b-del'));
+  await put('visits/vi-del',{uid:'guest',name:'אורח',phone:'',date:'2030-01-02',people:4,type:'סיור',note:'',status:'approved',managerNote:'',handledBy:A('mgr'),createdAt:now,updatedAt:now});
+  await put('calendar/visit_vi-del',{ownerUid:'mgr',ownerName:'בדיקה',title:'ביקור',date:'2030-01-02',time:'10:00',kind:'visit',refId:'vi-del',createdAt:now});
+  await put('notifications/n-vi-del',{type:'visit',title:'ביקור',text:'',link:'/manage/inbox',refId:'vi-del',createdAt:now,handled:false,handledBy:null,handledAt:null});
+  await put('tickets/tk-del1',tk('del1',{orderId:'o-del'}));await put('tickets/tk-del2',tk('del2',{orderId:'o-del',index:2,total:2}));
+  await put('tabs/tb-del',tb({total:10}));
+  await put('events/ev-day/vendor_requests/r-del',{id:'r-del',eventId:'ev-day',vendorId:'v-raz',vendorName:'רז',kind:'power',text:'',by:A('raz'),createdAt:now,takenBy:null,closedAt:null,closedBy:null});
+ });
+ // a recurring day's instance: the task goes and the template remembers the day (skip), in one batch
+ await v2ok(updateDoc(doc(mgr,'task_templates','tpl-skip'),{skip:['2030-01-02'],updatedAt:now}),'delete: manager writes a template skip list');
+ await v2no(updateDoc(doc(mgr,'task_templates','tpl-skip'),{skip:Array.from({length:31},(_,i)=>'2030-02-'+String(i+1).padStart(2,'0')),updatedAt:now}),'delete: template skip of 31 days');
+ await v2no(updateDoc(doc(mgr,'task_templates','tpl-skip'),{skip:'2030-01-02',updatedAt:now}),'delete: template skip not a list');
+ await v2no(updateDoc(doc(vol,'task_templates','tpl-skip'),{skip:['2030-01-03'],updatedAt:now}),'delete: staff writes a template skip list');
+ { const b=writeBatch(mgr); b.delete(doc(mgr,'tasks','tpl-skip_2030-01-03')); b.update(doc(mgr,'task_templates','tpl-skip'),{skip:['2030-01-02','2030-01-03'],updatedAt:now}); await v2ok(b.commit(),'delete: manager deletes a recurring instance with the skip in one batch'); }
+ { const b=writeBatch(vol); b.delete(doc(vol,'tasks','tpl-skip_2030-01-02')); b.update(doc(vol,'task_templates','tpl-skip'),{skip:['2030-01-02'],updatedAt:now}); await v2no(b.commit(),'delete: staff creator of an instance cannot write the skip'); }
+ await v2ok(setDoc(doc(mgr,'task_templates','tp-skip2'),tpl({skip:[]})),'delete: template created with an empty skip list');
+ // shopping trips: a manager deletes one
+ await v2no(deleteDoc(doc(vol,'shopping_trips','tr-del')),'delete: shopper deletes own trip');
+ await v2ok(deleteDoc(doc(mgr,'shopping_trips','tr-del')),'delete: manager deletes a trip');
+ // a whole project: the owner deletes done steps too, a manager still cannot
+ await v2no(deleteDoc(doc(mgr,'projects/p9/steps','s2')),'delete: manager deletes a done step');
+ { const b=writeBatch(mgr); b.delete(doc(mgr,'projects/p9/steps','s1')); b.delete(doc(mgr,'projects/p9/steps','s2')); b.delete(doc(mgr,'projects','p9')); await v2no(b.commit(),'delete: manager deletes a whole project'); }
+ { const b=writeBatch(owner); b.delete(doc(owner,'projects/p9/steps','s1')); b.delete(doc(owner,'projects/p9/steps','s2')); b.delete(doc(owner,'projects','p9')); await v2ok(b.commit(),'delete: owner deletes a project with a done step'); }
+ // a stall from the pool: its access, links, notes and event records in one batch (manager); staff cannot
+ const vendorDelete=(u)=>{ const b=writeBatch(u);
+  b.update(doc(u,'users','vdel'),{role:'guest',notes:'',updatedAt:now,log:[{at:now,by:A(u===mgr?'mgr':'vol'),text:'x'}]});
+  b.delete(doc(u,'vendor_invites','code-del-0001')); b.delete(doc(u,'events/ev-day/vendors','v-del')); b.delete(doc(u,'vendors/v-del/private','main')); b.delete(doc(u,'vendors','v-del'));
+  return b.commit(); };
+ await v2no(vendorDelete(vol),'delete: staff deletes a stall');
+ await v2ok(vendorDelete(mgr),'delete: manager deletes a stall with its access, links, notes and records');
+ await v2ok(updateDoc(doc(mgr,'vendors','v-raz'),{events:[],updatedAt:now}),'delete: manager takes an event off a stall history');
+ // a person: the owner only
+ { const b=writeBatch(mgr); b.delete(doc(mgr,'users','gone')); b.delete(doc(mgr,'role_invites','gone@example.com')); await v2no(b.commit(),'delete: manager deletes a person'); }
+ { const b=writeBatch(owner); b.delete(doc(owner,'users','gone')); b.delete(doc(owner,'role_invites','gone@example.com')); await v2ok(b.commit(),'delete: owner deletes a person and the role waiting for the email'); }
+ // broadcasts: the owner only
+ await v2ok(deleteDoc(doc(owner,'broadcasts','b-del')),'delete: owner deletes a broadcast');
+ // a visit with its calendar entry and inbox item; an order; a tab; a stall request; an inbox item
+ { const b=writeBatch(vol); b.delete(doc(vol,'visits','vi-del')); await v2no(b.commit(),'delete: staff deletes a visit'); }
+ { const b=writeBatch(mgr); b.delete(doc(mgr,'visits','vi-del')); b.delete(doc(mgr,'calendar','visit_vi-del')); b.delete(doc(mgr,'notifications','n-vi-del')); await v2ok(b.commit(),'delete: manager deletes a visit, its calendar entry and inbox item'); }
+ await v2no(deleteDoc(doc(vol,'tickets','tk-del1')),'delete: staff deletes a ticket');
+ { const b=writeBatch(mgr); b.delete(doc(mgr,'tickets','tk-del1')); b.delete(doc(mgr,'tickets','tk-del2')); await v2ok(b.commit(),'delete: manager deletes a whole order'); }
+ await v2no(deleteDoc(doc(vol,'tabs','tb-del')),'delete: staff deletes a tab');
+ await v2ok(deleteDoc(doc(mgr,'tabs','tb-del')),'delete: manager deletes a tab');
+ await v2no(deleteDoc(doc(vol,'events/ev-day/vendor_requests','r-del')),'delete: staff deletes a stall request');
+ await v2ok(deleteDoc(doc(mgr,'events/ev-day/vendor_requests','r-del')),'delete: manager deletes a stall request');
+ await v2ok(deleteDoc(doc(mgr,'donations','d2')),'delete: manager deletes a donation');
 }finally{await env3.cleanup();}
 
 // ---------------------------------------------------------------------------------------------------------------------

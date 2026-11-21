@@ -29,12 +29,12 @@ from `tests/v2-vendor.mjs` (72), 553 in all. The suite counts every case and fai
 | `users/{uid}` | self; staff read the team list | self creates (role from bootstrap, invite or vendor claim); self edits name, phone, fields, photo, photoSource, googlePhoto, town, birthDate, push, welcomedAt, never role/status/vendorId/helper; managers set role guest/staff/blocked status and notes (owner: any role); `vendor` only through a claim |
 | `users/{uid}/notifications` | self | staff create kind task/urgent/trip/event/vendor (managers also broadcast/system) with `by` = self and an in-app link; a vendor creates kind `vendor` to a team member only; self marks `readAt`, deletes; a manager may overwrite a broadcast notification (resend) |
 | `tasks` | staff (managers-only to managers) | as before, plus: a non-creator staff may take a free open task, release or hand on their own, add a photo or `shoppingId`; a task on someone else cannot be taken (late offline take refused) |
-| `task_templates` | staff | managers; `assignee` (actor or null), `placeId` |
+| `task_templates` | staff | managers; `assignee` (actor or null), `placeId`, `skip` (days whose instance a manager deleted, 30 max) |
 | `places` | staff | staff create and edit (name, lat, lng, accuracy, photo); managers delete |
 | `shopping` | staff | as before, plus `taskId`, `notAvailable`, `notAvailableAt`, `tripId`, `foundWhere` |
-| `shopping_trips` | staff | staff start their own trip; only the shopper updates (closedAt, bought, missing); never deleted |
+| `shopping_trips` | staff | staff start their own trip; only the shopper updates (closedAt, bought, missing); managers delete |
 | `calendar` | staff | managers write team items (audience, participants, reminder `''`/`'60'`, remindAt, reminderSentAt); staff write their own presence only (from, to, note, no manager fields, name = profile name) |
-| `projects`, `projects/*/steps` | managers | managers; a step is done once, stamped by the one who ticks it; the thread only grows by one entry by self (300 max); only open steps are deleted; projects deleted by the owner |
+| `projects`, `projects/*/steps` | managers | managers; a step is done once, stamped by the one who ticks it; the thread only grows by one entry by self (300 max); managers delete open steps, the owner any step; projects deleted by the owner |
 | `events/{id}` | published to all; staff; an invited vendor gets (not lists) the event | managers; `closed` holds at/by/reopenUntil only, never cash |
 | `events/*/staffing` | staff | managers (station, people, needed) |
 | `events/*/scans` | staff | staff create with id `<ticket>-<n>` once, by self, on an open event (managers also on a closed one); managers mark a rejected scan reopened or kept, once; never deleted |
