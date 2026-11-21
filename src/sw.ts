@@ -18,7 +18,7 @@ type PushPayload={title?:string;body?:string;link?:string;tag?:string;urgent?:bo
 const appUrl=(link?:string)=>{const l=typeof link==='string'&&link.startsWith('/')&&!link.startsWith('//')?link:'/';return l==='/app'||l.startsWith('/app/')?l:'/app'+(l==='/'?'':l);};
 worker.addEventListener('push',e=>{let j:{data?:PushPayload}&PushPayload={};try{j=e.data?.json()||{};}catch{j={body:e.data?.text()||''};}
  const p:PushPayload={...j,...(j.data||{})};const urgent=p.urgent===true||p.urgent==='true';
- e.waitUntil(worker.registration.showNotification(String(p.title||'חוות רבבה').slice(0,80),{body:String(p.body||'').slice(0,180),icon:'/assets/app-icon-192.png',badge:'/assets/app-icon-192.png',lang:'he',dir:'rtl',tag:p.tag||undefined,requireInteraction:urgent,data:{url:appUrl(p.link)}}));});
+ e.waitUntil(worker.registration.showNotification(String(p.title||'חוות רווה').slice(0,80),{body:String(p.body||'').slice(0,180),icon:'/assets/app-icon-192.png',badge:'/assets/app-icon-192.png',lang:'he',dir:'rtl',tag:p.tag||undefined,requireInteraction:urgent,data:{url:appUrl(p.link)}}));});
 // Focus an open app window and move it to the subject; otherwise open one. The guest page keeps its '/#event-…' urls.
 worker.addEventListener('notificationclick',e=>{e.notification.close();const url=new URL(e.notification.data?.url||'/',worker.location.origin);if(url.origin!==worker.location.origin)return;
  e.waitUntil((async()=>{if(isApp(url.pathname)){for(const c of await worker.clients.matchAll({type:'window',includeUncontrolled:true})){const w=c as WindowClient;if(new URL(w.url).origin===url.origin&&isApp(new URL(w.url).pathname)){await w.focus();try{await w.navigate(url.href);}catch{}return;}}}await worker.clients.openWindow(url.href);})());});

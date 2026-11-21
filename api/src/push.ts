@@ -35,7 +35,7 @@ export const JOBS = 'push_jobs';
 const BUDGET = 30;
 const QUERY_LIMIT = 10;
 const USERS_PER_READ = 50;
-const MAX_DEVICES = 5;
+const MAX_DEVICES = 6; // the app keeps at most 6 (push.ts saveDevice)
 const LEASE_MS = 4 * 60_000;
 /** A push about something older than this is noise on a lock screen: the in-app notification is enough. */
 const STALE_MS = 6 * 3600_000;
@@ -170,7 +170,7 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
   }
 
   const payload: Payload = {
-    title: clip(j.title, 80) || 'חוות רבבה', body: clip(j.body, 180), link: appLink(j.link),
+    title: clip(j.title, 80) || 'חוות רווה', body: clip(j.body, 180), link: appLink(j.link),
     tag: clip(j.tag || job.id, 64), urgent: j.urgent === true || kind === 'urgent',
     ttl: Math.max(60, Math.floor((STALE_MS - (nowMs - ms(j.createdAt))) / 1000)),
   };
