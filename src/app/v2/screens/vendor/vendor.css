@@ -15,6 +15,7 @@
 
 /* warm event block (D1 row, D3 link, D5 check-in, D6 live) */
 .vendor-hero { gap: 12px; }
+.vendor-hero--live { gap: 8px; }
 .vendor-hero__when { font-size: 24px; font-weight: 700; }
 .vendor-hero__line { font-size: 16px; }
 .vendor-count { flex: none; display: flex; flex-direction: column; align-items: center; }
@@ -37,7 +38,7 @@
 .vendor-spot .k-datebox__day { font-size: 26px; }
 
 /* timeline rows: 48px tabular time, text 16/500, the next one 700 (D4, D5) */
-.vendor-tl { display: flex; align-items: baseline; gap: 12px; min-height: 38px; padding: 4px 14px; border-top: 1px solid var(--line); }
+.vendor-tl { display: flex; align-items: baseline; gap: 12px; box-sizing: content-box; min-height: 38px; padding: 4px 14px; border-top: 1px solid var(--line); }
 .vendor-tl__time { flex: none; width: 48px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .vendor-tl__text { flex: 1; font-size: 16px; font-weight: 500; }
 .vendor-tl--next .vendor-tl__text { font-weight: 700; }
@@ -67,7 +68,7 @@
 .vendor-banner__text { flex: 1; }
 
 /* toggle and stepper cards (D2, D9, D10) */
-.vendor-togglecard { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-height: 60px; padding: 4px 14px; }
+.vendor-togglecard { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-sizing: content-box; min-height: 60px; padding: 4px 14px; }
 .vendor-togglecard__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .vendor-togglecard__title { font-size: 16px; font-weight: 600; }
 .vendor-togglecard__meta { font-size: 14px; color: var(--soft); }

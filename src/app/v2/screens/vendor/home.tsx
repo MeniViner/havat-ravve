@@ -192,7 +192,7 @@ function Live({ ctx, v, b, info, overline }: { ctx: V2Ctx; v: VendorDoc; b: Bund
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={overline} title={started ? 'האירוע פתוח' : 'הגעת לחווה'} />
       <BroadcastCard ctx={ctx} />
-      <Hero className="vendor-hero" aria-label="מבקרים">
+      <Hero className={started ? "vendor-hero vendor-hero--live" : "vendor-hero"} aria-label="מבקרים">
         {started ? <>
           <div className="vendor-live">
             <HeroNumber>{live?.entered ?? 0}</HeroNumber>

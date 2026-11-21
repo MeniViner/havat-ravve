@@ -1,7 +1,7 @@
 # Vendor area: data and rules
 
 Screens: D1-D11 (vendor and helper), V1, V2, V6, N8, V7 (managers).
-Code: `src/app/v2/data/vendor.ts`. Demo seed: `src/app/demo/seed/vendor.ts`. Tests: `tests/v2-vendor.mjs`.
+Code: `src/app/v2/data/vendor.ts`. Demo seed: `src/app/demo/seed/vendor.ts`. Tests: `tests/v2-vendor.mjs` (click-through), `tests/rules-app.mjs` (rules).
 
 ## Who is a vendor
 
@@ -140,7 +140,7 @@ Then show the vendor root. If the claim fails, show its message and fall back to
 
 ## Rules (requested changes to `firestore.rules`)
 
-Each block below is tagged (`rules:<name>`). `tests/v2-vendor.mjs` applies these exact blocks to a copy of `firestore.rules` and runs the cases in the table at the end against the emulator.
+These seven blocks are now in `firestore.rules`. The cases in the table at the end run in `tests/rules-app.mjs` (`npm run test:rules`).
 
 **`rules:helpers`.** New functions, placed right after `function isStaff()`:
 
@@ -269,7 +269,7 @@ What stays unchanged:
 The cost of `get()` calls stays inside the limits:
 
 - **Single-document requests** (limit 10): the worst case is a request create. It reads the profile (every vendor helper shares that one read) plus the stall record.
-- **Evaluated expressions** (limit 1000 per rule): each branch tests the cheap `changed()` first and the profile last. `tests/v2-vendor.mjs` caught this limit on the record update.
+- **Evaluated expressions** (limit 1000 per rule): each branch tests the cheap `changed()` first and the profile last. The rules tests caught this limit on the record update.
 - **The claim** (a 3-write commit, limit 20): it reads the invite (`get` and `getAfter`), the profile (`getAfter`) and the counter.
 
 ## Rules test cases

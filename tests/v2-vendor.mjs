@@ -1,200 +1,15 @@
-// Vendor area (D1-D11, V1, V2, V6, N8, V7): two parts in one file.
+// Click-through of the vendor area (D1-D11, V1, V2, V6, N8, V7) in demo mode: every control per persona (vendor regular /
+// event day / after, helper, manager), writes checked after a reload, no console errors, no request outside the demo sandbox.
+// The vendor rules cases live in tests/rules-app.mjs (npm run test:rules).
 //
-// Part A, rules: applies the requested rules blocks from docs/redesign-data/vendor.md to a copy of firestore.rules and
-// checks what a vendor and a helper may read and write (own stall, invited events, nothing of other people).
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH firebase emulators:exec --only firestore --project demo-havat-ravve "node tests/v2-vendor.mjs"
-//
-// Part B, click-through in demo mode: every control per persona (vendor regular / event day / after, helper, manager),
-// writes checked after a reload, no console errors, no request outside the demo sandbox.
 //   PORT=5208 node scripts/dev.mjs            (another terminal)
 //   node tests/v2-vendor.mjs [--base=http://localhost:5208]
-//
-// With FIRESTORE_EMULATOR_HOST set (emulators:exec) only part A runs; otherwise only part B.
 
 const section = (s) => console.log('\n' + s);
 let fails = 0;
 
 // ====================================================================================================================
-// Part A: rules. Applies the rules blocks from docs/redesign-data/vendor.md to a copy of firestore.rules and runs the
-// test cases listed there. Only under the emulator (FIRESTORE_EMULATOR_HOST is set by emulators:exec).
-// ====================================================================================================================
-async function rulesPart() {
-  const { createRequire } = await import('node:module'); const require = createRequire(import.meta.url); require('firebase/compat/firestore');
-  const fs = await import('node:fs');
-  const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
-  const { doc, setDoc, getDoc, getDocs, collection, updateDoc, query, where, writeBatch, arrayUnion } = require('firebase/firestore');
-
-  // ---- the requested rules, applied exactly as the doc writes them ----
-  const md = fs.readFileSync('docs/redesign-data/vendor.md', 'utf8');
-  const blocks = Object.fromEntries([...md.matchAll(/```rules:([\w-]+)\n([\s\S]*?)```/g)].map((m) => [m[1], m[2].replace(/\n$/, '')]));
-  for (const k of ['helpers', 'users-shape', 'users-create', 'users-update', 'events-read', 'event-vendors', 'vendors']) if (!blocks[k]) throw new Error('missing rules block ' + k);
-  let rules = fs.readFileSync('firestore.rules', 'utf8');
-  const swap = (re, by, label) => { if (!re.test(rules)) throw new Error('rules anchor not found: ' + label); rules = rules.replace(re, () => by); };
-  if (!/^  function isStaff\(\)\{.*$/m.test(rules)) throw new Error('rules anchor not found: isStaff');
-  rules = rules.replace(/^  function isStaff\(\)\{.*$/m, (l) => l + '\n' + blocks.helpers);
-  swap(/^   function profileShape\(\)\{.*$/m, blocks['users-shape'], 'profileShape');
-  swap(/^   function createRole\(\)\{.*$/m, blocks['users-create'], 'createRole');
-  swap(/^   allow update: if profileShape\(\).*$/m, blocks['users-update'], 'users update');
-  swap(/^   allow read: if resource\.data\.published == true \|\| isStaff\(\);$/m, blocks['events-read'], 'events read');
-  swap(/^   match \/vendors\/\{vid\} \{\n[\s\S]*?\n   \}$/m, blocks['event-vendors'], 'events/vendors');
-  swap(/^  match \/vendors\/\{id\} \{\n[\s\S]*?\n  \}$/m, blocks.vendors, 'vendors');
-  fs.mkdirSync('.build', { recursive: true }); fs.writeFileSync('.build/firestore.vendor.rules', rules);
-
-  const env = await initializeTestEnvironment({ projectId: 'demo-havat-ravve', firestore: { rules } });
-  const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
-  const db = (uid) => env.authenticatedContext(uid, claims(uid + '@example.com')).firestore();
-  const now = new Date().toISOString();
-  const actor = (uid) => ({ uid, name: 'בדיקה' });
-  const profile = (uid, role, extra = {}) => ({ uid, email: uid + '@example.com', displayName: 'בדיקה', phone: '0500000000', role, status: 'active', customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now, ...extra });
-  const vendor = (name, extra = {}) => ({ name, phone: '0520000000', product: 'גבינות', sells: 'גבינות', external: true, notes: '', note: '', needs: [], events: [], people: [], inviteNext: false, createdAt: now, updatedAt: now, ...extra });
-  const rec = (vid, extra = {}) => ({ vendorId: vid, name: vid, confirmed: false, notes: '', status: 'invited', invitedAt: now, invitedBy: actor('mgr'), answeredAt: null, sells: '', needs: [], people: 1, vehicle: '', note: '', spot: null, spotNote: '', arrivedAt: null, feedback: null, updatedAt: now, ...extra });
-  const invite = (code, vid, role, extra = {}) => ({ code, vendorId: vid, vendorName: vid, role, name: 'בדיקה', phone: '0520000000', active: true, usedBy: null, usedAt: null, createdBy: actor('mgr'), createdAt: now, ...extra });
-  const request = (id, eid, vid, by, extra = {}) => ({ id, eventId: eid, vendorId: vid, vendorName: vid, kind: 'power', text: 'החשמל נפל', by: actor(by), createdAt: now, takenBy: null, closedAt: null, closedBy: null, ...extra });
-
-  let n = 0, failures = 0;
-  const ok = async (p, label) => { n++; try { await assertSucceeds(p); console.log('  ✓ ' + label); } catch (e) { failures++; console.log('  ✗ ' + label + ' — ' + String(e.message || e).split('\n')[0]); } };
-  const no = async (p, label) => { n++; try { await assertFails(p); console.log('  ✓ ' + label); } catch (e) { failures++; console.log('  ✗ ' + label + ' — allowed'); } };
-
-  try {
-    await env.withSecurityRulesDisabled(async (c) => {
-      const f = c.firestore();
-      await setDoc(doc(f, 'users/mgr'), profile('mgr', 'manager'));
-      await setDoc(doc(f, 'users/staff'), profile('staff', 'staff'));
-      await setDoc(doc(f, 'users/guest'), profile('guest', 'guest'));
-      await setDoc(doc(f, 'users/raz'), profile('raz', 'vendor', { vendorId: 'v-raz', helper: false, addedBy: 'mgr', inviteCode: 'code-raz-0001' }));
-      await setDoc(doc(f, 'users/tamar'), profile('tamar', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-tamar-01' }));
-      await setDoc(doc(f, 'users/dana'), profile('dana', 'vendor', { vendorId: 'v-dana', helper: false, addedBy: 'mgr', inviteCode: 'code-dana-001' }));
-      await setDoc(doc(f, 'counters/users'), { value: 6 });
-      await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'] }));
-      await setDoc(doc(f, 'vendors/v-raz/private/main'), { notes: 'משלם באיחור', updatedAt: now });
-      await setDoc(doc(f, 'vendors/v-dana'), vendor('קרמיקה של דנה', { events: ['e-other'] }));
-      const ev = (title, published) => ({ title, published, start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z', stall: true, createdBy: actor('mgr'), createdAt: now, updatedAt: now });
-      await setDoc(doc(f, 'events/e-hidden'), ev('פסטיבל', false));
-      await setDoc(doc(f, 'events/e-other'), ev('יריד', false));
-      await setDoc(doc(f, 'events/e-pub'), ev('חנוכה', true));
-      await setDoc(doc(f, 'events/e-hidden/vendors/v-raz'), rec('v-raz'));
-      await setDoc(doc(f, 'events/e-other/vendors/v-dana'), rec('v-dana', { status: 'confirmed', confirmed: true }));
-      await setDoc(doc(f, 'events/e-hidden/vendor_info/main'), { setupFrom: '14:00', managerUids: ['mgr'], updatedAt: now });
-      await setDoc(doc(f, 'events/e-other/vendor_info/main'), { setupFrom: '14:00', managerUids: ['mgr'], updatedAt: now });
-      await setDoc(doc(f, 'events/e-hidden/counters/live'), { entered: 12 });
-      await setDoc(doc(f, 'events/e-other/vendor_requests/r-dana'), request('r-dana', 'e-other', 'v-dana', 'dana'));
-      await setDoc(doc(f, 'vendor_invites/code-tamar-01'), invite('code-tamar-01', 'v-raz', 'helper', { active: false, usedBy: 'tamar', usedAt: now, createdBy: actor('raz') }));
-      await setDoc(doc(f, 'vendor_invites/code-owner-new'), invite('code-owner-new', 'v-raz', 'owner'));
-      await setDoc(doc(f, 'vendor_invites/code-guest-001'), invite('code-guest-001', 'v-dana', 'helper', { createdBy: actor('dana') }));
-      await setDoc(doc(f, 'vendor_invites/code-used-0001'), invite('code-used-0001', 'v-raz', 'helper', { active: false, usedBy: 'someone', usedAt: now }));
-    });
-    const raz = db('raz'), tamar = db('tamar'), dana = db('dana'), staff = db('staff'), mgr = db('mgr'), guest = db('guest'), fresh = db('fresh'), fresh2 = db('fresh2');
-
-    section('Rules: own stall, invited events, nothing of other people');
-    await ok(getDoc(doc(raz, 'vendors/v-raz')), '1 owner reads own vendor');
-    await no(getDoc(doc(raz, 'vendors/v-dana')), '2 owner cannot read another vendor');
-    await no(getDocs(collection(raz, 'vendors')), '2 owner cannot list vendors');
-    await ok(getDoc(doc(tamar, 'vendors/v-raz')), '3 helper reads the stall');
-    await no(getDoc(doc(raz, 'vendors/v-raz/private/main')), '4 vendor cannot read the team notes');
-    await ok(getDoc(doc(mgr, 'vendors/v-raz/private/main')), '4 manager reads the team notes');
-    await ok(getDoc(doc(raz, 'events/e-hidden')), '5 invited vendor reads an unpublished event');
-    await ok(getDoc(doc(tamar, 'events/e-hidden')), '5 helper reads the invited event');
-    await no(getDoc(doc(raz, 'events/e-other')), '6 not invited: cannot read the event');
-    await no(getDocs(collection(raz, 'events')), '6 vendor cannot list all events');
-    await ok(getDocs(query(collection(raz, 'events'), where('published', '==', true))), '7 vendor lists published events');
-    await ok(getDoc(doc(raz, 'events/e-hidden/vendor_info/main')), '8 vendor reads the brief of an invited event');
-    await ok(getDoc(doc(raz, 'events/e-hidden/counters/live')), '8 vendor reads the live count of an invited event');
-    await no(getDoc(doc(raz, 'events/e-other/vendor_info/main')), '9 no brief of another event');
-    await no(getDoc(doc(raz, 'events/e-other/vendors/v-dana')), '9 no record of another stall');
-    await no(getDocs(collection(raz, 'events/e-hidden/vendors')), '9 cannot list the event vendors');
-    await no(getDoc(doc(raz, 'users/tamar')), '28 vendor cannot read another profile');
-    await no(getDocs(collection(raz, 'users')), '28 vendor cannot list users');
-
-    section('Rules: answering, check-in, requests');
-    const mine = doc(raz, 'events/e-hidden/vendors/v-raz');
-    await no(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { status: 'confirmed', confirmed: true, answeredAt: now, updatedAt: now }), '11 helper cannot answer');
-    await ok(updateDoc(mine, { status: 'confirmed', confirmed: true, answeredAt: now, sells: 'גבינות', needs: ['table', 'power'], people: 2, withVehicle: true, vehicle: 'רכב לפריקה', note: '', updatedAt: now }), '10 owner confirms with needs');
-    await no(updateDoc(mine, { spot: 3, updatedAt: now }), '11 owner cannot pick a spot');
-    await no(updateDoc(mine, { status: 'confirmed', confirmed: false, answeredAt: now, updatedAt: now }), '10 confirmed must match status');
-    await no(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { arrivedAt: now, arrivedBy: 'raz', updatedAt: now }), '12 check-in as someone else is refused');
-    await ok(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { arrivedAt: now, arrivedBy: 'tamar', updatedAt: now }), '12 helper checks in');
-    await no(updateDoc(mine, { arrivedAt: now, arrivedBy: 'raz', updatedAt: now }), '12 second check-in is refused');
-    await ok(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { guidelinesReadAt: now }), 'guidelines read stamp');
-    await ok(updateDoc(mine, { feedback: { rating: 5, text: 'היה טוב', inviteNext: true, at: now }, updatedAt: now }), 'owner feedback (D9)');
-    await no(updateDoc(mine, { feedback: { rating: 9, text: '', inviteNext: true, at: now }, updatedAt: now }), 'feedback rating out of range');
-
-    const reqRef = (u, id, eid = 'e-hidden') => doc(u, `events/${eid}/vendor_requests/${id}`);
-    await ok(setDoc(reqRef(raz, 'r1'), request('r1', 'e-hidden', 'v-raz', 'raz')), '13 owner creates a request');
-    await ok(setDoc(reqRef(tamar, 'r2'), request('r2', 'e-hidden', 'v-raz', 'tamar', { kind: 'help', text: 'צריך עזרה בדוכן' })), '13 helper creates a request');
-    await no(setDoc(reqRef(dana, 'r3'), request('r3', 'e-hidden', 'v-raz', 'dana')), '14 another vendor cannot ask for this stall');
-    await no(setDoc(reqRef(raz, 'r4', 'e-other'), request('r4', 'e-other', 'v-raz', 'raz')), '14 not on that event');
-    await no(setDoc(reqRef(raz, 'r5'), request('r5', 'e-hidden', 'v-raz', 'tamar')), '14 by must be the writer');
-    await ok(getDocs(query(collection(raz, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz'))), '15 owner lists own requests');
-    await no(getDocs(collection(raz, 'events/e-hidden/vendor_requests')), '15 owner cannot list all requests');
-    await no(getDoc(reqRef(raz, 'r-dana', 'e-other')), '15 cannot read another stall request');
-    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), '16 staff takes a request');
-    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz') }), '16 vendor cannot take');
-    await ok(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz') }), '16 owner closes own request');
-    await no(updateDoc(reqRef(mgr, 'r1'), { closedAt: now, closedBy: actor('mgr') }), '16 closing twice is refused');
-    await ok(updateDoc(reqRef(mgr, 'r2'), { closedAt: now, closedBy: actor('mgr') }), '16 manager closes a request');
-
-    section('Rules: the stall and its people');
-    await ok(updateDoc(doc(raz, 'vendors/v-raz'), { name: 'גבינות רז', note: 'מגיע עם מקרר', sells: 'גבינות', product: 'גבינות', inviteNext: true, updatedAt: now }), '17 owner edits the stall');
-    await no(updateDoc(doc(raz, 'vendors/v-raz'), { external: false, updatedAt: now }), '17 owner cannot change external');
-    await no(updateDoc(doc(raz, 'vendors/v-raz'), { notes: 'x', updatedAt: now }), '17 owner cannot write team notes');
-    await no(updateDoc(doc(raz, 'vendors/v-raz'), { events: arrayUnion('e-pub'), updatedAt: now }), '17 owner cannot add events');
-    await no(updateDoc(doc(tamar, 'vendors/v-raz'), { name: 'x', updatedAt: now }), '18 helper cannot edit');
-    await no(updateDoc(doc(dana, 'vendors/v-raz'), { name: 'x', updatedAt: now }), '18 another vendor cannot edit');
-    const helperInvite = invite('code-avi-0001', 'v-raz', 'helper', { createdBy: actor('raz') });
-    const b1 = writeBatch(raz);
-    b1.set(doc(raz, 'vendor_invites/code-avi-0001'), helperInvite);
-    b1.update(doc(raz, 'vendors/v-raz'), { people: arrayUnion({ name: 'אבי', phone: '0521234567', role: 'helper', entered: false, code: 'code-avi-0001' }), updatedAt: now });
-    await ok(b1.commit(), '19 owner adds a helper (invite + people)');
-    await no(setDoc(doc(raz, 'vendor_invites/code-own-0002'), invite('code-own-0002', 'v-raz', 'owner', { createdBy: actor('raz') })), '19 owner cannot create an owner invite');
-    await no(setDoc(doc(raz, 'vendor_invites/code-dana-002'), invite('code-dana-002', 'v-dana', 'helper', { createdBy: actor('raz') })), '19 owner cannot invite to another stall');
-    await no(setDoc(doc(tamar, 'vendor_invites/code-tam-0002'), invite('code-tam-0002', 'v-raz', 'helper', { createdBy: actor('tamar') })), '19 helper cannot invite');
-    await ok(getDocs(query(collection(raz, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 owner lists own invites');
-    await no(getDocs(query(collection(tamar, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 helper cannot list invites');
-    await no(getDocs(query(collection(dana, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 another vendor cannot list');
-    await ok(getDoc(doc(guest, 'vendor_invites/code-owner-new')), '21 the link holder reads the invite');
-    await ok(updateDoc(doc(raz, 'vendor_invites/code-avi-0001'), { active: false }), '26 owner revokes a helper invite');
-    await no(updateDoc(doc(raz, 'vendor_invites/code-owner-new'), { active: false }), '26 owner cannot revoke an owner invite');
-
-    section('Rules: claiming an invite');
-    const claimNew = (u, uid, code, inv, over = {}, useInvite = true, value = 7) => {
-      const b = writeBatch(u);
-      b.set(doc(u, `users/${uid}`), { ...profile(uid, 'vendor'), customerNumber: 7, vendorId: inv.vendorId, helper: inv.role === 'helper', addedBy: inv.createdBy, inviteCode: code, ...over });
-      b.update(doc(u, 'counters/users'), { value });
-      if (useInvite) b.update(doc(u, `vendor_invites/${code}`), { usedBy: uid, usedAt: now, active: false });
-      return b.commit();
-    };
-    await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-raz', role: 'owner', createdBy: 'mgr' }, {}, false), '23 vendor profile without using the invite');
-    await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-dana', role: 'owner', createdBy: 'mgr' }), '23 wrong vendorId');
-    await no(claimNew(fresh, 'fresh', 'code-used-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'mgr' }), '23 used invite');
-    await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-raz', role: 'helper', createdBy: 'mgr' }), '23 helper flag must match the invite');
-    await ok(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-raz', role: 'owner', createdBy: 'mgr' }), '22 new account claims (profile + invite + counter)');
-    await ok(getDoc(doc(fresh, 'vendors/v-raz')), '22 the new owner reads the stall');
-    await no(claimNew(fresh2, 'fresh2', 'code-owner-new', { vendorId: 'v-raz', role: 'owner', createdBy: 'mgr' }, {}, true, 8), '23 the same invite twice');
-    const claimExisting = (u, uid, code, inv) => {
-      const b = writeBatch(u);
-      b.update(doc(u, `users/${uid}`), { role: 'vendor', vendorId: inv.vendorId, helper: inv.role === 'helper', addedBy: inv.createdBy, inviteCode: code, updatedAt: now });
-      b.update(doc(u, `vendor_invites/${code}`), { usedBy: uid, usedAt: now, active: false });
-      return b.commit();
-    };
-    await no(claimExisting(staff, 'staff', 'code-guest-001', { vendorId: 'v-dana', role: 'helper', createdBy: 'dana' }), '25 a team account cannot become a stall');
-    await ok(claimExisting(guest, 'guest', 'code-guest-001', { vendorId: 'v-dana', role: 'helper', createdBy: 'dana' }), '24 guest claims a helper invite');
-    await ok(getDoc(doc(guest, 'events/e-other')), '24 the new helper reads the invited event');
-    await no(updateDoc(doc(guest, 'users/guest'), { vendorId: 'v-raz', updatedAt: now }), 'a vendor cannot switch stall by itself');
-    await no(updateDoc(doc(mgr, 'users/staff'), { role: 'vendor', status: 'active', notes: '', updatedAt: now }), 'a manager cannot make a vendor without a claim');
-
-    section('Rules: removing access (V6)');
-    await ok(updateDoc(doc(mgr, 'users/raz'), { role: 'guest', notes: '', updatedAt: now, log: [] }), '27 manager sets the vendor back to guest');
-    await no(getDoc(doc(raz, 'vendors/v-raz')), '27 after removal the stall is closed');
-    await no(getDoc(doc(raz, 'events/e-hidden')), '27 and so is the event');
-  } finally {
-    await env.cleanup();
-  }
-  console.log(`\nrules: ${n - failures} of ${n} passed`);
-  return failures;
-}
-
-// ====================================================================================================================
-// Part B: click-through in demo mode.
+// Click-through in demo mode.
 // ====================================================================================================================
 async function clickPart() {
   const { chromium } = await import('playwright');
@@ -354,7 +169,6 @@ async function clickPart() {
   await browser.close();
 }
 
-if (process.env.FIRESTORE_EMULATOR_HOST) fails += await rulesPart();
-else await clickPart();
+await clickPart();
 console.log(fails ? `\n${fails} failed` : '\nall passed');
 process.exit(fails ? 1 : 0);
