@@ -1,6 +1,6 @@
 # Redesign v2: progress log
 
-Preview link (demo): _filled in when the PR opens_
+Preview link (demo): https://havat-ravve--pr19-redesign-v2-wou9u5ju.web.app/app?demo=on (PR https://github.com/MeniViner/havat-ravve/pull/19; the channel refreshes on every push and expires 7 days after the last one)
 
 Branch `redesign/v2`. Nothing merged to `main`, nothing deployed. Development on emulators and demo mode only.
 
@@ -24,6 +24,36 @@ Branch `redesign/v2`. Nothing merged to `main`, nothing deployed. Development on
 - Demo ids renamed for clarity (`demo-vi-*` visits, `demo-d-rachel` donation).
 - Kit follows the HTML where design files disagree (toggle on = pine; sheet title 20px; artboard content-box heights).
 - The demo strip "יציאה" turns demo off and opens `/demo` (Z1).
+- Where a single screen disagrees with a written rule in FLOWS.md or BACKEND.md, the rule wins:
+  - the אירוע tab shows on event day for crew and managers, although the M6, M7, V5 and V7 artboards show 4 tabs
+  - projects stay managers-only, although C5 shows a project step to a volunteer
+- Kept, though the designs don't draw them:
+  - Z3 "מצבים להדגמה" (the hard-state triggers DEMO.md asks for)
+  - V2 "גישה" (the entry to V6 that SCREENS.md describes)
+  - M3 "אירועים קודמים" (keeps events older than 90 days reachable)
+  - N7's fifth template "תזכורת לאירוע", kept from the old app
+- Old features with no screen in the new design (not deleted from the code base, waiting for Meni's decision): CSV export of lists (`src/app/ExportTable.tsx`).
+- Each area's report lists the loading, empty, error and confirm states it added; they follow the tone of the nearest designed screen.
 
-## Stage 2: demo (in progress)
-Ten area agents in parallel worktrees (tasks, projects, shopping, farm, eventday+live, manage, events, vendor, broadcast+push, system+demo).
+## Stage 2: demo (done, fixes in progress)
+- Ten area agents built every screen in parallel worktrees: tasks, projects, shopping, farm, eventday+live, manage, events, vendor, broadcast+push, system+demo. Each area wrote its data model in `docs/redesign-data/<area>.md` and its own tests in `tests/v2-<area>.mjs`.
+- Shared fixes made while merging:
+  - `/demo` works for everyone
+  - routing re-reads the query
+  - pages without a tab keep the last tab lit
+  - safe-area strip
+  - centred controls despite the legacy `button{text-align:start}`
+  - routines carry the template's person and place
+  - one gender rule for Hebrew wording (`v2/gender.ts`, optional `Profile.gender`)
+  - vendor invite claim at first sign-in
+  - a crash guard in the v2 shell
+- Cleanup: the old team screens (today, tasks, new, shopping, calendar, event day, manage*), the old `kit.tsx` and the `farm.css` style layer are deleted. `app.css` stays only for the guest side, which is not redesigned.
+- Visual verification by three fresh agents, results in `docs/visual-check/{A,B,C}/README.md`: 69 MATCH, 38 MINOR, 12 DEFECT on the first pass. The defects went back to their areas.
+
+## Stage 3-4: real data, rules, tests (rules done)
+- `firestore.rules` covers every new collection and field. `npm run test:rules` passes: the old suites, 553 v2 cases (one role matrix per new collection) and 72 vendor cases. 11 new indexes are in `firestore.indexes.json`. Summary: `docs/redesign-data/rules.md`.
+- Code the rules refused, now fixed:
+  - closing an event (cash moved out of the public event doc)
+  - guest-order `paidAt` as server time
+  - the profile push writer that dropped the device list
+- Migration: `docs/migration-redesign.md` and `scripts/migrate-redesign.mjs` (vendor notes move to a managers-only doc; dry run by default).
