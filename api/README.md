@@ -312,6 +312,30 @@ Gotcha: Cloudflare blocks Python urllib's default User-Agent on `workers.dev` wi
 `403 error code: 1010` before the Worker runs. The catalog's `conventions.userAgent` tells clients to name
 themselves.
 
+## Files in R2 and the Resend email fallback (2026-11-21, code only, not deployed)
+
+New routes, apart from the assistant API (whose endpoints are unchanged):
+
+- `POST /v1/files?kind=avatar|task|shopping|place|event|eventfile|stall`: the file bytes, `Content-Type` image/jpeg, image/webp
+  or image/png (application/pdf for `eventfile`), `Authorization: Bearer <Firebase ID token>` of the signed-in person.
+  The token is verified with WebCrypto against Google's securetoken keys (`src/idtoken.ts`). The person must have an active
+  profile, and the kind follows firestore.rules: avatar anyone, task/shopping/place the team, event/eventfile managers,
+  stall a vendor or a manager. Images up to 3 MB, PDFs up to 10 MB, content checked by its first bytes. Answer:
+  `201 { url, key, size, type }`. CORS only for the app's origins (production, preview channels, localhost).
+- `GET /v1/files/<kind>/<uid>/<32 random chars>.<ext>`: served from `FILE_BUCKET`, cached a year, `nosniff` and a sandbox CSP.
+  A link is as private as the document that holds it (192 random bits), like a Firebase Storage download link.
+- Optional vars: `FILES_PUBLIC_BASE` (the host in returned links, for a custom domain later).
+
+Email (`src/email.ts`): Resend is used when `RESEND_API_KEY` and `RESEND_SENDER_EMAIL` are set, for a send Brevo refuses
+(rate limit, credits, account, outage), for every send after `BREVO_DAILY_LIMIT` (290) Brevo sends in a UTC day, and when
+Brevo is not configured. A bad address is never retried elsewhere; an unanswered Brevo request moves only on the last
+attempt. A job that moved to Resend stays there with the same idempotency key. The outbox job records `provider` and
+`failover`. `EMAIL_SELF_TEST=resend-once` sends one sample through Resend to the sender address.
+
+Tested locally (`npm run test:api`, 364 of 364): 25 file checks against the Auth emulator and local R2, 7 RS256 checks
+against a local key set, 9 fallback checks against mock Brevo and Resend. Browser proof:
+`npx firebase emulators:exec --only firestore,auth --project demo-havat-ravve "bash scripts/proofs/files-proof.sh"` (5 of 5).
+
 ## Not proven yet
 
 - **Managers and staff**: each needs their own key bound to `user:<their uid>`, and their own assistant.

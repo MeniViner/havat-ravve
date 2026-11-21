@@ -14,6 +14,7 @@ import { type Scope, requireScope } from './auth';
 import { runAccountDeletions } from './accounts';
 import { runEmail } from './email';
 import { runPush } from './push';
+import { handleFiles, isFilesPath } from './files';
 
 const MAX_BODY = 16 * 1024;
 
@@ -107,6 +108,8 @@ export default {
   async fetch(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const meta: Meta = { requestId: 'req_' + autoId(16), started: Date.now() };
     const url = new URL(req.url);
+    // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
+    if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
     const log: Record<string, unknown> = { requestId: meta.requestId, method: req.method, path: url.pathname };
     let res: Response;
     try {

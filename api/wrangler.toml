@@ -1,6 +1,7 @@
 # Havat Ravve API. Deploys to <name>.<account>.workers.dev on the free plan.
 # Secrets (never in this file or in git), set with `npx wrangler secret put <NAME> --config api/wrangler.toml`:
-# API_CREDENTIALS, GCP_SERVICE_ACCOUNT, BREVO_API_KEY, BREVO_SENDER_EMAIL. A deploy keeps existing secrets.
+# API_CREDENTIALS, GCP_SERVICE_ACCOUNT, BREVO_API_KEY, BREVO_SENDER_EMAIL, and (optional, the email fallback)
+# RESEND_API_KEY, RESEND_SENDER_EMAIL. A deploy keeps existing secrets.
 # Every binding below must match the live Worker: a deploy removes anything this file does not list.
 # Check with `npx wrangler deploy --config api/wrangler.toml --dry-run` before each deploy.
 # Local values go in api/.dev.vars (git-ignored); see api/.dev.vars.example.
@@ -19,7 +20,11 @@ PRODUCTION_APPROVED = "havat-ravve"
 # BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.
 # Turned on 2026-11-18 after one sample email to the sender address (Brevo message accepted at 15:55 UTC).
 # To stop sending: set "false" here and deploy (npx wrangler deploy --config api/wrangler.toml).
+# Resend is the fallback (src/email.ts): with RESEND_API_KEY and RESEND_SENDER_EMAIL set, it takes a send Brevo refuses
+# (rate limit, credits, account, outage) and every send after BREVO_DAILY_LIMIT Brevo sends in a day (UTC, counted in
+# TOKEN_KV; Brevo free = 300 a day, Resend free = 100 a day and 3,000 a month). Without them nothing changes.
 EMAIL_ENABLED = "true"
+BREVO_DAILY_LIMIT = "290"
 
 # The email outbox runs every 5 minutes: 288 short runs a day, inside the Workers Free limits.
 [triggers]
@@ -31,7 +36,8 @@ binding = "TOKEN_KV"
 id = "d275887525684d4b896d982838dad120"
 
 # Private file storage (R2, free tier). Attached in the Cloudflare dashboard on 2026-11-16 and kept here,
-# because a deploy removes every binding this file does not list. No route reads or writes it yet.
+# because a deploy removes every binding this file does not list. Used by /v1/files (src/files.ts): the app's photos
+# and event files, uploaded with the signed-in person's Firebase token and served back under random keys.
 [[r2_buckets]]
 binding = "FILE_BUCKET"
 bucket_name = "havat-ravve-files"

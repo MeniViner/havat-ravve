@@ -1249,5 +1249,200 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(w3).catch((e) => { failures++; console.error(e); }); wp.close(); fcm.close(); fs.rmSync(persist, { recursive: true, force: true }); }
 }
 
+// Payment-confirmation fallback: Resend takes what Brevo refuses or what is over Brevo's daily allowance.
+section('payment-confirmation email: Resend fallback (mock Brevo + mock Resend)');
+{
+  const calls = { brevo: [], resend: [] };
+  const resendBusy = new Set();
+  const listen = (handler) => new Promise((r) => { const sv = http.createServer((req, res) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => handler(req, res, JSON.parse(b || '{}'))); }); sv.listen(0, '127.0.0.1', () => r(sv)); });
+  const reply = (res, status, o, h = {}) => { res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(o)); };
+  const brevoMock = await listen((req, res, j) => {
+    const to = j.to?.[0]?.email || '';
+    calls.brevo.push({ to });
+    if (to.startsWith('credits')) return reply(res, 402, { code: 'not_enough_credits', message: 'You do not have enough credits' });
+    if (to.startsWith('slow')) return reply(res, 429, { code: 'too_many_requests', message: 'slow down' });
+    if (to.startsWith('wrong')) return reply(res, 400, { code: 'invalid_parameter', message: 'email is not valid in to' });
+    reply(res, 201, { messageId: `<b-${calls.brevo.length}@mock>` });
+  });
+  const resendMock = await listen((req, res, j) => {
+    const to = j.to?.[0] || '';
+    calls.resend.push({ to, key: req.headers['idempotency-key'], auth: req.headers.authorization, from: j.from, subject: j.subject, html: j.html, text: j.text });
+    if (to.includes('rbusy') && !resendBusy.has(to)) { resendBusy.add(to); return reply(res, 429, { name: 'rate_limit_exceeded', message: 'Too many requests' }); }
+    reply(res, 200, { id: `r-${calls.resend.length}` });
+  });
+  const persist = fs.mkdtempSync('/tmp/hr-resend-kv-');
+  const vars = (extra) => ({
+    FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS),
+    EMAIL_ENABLED: 'true', EMAIL_TEST_FAST: '1', BREVO_API_URL: `http://127.0.0.1:${brevoMock.address().port}/v3/smtp/email`,
+    RESEND_API_URL: `http://127.0.0.1:${resendMock.address().port}/emails`, RESEND_API_KEY: 'synthetic-resend-key', RESEND_SENDER_EMAIL: 'farm@synthetic.test', ...extra,
+  });
+  const getDocAdmin = async (col, id) => { const r = await fetch(`${DOCS}/${col}/${id}`, { headers: admin }); if (r.status === 404) return null; const d = await r.json(); return Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, dec(v)])); };
+  async function seedPaid(col, id, data) {
+    const r = await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes: [{ update: { name: `projects/${PROJECT}/databases/(default)/documents/${col}/${id}`, fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, enc(v)])) }, updateTransforms: [{ fieldPath: 'paidAt', setToServerValue: 'REQUEST_TIME' }] }] }) });
+    if (!r.ok) throw new Error('seedPaid failed ' + (await r.text()));
+  }
+  const t = new Date().toISOString();
+  const guest = (uid, email) => seed('users', uid, { uid, email, displayName: 'אורח ' + uid, phone: '0501234567', role: 'guest', status: 'active', customerNumber: 8, acceptedTermsAt: t, createdAt: t, updatedAt: t, fields: { receiptPreference: 'email' } });
+  const donation = (uid) => ({ uid, name: 'אורח', phone: '', amount: 90, label: '', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt: t, updatedAt: t });
+  const run = async (port) => (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+  const job = (id) => getDocAdmin('email_outbox', 'donation_' + id);
+  const pay = async (id, email) => { await guest(id, email); await seedPaid('donations', id, donation(id)); };
+  const port = PORT + 30;
+  // Brevo allows two sends a day in this run, so the third ordinary payment goes straight to Resend
+  const w = startWorker(port, vars({ BREVO_API_KEY: 'synthetic-brevo-key', BREVO_SENDER_EMAIL: 'sender@synthetic.test', BREVO_DAILY_LIMIT: '2' }), ['--test-scheduled', '--persist-to', persist]);
+  try {
+    await waitUp(`http://127.0.0.1:${port}`);
+    // jobs left queued by the section above (51 WhatsApp donations) would take this run's batch slots; they are closed,
+    // not deleted, because the scan's overlap would queue a deleted job again
+    for (const st of ['queued', 'sending']) for (const d of await where('email_outbox', 'status', st)) await fetch(`${DOCS}/email_outbox/${d.id}?updateMask.fieldPaths=status`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { status: { stringValue: 'skipped' } } }) });
+    await run(port); // moves the shared outbox cursor past older payments, if any
+    await pay('rs-credits', 'credits@synthetic.test'); await pay('rs-slow', 'slow@synthetic.test');
+    await pay('rs-wrong', 'wrong@synthetic.test'); await pay('rs-sticky', 'credits-rbusy@synthetic.test');
+    await run(port);
+    const credits = await job('rs-credits'); const slow = await job('rs-slow'); const wrong = await job('rs-wrong'); const sticky = await job('rs-sticky');
+    check(credits?.status === 'sent' && credits.provider === 'resend' && credits.failover === 'brevo_quota' && /^resend:r-\d+$/.test(credits.messageId), 'Brevo out of credits (402) → the same run sends through Resend', credits);
+    check(slow?.status === 'sent' && slow.provider === 'resend' && slow.failover === 'brevo_rate_limited', 'Brevo rate limit (429) → Resend right away', slow);
+    check(wrong?.status === 'failed' && wrong.reason === 'rejected' && wrong.provider === 'brevo' && !calls.resend.some((c) => c.to === 'wrong@synthetic.test'), 'a bad address Brevo rejects is not retried through Resend', wrong);
+    check(sticky?.status === 'queued' && sticky.provider === 'resend' && sticky.reason === 'rate_limited', 'Brevo refused and Resend was busy → queued, marked for Resend', sticky);
+    const r1 = calls.resend.find((c) => c.to === 'credits@synthetic.test') || {};
+    check(r1.auth === 'Bearer synthetic-resend-key' && r1.from === 'חוות רווה <farm@synthetic.test>' && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/.test(r1.key) && r1.subject === 'אישור תשלום מחוות רווה' && r1.html?.includes('dir="rtl"') && r1.text?.includes('90 ₪'), 'Resend request: bearer key, Hebrew sender name, the job idempotency key, the same RTL message', { from: r1.from, key: r1.key, subject: r1.subject });
+    const brevoBefore = calls.brevo.filter((c) => c.to === 'credits-rbusy@synthetic.test').length;
+    await run(port);
+    const sticky2 = await job('rs-sticky');
+    const stickyResend = calls.resend.filter((c) => c.to === 'credits-rbusy@synthetic.test');
+    check(sticky2?.status === 'sent' && sticky2.provider === 'resend' && calls.brevo.filter((c) => c.to === 'credits-rbusy@synthetic.test').length === brevoBefore && stickyResend.length === 2 && stickyResend[0].key === stickyResend[1].key, 'the retry stays on Resend with the same key; Brevo is not asked again', { sticky2, brevo: calls.brevo.filter((c) => c.to === 'credits-rbusy@synthetic.test').length });
+    // Brevo's allowance in this run is 2: the third ordinary payment goes to Resend without asking Brevo
+    await pay('rs-ok1', 'ok1@synthetic.test'); await pay('rs-ok2', 'ok2@synthetic.test'); await pay('rs-ok3', 'ok3@synthetic.test');
+    await run(port);
+    const oks = await Promise.all(['rs-ok1', 'rs-ok2', 'rs-ok3'].map(job));
+    const viaBrevo = oks.filter((j) => j?.status === 'sent' && j.provider === 'brevo');
+    const viaResend = oks.filter((j) => j?.status === 'sent' && j.provider === 'resend' && j.failover === 'brevo_daily_limit');
+    const brevoOk = calls.brevo.filter((c) => /^ok\d@/.test(c.to)).length;
+    check(viaBrevo.length === 2 && viaResend.length === 1 && brevoOk === 2, 'daily allowance: two through Brevo, the third straight to Resend (Brevo never asked)', { oks: oks.map((j) => j && [j.status, j.provider, j.failover]), brevoOk });
+    const lines = w.logs.map((l) => JSON.stringify(l)).join('\n');
+    check(!lines.includes('synthetic-resend-key') && !lines.includes('@synthetic.test'), 'logs carry no Resend key and no addresses');
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); }
+  // Resend alone (no Brevo secrets): it sends everything
+  const port2 = PORT + 31;
+  const w2 = startWorker(port2, vars({}), ['--test-scheduled', '--persist-to', persist]);
+  try {
+    await waitUp(`http://127.0.0.1:${port2}`);
+    const b0 = calls.brevo.length;
+    await pay('rs-only', 'only@synthetic.test');
+    // two runs: payments left by earlier sections can fill a 50-row scan page, and the next run continues it
+    await run(port2); await run(port2);
+    const only = await job('rs-only');
+    check(only?.status === 'sent' && only.provider === 'resend' && only.failover === 'brevo_not_configured' && calls.brevo.length === b0, 'only Resend configured → it sends, Brevo is never called', only || { state: await getDocAdmin('email_outbox', '_state'), donation: await getDocAdmin('donations', 'rs-only') });
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w2).catch((e) => { failures++; console.error(e); }); brevoMock.close(); resendMock.close(); fs.rmSync(persist, { recursive: true, force: true }); }
+}
+
+// The app's images and event files in R2 (local R2 under wrangler dev), signed in through the Auth emulator.
+section('files: R2 uploads for the app (Firebase sign-in token, roles, types, serving)');
+{
+  const AUTH = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  const authBase = `http://${AUTH}/identitytoolkit.googleapis.com/v1`;
+  const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json());
+  const t = new Date().toISOString();
+  const people = {};
+  for (const [name, role, status] of [['guest', 'guest', 'active'], ['staff', 'staff', 'active'], ['manager', 'manager', 'active'], ['vendor', 'vendor', 'active'], ['blocked', 'staff', 'blocked']]) {
+    const a = await signUp(`files-${name}-${Date.now()}@synthetic.test`);
+    people[name] = a;
+    await seed('users', a.localId, { uid: a.localId, email: a.email, displayName: 'קבצים ' + name, phone: '0500000000', role, status, customerNumber: 3, acceptedTermsAt: t, createdAt: t, updatedAt: t });
+  }
+  const noProfile = await signUp(`files-none-${Date.now()}@synthetic.test`);
+  const port = PORT + 32;
+  const base = `http://127.0.0.1:${port}`;
+  const persist = fs.mkdtempSync('/tmp/hr-files-r2-');
+  const w = startWorker(port, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, FIREBASE_AUTH_EMULATOR_HOST: AUTH, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' }, ['--persist-to', persist]);
+  const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(600), Buffer.from([0xff, 0xd9])]);
+  const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBPVP8 '), randomBytes(300)]);
+  const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), randomBytes(2000)]);
+  const up = (kind, body, type, token, origin) => fetch(`${base}/v1/files?kind=${kind}`, { method: 'POST', headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': type, ...(origin ? { origin } : {}) }, body });
+  const jwt = (claims) => [{ alg: 'none', typ: 'JWT' }, claims, {}].map((p, i) => (i === 2 ? '' : Buffer.from(JSON.stringify(p)).toString('base64url'))).join('.');
+  try {
+    await waitUp(base);
+    const g = await up('avatar', JPEG, 'image/jpeg', people.guest.idToken, 'https://havat-ravve.web.app');
+    const gj = await g.json();
+    const key = gj.data?.key || '';
+    check(g.status === 201 && gj.ok && new RegExp(`^avatar/${people.guest.localId}/[A-Za-z0-9_-]{32}\\.jpg$`).test(key) && gj.data.url === `${base}/v1/files/${key}` && gj.data.size === JPEG.length, 'a guest uploads their profile photo → 201, a random key under their uid', gj);
+    check(g.headers.get('access-control-allow-origin') === 'https://havat-ravve.web.app', 'CORS: the app origin is allowed on the upload answer');
+    const got = await fetch(gj.data.url);
+    const bytes = Buffer.from(await got.arrayBuffer());
+    check(got.status === 200 && bytes.equals(JPEG) && got.headers.get('content-type') === 'image/jpeg' && /immutable/.test(got.headers.get('cache-control')) && got.headers.get('x-content-type-options') === 'nosniff' && /sandbox/.test(got.headers.get('content-security-policy') || ''), 'GET serves the same bytes, image/jpeg, cached a year, nosniff, sandbox CSP', Object.fromEntries(got.headers));
+    const again = await fetch(gj.data.url, { headers: { 'if-none-match': got.headers.get('etag') } });
+    check(again.status === 304, 'GET with the etag → 304');
+    check((await up('task', JPEG, 'image/jpeg', people.guest.idToken)).status === 403, 'a guest may not upload a task photo → 403');
+    const s = await up('task', WEBP, 'image/webp', people.staff.idToken);
+    check(s.status === 201 && (await s.json()).data.key.endsWith('.webp'), 'staff uploads a task photo (WebP) → 201');
+    check((await up('event', JPEG, 'image/jpeg', people.staff.idToken)).status === 403, 'staff may not upload an event image → 403');
+    const m = await up('eventfile', PDF, 'application/pdf', people.manager.idToken);
+    const mj = await m.json();
+    check(m.status === 201 && mj.data.key.endsWith('.pdf') && (await fetch(mj.data.url)).headers.get('content-type') === 'application/pdf', 'a manager uploads an event PDF → 201, served as application/pdf', mj);
+    check((await up('task', PDF, 'application/pdf', people.manager.idToken)).status === 400, 'a PDF as a task photo → 400');
+    check((await up('stall', JPEG, 'image/jpeg', people.vendor.idToken)).status === 201 && (await up('stall', JPEG, 'image/jpeg', people.staff.idToken)).status === 403, 'stall photo: the vendor yes, staff no');
+    const fake = await up('avatar', Buffer.from('<html><script>alert(1)</script></html>'), 'image/jpeg', people.guest.idToken);
+    check(fake.status === 400 && (await fake.json()).error.details.field === 'body', 'HTML sent as image/jpeg → 400 (content checked by its first bytes)');
+    check((await up('avatar', Buffer.from('GIF89a....'), 'image/gif', people.guest.idToken)).status === 400, 'an unsupported type → 400');
+    check((await up('avatar', Buffer.concat([JPEG, Buffer.alloc(3 * 1024 * 1024)]), 'image/jpeg', people.guest.idToken)).status === 400, 'an image over 3 MB → 400');
+    check((await up('nope', JPEG, 'image/jpeg', people.guest.idToken)).status === 400, 'an unknown kind → 400');
+    check((await up('avatar', JPEG, 'image/jpeg')).status === 401, 'no sign-in token → 401');
+    check((await up('avatar', JPEG, 'image/jpeg', people.blocked.idToken)).status === 403, 'a blocked person → 403');
+    check((await up('avatar', JPEG, 'image/jpeg', noProfile.idToken)).status === 403, 'signed in without a profile → 403');
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, sub: people.guest.localId, iat: now, exp: now + 3600, auth_time: now };
+    check((await up('avatar', JPEG, 'image/jpeg', jwt({ ...claims, aud: 'other-project', iss: 'https://securetoken.google.com/other-project' }))).status === 401, 'a token for another project → 401');
+    check((await up('avatar', JPEG, 'image/jpeg', jwt({ ...claims, exp: now - 3600, iat: now - 7200 }))).status === 401, 'an expired token → 401');
+    check((await up('avatar', JPEG, 'image/jpeg', jwt(claims))).status === 201, '(control) the same unsigned claims, valid → 201 in emulator mode only');
+    const pre = await fetch(`${base}/v1/files`, { method: 'OPTIONS', headers: { origin: 'https://havat-ravve--pr19-redesign-v2-wou9u5ju.web.app', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
+    check(pre.status === 204 && pre.headers.get('access-control-allow-origin') === 'https://havat-ravve--pr19-redesign-v2-wou9u5ju.web.app' && /authorization/.test(pre.headers.get('access-control-allow-headers') || ''), 'preflight from a preview channel → allowed');
+    const evil = await fetch(`${base}/v1/files`, { method: 'OPTIONS', headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' } });
+    check(!evil.headers.get('access-control-allow-origin'), 'preflight from another site → no CORS allowance');
+    check((await fetch(`${base}/v1/files/avatar/x/short.jpg`)).status === 404 && (await fetch(`${base}/v1/files/avatar/${people.guest.localId}/${'A'.repeat(32)}.jpg`)).status === 404 && (await fetch(`${base}/v1/files/..%2F..%2Fsecret`)).status === 404, 'malformed, unknown and traversal keys → 404');
+    const health = await fetch(`${base}/v1/health`);
+    check(health.status === 200 && (await fetch(`${base}/v1/tasks`)).status === 401, 'the assistant API is unchanged (health open, tasks still need an API key)');
+    const lines = w.logs.map((l) => JSON.stringify(l)).join('\n');
+    check(w.logs.some((l) => l.path === '/v1/files') && !lines.includes(people.guest.localId) && !lines.includes(people.guest.idToken.slice(0, 40)), 'file request logs carry no uid and no token');
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); fs.rmSync(persist, { recursive: true, force: true }); }
+}
+
+// The production sign-in path: RS256 tokens checked against a key set (a local mock of Google's securetoken keys).
+section('files: RS256 sign-in tokens (the production path, local key set)');
+{
+  const { privateKey: good, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const { privateKey: other } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwks = { keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test-kid', alg: 'RS256', use: 'sig' }] };
+  let jwksHits = 0;
+  const keys = http.createServer((req, res) => { jwksHits++; res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' }); res.end(JSON.stringify(jwks)); });
+  await new Promise((r) => keys.listen(0, '127.0.0.1', r));
+  const { sign } = await import('node:crypto');
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const token = (claims, { key = good, kid = 'test-kid', alg = 'RS256' } = {}) => {
+    const head = b64({ alg, kid, typ: 'JWT' }) + '.' + b64(claims);
+    return alg === 'none' ? head + '.' : head + '.' + sign('sha256', Buffer.from(head), key).toString('base64url');
+  };
+  const uid = 'rs256-staff';
+  const t = new Date().toISOString();
+  await seed('users', uid, { uid, email: 'rs256@synthetic.test', displayName: 'חתימה', phone: '0500000000', role: 'staff', status: 'active', customerNumber: 4, acceptedTermsAt: t, createdAt: t, updatedAt: t });
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, sub: uid, iat: now, exp: now + 3600, auth_time: now };
+  const port = PORT + 33;
+  const base = `http://127.0.0.1:${port}`;
+  const persist = fs.mkdtempSync('/tmp/hr-files-rs-');
+  const w = startWorker(port, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', GOOGLE_JWKS_URL: `http://127.0.0.1:${keys.address().port}/jwks`, API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' }, ['--persist-to', persist]);
+  const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(200)]);
+  const up = (tok) => fetch(`${base}/v1/files?kind=task`, { method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'image/jpeg' }, body: JPEG });
+  try {
+    await waitUp(base);
+    check((await up(token(claims))).status === 201, 'a correctly signed RS256 token → 201');
+    const tampered = token(claims).split('.'); tampered[1] = b64({ ...claims, sub: 'synthetic-owner' });
+    check((await up(tampered.join('.'))).status === 401, 'payload changed after signing → 401');
+    check((await up(token(claims, { key: other }))).status === 401, 'signed by another key under the same kid → 401');
+    check((await up(token(claims, { kid: 'nope' }))).status === 401, 'an unknown key id → 401');
+    check((await up(token(claims, { alg: 'none' }))).status === 401, 'an unsigned token outside Auth-emulator mode → 401');
+    check((await up(token({ ...claims, aud: 'havat-ravve', iss: 'https://securetoken.google.com/havat-ravve' }))).status === 401, 'signed, but for another project → 401');
+    check(jwksHits <= 3, 'the key set is cached (fetched again only for an unknown kid)', { jwksHits });
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); keys.close(); fs.rmSync(persist, { recursive: true, force: true }); }
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

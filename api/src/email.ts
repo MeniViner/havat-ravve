@@ -10,7 +10,12 @@
 //            with a valid address), sent with an idempotency key derived from the job id, and its outcome
 //            and Brevo's message id recorded. Rate limits and outages retry with bounded backoff that stays
 //            inside Brevo's idempotency window.
-// Nothing runs, and nothing is read, while EMAIL_ENABLED is not "true" or a Brevo secret is missing.
+//  3. fallback: Resend (RESEND_API_KEY + RESEND_SENDER_EMAIL) takes a send when Brevo's daily allowance is used up
+//            (counted in TOKEN_KV, BREVO_DAILY_LIMIT, default 290 of the free 300), when Brevo refuses it for any
+//            reason that is not a bad address (rate limit, credits, account, outage), or when Brevo cannot be reached
+//            on the last attempt. Once a job moved to Resend it stays there, under the same idempotency key, so a
+//            retry never reaches the guest twice through two providers. With only Resend configured, it sends alone.
+// Nothing runs, and nothing is read, while EMAIL_ENABLED is not "true" or neither provider is configured.
 import { type Doc, type Env, Firestore, type Write } from './firestore';
 import { whereEq } from './core';
 import { sha256hex } from './util';
@@ -35,6 +40,8 @@ const RETRY_S = 4 * 60;
 const MAX_ATTEMPTS = 3;
 const SEND_WINDOW_MS = 12 * 60_000;
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
+const RESEND_URL = 'https://api.resend.com/emails';
+const BREVO_DAILY_DEFAULT = 290;
 const SENDER_NAME = 'חוות רווה';
 const SUBJECT = 'אישור תשלום מחוות רווה';
 const DEFAULT_TEMPLATE = 'שלום [שם], קיבלנו את התשלום בסך [סכום] עבור [עבור]. תודה מחוות רווה!';
@@ -46,9 +53,12 @@ export type JobKind = 'order' | 'donation' | 'tab';
 export type JobStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled';
 const SOURCE: Record<JobKind, 'tickets' | 'donations' | 'tabs'> = { order: 'tickets', donation: 'donations', tab: 'tabs' };
 
-export const emailEnabled = (env: Env) => env.EMAIL_ENABLED === 'true' && !!env.BREVO_API_KEY && !!env.BREVO_SENDER_EMAIL;
+const brevoReady = (env: Env) => !!env.BREVO_API_KEY && !!env.BREVO_SENDER_EMAIL;
+const resendReady = (env: Env) => !!env.RESEND_API_KEY && !!env.RESEND_SENDER_EMAIL;
+export const emailEnabled = (env: Env) => env.EMAIL_ENABLED === 'true' && (brevoReady(env) || resendReady(env));
 const testMode = (env: Env) => !!env.FIRESTORE_EMULATOR_HOST && env.TEST_FAULTS === '1';
 const brevoUrl = (env: Env) => (testMode(env) && env.BREVO_API_URL ? env.BREVO_API_URL : BREVO_URL);
+const resendUrl = (env: Env) => (testMode(env) && env.RESEND_API_URL ? env.RESEND_API_URL : RESEND_URL);
 const fast = (env: Env) => testMode(env) && env.EMAIL_TEST_FAST === '1';
 const iso = (ms: number) => new Date(ms).toISOString();
 /** Firestore timestamps carry microseconds; compare them as milliseconds. */
@@ -62,14 +72,15 @@ export async function idempotencyKey(jobId: string) {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-type Stats = { enqueued: number; sent: number; failed: number; skipped: number; cancelled: number; retried: number; waiting: number };
+type Stats = { enqueued: number; sent: number; failed: number; skipped: number; cancelled: number; retried: number; waiting: number; viaResend: number };
 
 export async function runEmail(env: Env, nowMs = Date.now()): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { cron: 'email' };
   if (env.EMAIL_SELF_TEST === 'once') out.selfTest = await selfTest(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
+  if (env.EMAIL_SELF_TEST === 'resend-once') out.selfTest = await selfTestResend(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
   if (!emailEnabled(env)) return { ...out, enabled: false };
   const fs = new Firestore(env);
-  const stats: Stats = { enqueued: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0, retried: 0, waiting: 0 };
+  const stats: Stats = { enqueued: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0, retried: 0, waiting: 0, viaResend: 0 };
   out.enabled = true;
   out.scan = await scan(fs, nowMs, stats);
   await sendDue(fs, env, nowMs, stats);
@@ -212,13 +223,14 @@ async function sendDue(fs: Firestore, env: Env, nowMs: number, stats: Stats) {
       if (!EMAIL_RE.test(to)) { await finish({ status: 'skipped', reason: 'no_address', nextAt: null }); stats.skipped++; continue; }
       const name = String(profile?.displayName || s.name);
       const text = fill(template, { 'שם': name, 'סכום': money(s.amount), 'עבור': s.purpose, 'אירוע': s.event });
-      const r = await brevoSend(env, { to, name, subject: SUBJECT, text, key: await idempotencyKey(job.id) });
-      if (r.ok) { await finish({ status: 'sent', to, messageId: r.messageId, amount: s.amount, sentAt: iso(Date.now()), nextAt: null, reason: r.duplicate ? 'duplicate_key' : null }); stats.sent++; continue; }
+      const r = await deliver(env, job, attempts >= MAX_ATTEMPTS, { to, name, subject: SUBJECT, text, key: await idempotencyKey(job.id) });
+      const via = { provider: r.provider, ...(r.failover ? { failover: r.failover } : {}) };
+      if (r.ok) { await finish({ status: 'sent', to, messageId: r.messageId, amount: s.amount, sentAt: iso(Date.now()), nextAt: null, reason: r.duplicate ? 'duplicate_key' : null, ...via }); stats.sent++; if (r.provider === 'resend') stats.viaResend++; continue; }
       if (r.retry && attempts < MAX_ATTEMPTS) {
         const wait = fast(env) ? 0 : Math.max(RETRY_S, Math.min(r.retryAfter, RETRY_S)) * 1000;
-        await finish({ status: 'queued', reason: r.reason, nextAt: iso(nowMs + wait) }); stats.retried++; continue;
+        await finish({ status: 'queued', reason: r.reason, nextAt: iso(nowMs + wait), ...via }); stats.retried++; continue;
       }
-      await finish({ status: 'failed', reason: r.reason, error: r.error, to, nextAt: null }); stats.failed++;
+      await finish({ status: 'failed', reason: r.reason, error: r.error, to, nextAt: null, ...via }); stats.failed++;
     } catch (e) {
       // our own read or write failed: the lease expires and a later run tries again (a sent mail is deduplicated by its key)
       console.log(JSON.stringify({ cron: 'email', job: job.id, internal: (e instanceof Error ? e.message : String(e)).slice(0, 200) }));
@@ -236,9 +248,41 @@ export function emailHtml(text: string) {
     + body + `<p style="margin:24px 0 0;color:#7a7468;font-size:13px">${esc(SENDER_NAME)}</p></div></body></html>`;
 }
 
-type SendResult = { ok: true; messageId: string | null; duplicate: boolean } | { ok: false; retry: boolean; reason: string; error: string; retryAfter: number };
+type SendResult = { ok: true; messageId: string | null; duplicate: boolean } | { ok: false; retry: boolean; reason: string; error: string; retryAfter: number; quota?: boolean };
+type Mail = { to: string; name: string; subject: string; text: string; key: string };
+type Delivered = SendResult & { provider: 'brevo' | 'resend'; failover?: string };
 
-async function brevoSend(env: Env, m: { to: string; name: string; subject: string; text: string; key: string }): Promise<SendResult> {
+// ---------- which provider sends ----------
+const dayKey = () => 'email-brevo-count:' + new Date().toISOString().slice(0, 10);
+const brevoLimit = (env: Env) => Number(env.BREVO_DAILY_LIMIT) > 0 ? Number(env.BREVO_DAILY_LIMIT) : BREVO_DAILY_DEFAULT;
+async function brevoUsed(env: Env): Promise<number> {
+  try { return env.TOKEN_KV ? Number(await env.TOKEN_KV.get(dayKey())) || 0 : 0; } catch { return 0; }
+}
+async function countBrevo(env: Env) {
+  // best effort: a lost count only means Brevo's own refusal moves the next send to Resend
+  try { if (env.TOKEN_KV) await env.TOKEN_KV.put(dayKey(), String((await brevoUsed(env)) + 1), { expirationTtl: 2 * 86400 }); } catch { /* KV unavailable */ }
+}
+
+/**
+ * Brevo first; Resend when Brevo is not configured, its daily allowance is used up, the job already moved to
+ * Resend, or Brevo did not accept this send. A bad address is never retried elsewhere. An unanswered request
+ * (Brevo may have accepted it) moves to Resend only on the last attempt, when the alternative is no email at all.
+ */
+async function deliver(env: Env, job: Doc, last: boolean, m: Mail): Promise<Delivered> {
+  const resend = resendReady(env);
+  // the last Brevo request went unanswered (it may have been accepted): stay on Brevo, whose key deduplicates, until the last attempt
+  const pending = job.data.provider === 'brevo' && job.data.reason === 'provider_unreachable' && !last;
+  if (resend && (job.data.provider === 'resend' || !brevoReady(env) || (!pending && (await brevoUsed(env)) >= brevoLimit(env)))) {
+    return { ...(await resendSend(env, m)), provider: 'resend', ...(job.data.provider === 'resend' ? {} : { failover: brevoReady(env) ? 'brevo_daily_limit' : 'brevo_not_configured' }) };
+  }
+  const r = await brevoSend(env, m);
+  if (r.ok) { await countBrevo(env); return { ...r, provider: 'brevo' }; }
+  const refused = r.reason !== 'provider_unreachable' && (r.reason !== 'rejected' || !!r.quota);
+  if (resend && (refused || (r.reason === 'provider_unreachable' && last))) return { ...(await resendSend(env, m)), provider: 'resend', failover: 'brevo_' + r.reason };
+  return { ...r, provider: 'brevo' };
+}
+
+async function brevoSend(env: Env, m: Mail): Promise<SendResult> {
   let res: Response;
   try {
     res = await fetch(brevoUrl(env), {
@@ -263,10 +307,53 @@ async function brevoSend(env: Env, m: { to: string; name: string; subject: strin
   const error = `${res.status} ${j.code || ''} ${(j.message || '').slice(0, 160)}`.trim();
   if (res.status === 429) return { ok: false, retry: true, reason: 'rate_limited', error, retryAfter: Number(res.headers.get('retry-after')) || 0 };
   if (res.status >= 500) return { ok: false, retry: true, reason: 'provider_error', error, retryAfter: 0 };
+  // out of credits, or a sending limit reached: not the guest's address
+  const quota = res.status === 402 || /credit|limit|quota/i.test(`${j.code || ''} ${j.message || ''}`);
+  return { ok: false, retry: false, reason: res.status === 401 || res.status === 403 ? 'provider_auth' : quota ? 'quota' : 'rejected', error, retryAfter: 0, quota };
+}
+
+/** Resend (https://resend.com/docs/api-reference/emails/send-email): same message, same idempotency key (kept 24 hours). */
+async function resendSend(env: Env, m: Mail): Promise<SendResult> {
+  let res: Response;
+  try {
+    res = await fetch(resendUrl(env), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json', 'idempotency-key': m.key },
+      body: JSON.stringify({
+        from: `${SENDER_NAME} <${env.RESEND_SENDER_EMAIL}>`,
+        to: [m.to], subject: m.subject, html: emailHtml(m.text), text: m.text,
+        tags: [{ name: 'category', value: 'payment-confirmation' }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    return { ok: false, retry: true, reason: 'provider_unreachable', error: 'resend ' + (e instanceof Error ? e.name : 'error').slice(0, 60), retryAfter: 0 };
+  }
+  let j: { id?: string; name?: string; message?: string } = {};
+  try { j = await res.json(); } catch { /* empty or not json */ }
+  if (res.ok) return { ok: true, messageId: j.id ? 'resend:' + j.id : null, duplicate: false };
+  const error = `resend ${res.status} ${j.name || ''} ${(j.message || '').slice(0, 160)}`.trim();
+  // the same key with the same body was already sent; another request with this key is still in flight
+  if (res.status === 409 && j.name === 'concurrent_idempotent_requests') return { ok: false, retry: true, reason: 'provider_busy', error, retryAfter: 0 };
+  if (res.status === 429) return { ok: false, retry: true, reason: /quota/.test(j.name || '') ? 'quota' : 'rate_limited', error, retryAfter: Number(res.headers.get('retry-after')) || 0 };
+  if (res.status >= 500) return { ok: false, retry: true, reason: 'provider_error', error, retryAfter: 0 };
   return { ok: false, retry: false, reason: res.status === 401 || res.status === 403 ? 'provider_auth' : 'rejected', error, retryAfter: 0 };
 }
 
 // ---------- one sample email to the sender address itself ----------
+const RESEND_SELF_TEST_KEY = 'email-self-test-resend-v1';
+/** EMAIL_SELF_TEST="resend-once": one sample through Resend to RESEND_SENDER_EMAIL, guarded in TOKEN_KV. No Firestore. */
+async function selfTestResend(env: Env): Promise<string> {
+  if (!resendReady(env)) return 'skipped: Resend secrets missing';
+  if (!env.TOKEN_KV) return 'skipped: no TOKEN_KV binding';
+  if (await env.TOKEN_KV.get(RESEND_SELF_TEST_KEY)) return 'already done';
+  await env.TOKEN_KV.put(RESEND_SELF_TEST_KEY, JSON.stringify({ state: 'sending', at: iso(Date.now()) }));
+  const text = fill(DEFAULT_TEMPLATE, { 'שם': 'בדיקת מערכת', 'סכום': money(1), 'עבור': 'בדיקת שליחה דרך Resend', 'אירוע': '' });
+  const r = await resendSend(env, { to: env.RESEND_SENDER_EMAIL!, name: SENDER_NAME, subject: '[בדיקה] ' + SUBJECT, text, key: await idempotencyKey('self-test-resend-v1') });
+  await env.TOKEN_KV.put(RESEND_SELF_TEST_KEY, JSON.stringify(r.ok ? { state: 'sent', messageId: r.messageId, at: iso(Date.now()) } : { state: 'failed', error: r.error, at: iso(Date.now()) }));
+  return r.ok ? 'sent ' + r.messageId : 'failed ' + r.error;
+}
+
 /** Sends exactly one sample confirmation to BREVO_SENDER_EMAIL, guarded in TOKEN_KV. Reads and writes no Firestore data. */
 async function selfTest(env: Env): Promise<string> {
   if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) return 'skipped: Brevo secrets missing';
