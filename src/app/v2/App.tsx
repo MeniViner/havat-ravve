@@ -18,6 +18,9 @@ import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from '
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet } from './screens/system';
 import * as legacy from './legacy';
+import { Guard } from '../guard';
+import { AppScreen as Frame2 } from './core';
+import { EmptyState, Button } from './kit';
 
 const VIEW_AS_STAFF = 'farm-view-as-staff';
 export const setViewAsStaff = (on: boolean) => { try { on ? sessionStorage.setItem(VIEW_AS_STAFF, '1') : sessionStorage.removeItem(VIEW_AS_STAFF); } catch { /* private mode */ } location.reload(); };
@@ -51,9 +54,15 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
   </> : null;
   const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
+  const route = useRoute();
   return (
     <ChromeProvider value={{ top, nav: navNode }}>
-      {children}
+      <Guard resetKey={route} fallback={() => (
+        <Frame2 variant="plain">
+          <EmptyState variant="fill" icon="help" title="המסך הזה נתקע" text="שאר האפליקציה עובדת. אפשר לחזור אחורה או לטעון מחדש."
+            action={<Button variant="outline" onClick={() => location.reload()}>טעינה מחדש</Button>} />
+        </Frame2>
+      )}>{children}</Guard>
       {demo.on && <DemoSheet open={sheet} onClose={() => setSheet(false)} />}
     </ChromeProvider>
   );

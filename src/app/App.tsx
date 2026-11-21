@@ -8,7 +8,7 @@ import type { Profile, Settings } from './types';
 import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
 import { useDemo } from './demo/store';
-import { Guard } from './kit';
+import { Guard } from './guard';
 import { GuestHome, EventPage, OrderPage, LoginPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage, ContactPage } from './screens/Guest';
 import { InstallBanner } from './InstallBanner';
 import { DeleteAccountPage, DeletionScheduledPage, useDeletionRequest } from './screens/Account';
