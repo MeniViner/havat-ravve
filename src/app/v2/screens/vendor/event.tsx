@@ -1,5 +1,5 @@
 // One event, from the vendor's side: D1 invitation, D2 what the stall needs, D4 event details, D9 summary after the event.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BottomBar, Button, ChoiceChip, DetailList, DetailRow, EmptyState, Field, FormHeader, Hero, Icon, PageTitle, Quote, StatRow, StatTile, Stepper,
   TextAreaField, Toggle,
@@ -151,9 +151,12 @@ export function VendorEvent({ ctx, params }: ScreenProps) {
   const eid = params.id || '';
   const { v, e, rec, info, loading } = useOne(ctx, eid);
   const open = useExternal();
+  // after the event, D4 hands over to the summary (after render, not during it)
+  const past = !loading && !!v && !!e && !!rec && phaseOf(e) === 'past';
+  useEffect(() => { if (past) navigate(`/vendor/events/${eid}/summary`, true); }, [past, eid]);
   if (loading) return <AppScreen variant="detail" gap={10}><VendorTop /><Quiet text="טוען את האירוע..." /></AppScreen>;
   if (!v || !e || !rec) return <NotInvited />;
-  if (phaseOf(e) === 'past') { navigate(`/vendor/events/${eid}/summary`, true); return null; }
+  if (past) return null;
   const guide = info?.guidelines;
   const gotNeeds = needsText(rec.needs);
   return (

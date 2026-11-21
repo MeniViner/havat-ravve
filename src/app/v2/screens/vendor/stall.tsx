@@ -1,5 +1,5 @@
 // D7 the stall (with its edit mode, ?edit=1) and D8 adding a helper.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Avatar, BottomBar, Button, Card, ChoiceChip, DetailList, DetailRow, EmptyState, Field, FormHeader, Icon, ListCard, Row, Sheet, TextAreaField,
 } from '../../kit';
@@ -158,7 +158,9 @@ export function HelperForm({ ctx }: ScreenProps) {
   const [name, setName] = useState(''); const [phone, setPhone] = useState('');
   const [errs, setErrs] = useState<{ name?: string; phone?: string }>({});
   const [busy, setBusy] = useState(false);
-  if (ctx.helper) { navigate('/vendor/stall', true); return null; }
+  // a helper never adds helpers: back to the stall (after render, not during it)
+  useEffect(() => { if (ctx.helper) navigate('/vendor/stall', true); }, [ctx.helper]);
+  if (ctx.helper) return null;
   const send = async () => {
     const e: typeof errs = {};
     if (!name.trim() || name.trim().length < 2) e.name = 'כתבו את השם';
