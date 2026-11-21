@@ -35,7 +35,7 @@ export function FarmEventScreen({ ctx, params }: ScreenProps) {
 
   async function refresh() {
     if (busy) return; setBusy(true);
-    try { setStamp(await refreshOffline(id)); } catch { toast.show({ text: 'אין קליטה כרגע. נסו שוב כשיש' }); } finally { setBusy(false); }
+    try { setStamp(await refreshOffline(id, ctx.manager)); } catch { toast.show({ text: 'אין קליטה כרגע. נסו שוב כשיש' }); } finally { setBusy(false); }
   }
   async function take(t: Task) {
     try { await takeTask(ctx.actor, t); } catch (err) { if (isConflict(err)) toast.refused(); else toast.refused(`לא נשמר. ${(err as Error).message}`); }

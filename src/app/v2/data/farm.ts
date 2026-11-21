@@ -8,7 +8,7 @@ import { logActivity, taskKind } from '../../activity';
 import { setTaskDone } from '../../store';
 import { getDemo } from '../../demo/store';
 import type { Actor, CalendarItem, FarmEvent, Profile, Project, ProjectStep, ShoppingItem, Staffing, Task } from '../../types';
-import { presencePlan, remindAt, timeText, type Act, type CalItem, type Hours } from '../screens/farm/logic';
+import { israelIso, presencePlan, remindAt, timeText, type Act, type CalItem, type Hours } from '../screens/farm/logic';
 
 /** CalendarItem with the reminder stamp the Worker uses (local until types.ts gains it; see the data doc). */
 export type FarmCalItem = CalendarItem & { remindAt?: string; reminderSentAt?: string | null; updatedAt?: string };
@@ -98,15 +98,16 @@ const OFFLINE_KEY = (eventId: string) => `farm-offline-${eventId}`;
 /** When this phone last downloaded the event's lists. Demo: the designed 07:40 of the scenario day unless refreshed. */
 export function offlineStamp(eventId: string, today: string): string {
   try { const v = localStorage.getItem(OFFLINE_KEY(eventId)); if (v) return v; } catch { /* private mode */ }
-  return getDemo().on ? new Date(`${today}T07:40:00+02:00`).toISOString() : '';
+  return getDemo().on ? israelIso(today, '07:40') : '';
 }
 /** "רענון": reads the gate and stall lists from the server once, so the local cache can work without reception on the day. */
-export async function refreshOffline(eventId: string) {
+export async function refreshOffline(eventId: string, manager: boolean) {
   await Promise.all([
     readOnce('tickets', { where: [['eventId', '==', eventId]] }),
     readOnce(`events/${eventId}/products`, {}),
     readOnce(`events/${eventId}/staffing`, {}),
-    readOnce('tasks', { where: [['eventId', '==', eventId]] }),
+    // volunteers may only query tasks that are not managers-only (the rules check the query, not each result)
+    readOnce('tasks', { where: [['eventId', '==', eventId], ...(manager ? [] : [['managersOnly', '==', false] as [string, '==', unknown]])] }),
   ]);
   const at = new Date(nowMs()).toISOString();
   try { localStorage.setItem(OFFLINE_KEY(eventId), at); } catch { /* private mode: the stamp is only a hint */ }
