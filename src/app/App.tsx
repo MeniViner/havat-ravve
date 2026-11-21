@@ -95,11 +95,15 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
 
 /** A vendor access link (?k=...) on first sign-in or on a guest account: claim it, then the vendor app opens by itself
  *  (the profile listener sees role 'vendor'). If the claim fails, say why and continue as a guest. */
+const claiming = new Map<string, Promise<unknown>>(); // one claim per link, even when the effect runs twice (StrictMode, a remount)
 function VendorClaim({ user, code }: { user: Session; code: string }) {
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    claimVendorInvite(user, code).then(() => forgetVendorInvite()).catch((e: Error) => { forgetVendorInvite(); if (live) setError(e.message || 'הקישור לא תקין'); });
+    const key = user.uid + ':' + code;
+    const claim = claiming.get(key) || claimVendorInvite(user, code);
+    claiming.set(key, claim);
+    claim.then(() => forgetVendorInvite()).catch((e: Error) => { forgetVendorInvite(); claiming.delete(key); if (live) setError(e.message || 'הקישור לא תקין'); });
     return () => { live = false; };
   }, [user.uid, code]);
   if (!error) return <Splash />;
