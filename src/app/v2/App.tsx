@@ -2,7 +2,7 @@
 // refused-write toast (X1), toasts, redirects from old routes, and the centred 390-480 column on wide screens.
 // The guest side keeps the legacy shell (App.tsx at src/app) and is not touched here.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useRoute, navigate } from '../router';
+import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
 import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
 import { useAllEvents } from '../data';
@@ -34,9 +34,13 @@ const TEAM_NAV: Record<string, NavItem> = {
 };
 
 /** Shell chrome shared by team and vendor: the strips and nav go into every AppScreen through the chrome context. */
-function Frame({ nav, tab, showNav, children }: { nav: NavItem[]; tab: NavTab; showNav: boolean; children: ReactNode }) {
+let lastTab: NavTab = null;
+function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab: NavTab; showNav: boolean; children: ReactNode }) {
   const demo = useDemo(); const states = useDemoStates(); const online = useOnline(); const sync = useSync(); const toast = useToast();
   const [sheet, setSheet] = useState(false);
+  // pages without a tab of their own (/me, /search, /offline) keep the last tab lit, as in the designs
+  if (routeTab) lastTab = routeTab;
+  const tab = routeTab ?? lastTab ?? 'tasks';
   const offline = !online || (demo.on && states.offline);
   // a write the server refused after the screen moved on (X1)
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
@@ -62,7 +66,7 @@ function useEventToday(today: string) {
 // ---------- staff, managers, owners ----------
 export function TeamAppV2({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
   useClockVersion();
-  const route = useRoute(); const search = new URLSearchParams(location.search);
+  const route = useRoute(); const search = new URLSearchParams(useSearch());
   const manager = canManage(profile, user.email); const owner = isOwner(profile, user.email);
   const viewAsStaff = manager && viewAsStaffOn();
   const role: V2Role = viewAsStaff ? 'staff' : owner ? 'owner' : manager ? 'manager' : 'staff';
@@ -100,7 +104,7 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
 // ---------- vendors and helpers ----------
 export function VendorAppV2({ user, profile, settings }: { user: Session; profile: Profile; settings: Settings }) {
   useClockVersion();
-  const route = useRoute(); const search = new URLSearchParams(location.search);
+  const route = useRoute(); const search = new URLSearchParams(useSearch());
   const actor = useMemo(() => actorOf(user, profile), [user.uid, profile.displayName]);
   const today = todayKey();
   const base: TeamCtx = { user, actor, profile, manager: false, owner: false, cmsEditor: false, settings, places: [], templates: [], team: [], peopleByUid: new Map() };
