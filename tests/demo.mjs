@@ -50,10 +50,10 @@ const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
-assert.deepEqual(getDemo(), { on: false, persona: 'real' }, 'an old mixed state loads as "demo off"');
+assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'an old mixed state loads as "demo off"');
 
 // ---- demo on: every kind of write stays local, whatever the id looks like
-for (const persona of ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new']) {
+for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest', 'blocked', 'anon', 'new']) {
   setDemo({ on: true, persona });
   calls.length = 0;
   const id = newId('activity');
@@ -78,11 +78,11 @@ assert.deepEqual(writes(), [], 'registration and profile updates remain in the l
 // ---- there is no "demo on top of the real account": turning demo on without a persona picks an example person
 setDemo({ on: false });
 setDemo({ on: true });
-assert.deepEqual(getDemo(), { on: true, persona: 'owner' });
+assert.deepEqual(getDemo(), { on: true, persona: 'owner', scenario: 'regular' });
 setDemo({ on: false }); setDemo({ on: true }, 'staff');
-assert.deepEqual(getDemo(), { on: true, persona: 'staff' });
+assert.deepEqual(getDemo(), { on: true, persona: 'staff', scenario: 'regular' });
 setDemo({ persona: 'real' });
-assert.deepEqual(getDemo(), { on: false, persona: 'real' }, 'choosing "my account" leaves demo');
+assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'choosing "my account" leaves demo');
 
 // ---- demo off: real writes go through, and a demo id or a path under a demo document is refused
 calls.length = 0;

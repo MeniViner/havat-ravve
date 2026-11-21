@@ -12,6 +12,7 @@ import { useActivityFor, useActivityByKind, ACTION_LABELS } from '../activity';
 import { useList } from '../db';
 import { CmsEditorLink } from './Manage';
 import { PaymentConfirmationActions } from './PaymentConfirmation';
+import { now, nowMs } from '../clock';
 
 // ---------- visits ----------
 type VFilter = 'new' | 'approved' | 'rejected' | 'past' | 'all';
@@ -204,8 +205,8 @@ export function ReportsScreen({ ctx }: { ctx: TeamCtx }) {
           <Ledger small items={[{ n: newPeople.length, label: 'נרשמים חדשים' }, { n: approvedV.length, label: `ביקורים אושרו${reqV.length ? ` · מ־${reqV.length}` : ''}` }, { n: people.items.filter((p) => p.status === 'blocked').length, label: 'חסומים' }]} />
           {source.length > 1 && <><Sec title="איך שמעו עלינו" /><div className="bars">{source.slice(0, 5).map(([n, c]) => <div className="bar" key={n}><span>{n}</span><i style={{ width: `${(c / (source[0][1] || 1)) * 100}%`, background: n === 'לא ענו' ? 'var(--line)' : undefined }} /><b>{c}</b></div>)}</div></>}
           <Sec title="אירועים" link="כל האירועים" linkTo="/manage/events" />
-          {desktop ? <div className="tablewrap" style={{ margin: '8px 20px 0' }}><table><thead><tr><th>אירוע</th><th>כרטיסים</th><th>הגיעו</th><th>מחיר</th></tr></thead><tbody>{events.items.filter((e) => e.end < new Date().toISOString()).slice(0, 6).map((e) => <EvRow key={e.id} e={e} />)}</tbody></table></div>
-            : <div className="list">{events.items.filter((e) => e.end < new Date().toISOString()).slice(0, 4).map((e) => <EvRow key={e.id} e={e} row />)}</div>}
+          {desktop ? <div className="tablewrap" style={{ margin: '8px 20px 0' }}><table><thead><tr><th>אירוע</th><th>כרטיסים</th><th>הגיעו</th><th>מחיר</th></tr></thead><tbody>{events.items.filter((e) => e.end < now().toISOString()).slice(0, 6).map((e) => <EvRow key={e.id} e={e} />)}</tbody></table></div>
+            : <div className="list">{events.items.filter((e) => e.end < now().toISOString()).slice(0, 4).map((e) => <EvRow key={e.id} e={e} row />)}</div>}
         </div>
       </div>
     </>
@@ -327,7 +328,7 @@ export function SettingsPage({ ctx, page }: { ctx: TeamCtx; page: SettingsPageKe
           {f.type === 'choice' && <Field label="אפשרויות (מופרדות בפסיק)"><Input value={f.options.join(', ')} onChange={(e) => setF(i, { options: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></Field>}
           <AnsweredCount f={f} />
         </div>)}
-        <div className="inline pad" style={{ paddingTop: 12 }}><Btn kind="ghost" size="sm" icon="plus" onClick={() => setS({ ...s, registrationFields: [...fields, { id: 'f' + Date.now().toString(36), label: '', type: 'text', options: [], required: false }] })}>שאלה</Btn></div>
+        <div className="inline pad" style={{ paddingTop: 12 }}><Btn kind="ghost" size="sm" icon="plus" onClick={() => setS({ ...s, registrationFields: [...fields, { id: 'f' + nowMs().toString(36), label: '', type: 'text', options: [], required: false }] })}>שאלה</Btn></div>
         <Sec title="איך זה נראה לאורח" /><div className="strip"><Icon name="user" size={18} /><span>רוצים להשלים כמה פרטים? {fields.map((f) => f.label).filter(Boolean).join(', ') || '…'}. לוקח רגע, אפשר אחר כך.</span></div>
         {foot}
       </>

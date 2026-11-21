@@ -3,11 +3,12 @@
 // Screens never import firebase/firestore directly.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment, serverTimestamp,
+  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment, serverTimestamp, runTransaction,
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { demoOnly, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion } from './demo/store';
+import { demoOnly, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion, takeRefusal, getDemoStates } from './demo/store';
+import { now } from './clock';
 
 export type Op = '==' | '!=' | '<' | '<=' | '>' | '>=' | 'in' | 'array-contains';
 export type Spec = { where?: [string, Op, unknown][]; orderBy?: [string, 'asc' | 'desc'][]; limit?: number };
@@ -146,7 +147,7 @@ function applyLocal(cur: Record<string, unknown>, patch: Record<string, unknown>
   const out: Record<string, unknown> = { ...cur };
   for (const [k, v] of Object.entries(patch)) {
     if (!isOp(v)) { out[k] = v; continue; }
-    if (v.__op === 'now') { out[k] = new Date().toISOString(); continue; }
+    if (v.__op === 'now') { out[k] = now().toISOString(); continue; }
     if (v.__op === 'inc') out[k] = Math.round(((Number(cur[k]) || 0) + v.by) * 100) / 100;
     else {
       const list = Array.isArray(cur[k]) ? (cur[k] as unknown[]) : [];
@@ -185,3 +186,62 @@ export const write = {
     await settle(b.commit(), o.quiet, o.wait);
   },
 };
+
+// ---------- transactions with conflict detection (take / release / assign, gate scans) ----------
+/** Someone else changed the document first (X1). The list already shows the real state. */
+export class ConflictError extends Error { conflict = true; constructor(text = 'לא נשמר. מישהו אחר הקדים אותך.') { super(text); } }
+export const isConflict = (e: unknown) => !!(e as { conflict?: boolean })?.conflict;
+export type Tx = {
+  get<T extends Row>(col: string, id: string): Promise<(T & { id: string }) | null>;
+  set(col: string, id: string, data: Record<string, unknown>): void;
+  update(col: string, id: string, patch: Record<string, unknown>): void;
+};
+/** Reads and writes that must see the server's current copy: "take only if still free".
+ *  Throw ConflictError inside `fn` when the precondition fails.
+ *  Demo: runs on the local copy (Z3 "refused write" makes the next one fail). Offline: a transaction cannot reach the server,
+ *  so it runs on the cached copy as an ordinary write; the rules refuse a late conflicting write and the shell shows X1. */
+export async function transact<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  if (demoOnly()) {
+    if (takeRefusal()) throw new ConflictError();
+    const ops: (() => void)[] = [];
+    const out = await fn({
+      get: async (col, id) => (demoDoc(`${col}/${id}`) as never) || null,
+      set: (col, id, data) => ops.push(() => demoSet(col, id, applyLocal({}, data))),
+      update: (col, id, patch) => ops.push(() => demoSet(col, id, applyLocal(demoDoc(`${col}/${id}`) || {}, patch))),
+    });
+    ops.forEach((o) => o());
+    return out;
+  }
+  if (!navigator.onLine || getDemoStates().offline) {
+    const ops: { op: 'set' | 'update'; col: string; id: string; data: Record<string, unknown> }[] = [];
+    const cache = new Map<string, unknown>();
+    const out = await fn({
+      get: async (col, id) => { const k = `${col}/${id}`; if (!cache.has(k)) cache.set(k, await readCached(col, id)); return cache.get(k) as never; },
+      set: (col, id, data) => ops.push({ op: 'set', col, id, data }),
+      update: (col, id, patch) => ops.push({ op: 'update', col, id, data: patch }),
+    });
+    await write.batch(ops);
+    return out;
+  }
+  setSync({ pending: sync.pending + 1 });
+  try {
+    return await runTransaction(db, async (t) => {
+      const ops: ((t: import('firebase/firestore').Transaction) => void)[] = [];
+      const out = await fn({
+        get: async (col, id) => { const snap = await t.get(real(col, id)); return snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as never) : null; },
+        set: (col, id, data) => ops.push((tt) => tt.set(real(col, id), toFirestore(data))),
+        update: (col, id, patch) => ops.push((tt) => tt.update(real(col, id), toFirestore(patch))),
+      });
+      ops.forEach((o) => o(t));
+      return out;
+    });
+  } catch (e) {
+    if (isConflict(e)) throw e;
+    if ((e as { code?: string })?.code === 'permission-denied') throw new ConflictError();
+    throw new Error(readError(e));
+  } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
+}
+async function readCached(col: string, id: string): Promise<Row | null> {
+  const { getDocFromCache } = await import('firebase/firestore');
+  try { const snap = await getDocFromCache(real(col, id)); return snap.exists() ? { id: snap.id, ...(snap.data() as DocumentData) } : null; } catch { return null; }
+}

@@ -6,6 +6,7 @@ import { setTaskDone, editTask } from '../store';
 import { ShopLine, useMarkBought, taskMeta } from './legacy';
 import { WeekPresenceStrip } from './CalendarGrid';
 import { byPriority, fit } from '../taskOrder';
+import { now } from '../clock';
 export { byPriority, fit };
 
 type Props = { ctx: TeamCtx; open: Task[]; recent: Task[]; shopping: ShoppingItem[]; events: FarmEvent[]; calendar: CalendarItem[]; inbox: AppNotification[]; loading: boolean };
@@ -32,7 +33,7 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
     ...current.filter((t) => t.id !== next.id), next,
   ]);
   const todays = [...tasks].sort(byPriority(ctx.actor.uid, today));
-  const upcoming = events.filter((e) => e.end >= new Date().toISOString() && e.published).sort((a, b) => a.start.localeCompare(b.start));
+  const upcoming = events.filter((e) => e.end >= now().toISOString() && e.published).sort((a, b) => a.start.localeCompare(b.start));
   const next = upcoming[0];
   const eventToday = next && next.start.slice(0, 10) <= today && next.end.slice(0, 10) >= today ? next : null;
   const eventModules = eventToday ? [eventToday.entry !== false && 'כניסה', eventToday.stall !== false && 'דוכן'].filter(Boolean).join(' ו') : '';
@@ -48,7 +49,7 @@ export function TodayScreen({ ctx, open, recent, shopping, events, calendar, inb
   const markBought = useMarkBought(ctx);
   const { isOpen, toggle } = useOpenSections(['free', 'theirs', 'inbox', 'shop'], 'today2', ['theirs']);
   const toggleDone = (task: Task, done: boolean) => startTransition(async () => {
-    showDone({ ...task, done, doneAt: done ? new Date().toISOString() : null, doneBy: done ? ctx.actor : null });
+    showDone({ ...task, done, doneAt: done ? now().toISOString() : null, doneBy: done ? ctx.actor : null });
     try { await setTaskDone(ctx.actor, task, done); }
     catch (error) { toast({ text: (error as Error).message || 'לא נשמר', kind: 'error' }); }
   });

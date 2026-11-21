@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { depth } from './router';
 import { Btn, Icon } from './ui';
 import './install-banner.css';
+import { nowMs } from './clock';
 
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
@@ -57,16 +58,16 @@ export function InstallBanner() {
 
   useEffect(() => writeFlag(seenKey, 'yes'), []);
   useEffect(() => {
-    const remaining = dismissedUntil - Date.now();
+    const remaining = dismissedUntil - nowMs();
     if (remaining <= 0) return;
     const timer = window.setTimeout(() => setDismissedUntil(0), Math.min(twoWeeks, remaining));
     return () => window.clearTimeout(timer);
   }, [dismissedUntil]);
 
-  if (installed || (!seenOnArrival && depth() === 0) || dismissedUntil > Date.now() || (!prompt && !isIos)) return null;
+  if (installed || (!seenOnArrival && depth() === 0) || dismissedUntil > nowMs() || (!prompt && !isIos)) return null;
 
   const dismiss = () => {
-    const until = Date.now() + twoWeeks;
+    const until = nowMs() + twoWeeks;
     writeFlag(dismissedKey, String(until));
     setDismissedUntil(until);
   };

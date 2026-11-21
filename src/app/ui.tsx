@@ -1,6 +1,7 @@
 // Primitives of the "farm ledger" language: rows, check marks that answer back, number strips, pills, buttons, fields, page headers.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { href, navigate, back as goBack } from './router';
+import { now, nowMs } from './clock';
 
 // ---------- icons (stroke, inherit color) ----------
 const paths: Record<string, ReactNode> = {
@@ -226,7 +227,7 @@ export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const show = useCallback((t: Omit<ToastItem, 'id'>, ms = 5000) => {
-    const id = Date.now() + Math.random();
+    const id = nowMs() + Math.random();
     setItems((s) => [...s.slice(-2), { ...t, id }]);
     setTimeout(() => setItems((s) => s.filter((i) => i.id !== id)), ms);
   }, []);
@@ -289,12 +290,12 @@ export const fmtMonthYear = (iso: string) => asDate(iso).toLocaleDateString('he-
 export const fmtWeekday = (iso: string) => asDate(iso).toLocaleDateString('he-IL', { weekday: 'long', timeZone: TZ }).replace('יום ', '');
 export const fmtRange = (a: string, b: string) => `${fmtTime(a)}–${fmtTime(b)}`;
 export const money = (n: number) => `${n.toLocaleString('he-IL')} ₪`;
-export const todayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ }).format(new Date());
+export const todayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ }).format(now());
 export const dateKey = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ }).format(d);
 export const addDays = (key: string, n: number) => { const d = asDate(key); d.setDate(d.getDate() + n); return dateKey(d); };
 export function relTime(iso?: string | null) {
   if (!iso) return '';
-  const diff = (Date.now() - new Date(iso).getTime()) / 60000;
+  const diff = (nowMs() - new Date(iso).getTime()) / 60000;
   if (diff < 1) return 'עכשיו';
   if (diff < 60) return `לפני ${Math.round(diff)} דק׳`;
   if (diff < 24 * 60) return `לפני ${Math.round(diff / 60)} שע׳`;
@@ -313,6 +314,6 @@ export function dayLabel(key: string) {
   return fmtDayShort(key);
 }
 export const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
-export const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'לילה טוב' : h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : h < 21 ? 'ערב טוב' : 'לילה טוב'; };
-export const daysUntil = (iso: string) => Math.ceil((asDate(iso).getTime() - Date.now()) / 86400_000);
+export const greeting = () => { const h = now().getHours(); return h < 5 ? 'לילה טוב' : h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : h < 21 ? 'ערב טוב' : 'לילה טוב'; };
+export const daysUntil = (iso: string) => Math.ceil((asDate(iso).getTime() - nowMs()) / 86400_000);
 export function inText(iso: string) { const d = daysUntil(iso); return d <= 0 ? 'היום' : d === 1 ? 'מחר' : `בעוד ${d} ימים`; }

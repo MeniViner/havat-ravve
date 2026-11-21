@@ -9,6 +9,7 @@ import { back, navigate, param } from '../router';
 import { addTask, editTask, deleteTask, useTask, compressPhoto, getPosition, addShopping, useBoughtHistory } from '../store';
 import { useAllEvents } from '../data';
 import { ShoppingPhotoField } from './ShoppingPhoto';
+import { now as clockNow, nowMs } from '../clock';
 
 export const CATS: { id: ShoppingCategory; label: string; hint: string; done: string }[] = [
   { id: 'super', label: 'סופר', hint: '', done: 'נקנה' },
@@ -52,7 +53,7 @@ export function TaskForm({ ctx, existing }: { ctx: TeamCtx; existing?: Task }) {
   const allEvents = useAllEvents(true);
   // upcoming and running events, soonest first; a past event stays listed only when the task is already linked to it
   const eventOptions = useMemo(() => {
-    const now = new Date().toISOString();
+    const now = clockNow().toISOString();
     return allEvents.items.filter((e) => e.end >= now || e.id === eventId).sort((a, b) => a.start.localeCompare(b.start));
   }, [allEvents.items, eventId]);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
@@ -145,7 +146,7 @@ function ShopForm({ ctx }: { ctx: TeamCtx }) {
   const [urgent, setUrgent] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
-  const from = useMemo(() => new Date(Date.now() - 90 * 86400_000).toISOString(), []);
+  const from = useMemo(() => new Date(nowMs() - 90 * 86400_000).toISOString(), []);
   const past = useBoughtHistory(true, from);
   const usual = useMemo(() => {
     const m = new Map<string, number>();

@@ -15,6 +15,7 @@ import { ProfileSection, NotificationsSection, InstallHint, SignOut, DemoSection
 import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
 import { DeleteAccountLink } from './Account';
 import { ReceiptChoice, ReceiptPreferenceSection, canChooseReceipt, saveReceiptPreference, useReceiptChoice } from './PaymentConfirmation';
+import { now as clockNow } from '../clock';
 
 const needLogin = (ctx: GuestCtx, next: string) => { if (ctx.profile) return false; navigate('/login?next=' + encodeURIComponent(next)); return true; };
 export const PaymentLine = ({ ctx }: { ctx: GuestCtx }) => { const p = ctx.settings.payment; return <>{[p.bit && `ביט ${p.bit}`, p.paybox && 'PayBox', p.cash && 'או מזומן בשער'].filter(Boolean).join(' · ')}{p.note ? <><br />{p.note}</> : null}</>; };
@@ -41,7 +42,7 @@ function usePreviousGuestVisit(uid: string | undefined, eventsReady: boolean) {
 export function GuestHome({ ctx }: { ctx: GuestCtx }) {
   const { items: events, loading, error } = useUpcomingEvents();
   const previousVisit = usePreviousGuestVisit(ctx.profile?.uid, !loading && !error);
-  const now = new Date().toISOString();
+  const now = clockNow().toISOString();
   const upcoming = events.filter((e) => e.end >= now);
   const desktop = useDesktop();
   return (
@@ -71,7 +72,7 @@ export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
   const { item: e, loading } = useEvent(id);
   if (loading) return <Loading />;
   if (!e || !e.published) return <><Top backTo="/" title="האירוע לא נמצא" /><Empty title="אולי הוסר מפרסום" action={<Btn kind="ghost" to="/">לדף הבית</Btn>} /></>;
-  const past = e.end < new Date().toISOString();
+  const past = e.end < clockNow().toISOString();
   return (
     <>
       {e.image ? <div className="hero" style={{ height: 240 }}><img src={e.image} alt="" /><div className="over"><div className="sub">{fmtDayLong(e.start)} · {fmtRange(e.start, e.end)}</div><h1>{e.title}</h1></div></div>
@@ -92,7 +93,7 @@ export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
 }
 export function downloadIcs(e: FarmEvent) {
   const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Havat Ravve//HE', 'BEGIN:VEVENT', `UID:${e.id}@havat-ravve.web.app`, `DTSTAMP:${stamp(new Date().toISOString())}`, `DTSTART:${stamp(e.start)}`, `DTEND:${stamp(e.end)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location || 'חוות רווה'}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Havat Ravve//HE', 'BEGIN:VEVENT', `UID:${e.id}@havat-ravve.web.app`, `DTSTAMP:${stamp(clockNow().toISOString())}`, `DTSTART:${stamp(e.start)}`, `DTEND:${stamp(e.end)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location || 'חוות רווה'}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = `${e.title}.ics`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 

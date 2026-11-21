@@ -10,6 +10,7 @@ import { setBought, addShopping, editShopping, deleteShopping, useShoppingItem, 
 import { useActivityFor, ACTION_LABELS } from '../activity';
 import { CATS, catOf, fixLink } from './New';
 import { ShoppingPhoto, ShoppingPhotoField } from './ShoppingPhoto';
+import { nowMs } from '../clock';
 
 export function useShopActions(ctx: TeamCtx) {
   const toast = useToast();
@@ -26,7 +27,7 @@ export function useShopActions(ctx: TeamCtx) {
 
 /** The usual items of one list: what was bought most in the last 90 days and is not on the list now. */
 function useUsual(open: ShoppingItem[]) {
-  const from = useMemo(() => new Date(Date.now() - 90 * 86400_000).toISOString(), []);
+  const from = useMemo(() => new Date(nowMs() - 90 * 86400_000).toISOString(), []);
   const past = useBoughtHistory(true, from);
   return useMemo(() => (cat: ShoppingCategory) => {
     const onList = new Set(open.filter((i) => i.category === cat).map((i) => i.title));
@@ -84,7 +85,7 @@ export function ShoppingScreen({ ctx, open, recent, loading, selectedId }: { ctx
   const [saved, setTab] = useSticky<ShoppingCategory | ''>('shop-tab', '');
   const tab = saved || firstFull;
   const toggle = (i: ShoppingItem) => (i.bought ? act.back(i) : leave(i.id, () => act.bought(i)));
-  const fresh = (i: ShoppingItem) => Date.now() - new Date(i.createdAt).getTime() < 4000;
+  const fresh = (i: ShoppingItem) => nowMs() - new Date(i.createdAt).getTime() < 4000;
   const list = (c: ShoppingCategory) => {
     const rows = byCat(c); const done = recent.filter((i) => i.category === c);
     return (

@@ -5,6 +5,7 @@ import type { TeamCtx } from '../ctx';
 import { Top, Sec, Btn, A, Icon, Avatar, Empty, Chips, Loading, useToast, fmtDayLong, fmtWeekday, firstName, relTime, todayISO, money, useDesktop, useOpenSections, inText } from '../ui';
 import { useHandledNotifications, handleNotification, contactPhoneOk, waLink, telLink } from '../data';
 import { useDemo } from '../demo/store';
+import { now } from '../clock';
 
 export function CmsEditorLink({ ctx, compact }: { ctx: TeamCtx; compact?: boolean }) {
   const demo = useDemo();
@@ -26,7 +27,7 @@ export function ManageHomeScreen({ ctx, inbox, events, visits, donations, people
   const today = todayISO();
   const desktop = useDesktop();
   const { isOpen, toggle } = useOpenSections(['inbox', 'topics'], 'manage');
-  const next = events.filter((e) => e.published && e.end >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start))[0];
+  const next = events.filter((e) => e.published && e.end >= now().toISOString()).sort((a, b) => a.start.localeCompare(b.start))[0];
   const monthStart = today.slice(0, 8) + '01';
   const paidMonth = donations.filter((d) => d.createdAt >= monthStart && (d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite')).reduce((s, d) => s + d.amount, 0);
   const pendingDon = donations.filter((d) => d.paymentStatus === 'claimed' || d.paymentStatus === 'pending').length;

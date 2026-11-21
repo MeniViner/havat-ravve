@@ -3,6 +3,7 @@ import { useList, write, newId, readOnce } from './db';
 import { nowIso } from './firebase';
 import { demoOnly } from './demo/store';
 import type { Activity, ActivityKind, Actor } from './types';
+import { now } from './clock';
 
 export function logActivity(by: Actor, kind: ActivityKind, refId: string, action: string, text: string, extra: { subjectUid?: string; eventId?: string } = {}) {
   return write.set('activity', newId('activity'), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' }).catch(() => {});
@@ -64,6 +65,6 @@ export async function sweepPrivateTaskActivity() {
       gone.push(...chunk.filter((id) => !still.has(id)));
     }
     await reclassifyTaskActivity(gone, true);
-    try { localStorage.setItem(SWEEP_KEY, new Date().toISOString()); } catch { /* private window: it runs again next time, harmlessly */ }
+    try { localStorage.setItem(SWEEP_KEY, now().toISOString()); } catch { /* private window: it runs again next time, harmlessly */ }
   } catch { /* offline or refused: try again next session */ } finally { sweeping = false; }
 }

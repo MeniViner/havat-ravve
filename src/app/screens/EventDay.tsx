@@ -9,6 +9,7 @@ import { navigate } from '../router';
 import { useEvent, useEventTickets, useEventTabs, useProducts, parseQr, recordScan, openTab, addTabItems, removeTabItem, setTabStatus, hasTabPurchases, isOpenTab, type StallGuest } from '../data';
 import { nowIso } from '../firebase';
 import { EventTeaser } from './Today';
+import { now, nowMs } from '../clock';
 
 const isToday = (e: FarmEvent, today: string) => e.start.slice(0, 10) <= today && e.end.slice(0, 10) >= today;
 // ---------- camera ----------
@@ -108,7 +109,7 @@ export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: F
   const today = todayISO();
   const published = events.filter((e) => e.published).sort((a, b) => a.start.localeCompare(b.start));
   const live = published.find((e) => isToday(e, today));
-  const chosen = (id ? events.find((e) => e.id === id) : null) || live || published.find((e) => e.end >= new Date().toISOString()) || null;
+  const chosen = (id ? events.find((e) => e.id === id) : null) || live || published.find((e) => e.end >= now().toISOString()) || null;
   const entry = !!chosen && chosen.entry !== false;
   const stall = !!chosen && chosen.stall !== false;
   // The stall also needs the ticket list on the device to look up a guest.
@@ -119,7 +120,7 @@ export function StaffEventsScreen({ ctx, events, id }: { ctx: TeamCtx; events: F
   const arrived = valid.filter((t) => t.entries > 0).length;
   const scans = useMemo(() => valid.flatMap((t) => t.scans.map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at)).slice(0, 6), [valid]);
   const openTabs = tabs.items.filter(isOpenTab);
-  const upcoming = published.filter((e) => e.end >= new Date().toISOString() && e.id !== chosen?.id);
+  const upcoming = published.filter((e) => e.end >= now().toISOString() && e.id !== chosen?.id);
   if (!chosen) return <><Top date={fmtDayLong(today)} title="אירועים" /><Empty title="אין אירוע קרוב" text={ctx.manager ? 'יוצרים אירוע בניהול ← אירועים.' : 'אירועים שיפורסמו יופיעו כאן.'} action={ctx.manager ? <Btn kind="ghost" to="/manage/events">לאירועים</Btn> : undefined} /></>;
   const isLive = isToday(chosen, today);
   const timing = isLive ? (entry ? ' · השער נפתח חצי שעה לפני' : '') : ` · ${inText(chosen.start)}`;
@@ -208,7 +209,7 @@ function useScanner(eventId: string, ctx: TeamCtx) {
   };
   const onCode = (code: string) => {
     if (result) return;
-    const now = Date.now();
+    const now = nowMs();
     if (recent.current.code === code && now - recent.current.at < 4000) return;
     recent.current = { code, at: now };
     const p = parseQr(code);

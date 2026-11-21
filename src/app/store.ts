@@ -8,6 +8,7 @@ import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } fr
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
+import { nowMs } from './clock';
 
 // ---------- auth ----------
 type AuthState = { loading: boolean; user: User | null };
@@ -245,7 +246,7 @@ export async function editShopping(actor: Actor, item: ShoppingItem, data: Parti
 export async function setBought(actor: Actor, item: ShoppingItem, bought: boolean) {
   const now = nowIso();
   await write.update('shopping', item.id, bought
-    ? { bought: true, boughtBy: actor, boughtAt: now, expireAt: new Date(Date.now() + 24 * 3600_000).toISOString(), updatedAt: now }
+    ? { bought: true, boughtBy: actor, boughtAt: now, expireAt: new Date(nowMs() + 24 * 3600_000).toISOString(), updatedAt: now }
     : { bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now });
   logActivity(actor, 'shopping', item.id, bought ? (item.category === 'giveaway' ? 'found' : 'bought') : 'unbought', `${item.title}${item.qty ? ' · ' + item.qty : ''}`);
 }

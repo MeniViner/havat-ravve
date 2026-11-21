@@ -12,6 +12,7 @@ import { PhotoPicker } from './legacy';
 import { nowIso } from '../firebase';
 import { PaymentConfirmationActions } from './PaymentConfirmation';
 import { eventCalendarFields } from '../calendarRef';
+import { now as clockNow, nowMs } from '../clock';
 
 const toLocal = (iso: string) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fromLocal = (s: string) => (s ? new Date(s).toISOString() : '');
@@ -22,7 +23,7 @@ const byOrder = (tickets: Ticket[]) => { const m = new Map<string, Ticket[]>(); 
 export function EventsListScreen({ ctx }: { ctx: TeamCtx }) {
   const { items, loading } = useAllEvents(true);
   const desktop = useDesktop();
-  const now = new Date().toISOString();
+  const now = clockNow().toISOString();
   const upcoming = items.filter((e) => e.end >= now).sort((a, b) => a.start.localeCompare(b.start));
   const past = items.filter((e) => e.end < now).sort((a, b) => b.start.localeCompare(a.start));
   const drafts = upcoming.filter((e) => !e.published).length;
@@ -99,7 +100,7 @@ function EventForm({ ctx, existing }: { ctx: TeamCtx; existing?: FarmEvent }) {
       <Sec title="ביום האירוע" />
       <SwitchRow on={f.entry !== false} onChange={(entry) => set({ entry })} title="סריקת כניסה" meta="סריקה וחיפוש של כרטיסים בשער" />
       <SwitchRow on={f.stall !== false} onChange={(stall) => set({ stall })} title="דוכן מכירות" meta="מוצרים וחשבונות בדוכן החווה" />
-      <Sec title="שאלות נוספות בהרשמה" n={q.length || 'לא חובה'} link="+ שאלה" onLink={() => set({ questions: [...q, { id: 'q' + Date.now().toString(36), label: '', required: false }] })} />
+      <Sec title="שאלות נוספות בהרשמה" n={q.length || 'לא חובה'} link="+ שאלה" onLink={() => set({ questions: [...q, { id: 'q' + nowMs().toString(36), label: '', required: false }] })} />
       {q.map((x, i) => <div key={x.id} className="field" style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}><Input placeholder="שאלה" value={x.label} onChange={(e) => set({ questions: q.map((y) => y.id === x.id ? { ...y, label: e.target.value } : y) })} /><Chip on={x.required} onClick={() => set({ questions: q.map((y) => y.id === x.id ? { ...y, required: !y.required } : y) })}>חובה</Chip><button type="button" className="iconbtn" aria-label="הסרה" onClick={() => set({ questions: q.filter((y) => y.id !== x.id) })}><Icon name="x" size={18} /></button>{i < 0 && null}</div>)}
       <div style={{ marginTop: 18 }}>
         <SwitchRow on={f.open} onChange={(open) => set({ open })} title="פתוח להרשמה" meta="אורחים יכולים להזמין כרטיסים" />
@@ -135,7 +136,7 @@ export function EventFrame({ id, tab, ctx, children, title, end }: { id: string;
   const e = d.e;
   const counts: Partial<Record<EventTab, number>> = { guests: d.orders.length, vendors: d.vendors.length, products: d.products.length, files: e.files?.length, activity: d.acts.length };
   const live = e.start.slice(0, 10) <= todayISO() && e.end.slice(0, 10) >= todayISO();
-  const head = <Top backTo={desktop ? '/manage/events' : tab === 'hub' ? '/manage/events' : `/manage/events/${id}`} backLabel={desktop || tab === 'hub' ? 'כל האירועים' : e.title} title={title || e.title} sub={tab === 'hub' || desktop ? `${fmtWeekday(e.start)} ${fmtDate(e.start)} · ${fmtRange(e.start, e.end)} · ${e.price ? `${money(e.price)} לכרטיס · עד ${e.maxPerOrder} בהזמנה` : 'חינם'}${live ? ' · מתעדכן בזמן אמת' : e.end < new Date().toISOString() ? ' · הסתיים' : ''}` : undefined} end={end ?? (tab === 'hub' || desktop ? <Btn kind="ghost" size="sm" icon="edit" to={`/manage/events/${id}/edit`}>עריכת האירוע</Btn> : undefined)} />;
+  const head = <Top backTo={desktop ? '/manage/events' : tab === 'hub' ? '/manage/events' : `/manage/events/${id}`} backLabel={desktop || tab === 'hub' ? 'כל האירועים' : e.title} title={title || e.title} sub={tab === 'hub' || desktop ? `${fmtWeekday(e.start)} ${fmtDate(e.start)} · ${fmtRange(e.start, e.end)} · ${e.price ? `${money(e.price)} לכרטיס · עד ${e.maxPerOrder} בהזמנה` : 'חינם'}${live ? ' · מתעדכן בזמן אמת' : e.end < clockNow().toISOString() ? ' · הסתיים' : ''}` : undefined} end={end ?? (tab === 'hub' || desktop ? <Btn kind="ghost" size="sm" icon="edit" to={`/manage/events/${id}/edit`}>עריכת האירוע</Btn> : undefined)} />;
   if (!desktop) return <>{head}{children}</>;
   return (
     <>{head}
@@ -406,7 +407,7 @@ export function EventTabsScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   const remind = (t: Tab) => waLink(t.guestPhone, fillTemplate(ctx.settings.templates.debtReminder, { 'שם': firstName(t.guestName), 'אירוע': e.title, 'סכום': t.total }));
   const set = (t: Tab, s: Tab['status'], note?: string) => setTabStatus(ctx.actor, t, s, note).then(() => toast({ text: `${t.guestName} · ${TAB_LABELS[s]}`, action: { label: 'ביטול', onClick: () => setTabStatus(ctx.actor, t, t.status) } }, 5000));
   const waive = (t: Tab) => { const r = prompt('סיבת המחילה (לא חובה):'); if (r === null) return; set(t, 'waived', r); };
-  const statusPill = (t: Tab) => <Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'open' ? `לא שולם · ${Math.max(0, Math.round((Date.now() - new Date(t.createdAt).getTime()) / 86400_000))} ימים` : TAB_LABELS[t.status]}</Pill>;
+  const statusPill = (t: Tab) => <Pill tone={t.status === 'paid' ? 'ok' : t.status === 'waived' ? undefined : 'ochre'}>{t.status === 'claimed' ? 'סימן/ה "העברתי"' : t.status === 'open' ? `לא שולם · ${Math.max(0, Math.round((nowMs() - new Date(t.createdAt).getTime()) / 86400_000))} ימים` : TAB_LABELS[t.status]}</Pill>;
   const acts = (t: Tab) => <>{t.status === 'claimed' && <Btn size="xs" onClick={() => set(t, 'paid')}>אישור · שולם</Btn>}{t.status === 'open' && <>{t.guestPhone && <a className="btn ghost xs" href={remind(t)} target="_blank" rel="noopener"><Icon name="whatsapp" size={14} />תזכורת</a>}<Btn size="xs" kind="ghost" onClick={() => set(t, 'paid')}>שולם</Btn></>}{(t.status === 'open' || t.status === 'claimed') && <Btn size="xs" kind="quiet" onClick={() => waive(t)}>מחילה</Btn>}</>;
   return (
     <EventFrame id={id} tab="tabs" ctx={ctx} title={desktop ? e.title : 'חשבונות וחובות'} end={<><ExportActions getData={accountExport} />{open.some((t) => t.guestPhone) && <Btn kind="ghost" size="sm" icon="whatsapp" onClick={() => toast({ text: 'שולחים תזכורת אחת־אחת מהשורות, כדי שכל אחד יקבל את הסכום שלו.' }, 4000)}>תזכורת לכל החייבים</Btn>}</>}>
@@ -477,7 +478,7 @@ export function EventReportScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
   });
   return (
     <EventFrame id={id} tab="report" ctx={ctx} title={desktop ? `${e.title} · דוח` : 'דוח האירוע'} end={<><ExportActions getData={reportExport} downloadLabel="ייצוא לאקסל" />{desktop && <Btn kind="ghost" size="sm" icon="print" onClick={() => window.print()}>הדפסה</Btn>}</>}>
-      {!desktop && <p className="lead">{e.title} · {fmtWeekday(e.start)} {fmtDate(e.start)}{e.end < new Date().toISOString() ? ' · הסתיים' : ''}</p>}
+      {!desktop && <p className="lead">{e.title} · {fmtWeekday(e.start)} {fmtDate(e.start)}{e.end < clockNow().toISOString() ? ' · הסתיים' : ''}</p>}
       <Sec title="אנשים" />
       <Ledger small items={[{ n: d.valid.length, label: 'כרטיסים' }, { n: d.arrived.length, label: 'הגיעו' }, { n: `${pct}%`, label: 'הגעה' }, { n: d.valid.filter((t) => t.entries > 1).length, label: 'יצאו וחזרו' }]} />
       <Sec title="כסף" />
@@ -489,7 +490,7 @@ export function EventReportScreen({ id, ctx }: { id: string; ctx: TeamCtx }) {
         {waived > 0 && <Row center title="נמחל" meta={<span>{d.tabs.filter((t) => t.status === 'waived').length} חשבונות</span>} end={<span className="amount">{money(waived)}</span>} />}
       </div>
       {top.length > 0 && <><Sec title="מה נמכר הכי הרבה" />{desktop ? <div className="tablewrap"><table><thead><tr><th>#</th><th>מוצר</th><th>יחידות</th><th>הכנסה</th></tr></thead><tbody>{top.map((t, i) => <tr key={t.name}><td className="muted">{i + 1}</td><td style={{ fontWeight: 600 }}>{t.name}</td><td>{t.units}</td><td className="money">{money(t.rev)}</td></tr>)}</tbody></table></div> : <div className="list">{top.slice(0, 7).map((t, i) => <Row key={t.name} center title={`${i + 1} ${t.name}`} meta={<span>{t.units} יח׳</span>} end={<span className="amount">{money(t.rev)}</span>} />)}</div>}</>}
-      {desktop && <><Sec title="לעומת אירועים קודמים" /><div className="tablewrap"><table><thead><tr><th>אירוע</th><th>כרטיסים</th><th>הגיעו</th></tr></thead><tbody>{all.items.filter((x) => x.end < new Date().toISOString()).slice(0, 5).map((x) => <CompareRow key={x.id} e={x} />)}</tbody></table></div></>}
+      {desktop && <><Sec title="לעומת אירועים קודמים" /><div className="tablewrap"><table><thead><tr><th>אירוע</th><th>כרטיסים</th><th>הגיעו</th></tr></thead><tbody>{all.items.filter((x) => x.end < clockNow().toISOString()).slice(0, 5).map((x) => <CompareRow key={x.id} e={x} />)}</tbody></table></div></>}
     </EventFrame>
   );
 }

@@ -8,6 +8,7 @@ import { navigate, useParam } from '../router';
 import { useEvent } from '../data';
 import { useTask, setTaskDone, setTaskDoneDetails, editTask, addTask, compressPhoto, useHistoryTasks, useBoughtHistory, addShopping } from '../store';
 import { useTaskActivity, ACTION_LABELS } from '../activity';
+import { nowMs } from '../clock';
 
 // ---------- what a task is, in the words the screen uses ----------
 export const mapsLink = (l: TaskLocation) => `https://maps.google.com/?q=${l.lat},${l.lng}`;
@@ -234,8 +235,8 @@ type Range = '7' | '30' | '90';
 export function HistoryScreen({ ctx, tab }: { ctx: TeamCtx; tab: 'tasks' | 'shopping' }) {
   const [range, setRange] = useSticky<Range>('history-range', '7');
   const [q, setQ] = useState('');
-  const from = useMemo(() => new Date(Date.now() - Number(range) * 86400_000).toISOString(), [range]);
-  const to = useMemo(() => new Date(Date.now() + 86400_000).toISOString(), [range]);
+  const from = useMemo(() => new Date(nowMs() - Number(range) * 86400_000).toISOString(), [range]);
+  const to = useMemo(() => new Date(nowMs() + 86400_000).toISOString(), [range]);
   const tasks = useHistoryTasks(tab === 'tasks', ctx.manager, from, to);
   const bought = useBoughtHistory(tab === 'shopping', from);
   const toast = useToast();

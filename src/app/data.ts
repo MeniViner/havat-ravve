@@ -7,6 +7,7 @@ import type {
   AppNotification, NotificationType, CalendarItem, CalendarKind, Profile, PaymentStatus, ReceiptPreference,
 } from './types';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD } from './types';
+import { nowMs } from './clock';
 
 export const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
 export const fillTemplate = (t: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`[${k}]`, String(v)), t);
@@ -272,7 +273,7 @@ export async function openTab(actor: Actor, event: FarmEvent, guest: StallGuest)
 /** Adds to the tab without reading it first: works without reception, and two volunteers can add to the same tab at once. */
 export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[]) {
   // each line gets its own moment, so two identical products added together stay two lines
-  const base = Date.now();
+  const base = nowMs();
   const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString() }));
   await write.update('tabs', tab.id, { items: push(...stamped), total: inc(sum(stamped)), updatedAt: nowIso() });
   logActivity(actor, 'tab', tab.id, 'item', `${tab.guestName}: ${items.map((i) => `${i.name}${i.qty > 1 ? ' ×' + i.qty : ''}`).join(', ')} · ${sum(items)} ₪`, { subjectUid: tab.guestUid, eventId: tab.eventId });
