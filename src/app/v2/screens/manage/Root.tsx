@@ -54,7 +54,7 @@ export function ManageRoot({ ctx }: ScreenProps) {
 // ---------- M2 ----------
 type Filter = 'all' | Exclude<InboxGroup, 'other'>;
 const ICON: Record<AppNotification['type'], IconName> = { contact: 'phone', visit: 'pin', donation: 'heart', claim: 'ticket', tab: 'cart', receipt: 'file', order: 'ticket', join: 'user' };
-const VREQ: Record<VendorRequest['kind'], string> = { power: 'חשמל', water: 'מים', help: 'עזרה', other: 'משהו אחר' };
+const VREQ: Record<VendorRequest['kind'], string> = { power: 'חשמל', water: 'מים', help: 'עזרה', supply: 'נגמר לי משהו', other: 'משהו אחר' };
 
 /** What an inbox item points at, resolved from the lists the screen already has. */
 type Resolved = { pay?: PayItem; visit?: Visit; donation?: Donation; tab?: Tab; tickets?: Ticket[] };
