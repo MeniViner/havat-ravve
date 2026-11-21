@@ -29,6 +29,12 @@ const slice: Slice = (seed, scenario) => {
   const oct = seed.collections[`events/${E.oct}/vendors`] || [];
   if (!oct.some((r) => r.id === V.jewel)) put(seed, `events/${E.oct}/vendors`, [{ ...(seed.collections[`events/${E.fall}/vendors`] || []).find((r) => r.id === V.jewel), spot: 7, status: 'confirmed', confirmed: true, arrivedAt: null, answeredAt: at(-30, '10:00'), invitedAt: at(-35, '10:00') }]);
 
+  // the team's notes move to vendors/{id}/private/main (managers only): the vendor reads its own vendor document
+  for (const r of seed.collections.vendors || []) {
+    if (typeof r.notes === 'string' && r.notes) put(seed, `vendors/${r.id}/private`, [{ id: 'main', notes: r.notes, updatedAt: String(r.updatedAt || '') }]);
+    r.notes = '';
+  }
+
   // ---------- access invites (vendor_invites/{code}) ----------
   put(seed, 'vendor_invites', [
     { id: 'demo-vi-raz', code: 'demo-vi-raz', vendorId: V.raz, vendorName: 'גבינות משק רז', role: 'owner', name: 'רז כהן', phone: '052-000-0471', active: false, usedBy: U.raz, usedAt: at(-40, '19:02'), createdBy: A.beni, createdAt: at(-40, '18:00') },

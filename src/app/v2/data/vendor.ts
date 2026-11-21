@@ -142,6 +142,9 @@ export const useMyRequests = (eid: string, vid: string) =>
   useList<VendorRequestDoc>(`events/${eid || '_'}/vendor_requests`, { where: [['vendorId', '==', vid || '_']], orderBy: [['createdAt', 'desc']], limit: 10 }, !!eid && !!vid);
 
 // manager side
+/** vendors/{vid}/private/main: the team's notes about a vendor (V2 "הערות לצוות"). Managers only, never readable by the vendor. */
+export type VendorPrivate = { id?: string; notes?: string; updatedAt?: string };
+export const useVendorPrivate = (vid: string, enabled = true) => useDoc<VendorPrivate>(`vendors/${vid || '_'}/private/main`, enabled && !!vid);
 export const useVendorPool = (enabled = true) => useList<VendorDoc>('vendors', { orderBy: [['createdAt', 'asc']] }, enabled);
 export const useEventVendorList = (eid: string) => useList<EventVendorDoc>(`events/${eid || '_'}/vendors`, {}, !!eid);
 export const useEventRequests = (eid: string) => useList<VendorRequestDoc>(`events/${eid || '_'}/vendor_requests`, { orderBy: [['createdAt', 'desc']], limit: 100 }, !!eid);
@@ -262,10 +265,18 @@ export async function removePerson(v: VendorDoc, p: VendorPerson) {
 export type PoolForm = { name: string; contact: string; phone: string; sells: string; needs: VendorNeed[]; notes: string; external: boolean; fem: boolean };
 export async function savePoolVendor(ctx: V2Ctx, f: PoolForm, existing?: VendorDoc | null) {
   const at = nowIso();
-  const data = { name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, notes: f.notes.trim(), external: f.external, fem: f.fem, updatedAt: at };
-  if (existing) { await write.update('vendors', existing.id, data); return existing.id; }
+  // the vendor reads vendors/{id} (D7), so the team's notes live in a manager-only document; a legacy `notes` field is cleared on save
+  const data = { name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, notes: '', external: f.external, fem: f.fem, updatedAt: at };
+  const priv = { notes: f.notes.trim(), updatedAt: at };
+  if (existing) {
+    await write.batch([{ op: 'update', col: 'vendors', id: existing.id, data }, { op: 'set', col: `vendors/${existing.id}/private`, id: 'main', data: priv }]);
+    return existing.id;
+  }
   const id = newId('vendors');
-  await write.set('vendors', id, { ...data, note: '', events: [], people: [], inviteNext: false, createdAt: at });
+  await write.batch([
+    { op: 'set', col: 'vendors', id, data: { ...data, note: '', events: [], people: [], inviteNext: false, createdAt: at } },
+    { op: 'set', col: `vendors/${id}/private`, id: 'main', data: priv },
+  ]);
   logActivity(ctx.actor, 'event', id, 'added', `בעל דוכן חדש: ${data.name}`);
   return id;
 }
@@ -336,7 +347,7 @@ export async function removeAccess(ctx: V2Ctx, v: VendorDoc, invites: VendorInvi
   for (const uid of uids) {
     const p = peopleByUid.get(uid);
     if (!p || p.role !== 'vendor') continue;
-    ops.push({ op: 'update', col: 'users', id: uid, data: { role: 'guest', updatedAt: at, log: [...(p.log || []).slice(-29), { at, by: ctx.actor, text: `הגישה לדוכן ${v.name} הוסרה` }] } });
+    ops.push({ op: 'update', col: 'users', id: uid, data: { role: 'guest', notes: (p as { notes?: string }).notes || '', updatedAt: at, log: [...(p.log || []).slice(-29), { at, by: ctx.actor, text: `הגישה לדוכן ${v.name} הוסרה` }] } });
   }
   ops.push({ op: 'update', col: 'vendors', id: v.id, data: { people: [], updatedAt: at } });
   await write.batch(ops);

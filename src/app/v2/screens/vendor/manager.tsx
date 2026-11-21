@@ -11,7 +11,7 @@ import { isConflict } from '../../../db';
 import { ddmm, hhmm, ago } from '../../format';
 import {
   useVendorDoc, useVendorPool, useEventDoc, useEventVendorList, useEventRequests, useVendorInvites, useVendorInfo, useVendorBundles, useEvents,
-  peopleOf, inviteToEvent, remindVendor, inviteMany, savePoolVendor, addPerson, removeAccess, closeRequest, helperText, inviteLink,
+  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, inviteMany, savePoolVendor, addPerson, removeAccess, closeRequest, helperText, inviteLink,
   needsText, requestLabel, phaseOf, femName, first, g, andList, NEED_ORDER, type VendorDoc, type EventVendorDoc, type PoolForm, type VendorPerson,
 } from '../../data/vendor';
 import { NEED_LABELS, type FarmEvent, type VendorNeed } from '../../../types';
@@ -58,11 +58,11 @@ export function VendorPool({ ctx }: ScreenProps) {
 }
 
 /** New vendor (V1 "חדש") and edit (V2 "עריכה"). Not in the designs: built from N11's form pattern. */
-function PoolEdit({ ctx, existing }: { ctx: V2Ctx; existing: VendorDoc | null }) {
+function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorDoc | null; notes?: string }) {
   const toast = useToast();
   const [f, setF] = useState<PoolForm>({
     name: existing?.name || '', contact: existing?.contact || '', phone: existing?.phone || '', sells: existing?.sells || existing?.product || '',
-    needs: existing?.needs || [], notes: existing?.notes || '', external: existing?.external !== false, fem: !!existing?.fem,
+    needs: existing?.needs || [], notes, external: existing?.external !== false, fem: !!existing?.fem,
   });
   const [errs, setErrs] = useState<{ name?: string; phone?: string }>({});
   const [busy, setBusy] = useState(false);
@@ -110,11 +110,14 @@ function PoolEdit({ ctx, existing }: { ctx: V2Ctx; existing: VendorDoc | null })
 export function VendorCard({ ctx, params }: ScreenProps) {
   const v = useVendorDoc(params.id || '');
   const edit = useParam('edit') === '1';
-  if (v.loading) return <AppScreen variant="detail" gap={12} noNav><TopBar back={{ label: 'בעלי דוכנים', onClick: () => navigate('/manage/vendors') }} /><Quiet text="טוען..." /></AppScreen>;
+  const priv = useVendorPrivate(params.id || '');
+  // the team's notes (manager-only document); an old vendor document may still carry them in `notes`
+  const notes = priv.item?.notes ?? v.item?.notes ?? '';
+  if (v.loading || (edit && priv.loading)) return <AppScreen variant="detail" gap={12} noNav><TopBar back={{ label: 'בעלי דוכנים', onClick: () => navigate('/manage/vendors') }} /><Quiet text="טוען..." /></AppScreen>;
   if (!v.item) return <AppScreen variant="detail" gap={12} noNav><TopBar back={{ label: 'בעלי דוכנים', onClick: () => navigate('/manage/vendors') }} /><EmptyState variant="card" icon="stall" title="בעל הדוכן לא נמצא" text="אולי הוא נמחק מהמאגר." /></AppScreen>;
-  return edit ? <PoolEdit ctx={ctx} existing={v.item} /> : <Card ctx={ctx} v={v.item} />;
+  return edit ? <PoolEdit ctx={ctx} existing={v.item} notes={notes} /> : <Card ctx={ctx} v={v.item} notes={notes} />;
 }
-function Card({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
+function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
   const open = useExternal(); const toast = useToast();
   const b = useVendorBundles(v.id, v.events);
   const all = useEvents(true);
@@ -159,7 +162,7 @@ function Card({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
         {(v.sells || v.product) && <DetailRow term="מוכר">{v.sells || v.product}</DetailRow>}
         {!!v.needs?.length && <DetailRow term="צריך">{needsText(v.needs, 'and')}</DetailRow>}
       </DetailList>
-      {(v.notes || v.note) && <Quote>{v.notes || v.note}</Quote>}
+      {(notes || v.note) && <Quote>{notes || v.note}</Quote>}
       {items.length > 0 && (
         <ListCard title="באירועים שלנו">
           {items.map((x) => <Row key={x.id} title={`${x.event.title} · ${ddmm(x.event.start)}`} tags={tag(x)} meta={meta(x)} onClick={() => navigate(`/manage/events/${x.id}/vendors`)} />)}
