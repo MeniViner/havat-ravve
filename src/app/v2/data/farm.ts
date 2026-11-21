@@ -87,7 +87,7 @@ export async function takeTask(actor: Actor, task: Task) {
     const cur = await tx.get<Task>('tasks', task.id);
     if (!cur || cur.done || (cur.assignee && cur.assignee.uid !== actor.uid)) throw new ConflictError();
     const now = nowIso();
-    tx.update('tasks', task.id, { assignee: actor, takenAt: now, updatedAt: now });
+    tx.update('tasks', task.id, { assignee: { uid: actor.uid, name: actor.name }, updatedAt: now }); // only keys the task rules let a volunteer change
   });
   logActivity(actor, taskKind(task), task.id, 'assigned', `${task.title.slice(0, 60)} ← ${actor.name}`, { subjectUid: actor.uid, eventId: task.eventId || '' });
 }

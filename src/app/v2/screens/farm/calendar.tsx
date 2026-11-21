@@ -1,7 +1,7 @@
 // F2-Month and F3-Day (plus the week view the segmented control offers): presence marks, event and visit dots, the day's items.
 import { useMemo } from 'react';
 import { AppScreen, go } from '../../core';
-import { navigate } from '../../../router';
+import { navigate, useParam } from '../../../router';
 import { Avatar, Icon, Segmented } from '../../kit';
 import { DAY_LETTERS, MONTHS, ddmm, dayName, hhmm, inDays, longDate } from '../../format';
 import { now } from '../../../clock';
@@ -40,8 +40,10 @@ function ItemRow({ time, title, meta, href, done }: { time: string; title: strin
 }
 
 export function CalendarScreen({ ctx, params }: ScreenProps) {
-  const view: View = params.view === 'day' || params.view === 'week' ? params.view : 'month';
-  const date = validDate(params.date) || ctx.today;
+  // the shell re-renders on path changes only (useRoute is the pathname); read the query directly so view/date changes show
+  const qView = useParam('view') || params.view, qDate = useParam('date') || params.date;
+  const view: View = qView === 'day' || qView === 'week' ? qView : 'month';
+  const date = validDate(qDate) || ctx.today;
   const set = (v: View, d: string) => navigate(`/farm/calendar?view=${v}&date=${d}`, true, true);
   const header = <TopRow onBack={() => go('/farm')} end={<AddPresenceButton onClick={() => go('/farm/presence')} />} />;
   const seg = <Segmented className="farm-seg" label="תצוגה" value={view} onChange={(v) => set(v, date)} options={VIEWS} />;
