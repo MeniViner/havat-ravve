@@ -43,7 +43,7 @@ Old fields are unchanged (`status`, `paymentStatus`, `scans[]`, `entries`, `secr
 
 ### `events/{id}`: new field `closed: EventClose | null`, plus `reopenedAt`, `reopenedBy`
 - **Default for old docs:** absent, which means open.
-- **Written by:** a manager. Y5 sets `closed` with `reopenUntil` = noon on the next Israeli day. "פתיחה מחדש" sets `closed: null`.
+- **Written by:** a manager. Y5 sets `closed: {at, by, reopenUntil}` (noon on the next Israeli day); the cash counts stay in `counters/cash` because the event doc is public. "פתיחה מחדש" sets `closed: null`.
 
 ### `tabs/{id}`: existing, unchanged
 - E8 adds items with `addTabItems` (push and inc, no read first, so it works offline).

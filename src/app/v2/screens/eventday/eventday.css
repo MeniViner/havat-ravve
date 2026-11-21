@@ -33,9 +33,9 @@
 
 /* ── E8 stall: sell ── */
 .eventday-who { display: flex; align-items: center; gap: 12px; }
-.eventday-who__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.eventday-who__name { font-size: 22px; font-weight: 700; }
-.eventday-who__meta { font-size: 15px; color: var(--soft); }
+.eventday-who__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.eventday-who__name { font-size: 22px; line-height: 1.2; font-weight: 700; }
+.eventday-who__meta { font-size: 14px; color: var(--soft); }
 .eventday-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .eventday-tile {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line);
@@ -59,24 +59,23 @@
 .eventday-total span { font-size: 14px; color: var(--soft); }
 
 /* ── Y1 live ── */
-.eventday-hero-count { display: flex; align-items: flex-end; gap: 12px; }
-.eventday-hero-count__text { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; }
+.eventday-hero-count { display: flex; align-items: baseline; gap: 12px; }
+.eventday-hero-count__text { display: flex; flex-direction: column; }
 .eventday-hero-count__text b { font-size: 19px; font-weight: 700; }
 .eventday-hero-count__text span { font-size: 15px; color: rgba(255, 255, 255, .85); }
 .eventday-chartcard { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 .eventday-chartcard__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.eventday-chartcard__title { margin: 0; font-size: 15px; font-weight: 700; }
+.eventday-chartcard__title { margin: 0; font-size: 16px; font-weight: 700; }
 .eventday-chartcard__end { font-size: 14px; color: var(--soft); }
 .eventday-chart { direction: ltr; display: flex; align-items: flex-end; gap: 5px; height: 88px; }
-.eventday-chart__col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; height: 100%; }
+.eventday-chart__col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; }
 .eventday-chart__val { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.eventday-chart__bar { width: 100%; border-radius: 3px 3px 0 0; background: var(--selected); }
+.eventday-chart__bar { width: 100%; border-radius: 3px; background: var(--selected); }
 .eventday-chart__bar--now { background: var(--action); }
-.eventday-chart__bar--future { height: 3px; background: var(--line); border-radius: 0; }
-.eventday-chart__labels { direction: ltr; display: flex; gap: 5px; font-size: 12px; color: var(--soft); }
-.eventday-chart__labels span { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
-.eventday-chart__labels .is-now { color: var(--ink); font-weight: 700; }
-.eventday-barbtn { flex: none; padding-inline: 16px; font-size: 15px; }
+.eventday-chart__bar--future { height: 3px; background: var(--line); }
+.eventday-chart__label { font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.eventday-chart__label.is-now { color: var(--ink); font-weight: 700; }
+.eventday-barbtn { flex: none; padding-inline: 14px; gap: 6px; font-size: 15px; }
 
 /* ── Y2 scans ── */
 .eventday-time { flex: 0 0 44px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
