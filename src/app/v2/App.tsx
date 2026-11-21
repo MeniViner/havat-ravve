@@ -8,6 +8,7 @@ import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces
 import { useAllEvents } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { todayKey, useClockVersion } from '../clock';
+import { sweepPrivateTaskActivity } from '../activity';
 import type { Profile, Settings, Staffing } from '../types';
 import type { Session } from '../firebase';
 import type { TeamCtx } from '../ctx';
@@ -86,6 +87,10 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
 
   const base: TeamCtx = { user, actor, profile, manager: manager && !viewAsStaff, owner: owner && !viewAsStaff, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid };
   const ctx: V2Ctx = { ...base, role, vendorId: '', helper: false, today, eventToday, crew, viewAsStaff };
+
+  // one-time move of private-task history for managers (kept from the old shell)
+  const online = useOnline();
+  useEffect(() => { if (manager && online) void sweepPrivateTaskActivity(); }, [manager, online]);
 
   const redirect = redirectOf(route, search, role);
   useEffect(() => { if (redirect) navigate(redirect, true); }, [redirect]);
