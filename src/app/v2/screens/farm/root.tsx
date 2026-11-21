@@ -100,7 +100,7 @@ export function FarmRoot({ ctx }: ScreenProps) {
         <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
       </a>
 
-      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go('/places'); }}>
+      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go('/places?from=farm'); }}>
         <span className="farm-linkcard__box farm-linkcard__box--count"><Icon name="pin" size={22} /></span>
         <div className="farm-linkcard__body">
           <span className="farm-linkcard__over">מקומות בחווה</span>

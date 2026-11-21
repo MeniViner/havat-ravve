@@ -46,6 +46,7 @@ export function ManageRoot({ ctx }: ScreenProps) {
         <Tile icon="sliders" title="הגדרות" meta="תשלום, הודעות, מנהלים" {...lnk('/manage/settings')} />
       </TileGrid>
       <PlainLink path="/manage/broadcasts">הודעות לצוות</PlainLink>
+      <PlainLink path="/places?from=manage">מקומות בחווה</PlainLink>
       <PlainLink path="/manage/activity">כל הפעילות בחווה</PlainLink>
     </AppScreen>
   );

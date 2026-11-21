@@ -12,6 +12,13 @@ import { useRootTasks, useTasksAt, placeMeta, sortPlaces, rowMeta, createPlace, 
 import { to, useFail, usePhotoPicker } from './shared';
 import './tasks.css';
 
+/** The places list opens from the tasks area, the farm tab (?from=farm) or the manage screen (?from=manage): back returns there. */
+function placesBack() {
+  const from = param('from');
+  const [label, parent] = from === 'farm' ? ['החווה', '/farm'] : from === 'manage' ? ['ניהול', '/manage'] : ['משימות', '/tasks'];
+  return { label, onClick: () => back(parent) };
+}
+
 export function PlacesScreen({ ctx }: ScreenProps) {
   const root = useRootTasks(ctx); const fail = useFail();
   const [busy, setBusy] = useState(false);
@@ -26,7 +33,7 @@ export function PlacesScreen({ ctx }: ScreenProps) {
   };
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'משימות', ...to('/tasks') }} />
+      <TopBar back={placesBack()} />
       <PageTitle size="root">מקומות בחווה</PageTitle>
       <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>
       {ctx.places.length > 0 ? (

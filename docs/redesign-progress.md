@@ -115,3 +115,9 @@ Tests: `tests/v2-delete.mjs` (demo click-through, owner, manager and staff, 75 c
   - CSV export has no place in the new screens (code kept)
   - the optional gender field
 - Smoke-run notes: a pending volunteer sees the guest app until approved; vendor screens follow the event's end time rather than the manager's close.
+
+## After review (2026-11-21)
+
+- Guest account (`/me/account`): no demo switch before sign-in; signing in with Google happens on the page; sections are cards in the guest look (not the v2 look). Team members and vendors who land there (for example after their first sign-in) go to `/me`.
+- Places (L3) had no way in: a "מקומות בחווה" card on the farm tab (`?from=farm`) and a plain link on the manage screen (`?from=manage`); the back button returns to where it was opened. New strings: "מקומות בחווה", "N מקומות שמורים", "עוד לא נשמר מקום".
+- Status answered for Meni: R2 bucket is bound to the Worker but no code reads or writes it (profile photos are small data URLs in the user document). Brevo payment-confirmation email is live (cron every 5 minutes, paid tickets, donations, stall accounts, only to guests who chose email). Resend is not in the code. Tickets (barcodes) are not emailed and free registrations get no email; the association's receipt is sent by hand.
