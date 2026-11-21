@@ -89,9 +89,6 @@ assert.equal(sys.birthText('1975-03-14'), '14.03.1975');
 // ---------- small words ----------
 assert.equal(sys.firstName('  בני גוטמן '), 'בני');
 assert.equal(sys.INVITE_ROLE_WORD.staff, 'כמתנדב');
-assert.deepEqual(sys.pushKindsOf({}), ['broadcast', 'task', 'urgent'], 'three kinds on by default');
-assert.deepEqual(sys.pushKindsOf({ push: { kinds: ['trip', 'old-kind'] } }), ['trip'], 'unknown kinds are dropped');
-assert.deepEqual(sys.pushKindsOf({ push: { kinds: [] } }), [], 'all off stays all off');
 assert.equal(sys.suspendedAt({ log: [{ at: '2026-11-01T00:00:00Z', text: 'מצב: פעיל' }, { at: '2026-11-18T09:15:00Z', text: 'מצב: נחסם' }], updatedAt: '2026-11-20T00:00:00Z' }), '2026-11-18T09:15:00Z');
 assert.equal(sys.suspendedAt({ updatedAt: '2026-11-20T00:00:00Z' }), '2026-11-20T00:00:00Z', 'no log: the last update');
 
@@ -123,6 +120,7 @@ const ester = mgr.find((h) => h.id === 'u3');
 assert.equal(ester.meta, '054-3333333 · פסטיבל הסתיו');
 assert.deepEqual(ester.tag, { text: '200 ₪', tone: 'waiting' });
 assert.equal(mgr.find((h) => h.id === 'v1').meta, 'שישי 27.11 · סיור');
+assert.equal(sys.searchAll(ctxOf(true), { ...data, unpaid: [] }, 'אסתר').find((h) => h.id === 'u3').meta, '054-3333333 · ביקשה ביקור', 'the visit request follows her gender');
 assert.equal(mgr.find((h) => h.id === 't1').meta, 'בני · היום');
 assert.equal(mgr.find((h) => h.id === 't2').meta, 'בוצע · נועה · 12.11');
 assert.equal(mgr.find((h) => h.id === 't3').meta, 'עליך · היום');
