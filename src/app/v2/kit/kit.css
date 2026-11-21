@@ -82,6 +82,10 @@
 }
 .k-screen--auto { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; }
 .k-screen__top, .k-screen__bottom { flex: none; display: flex; flex-direction: column; }
+/* iPhone safe area: the first strip fills it with its own colour; without a strip the screen pads itself */
+.k-screen { padding-top: env(safe-area-inset-top, 0px); }
+.k-screen:has(> .k-screen__top) { padding-top: 0; }
+.k-screen__top > .k-demo:first-child, .k-screen__top > :first-child .k-strip, .k-screen__top > .k-strip:first-child { box-sizing: content-box; padding-top: env(safe-area-inset-top, 0px); }
 .k-screen__body {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 12px;
@@ -371,7 +375,7 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-seg { display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .k-seg__btn {
   flex: 1; min-width: 0; height: 40px; border: 0; border-radius: 6px; background: transparent; color: var(--ink);
-  font-size: 15px; font-weight: 600; white-space: nowrap; padding: 0 4px;
+  font-size: 15px; font-weight: 600; white-space: nowrap; padding: 0 4px; text-align: center;
 }
 .k-seg__btn[aria-pressed="true"], .k-seg__btn[aria-checked="true"], .k-seg__btn[aria-selected="true"] { background: var(--selected); color: #FFFFFF; }
 .k-seg--lg .k-seg__btn { height: 48px; font-size: 16px; }

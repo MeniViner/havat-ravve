@@ -1,17 +1,15 @@
-// v2 screens: shopping. Placeholders until the area is implemented; the shell routes to these names (v2/routes.tsx).
-import type { ReactNode } from 'react';
-import type { ScreenProps, V2Ctx } from '../../ctx';
-import { Placeholder } from '../../placeholder';
+// v2 screens: shopping (S1-S4, S6-S8). S5 (add / edit an item) is the tasks area's AddScreen: /new?kind=shopping&list=<key>[&text=][&photo=1][&mic=1]
+// and /shopping/:id/edit. The shell routes to these names (v2/routes.tsx).
+import type { V2Ctx } from '../../ctx';
+import './shopping.css';
 
-/** S1-Root,S2-Wish,S3-Empty */
-export function ShoppingRoot(p: ScreenProps): ReactNode { return <Placeholder name="ShoppingRoot" ids="S1-Root,S2-Wish,S3-Empty" params={p.params} />; }
+/** S1-Root, S2-Wish (?list=wish), S3-Empty (an empty list, e.g. ?list=online) */
+export { ShoppingRoot } from './Root';
 /** S4-Item */
-export function ShopItemScreen(p: ScreenProps): ReactNode { return <Placeholder name="ShopItemScreen" ids="S4-Item" params={p.params} />; }
-/** S6-Trip */
-export function TripScreen(p: ScreenProps): ReactNode { return <Placeholder name="TripScreen" ids="S6-Trip" params={p.params} />; }
-/** S7-TripEnd */
-export function TripDoneScreen(p: ScreenProps): ReactNode { return <Placeholder name="TripDoneScreen" ids="S7-TripEnd" params={p.params} />; }
+export { ShopItemScreen } from './Item';
+/** S6-Trip, S7-TripEnd */
+export { TripScreen, TripDoneScreen } from './Trip';
 /** S8-History */
-export function ShopHistoryScreen(p: ScreenProps): ReactNode { return <Placeholder name="ShopHistoryScreen" ids="S8-History" params={p.params} />; }
+export { ShopHistoryScreen } from './History';
 
 export type { V2Ctx };
