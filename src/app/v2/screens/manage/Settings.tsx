@@ -288,7 +288,7 @@ function QuestionsPage({ ctx }: ScreenProps) {
             <Field label="השאלה" value={draft.label} maxLength={80} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
             <div className="manage-group">
               <span className="manage-group__label">סוג תשובה</span>
-              <Segmented label="סוג תשובה" value={draft.type} onChange={(t) => setDraft({ ...draft, type: t })}
+              <Segmented className="manage-seg" label="סוג תשובה" value={draft.type} onChange={(t) => setDraft({ ...draft, type: t })}
                 options={[{ value: 'text', label: 'טקסט' }, { value: 'choice', label: 'בחירה' }, { value: 'date', label: 'תאריך' }]} />
             </div>
             {draft.type === 'choice' && <TextAreaField label="אפשרויות, אחת בכל שורה" value={draft.options} onChange={(e) => setDraft({ ...draft, options: e.target.value })} height={110} />}
@@ -345,7 +345,8 @@ function ManagersPage({ ctx }: ScreenProps) {
   };
   const sortMe = <T extends { uid: string; displayName: string }>(xs: T[]) => [...xs].sort((a, b) => (a.uid === ctx.actor.uid ? -1 : b.uid === ctx.actor.uid ? 1 : a.displayName.localeCompare(b.displayName, 'he')));
   const owners = sortMe(people.filter((p) => p.role === 'owner' && p.status === 'active'));
-  const managers = sortMe(people.filter((p) => p.role === 'manager' && p.status === 'active'));
+  // Managers: most recently active first (G5 shows who is around).
+  const managers = people.filter((p) => p.role === 'manager' && p.status === 'active').sort((a, b) => (lastSeen.get(b.uid) || '').localeCompare(lastSeen.get(a.uid) || '') || a.displayName.localeCompare(b.displayName, 'he'));
   const pending = (role: 'owner' | 'manager') => invites.filter((i) => i.role === role).map((i) => (
     <Row key={i.id} minHeight={56} {...lnk('/manage/people/invite')} leading={<Avatar initials="?" />} title={i.email} meta="הוגדר, עוד לא נכנס" />
   ));

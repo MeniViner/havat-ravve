@@ -245,7 +245,7 @@ export function settingsLines(s: Settings & { donationOptions?: { custom?: boole
     payments: pay,
     amounts,
     types: `${s.visitTypes.length} סוגים`,
-    questions: s.registrationFields.length ? s.registrationFields.map((f) => f.label.replace(/\?$/, '')).join(', ') : 'אין שאלות נוספות',
+    questions: s.registrationFields.length ? s.registrationFields.map((f) => f.label.replace(/[?؟]/g, '').trim().split(/\s+/).slice(0, 2).join(' ')).join(', ') : 'אין שאלות נוספות',
     messages: 'אישור ביקור, תודה, תזכורת חוב',
     contact: s.contact?.phone || s.contact?.whatsapp || 'לא הוגדר',
     managers: `${owners} בעלים · ${managers} מנהלים`,

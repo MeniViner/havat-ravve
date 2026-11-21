@@ -37,7 +37,7 @@
 
 /* M10 */
 .manage-bars { padding-bottom: 8px; }
-.manage-debts { display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--ink); }
+.k-card.manage-debts { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--ink); }
 .manage-debts__body { flex: 1; display: flex; flex-direction: column; }
 .manage-debts__title { font-size: 17px; font-weight: 700; display: flex; gap: 8px; align-items: center; }
 .manage-chev { display: flex; color: var(--soft); }
@@ -114,3 +114,5 @@
 .manage-sheet { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; }
 .manage-hint { font-size: 14px; color: var(--soft); }
 .manage-plainname { color: inherit; text-decoration: none; }
+/* the app-wide button reset sets text-align:start; the kit segmented control does not set it back (kit request) */
+.manage-seg .k-seg__btn { text-align: center; }

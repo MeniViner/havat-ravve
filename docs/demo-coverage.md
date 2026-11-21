@@ -62,13 +62,13 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | M6-Live | manager | eventDay | /manage/events/demo-e-festival?tab=day |  |
 | M7-Summary | manager | afterEvent | /manage/events/demo-e-october?tab=summary |  |
 | M8-People | manager | regular | /manage/people |  |
-| M9-Person | manager | regular | /manage/people/demo-u-david |  |
+| M9-Person | owner | regular | /manage/people/demo-u-michal |  |
 | M10-Reports | manager | regular | /manage/reports |  |
 | N1-Visits | manager | regular | /manage/visits |  |
 | N2-Visit | manager | regular | /manage/visits/demo-vi-cohen |  |
 | N3-Donations | manager | regular | /manage/donations |  |
 | N4-Donation | manager | regular | /manage/donations/demo-d-michal |  |
-| N5-Settings | manager | regular | /manage/settings |  |
+| N5-Settings | owner | regular | /manage/settings |  |
 | N6-Payments | owner | regular | /manage/settings/payments |  |
 | N7-Messages | manager | regular | /manage/settings/messages |  |
 | N8-Vendors | manager | regular | /manage/events/demo-e-festival/vendors |  |
@@ -76,7 +76,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | N10-Product | manager | regular | /manage/events/demo-e-festival/products/demo-pr-lemonade |  |
 | N11-EventEdit | manager | regular | /manage/events/demo-e-festival/edit |  |
 | N12-Tab | manager | regular | /manage/events/demo-e-october/tabs/demo-tab-roni-oct |  |
-| N13-Invite | manager | regular | /manage/people/invite |  |
+| N13-Invite | owner | regular | /manage/people/invite |  |
 | N14-Activity | manager | regular | /manage/activity |  |
 | G1-Amounts | owner | regular | /manage/settings/donation-amounts |  |
 | G2-VisitTypes | manager | regular | /manage/settings/visit-types |  |

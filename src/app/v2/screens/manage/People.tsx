@@ -142,7 +142,7 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
       </DetailList>
       {p.role === 'vendor'
         ? <DetailList className="manage-dl48"><DetailRow term="תפקיד">{roleWord('vendor', female)}{p.helper ? ' · עוזר' : ''}</DetailRow></DetailList>
-        : <Segmented label="תפקיד" value={p.role} onChange={setRole}
+        : <Segmented className="manage-seg" label="תפקיד" value={p.role} onChange={setRole}
             options={(['guest', 'staff', 'manager', 'owner'] as Role[]).map((r) => ({ value: r, label: roleWord(r, female), disabled: r !== p.role && !allowed.includes(r) }))} />}
       <ListCard title={`מה היה ${gw(p.displayName, 'לו', 'לה')} אצלנו`}>
         {rows.length ? rows.map((r) => <Row key={r.key} {...lnk(r.path)} title={r.title} tags={r.tag} meta={r.meta} />)
@@ -180,7 +180,7 @@ export function InviteScreen({ ctx }: ScreenProps) {
         hint={existing ? `${existing.displayName} כבר ${gw(existing.displayName, 'רשום', 'רשומה')}. את התפקיד משנים בכרטיס שלו.` : undefined} />
       <div className="manage-group">
         <span className="manage-group__label">איזה תפקיד</span>
-        <Segmented className="manage-seg44" label="תפקיד" value={role} onChange={setRole}
+        <Segmented className="manage-seg manage-seg44" label="תפקיד" value={role} onChange={setRole}
           options={(['staff', 'manager', 'owner'] as const).map((r) => ({ value: r, label: roleWord(r, false), disabled: !allowed.includes(r) }))} />
       </div>
       {!ctx.owner && <span className="manage-hint">רק בעלים יכולים למנות מנהלים ובעלים.</span>}
