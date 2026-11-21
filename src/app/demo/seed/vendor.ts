@@ -1,5 +1,5 @@
 // Demo seed slice for the vendor area (D1-D11, V1, V2, V6, V7, N8): access invites, the vendor brief per event,
-// gendered wording flags, the farm stall's people, event-day arrivals and a request, and the farm messages to vendors.
+// gendered wording flags, the farm stall's people, event-day arrivals and a request. Messages to vendors are in broadcast.ts.
 import type { Slice, Seed, Row } from './types';
 import { put, patch } from './types';
 import { U, A, E, V } from '../data';
@@ -67,12 +67,6 @@ const slice: Slice = (seed, scenario) => {
     for (const id of [V.raz, V.honey, V.bakery]) patch(seed, `events/${E.fall}/vendors`, id, { arrivedAt: at(FEST, id === V.raz ? '14:05' : '14:50') });
   }
 
-  // ---------- farm messages to vendors (B1 audience "בעלי דוכנים") ----------
-  const vendorsUids = [U.raz, U.tamar];
-  put(seed, 'broadcasts', [
-    { id: 'demo-b-vendors-cars', text: 'כניסת רכבים רק עד 15:15', audience: 'vendors', eventId: E.fall, urgent: false, by: A.beni, createdAt: at(-1, '18:40'), recipients: vendorsUids, recipientCount: 6 },
-    { id: 'demo-b-vendors-thanks', text: 'תודה שאישרתם. מפת הדוכנים בפנים', audience: 'vendors', eventId: E.fall, urgent: false, by: A.noa, createdAt: at(-7, '12:30'), recipients: vendorsUids, recipientCount: 4 },
-  ]);
-  put(seed, 'broadcasts/demo-b-vendors-thanks/reads', [{ id: U.raz, uid: U.raz, name: 'רז כהן', at: at(-7, '13:00') }, { id: U.tamar, uid: U.tamar, name: 'תמר כהן', at: at(-2, '21:30') }]);
+  // farm messages to vendors (demo-b-v1, demo-b-v2) come from the broadcast slice
 };
 export default slice;

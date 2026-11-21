@@ -13,6 +13,7 @@ import {
   setupTime, vehiclesUntil, peakUntil, duration, answerBy, dayShort, first, g, femName, requestLabel, type Bundle, type RequestKind, type VendorDoc,
 } from '../../data/vendor';
 import { useVendorWorld, VendorHead, NextHero, SpotCard, Timeline, ContactCard, FarmMessages, PastList, Quiet } from './parts';
+import { BroadcastCard } from '../broadcast';
 import type { ScreenProps } from '../../ctx';
 import type { V2Ctx } from '../../ctx';
 
@@ -53,6 +54,7 @@ function Home({ ctx, v, b, past }: { ctx: V2Ctx; v: VendorDoc; b: Bundle; past: 
   return (
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={v.name} title="האירועים" />
+      <BroadcastCard ctx={ctx} />
       <NextHero b={b} info={info} />
       {todos.length > 0 && (
         <ListCard title="נשאר לך" count={todos.length}>
@@ -77,6 +79,7 @@ function Empty({ ctx, v, past }: { ctx: V2Ctx; v: VendorDoc; past: Bundle[] }) {
   return (
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={v.name} title="האירועים" />
+      <BroadcastCard ctx={ctx} />
       <EmptyState variant="card" icon="calendar" title="אין כרגע אירוע קרוב" text={`כשנזמין אותך לאירוע הוא יופיע כאן, ${g(v.fem, 'ותקבל', 'ותקבלי')} גם הודעה בוואטסאפ.`} />
       {!ctx.helper && (
         <div className="vendor-togglecard">
@@ -104,6 +107,7 @@ function HelperHome({ ctx, v, b }: { ctx: V2Ctx; v: VendorDoc; b: Bundle }) {
   return (
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={v.name} title="האירועים" />
+      <BroadcastCard ctx={ctx} />
       <Card className="vendor-banner" as="section">
         <IconTile icon="stall" />
         <span className="vendor-banner__text" role="status">
@@ -141,6 +145,7 @@ function EventDay({ ctx, v, b }: { ctx: V2Ctx; v: VendorDoc; b: Bundle }) {
     return (
       <AppScreen variant="root" gap={10}>
         <VendorHead overline={overline} title="היום האירוע" />
+        <BroadcastCard ctx={ctx} />
         <Hero className="vendor-hero" aria-label={e.title}>
           <div className="vendor-titles">
             <b className="vendor-hero__when">{e.title}</b>
@@ -186,6 +191,7 @@ function Live({ ctx, v, b, info, overline }: { ctx: V2Ctx; v: VendorDoc; b: Bund
   return (
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={overline} title={started ? 'האירוע פתוח' : 'הגעת לחווה'} />
+      <BroadcastCard ctx={ctx} />
       <Hero className="vendor-hero" aria-label="מבקרים">
         {started ? <>
           <div className="vendor-live">

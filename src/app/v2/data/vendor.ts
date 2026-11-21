@@ -10,7 +10,7 @@ import { fillTemplate } from '../../data';
 import { notify } from './notify';
 import { hhmm, ddmm, dayName, keyOf } from '../format';
 import { NEED_LABELS } from '../../types';
-import type { Actor, FarmEvent, Profile, VendorNeed, VendorV2, EventVendorV2, VendorRequest, VendorRequestKind, BroadcastRead } from '../../types';
+import type { Actor, FarmEvent, Profile, VendorNeed, VendorV2, EventVendorV2, VendorRequest, VendorRequestKind } from '../../types';
 import type { Session } from '../../firebase';
 import type { V2Ctx } from '../ctx';
 
@@ -42,7 +42,6 @@ export type VendorInviteDoc = {
 export type RequestKind = VendorRequestKind | 'supply';
 export type VendorRequestDoc = Omit<VendorRequest, 'kind'> & { kind: RequestKind };
 type Live = { id?: string; entered?: number };
-type Broadcast = { id: string; text: string; audience: string; eventId?: string; by: Actor; createdAt: string };
 
 // ---------- wording helpers ----------
 /** Gendered word: g(fem, 'אישר', 'אישרה'). */
@@ -137,13 +136,6 @@ export function useVendorBundles(vid: string, ids: string[] | undefined): { item
     return { items, loading: ev.some((x) => x.loading) || rec.some((x) => x.loading) };
   }, key); // eslint-disable-line react-hooks/exhaustive-deps
 }
-
-/** Broadcasts addressed to vendors (B1 audience "בעלי דוכנים"), newest first. */
-export const useVendorBroadcasts = (n = 3, enabled = true) =>
-  useList<Broadcast>('broadcasts', { where: [['audience', '==', 'vendors']], orderBy: [['createdAt', 'desc']], limit: n }, enabled);
-export const useBroadcastRead = (bid: string, uid: string) => useDoc<BroadcastRead>(`broadcasts/${bid || '_'}/reads/${uid || '_'}`, !!bid && !!uid);
-export const markBroadcastRead = (bid: string, actor: Actor) =>
-  write.set(`broadcasts/${bid}/reads`, actor.uid, { uid: actor.uid, name: actor.name, at: nowIso() }, { quiet: true });
 
 /** This vendor's requests on one event (a vendor may list only their own). */
 export const useMyRequests = (eid: string, vid: string) =>

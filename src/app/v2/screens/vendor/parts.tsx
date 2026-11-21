@@ -8,10 +8,12 @@ import { nowMs } from '../../../clock';
 import { getDemoStates } from '../../../demo/store';
 import { daysFromToday, ddmm, dayTime, firstName, initials } from '../../format';
 import {
-  useVendorDoc, useVendorBundles, useVendorInfo, useLive, useVendorBroadcasts, useBroadcastRead, markBroadcastRead, timeline, hours, dayShort, setupTime, soon,
+  useVendorDoc, useVendorBundles, useVendorInfo, useLive, timeline, hours, dayShort, setupTime, soon,
   femName, g, type Bundle, type EventVendorDoc, type VendorInfo, type VendorDoc, type TimelineItem,
 } from '../../data/vendor';
 import type { V2Ctx } from '../../ctx';
+import { isRead, markRead, useMyBroadcasts, useReceipt, type Receipt } from '../../data/broadcast';
+import type { Broadcast } from '../../../types';
 import type { FarmEvent } from '../../../types';
 
 /** The vendor's stall document and every event they were invited to. `empty` (demo Z3) hides what is coming up. */
@@ -145,21 +147,23 @@ export function ContactCard({ info, phone = true }: { info: VendorInfo | null; p
   );
 }
 
-type Msg = { id: string; text: string; by: { uid: string; name: string }; createdAt: string };
 const msgTime = (iso: string) => { const d = daysFromToday(iso); return d === 0 || d === -1 ? dayTime(iso) : ddmm(iso); };
-function MsgRow({ m, uid, onOpen }: { m: Msg; uid: string; onOpen: (m: Msg) => void }) {
-  const read = useBroadcastRead(m.id, uid);
-  const unread = !read.loading && !read.item;
+function MsgRow({ m, uid, onOpen }: { m: Broadcast; uid: string; onOpen: (m: Broadcast, r: Receipt | null) => void }) {
+  const read = useReceipt(m.id, uid);
+  const unread = !read.loading && !isRead(read.item);
   return (
-    <Row minHeight={54} leading={unread ? <Dot size="sm" label="חדש" /> : undefined} title={m.text.split('\n')[0]} meta={`${firstName(m.by.name)} · ${msgTime(m.createdAt)}`} onClick={() => onOpen(m)} />
+    <Row minHeight={54} leading={unread ? <Dot size="sm" label="חדש" /> : undefined} title={m.text.split('\n')[0]} meta={`${firstName(m.by.name)} · ${msgTime(m.createdAt)}`} onClick={() => onOpen(m, read.item)} />
   );
 }
-/** "הודעות מהחווה": broadcasts to vendors. Opening one marks it read. */
+/** "הודעות מהחווה": broadcasts addressed to me (the broadcast area's useMyBroadcasts). Opening one writes my receipt. */
 export function FarmMessages({ ctx, n = 2 }: { ctx: V2Ctx; n?: number }) {
-  const list = useVendorBroadcasts(n);
-  const [open, setOpen] = useState<Msg | null>(null);
+  const list = useMyBroadcasts(ctx.user.uid, n);
+  const [open, setOpen] = useState<Broadcast | null>(null);
   if (!list.items.length) return null;
-  const show = (m: Msg) => { setOpen(m); void markBroadcastRead(m.id, ctx.actor); };
+  const show = (m: Broadcast, r: Receipt | null) => {
+    setOpen(m);
+    if (!isRead(r)) markRead(ctx.actor, m.id, r, null).catch(() => {});
+  };
   return <>
     <ListCard title="הודעות מהחווה" end={<TextLink onClick={() => navigate('/notifications')}>הכל</TextLink>}>
       {list.items.map((m) => <MsgRow key={m.id} m={m} uid={ctx.user.uid} onOpen={show} />)}
