@@ -26,7 +26,8 @@ import { calendarRange, shiftCalendarDay } from './screens/CalendarGrid';
 import { InstallBanner } from './InstallBanner';
 import { DeleteAccountPage, DeletionScheduledPage, useDeletionRequest } from './screens/Account';
 import { V2Root } from './v2/App';
-import { FirstEntry, SuspendedScreen } from './v2/screens/system';
+import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
+import { ToastProvider as V2Toasts } from './v2/core';
 import { V2DemoStrip } from './v2/DemoChrome';
 
 // ---------- navigation ----------
@@ -115,6 +116,7 @@ export default function App() {
   const { profile, loading: profileLoading, missing, error: profileError } = useProfile(user);
   const { settings, loading: settingsLoading, error: settingsError } = useSettings();
   const demo = useDemo();
+  const route = useRoute();
   // a scheduled deletion locks the account (screens/Account.tsx); it never blocks the first render
   const deletion = useDeletionRequest(user && profile ? user.uid : undefined);
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
@@ -125,9 +127,12 @@ export default function App() {
       else if (!user) localStorage.removeItem('farm-me');
     } catch { /* private mode */ }
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
+  // Z1: the demo start page works for everyone, signed in or not, demo on or off
+  if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   if (user && (missing || !profile)) {
+    if (route === '/terms' || route === '/privacy') return <TermsPage />; // the terms link on C9 works before the profile exists
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
     return <ToastProvider><V2DemoStrip /><FirstEntry key={user.uid} user={user} settings={settings} /></ToastProvider>;
