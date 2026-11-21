@@ -31,11 +31,11 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | L4-Place | manager | regular | /places/demo-p-stall |  |
 | S1-Root | staff | regular | /shopping |  |
 | S2-Wish | staff | regular | /shopping?list=wish |  |
-| S3-Empty | staff | regular | /shopping?list=online | demo:empty |
+| S3-Empty | staff | regular | /shopping?list=online |  |
 | S4-Item | staff | regular | /shopping/demo-s-milk |  |
 | S5-Add | staff | regular | /new?kind=shopping |  |
-| S6-Trip | staff | regular | /shopping/trip |  |
-| S7-TripEnd | staff | regular | /shopping/trip/done |  |
+| S6-Trip | staff | eventDay | /shopping/trip |  |
+| S7-TripEnd | staff | afterEvent | /shopping/trip/done |  |
 | S8-History | staff | regular | /shopping/history |  |
 | F1-Root | staff | regular | /farm |  |
 | F2-Month | staff | regular | /farm/calendar?view=month |  |
