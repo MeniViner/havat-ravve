@@ -35,7 +35,7 @@ Branch `redesign/v2`. Nothing merged to `main`, nothing deployed. Development on
 - Old features with no screen in the new design (not deleted from the code base, waiting for Meni's decision): CSV export of lists (`src/app/ExportTable.tsx`).
 - Each area's report lists the loading, empty, error and confirm states it added; they follow the tone of the nearest designed screen.
 
-## Stage 2: demo (done, fixes in progress)
+## Stage 2: demo (done)
 - Ten area agents built every screen in parallel worktrees: tasks, projects, shopping, farm, eventday+live, manage, events, vendor, broadcast+push, system+demo. Each area wrote its data model in `docs/redesign-data/<area>.md` and its own tests in `tests/v2-<area>.mjs`.
 - Shared fixes made while merging:
   - `/demo` works for everyone
@@ -49,11 +49,17 @@ Branch `redesign/v2`. Nothing merged to `main`, nothing deployed. Development on
   - a crash guard in the v2 shell
 - Cleanup: the old team screens (today, tasks, new, shopping, calendar, event day, manage*), the old `kit.tsx` and the `farm.css` style layer are deleted. `app.css` stays only for the guest side, which is not redesigned.
 - Visual verification by three fresh agents, results in `docs/visual-check/{A,B,C}/README.md`: 69 MATCH, 38 MINOR, 12 DEFECT on the first pass. The defects went back to their areas.
+- Final run on the merged branch (`docs/visual-check/README.md`): 119 screens, no console errors. 62 screens are under 1% pixel difference and 46 are between 1% and 5% (names, counts, times). The 11 at 5% or more are each explained there: seed lists longer than the artboard sample, the P1/P6 artboards disagreeing with each other, and the kept Z3 "מצבים להדגמה" row.
 
-## Stage 3-4: real data, rules, tests (rules done)
+## Stage 3-4: real data, rules, tests (done)
 - `firestore.rules` covers every new collection and field. `npm run test:rules` passes: the old suites, 553 v2 cases (one role matrix per new collection) and 72 vendor cases. 11 new indexes are in `firestore.indexes.json`. Summary: `docs/redesign-data/rules.md`.
 - Code the rules refused, now fixed:
   - closing an event (cash moved out of the public event doc)
   - guest-order `paidAt` as server time
   - the profile push writer that dropped the device list
-- Migration: `docs/migration-redesign.md` and `scripts/migrate-redesign.mjs` (vendor notes move to a managers-only doc; dry run by default).
+- Migration: `docs/migration-redesign.md` and `scripts/migrate-redesign.mjs` (vendor notes move to a managers-only doc; dry run by default). Tested on the emulator: the dry run changes nothing, `--apply` moves and merges the notes, and a second `--apply` changes nothing (`scripts/proofs/migrate-proof.sh`).
+- Push: Web Push and FCM are both ready behind `PUSH_MODE` on the Worker (off until Meni sets it). The Worker cron drains `push_jobs`. Setup and an iPhone PWA test script are in `docs/push-setup.md` and `scripts/push-test.mjs`.
+- Green on 2026-11-21: both typechecks, `npm test`, `npm run test:rules` (553 + 72 v2 cases and the old suites), `npm run test:api` (323), and all ten `tests/v2-*.mjs`.
+
+## Stage 5: emulator smoke cycle (running)
+A fresh agent runs every role end to end on the emulators and fixes what it finds, repeating until one cycle is clean. Results will go to `docs/smoke/redesign/README.md`.
