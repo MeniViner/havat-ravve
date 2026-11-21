@@ -226,7 +226,8 @@ export type AppNotification = { id: string; type: NotificationType; title: strin
 
 export type CalendarKind = 'manual' | 'visit' | 'event' | 'presence' | 'meeting' | 'planning';
 export type CalendarItem = { id: string; ownerUid: string; ownerName: string; title: string; date: string; time: string; kind: CalendarKind; refId: string; createdAt: string;
-  /** v2 (optional): presence hours; 'HH:MM' strings. Missing on older presence = all day. */ from?: string; to?: string; note?: string; audience?: 'all' | 'managers'; participants?: string[]; reminder?: string };
+  /** v2 (optional): presence hours; 'HH:MM' strings. Missing on older presence = all day. */ from?: string; to?: string; note?: string; audience?: 'all' | 'managers'; participants?: string[]; reminder?: string;
+  /** v2: when the Worker should send the reminder (ISO) and when it did. */ remindAt?: string | null; reminderSentAt?: string | null };
 
 
 // ======================= redesign v2 =======================
