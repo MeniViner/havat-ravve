@@ -195,7 +195,9 @@ try{
  await assertSucceeds(deleteDoc(doc(beni,'account_deletions','stranger')));
 
  // --- places ---
- await assertFails(setDoc(doc(vol,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('vol'),createdAt:now}));
+ // v2 (L3 "אני עומד כאן"): a volunteer saves a place too (was managers-only); deleting stays with managers
+ await assertSucceeds(setDoc(doc(vol,'places','p0'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('vol'),createdAt:now}));
+ await assertFails(deleteDoc(doc(vol,'places','p0')));
  await assertSucceeds(setDoc(doc(beni,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('beni'),createdAt:now}));
  await assertSucceeds(getDocs(collection(vol,'places')));
 
