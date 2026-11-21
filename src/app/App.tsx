@@ -16,6 +16,7 @@ import { V2Root } from './v2/App';
 import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
 import { ToastProvider as V2Toasts } from './v2/core';
 import { V2DemoStrip } from './v2/DemoChrome';
+import { pendingVendorInvite, forgetVendorInvite, claimVendorInvite } from './v2/data/vendor';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
@@ -92,6 +93,19 @@ function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   return null;
 }
 
+/** A vendor access link (?k=...) on first sign-in or on a guest account: claim it, then the vendor app opens by itself
+ *  (the profile listener sees role 'vendor'). If the claim fails, say why and continue as a guest. */
+function VendorClaim({ user, code }: { user: Session; code: string }) {
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    claimVendorInvite(user, code).then(() => forgetVendorInvite()).catch((e: Error) => { forgetVendorInvite(); if (live) setError(e.message || 'הקישור לא תקין'); });
+    return () => { live = false; };
+  }, [user.uid, code]);
+  if (!error) return <Splash />;
+  return <div className="splash" role="alert"><div className="title">לא הצלחנו לחבר את הדוכן</div><div>{error}</div><button type="button" className="btn ghost" onClick={() => location.replace('/app')}>המשך</button></div>;
+}
+
 function Splash() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(t); }, []);
@@ -104,6 +118,8 @@ export default function App() {
   const { settings, loading: settingsLoading, error: settingsError } = useSettings();
   const demo = useDemo();
   const route = useRoute();
+  // remember a vendor access code from the link before the Google sign-in redirect drops the query
+  const [invite] = useState(() => pendingVendorInvite());
   // a scheduled deletion locks the account (screens/Account.tsx); it never blocks the first render
   const deletion = useDeletionRequest(user && profile ? user.uid : undefined);
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
@@ -118,6 +134,7 @@ export default function App() {
   if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
+  if (user && invite && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
   if (user && (missing || !profile)) {
     if (route === '/terms' || route === '/privacy') return <TermsPage />; // the terms link on C9 works before the profile exists
     if (settingsLoading) return <Splash />;
