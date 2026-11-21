@@ -99,6 +99,15 @@ export function FarmRoot({ ctx }: ScreenProps) {
         </div>
         <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
       </a>
+
+      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go('/places'); }}>
+        <span className="farm-linkcard__box farm-linkcard__box--count"><Icon name="pin" size={22} /></span>
+        <div className="farm-linkcard__body">
+          <span className="farm-linkcard__over">מקומות בחווה</span>
+          <span className="farm-linkcard__sub">{ctx.places.length ? `${ctx.places.length} מקומות שמורים` : 'עוד לא נשמר מקום'}</span>
+        </div>
+        <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
+      </a>
     </AppScreen>
   );
 }
