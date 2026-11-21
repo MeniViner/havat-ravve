@@ -33,7 +33,7 @@ function Debts({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const source = (d: EventDebt) => go(d.kind === 'tab' ? `/manage/events/${e.id}/tabs/${d.refId}` : `/manage/events/${e.id}?tab=guests`);
   const loading = tickets.loading || tabs.loading;
   return (
-    <AppScreen variant="detail">
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} />
       <PageTitle>תזכורות חוב · {T.count}</PageTitle>
       {debts.length > 0 && (
