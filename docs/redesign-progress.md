@@ -121,3 +121,18 @@ Tests: `tests/v2-delete.mjs` (demo click-through, owner, manager and staff, 75 c
 - Guest account (`/me/account`): no demo switch before sign-in; signing in with Google happens on the page; sections are cards in the guest look (not the v2 look). Team members and vendors who land there (for example after their first sign-in) go to `/me`.
 - Places (L3) had no way in: a "מקומות בחווה" card on the farm tab (`?from=farm`) and a plain link on the manage screen (`?from=manage`); the back button returns to where it was opened. New strings: "מקומות בחווה", "N מקומות שמורים", "עוד לא נשמר מקום".
 - Status answered for Meni: R2 bucket is bound to the Worker but no code reads or writes it (profile photos are small data URLs in the user document). Brevo payment-confirmation email is live (cron every 5 minutes, paid tickets, donations, stall accounts, only to guests who chose email). Resend is not in the code. Tickets (barcodes) are not emailed and free registrations get no email; the association's receipt is sent by hand.
+
+## R2 photos and the Resend fallback (2026-11-21)
+
+- Photos (profile, task, done photo, place, shopping item, event image, stall photo) and event files go to R2 through the
+  Worker (`api/src/files.ts`, app side `src/app/upload.ts`); the document keeps a short link. Demo mode, the emulators,
+  offline, or a Worker that is not deployed yet: the photo is kept inline as before, so nothing is lost. PDFs up to 10 MB
+  when R2 is available (before: only what fits in the document).
+- Rules: photo fields accept a link of the Worker's host and key shape only (`storedPhoto` in firestore.rules). Rules tests 587 of 587.
+- Email: Resend takes what Brevo refuses or what is over Brevo's daily allowance (290 of 300). Needs `RESEND_API_KEY` and
+  `RESEND_SENDER_EMAIL` on the Worker and a farm domain verified in Resend. The Resend account connected in this session
+  holds only the company's domains, so no farm sender exists there yet (Meni's decision).
+- Not deployed: the Worker needs `npx wrangler deploy` by Meni (docs/migration-redesign.md step 4). Orphan files (a
+  replaced or deleted photo) stay in R2; the free tier is 10 GB.
+- No new Hebrew strings.
+

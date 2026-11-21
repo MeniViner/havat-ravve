@@ -636,6 +636,13 @@ try{
  await v2ok(setDoc(doc(vol,'places','pl-v'),{name:'מקום חדש',lat:31.3,lng:35,createdBy:A('vol'),createdAt:now,accuracy:4}),'places 12 staff saves where they stand');
  await v2ok(updateDoc(doc(vol,'places','pl-1'),{photo:jpeg}),'places 13 staff adds a photo');
  await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:'http://x'}),'places 14 photo not a data URL');
+ // photos stored in R2 by the farm's Worker: only that host and key shape
+ const r2=(kind,ext='jpg')=>`https://havat-ravve-api.meniviner.workers.dev/v1/files/${kind}/vol/${'Ab_-'.repeat(8)}.${ext}`;
+ await v2ok(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place')}),'places 15 photo stored in R2');
+ await v2ok(updateDoc(doc(vol,'tasks','t-noa'),{photo:r2('task','webp'),updatedAt:now}),'tasks R2 photo link');
+ await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:'https://evil.example/v1/files/place/vol/'+'A'.repeat(32)+'.jpg'}),'places 16 photo on another host');
+ await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place','pdf')}),'places 17 a PDF link as a photo');
+ await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place')+'?track=1'}),'places 18 R2 link with extra text');
  await v2no(deleteDoc(doc(vol,'places','pl-1')),'places 15 staff deletes');
  await v2ok(updateDoc(doc(vol,'places','pl-v'),{name:'הלול',lat:31.31,lng:35.01,accuracy:6}),'places staff names it (L4)');
  await v2no(updateDoc(doc(vol,'places','pl-v'),{createdBy:A('dana')}),'places createdBy changed');
@@ -748,6 +755,8 @@ try{
  // ---------------- users: system fields (system.md 1-13) and push (broadcast.md 24-28) ----------------
  const photo100k='data:image/jpeg;base64,'+'A'.repeat(100000);
  await v2ok(updateDoc(doc(vol,'users','vol'),{photo:photo100k,photoSource:'custom',updatedAt:now}),'system 1 own photo of 100k');
+ await v2ok(updateDoc(doc(vol,'users','vol'),{photo:`https://havat-ravve-api.meniviner.workers.dev/v1/files/avatar/vol/${'x'.repeat(32)}.jpg`,photoSource:'custom',updatedAt:now}),'system 1b own photo stored in R2');
+ await v2no(updateDoc(doc(vol,'users','vol'),{photo:'https://tracker.example/p.jpg',photoSource:'custom',updatedAt:now}),'system 1c own photo from another host');
  await v2ok(updateDoc(doc(vol,'users','vol'),{photoSource:'none',updatedAt:now}),'system 2 photoSource none');
  await v2ok(updateDoc(doc(vol,'users','vol'),{photoSource:'google',googlePhoto:'https://lh3.googleusercontent.com/a/x',updatedAt:now}),'system 2 photoSource google');
  await v2ok(updateDoc(doc(vol,'users','vol'),{town:'רביבים',birthDate:'1975-03-14',fields:{receiptPreference:'email'},displayName:'יואב',phone:'0501111111',updatedAt:now}),'system 3 town, birthDate, receipt, name, phone');

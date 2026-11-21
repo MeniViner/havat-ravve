@@ -5,6 +5,7 @@ import { AppScreen, go, useToast } from '../../core';
 import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton, ConfirmSheet } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
+import { storePhoto } from '../../../upload';
 import { back } from '../../../router';
 import { nowMs } from '../../../clock';
 import { saveEventV2, deleteEventV2 } from '../../data/events';
@@ -72,7 +73,7 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   };
   const pickImage = async (f?: File) => {
     if (!f) return;
-    try { setImage(await compressPhoto(f)); } catch (err) { toast.show({ text: (err as Error).message, tone: 'error' }); }
+    try { setImage(await storePhoto(await compressPhoto(f), 'event')); } catch (err) { toast.show({ text: (err as Error).message, tone: 'error' }); }
   };
   const openDate = () => { const el = dateRef.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
 

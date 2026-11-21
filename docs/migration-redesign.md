@@ -29,7 +29,18 @@ Almost nothing is renamed or removed. Old documents keep loading: every new fiel
    npx firebase emulators:exec --only firestore --project demo-havat-ravve "bash scripts/proofs/migrate-proof.sh"
    ```
 3. **Rules and the app together.** Merging the PR into `main` deploys hosting, rules and indexes (`.github/workflows/deploy.yml`). Merge only after steps 1 and 2.
-4. **Push notifications (optional, later).** Follow `docs/push-setup.md`: generate keys, set the Worker secrets, deploy the Worker, then flip `PUSH_MODE`. Until then, everything still appears inside the app under התראות.
+4. **Photos in R2 and the email fallback (Worker deploy, any time).** Until the Worker is deployed, the app keeps saving
+   photos inside the documents as before (it tries the Worker and falls back), so the merge does not depend on this step.
+   ```
+   npx wrangler deploy --config api/wrangler.toml --dry-run
+   npx wrangler deploy --config api/wrangler.toml
+   ```
+   For the Resend fallback, a sending domain of the farm must be verified in Resend first, then:
+   ```
+   npx wrangler secret put RESEND_API_KEY --config api/wrangler.toml
+   npx wrangler secret put RESEND_SENDER_EMAIL --config api/wrangler.toml
+   ```
+5. **Push notifications (optional, later).** Follow `docs/push-setup.md`: generate keys, set the Worker secrets, deploy the Worker, then flip `PUSH_MODE`. Until then, everything still appears inside the app under התראות.
 
 ## If something goes wrong
 

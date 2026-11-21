@@ -5,6 +5,7 @@ import { BottomBar, Button, ConfirmSheet, DetailList, DetailRow, EmptyState, His
 import { dayTime, ddmm } from '../../format';
 import { back } from '../../../router';
 import { compressPhoto } from '../../../store';
+import { storePhoto } from '../../../upload';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem } from '../../../types';
 import {
@@ -60,7 +61,7 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
   };
   const pickPhoto = async (file: File | undefined) => {
     if (!file) return;
-    try { await setItemPhoto(ctx.actor, item, await compressPhoto(file)); } catch (e) { fail(e); }
+    try { await setItemPhoto(ctx.actor, item, await storePhoto(await compressPhoto(file), 'shopping')); } catch (e) { fail(e); }
   };
 
   return (

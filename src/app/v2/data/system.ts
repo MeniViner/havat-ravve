@@ -9,6 +9,7 @@ import { useAllEvents, useVisits } from '../../data';
 import { useActivityBy } from '../../activity';
 import { getDemo } from '../../demo/store';
 import { readyAuth } from '../../firebase';
+import { storePhoto } from '../../upload';
 import type { Activity, CalendarItem, FarmEvent, Place, Profile, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
 import type { V2Ctx } from '../ctx';
@@ -87,7 +88,8 @@ export async function cropToDataUrl(img: HTMLImageElement, view: { size: number;
   const blob: Blob = await new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('לא הצלחנו לקרוא את התמונה'))), 'image/jpeg', 0.9));
   return compressPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }), OUT, 80_000);
 }
-export const saveCustomPhoto = (uid: string, photo: string) => write.update('users', uid, { photo, photoSource: 'custom', updatedAt: nowIso() });
+/** The cropped photo goes to R2 when it can (a short link in the profile); otherwise the small data URL, as before. */
+export const saveCustomPhoto = async (uid: string, photo: string) => write.update('users', uid, { photo: await storePhoto(photo, 'avatar'), photoSource: 'custom', updatedAt: nowIso() });
 export async function savePhotoSource(uid: string, source: PhotoSource) {
   const patch: Record<string, unknown> = { photoSource: source, updatedAt: nowIso() };
   if (source === 'google') { const g = await googlePhotoUrl(); if (g) patch.googlePhoto = g; }

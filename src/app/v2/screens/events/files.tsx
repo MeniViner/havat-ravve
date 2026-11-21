@@ -1,4 +1,4 @@
-// V3 event files: permits, maps, lists. No file storage on the free plan: photos are compressed and small PDFs are kept
+// V3 event files: permits, maps, lists. Files go to R2 through the Worker (upload.ts) when they can; otherwise photos are compressed and small PDFs are kept
 // inside the file document (under the 1 MiB document limit); a bigger file is refused with a clear message, or saved as a link.
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
@@ -6,6 +6,7 @@ import { AppScreen, useToast, useExternal } from '../../core';
 import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ConfirmSheet } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
+import { storeFile, storePhoto } from '../../../upload';
 import { nowIso } from '../../../clock';
 import { ddmm, firstName } from '../../format';
 import { logActivity } from '../../../activity';
@@ -47,10 +48,13 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     setBusy(true);
     try {
       if (f.type.startsWith('image/')) {
-        const url = await compressPhoto(f, 1600, FILE_MAX_CHARS);
-        setDraft({ url, kind: 'image', mime: url.slice(5, url.indexOf(';')), size: url.length, name: fromCamera ? '' : baseName(f.name) });
+        const inline = await compressPhoto(f, 1600, FILE_MAX_CHARS);
+        const url = await storePhoto(inline, 'eventfile');
+        setDraft({ url, kind: 'image', mime: inline.slice(5, inline.indexOf(';')), size: url.startsWith('data:') ? url.length : Math.floor((inline.length - inline.indexOf(',') - 1) * 0.75), name: fromCamera ? '' : baseName(f.name) });
       } else if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
-        const url = await readAsDataUrl(f);
+        // R2 first (up to 10 MB); without it, a small PDF stays inside the document as before
+        const stored = f.size <= 10 * 1024 * 1024 ? await storeFile(new Blob([f], { type: 'application/pdf' }), 'eventfile') : null;
+        const url = stored || await readAsDataUrl(f);
         if (url.length > FILE_MAX_CHARS) { toast.show({ text: 'הקובץ גדול מדי לשמירה כאן. אפשר לצלם את המסמך.', tone: 'error' }); return; }
         setDraft({ url, kind: 'doc', mime: 'application/pdf', size: f.size, name: baseName(f.name) });
       } else {

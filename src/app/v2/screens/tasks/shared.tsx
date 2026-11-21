@@ -6,6 +6,7 @@ import { href as appHref } from '../../../router';
 import { isConflict } from '../../../db';
 import { nowMs } from '../../../clock';
 import { compressPhoto } from '../../../store';
+import { storePhoto, type FileKind } from '../../../upload';
 import type { Actor, Task } from '../../../types';
 import { useDemo } from '../../../demo/store';
 import { rowMeta, stripPlace, setDone, takeTask, takenText, playTakenInDemo, type RowView, type ProfileOf } from '../../data/tasks';
@@ -97,8 +98,9 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   );
 }
 
-/** A hidden file input: pick(capture?) opens the camera or the gallery and resolves with a compressed data URL. */
-export function usePhotoPicker(onPhoto: (dataUrl: string) => void) {
+/** A hidden file input: pick(capture?) opens the camera or the gallery and resolves with the stored photo's link
+ *  (R2 through the Worker), or with the compressed data URL when it could not be stored (demo, offline). */
+export function usePhotoPicker(onPhoto: (url: string) => void, kind: FileKind = 'task') {
   const ref = useRef<HTMLInputElement>(null);
   const fail = useFail(); const [busy, setBusy] = useState(false);
   const input = (
@@ -106,7 +108,7 @@ export function usePhotoPicker(onPhoto: (dataUrl: string) => void) {
       const f = e.target.files?.[0]; e.target.value = '';
       if (!f) return;
       setBusy(true);
-      try { onPhoto(await compressPhoto(f)); } catch (err) { fail(err); } finally { setBusy(false); }
+      try { onPhoto(await storePhoto(await compressPhoto(f), kind)); } catch (err) { fail(err); } finally { setBusy(false); }
     }} />
   );
   const pick = (camera: boolean) => {

@@ -88,7 +88,7 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
   const [pos, setPos] = useState<{ lat: number; lng: number; accuracy?: number }>({ lat: p.lat, lng: p.lng, accuracy: p.accuracy });
   const [photo, setPhoto] = useState(p.photo || '');
   const [busy, setBusy] = useState(false);
-  const pick = usePhotoPicker(setPhoto);
+  const pick = usePhotoPicker(setPhoto, 'place');
   const tasks = useTasksAt(p.id, ctx.manager);
   const rows = [...tasks.items].sort((a, b) => (a.dueDate || '9').localeCompare(b.dueDate || '9'));
 

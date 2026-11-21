@@ -7,6 +7,7 @@ import { AppScreen, useToast, useExternal, waUrl } from '../../core';
 import { navigate, back, useParam } from '../../../router';
 import { isConflict } from '../../../db';
 import { compressPhoto } from '../../../store';
+import { storePhoto } from '../../../upload';
 import { ddmm } from '../../format';
 import {
   useVendorDoc, useVendorInvites, peopleOf, saveStall, addPerson, removePerson, needsText, inviteLink, helperText, femName, g, first,
@@ -98,7 +99,7 @@ function StallEdit({ v }: { v: VendorDoc }) {
   const toggle = (n: VendorNeed) => setF((s) => ({ ...s, needs: s.needs.includes(n) ? s.needs.filter((x) => x !== n) : [...s.needs, n] }));
   const pick = async (fl: File | undefined) => {
     if (!fl) return;
-    try { setPhoto(await compressPhoto(fl, 640, 200_000)); } catch { toast.show({ text: 'התמונה לא נטענה. נסו תמונה אחרת' }); }
+    try { setPhoto(await storePhoto(await compressPhoto(fl, 640, 200_000), 'stall')); } catch { toast.show({ text: 'התמונה לא נטענה. נסו תמונה אחרת' }); }
   };
   const save = async () => {
     const e: typeof errs = {};
