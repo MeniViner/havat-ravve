@@ -151,7 +151,7 @@ function EventDay({ ctx, v, b }: { ctx: V2Ctx; v: VendorDoc; b: Bundle }) {
         </Hero>
         <SpotCard rec={rec} info={info} />
         <Timeline e={e} info={info} title="עכשיו" limit={3} withSoon />
-        <ContactCard info={info} phone={false} />
+        <ContactCard info={info} />
         <div className="vendor-actions">
           <button type="button" className="k-btn k-btn--outline k-btn--tall" onClick={() => open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location || 'חוות רווה')}`)}><Icon name="nav" size={18} />ניווט לחווה</button>
           {info?.mapUrl && <button type="button" className="k-btn k-btn--outline k-btn--tall" onClick={() => open(info.mapUrl!)}><Icon name="pin" size={18} />מפת הדוכנים</button>}

@@ -77,7 +77,8 @@
 
 /* D9: rating */
 .vendor-rate { display: flex; flex-direction: column; gap: 8px; }
-.vendor-rate__label { font-size: 16px; font-weight: 700; }
+.vendor-rate__label { font-size: 14px; font-weight: 600; color: var(--soft); }
+.vendor-rate__row .k-choice { justify-content: center; text-align: center; }
 .vendor-rate__row { display: flex; gap: 8px; }
 
 /* D7: stall card */
@@ -90,7 +91,7 @@
 .vendor-photo-btn { align-self: flex-start; }
 
 /* D8, V6: what they see */
-.vendor-sees__li { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 2px 14px; border-top: 1px solid var(--line); font-size: 15px; }
+.vendor-sees__li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 2px 14px; border-top: 1px solid var(--line); font-size: 15px; }
 .vendor-sees__yes { color: var(--green); display: flex; }
 .vendor-sees__no { color: var(--red); display: flex; }
 

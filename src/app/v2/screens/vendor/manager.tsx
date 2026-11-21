@@ -149,8 +149,8 @@ function Card({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
       <div className="vendor-titlerow"><PageTitle size="detail">{v.name}</PageTitle>{v.external === false ? <Tag tone="warm">של החווה</Tag> : <Tag>חיצוני</Tag>}</div>
       {v.phone && (
         <div className="vendor-actions">
-          <Button size="tall" grow icon="message" iconSize={18} onClick={() => open(waUrl(v.phone))}>וואטסאפ</Button>
-          <Button variant="outline" size="tall" grow icon="phone" iconSize={18} onClick={() => open(telUrl(v.phone))}>התקשרות</Button>
+          <Button size="tall" icon="message" iconSize={18} onClick={() => open(waUrl(v.phone))}>וואטסאפ</Button>
+          <Button variant="outline" size="tall" icon="phone" iconSize={18} onClick={() => open(telUrl(v.phone))}>התקשרות</Button>
         </div>
       )}
       <DetailList>
@@ -327,7 +327,7 @@ export function EventVendors({ ctx, params }: ScreenProps) {
         </ListCard>
       ) : <EmptyState variant="card" icon="stall" title="עוד לא הזמנו דוכנים" text="מזמינים מהמאגר, וכל אחד מקבל קישור בוואטסאפ." />}
       <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => setPick(true)} disabled={!rest.length}>{rest.length ? `הזמנה מהמאגר · עוד ${rest.length}` : 'כל המאגר הוזמן'}</Button>
-      {prev && fromPrev.length > 0 && <Button variant="quiet" onClick={inviteAll} disabled={busy}>{`להזמין את מי שהיה ב${prev.title}`}</Button>}
+      {prev && fromPrev.length > 0 && <Button variant="dashed" size="tall" block onClick={inviteAll} disabled={busy}>{`להזמין את מי שהיה ב${prev.title}`}</Button>}
       <Sheet open={pick} onClose={() => setPick(false)} title="הזמנה מהמאגר" aside={`${rest.length} לא הוזמנו`}>
         <ul className="k-card k-card--list k-list k-list--flush" style={{ margin: 0, padding: 0 }}>
           {rest.map((v) => <Row key={v.id} title={v.name} meta={[v.contact, sellsShort(v)].filter(Boolean).join(' · ')} onClick={() => invite(v)} />)}

@@ -24,6 +24,10 @@ const slice: Slice = (seed, scenario) => {
   patch(seed, 'vendors', V.jewel, { people: [{ name: 'שירן', phone: '052-000-0520', role: 'owner', entered: false, fem: true }] });
   patch(seed, 'vendors', V.honey, { people: [{ name: 'יאיר', phone: '054-000-0602', role: 'owner', entered: false }] });
   patch(seed, 'vendors', V.bakery, { people: [{ name: 'מרים', phone: '052-000-0604', role: 'owner', entered: false, fem: true }] });
+  // V1 shows שירן at two events: she was at the October fair too.
+  patch(seed, 'vendors', V.jewel, { events: [E.fall, E.oct] });
+  const oct = seed.collections[`events/${E.oct}/vendors`] || [];
+  if (!oct.some((r) => r.id === V.jewel)) put(seed, `events/${E.oct}/vendors`, [{ ...(seed.collections[`events/${E.fall}/vendors`] || []).find((r) => r.id === V.jewel), spot: 7, status: 'confirmed', confirmed: true, arrivedAt: null, answeredAt: at(-30, '10:00'), invitedAt: at(-35, '10:00') }]);
 
   // ---------- access invites (vendor_invites/{code}) ----------
   put(seed, 'vendor_invites', [

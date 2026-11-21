@@ -118,7 +118,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | D11-HelperHome | helper | regular | /vendor |  |
 | D5-Day | vendor | eventDay | /vendor |  |
 | D6-DayLive | vendor | eventDay | /vendor | click:הגעתי לחווה |
-| D9-Summary | vendor | afterEvent | /vendor/events/demo-e-festival/summary |  |
+| D9-Summary | vendor | afterEvent | /vendor/events/demo-e-festival/summary | click:מצוין |
 | Z1-DemoStart | staff | regular | /demo |  |
 | Z2-DemoBanner | staff | regular | /tasks |  |
 | Z3-DemoSwitch | staff | regular | /tasks | click:נתוני דמו |
