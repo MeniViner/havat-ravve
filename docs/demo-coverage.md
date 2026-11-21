@@ -19,23 +19,23 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | C8-Offline | staff | regular | /tasks | demo:offline |
 | X1-Refused | staff | regular | /tasks | demo:refuseNext; click:לקחת |
 | B4-Receive | staff | regular | /tasks |  |
-| P1-Root | manager | regular | /tasks |  |
-| P6-Full | manager | regular | /tasks | fullpage |
-| P2-List | manager | regular | /projects |  |
-| P3-Project | manager | regular | /projects/demo-p-festival |  |
-| P4-Step | manager | regular | /projects/demo-p-festival/steps/demo-ps-police |  |
-| P5-New | manager | regular | /projects/new |  |
+| P1-Root | owner | regular | /tasks |  |
+| P6-Full | owner | regular | /tasks | fullpage |
+| P2-List | owner | regular | /projects |  |
+| P3-Project | owner | regular | /projects/demo-p-festival |  |
+| P4-Step | owner | regular | /projects/demo-p-festival/steps/demo-ps-police |  |
+| P5-New | owner | regular | /projects/new | fill:לאן רוצים להגיע=מערכת השקיה חדשה; fill:עד מתי=סוף דצמבר; fill:צעד 1=למדוד את השטח ולשרטט; click:צעד נוסף; fill:צעד 2=לקבל שלוש הצעות מחיר; click:צעד נוסף; fill:צעד 3=לאשר תקציב עם אליה; click:צעד נוסף; fill:צעד 4=להזמין ולהתקין |
 | L1-Templates | manager | regular | /manage/recurring |  |
 | L2-Template | manager | regular | /manage/recurring/demo-tpl-pots |  |
 | L3-Places | staff | regular | /places |  |
 | L4-Place | manager | regular | /places/demo-p-stall |  |
 | S1-Root | staff | regular | /shopping |  |
 | S2-Wish | staff | regular | /shopping?list=wish |  |
-| S3-Empty | staff | regular | /shopping?list=online | demo:empty |
+| S3-Empty | staff | regular | /shopping?list=online |  |
 | S4-Item | staff | regular | /shopping/demo-s-milk |  |
 | S5-Add | staff | regular | /new?kind=shopping |  |
-| S6-Trip | staff | regular | /shopping/trip |  |
-| S7-TripEnd | staff | regular | /shopping/trip/done |  |
+| S6-Trip | staff | eventDay | /shopping/trip |  |
+| S7-TripEnd | staff | afterEvent | /shopping/trip/done |  |
 | S8-History | staff | regular | /shopping/history |  |
 | F1-Root | staff | regular | /farm |  |
 | F2-Month | staff | regular | /farm/calendar?view=month |  |
@@ -90,7 +90,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | V5-Debts | manager | afterEvent | /manage/events/demo-e-october/debts |  |
 | V6-VendorApp | manager | regular | /manage/vendors/demo-v-raz/access |  |
 | V7-VendorsDay | manager | eventDay | /manage/events/demo-e-festival/vendors/today |  |
-| B1-Compose | manager | regular | /manage/broadcasts/new |  |
+| B1-Compose | owner | regular | /manage/broadcasts/new | fill:תוכן ההודעה=מחר מתחילים ב־15:30 ולא ב־16:00. להגיע עם כובע ומים. |
 | B2-Sent | manager | regular | /manage/broadcasts |  |
 | B3-Read | manager | regular | /manage/broadcasts/demo-b-1 |  |
 | Y1-Live | manager | eventDay | /manage/events/demo-e-festival/live |  |
@@ -100,11 +100,11 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | Y5-Close | manager | afterEvent | /manage/events/demo-e-festival/close |  |
 | L6-Me | staff | regular | /me |  |
 | C12-Profile | owner | regular | /me |  |
-| C13-ProfileEdit | staff | regular | /me/edit |  |
+| C13-ProfileEdit | owner | regular | /me/edit |  |
 | A1-Photo | staff | regular | /me/photo |  |
 | A2-Crop | staff | regular | /me/photo/crop |  |
 | C1-Notifs | staff | regular | /notifications |  |
-| C2-Search | staff | regular | /search |  |
+| C2-Search | owner | regular | /search | fill:חיפוש בכל האפליקציה=כהן |
 | C9-Welcome | new | regular | /welcome |  |
 | C10-Install | staff | regular | /install |  |
 | X2-Suspended | blocked | regular | / |  |

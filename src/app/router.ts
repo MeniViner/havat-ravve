@@ -17,6 +17,8 @@ window.addEventListener('popstate', () => {
 });
 
 export const useRoute = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, current);
+/** The query string; re-renders when only the query changes ("/shopping?list=a" → "?list=b"). */
+export const useSearch = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => location.search);
 export const href = (path: string) => BASE + (path === '/' ? '' : path);
 export const param = (name: string) => new URLSearchParams(location.search).get(name) || '';
 /** A query parameter that re-renders when it changes ("/tasks?event=x" → "/tasks" keeps the same route). */

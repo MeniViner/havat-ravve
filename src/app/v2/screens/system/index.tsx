@@ -1,36 +1,38 @@
-// v2 screens: system. Placeholders until the area is implemented; the shell routes to these names (v2/routes.tsx).
+// v2 screens: system (profile, photo, search, first entry, install, offline queue, suspended, demo).
+// The shell routes to these names (v2/routes.tsx, v2/App.tsx, src/app/App.tsx); keep them.
 import type { ReactNode } from 'react';
-import type { ScreenProps, V2Ctx } from '../../ctx';
-import { Placeholder } from '../../placeholder';
+import type { V2Ctx } from '../../ctx';
+import type { Profile, Settings } from '../../../types';
+import type { Session } from '../../../firebase';
+import { ToastProvider } from '../../core';
+import { useDemo } from '../../../demo/store';
+import { useInviteFor } from '../../data/system';
 import { OnboardingPage as LegacyOnboarding } from '../../../screens/Guest';
+import { WelcomeForm, Suspended } from './misc';
 
-/** L6-Me,C12-Profile */
-export function ProfileScreen(p: ScreenProps): ReactNode { return <Placeholder name="ProfileScreen" ids="L6-Me,C12-Profile" params={p.params} />; }
-/** C13-ProfileEdit */
-export function ProfileEdit(p: ScreenProps): ReactNode { return <Placeholder name="ProfileEdit" ids="C13-ProfileEdit" params={p.params} />; }
-/** A1-Photo */
-export function PhotoSource(p: ScreenProps): ReactNode { return <Placeholder name="PhotoSource" ids="A1-Photo" params={p.params} />; }
-/** A2-Crop */
-export function PhotoCrop(p: ScreenProps): ReactNode { return <Placeholder name="PhotoCrop" ids="A2-Crop" params={p.params} />; }
+/** L6-Me, C12-Profile */
+export { ProfileScreen, ProfileEdit } from './profile';
+/** A1-Photo, A2-Crop */
+export { PhotoSource, PhotoCrop } from './photo';
 /** C2-Search */
-export function SearchScreen(p: ScreenProps): ReactNode { return <Placeholder name="SearchScreen" ids="C2-Search" params={p.params} />; }
-/** C9-Welcome */
-export function WelcomeScreen(p: ScreenProps): ReactNode { return <Placeholder name="WelcomeScreen" ids="C9-Welcome" params={p.params} />; }
-/** C10-Install */
-export function InstallScreen(p: ScreenProps): ReactNode { return <Placeholder name="InstallScreen" ids="C10-Install" params={p.params} />; }
-/** C8-Offline (queue view) */
-export function OfflineScreen(p: ScreenProps): ReactNode { return <Placeholder name="OfflineScreen" ids="C8-Offline (queue view)" params={p.params} />; }
-/** Z1-DemoStart */
-export function DemoStart(p: ScreenProps): ReactNode { return <Placeholder name="DemoStart" ids="Z1-DemoStart" params={p.params} />; }
+export { SearchScreen } from './search';
+/** C9-Welcome (/welcome), C10-Install, C8-Offline (queue view; OfflineQueue is the card for T1) */
+export { WelcomeScreen, InstallScreen, OfflineScreen, OfflineQueue } from './misc';
+/** Z1-DemoStart, Z3-DemoSwitch (DemoSheet({open,onClose})) */
+export { DemoStart, DemoSheet } from './demo';
 
-/** Z3: the demo switch sheet opened from the demo strip. */
-export function DemoSheet(_: { open: boolean; onClose: () => void }): ReactNode { return null; }
-/** X2: suspended account (blocked status). Rendered by the shell instead of the app. */
-export function SuspendedScreen(_: { ctx: { profile: import('../../../types').Profile; settings: import('../../../types').Settings } }): ReactNode { return null; }
+/** X2: suspended account (blocked status). Rendered by the shell instead of the app, in its own `.v2`. */
+export function SuspendedScreen({ ctx }: { ctx: { profile: Profile; settings: Settings } }): ReactNode {
+  return <Suspended profile={ctx.profile} settings={ctx.settings} />;
+}
 
 /** First entry for an account without a profile. C9 for someone a manager added (role invite) and for ?demo=new;
- *  everyone else keeps the legacy guest registration. Placeholder: legacy registration. */
-export function FirstEntry(p: { user: import('../../../firebase').Session; settings: import('../../../types').Settings }): ReactNode {
+ *  everyone else keeps the legacy guest registration. */
+export function FirstEntry(p: { user: Session; settings: Settings }): ReactNode {
+  const demo = useDemo();
+  const { invite, loading } = useInviteFor(p.user.email);
+  if (loading) return null;
+  if (invite || (demo.on && demo.persona === 'new')) return <ToastProvider><WelcomeForm user={p.user} profile={null} invite={invite} /></ToastProvider>;
   return <LegacyOnboarding user={p.user} fields={p.settings.registrationFields} />;
 }
 export type { V2Ctx };
