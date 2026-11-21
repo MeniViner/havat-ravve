@@ -8,7 +8,7 @@ import { getPosition } from '../../../store';
 import { useEvent } from '../../../data';
 import { useClockVersion, nowMs } from '../../../clock';
 import type { Place, Task } from '../../../types';
-import { useRootTasks, useTasksAt, placeMeta, rowMeta, createPlace, savePlace, removePlace, restorePlace, type PlaceV2 } from '../../data/tasks';
+import { useRootTasks, useTasksAt, placeMeta, sortPlaces, rowMeta, createPlace, savePlace, removePlace, restorePlace, type PlaceV2 } from '../../data/tasks';
 import { to, useFail, usePhotoPicker } from './shared';
 import './tasks.css';
 
@@ -32,7 +32,7 @@ export function PlacesScreen({ ctx }: ScreenProps) {
       {ctx.places.length > 0 ? (
         <Card as="section">
           <ul className="k-list k-list--flush" style={{ margin: 0 }}>
-            {ctx.places.map((p) => <PlaceRow key={p.id} p={p} open={open} ctx={ctx} />)}
+            {sortPlaces(ctx.places, open, ctx.templates).map((p) => <PlaceRow key={p.id} p={p} open={open} ctx={ctx} />)}
           </ul>
         </Card>
       ) : (

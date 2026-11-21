@@ -25,7 +25,7 @@
 .tasks-c6-title { font-size: 17px; font-weight: 600; }
 
 /* T6 history */
-.tasks-summary { margin: 0; font-size: 15px; }
+.tasks-summary { margin: 0 0 3px; font-size: 15px; }
 .tasks-hrow { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 4px 14px; border-top: 1px solid var(--line); box-sizing: content-box; text-decoration: none; color: var(--ink); }
 .tasks-hrow__check { display: flex; color: var(--selected); }
 .tasks-hrow__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -79,6 +79,16 @@
 .tasks-map { height: 170px; border-radius: 8px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--soft); font-size: 14px; box-sizing: border-box; overflow: hidden; position: relative; text-decoration: none; }
 .tasks-map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .tasks-btnrow { display: flex; gap: 8px; }
+/* B4: while the broadcast card shows, the hero follows it directly (no progress line) */
+.broadcast-card + .tasks-progress { display: none; }
+.tasks-chip-x { display: inline-flex; align-items: center; gap: 6px; }
+.k-search.tasks-search { height: 48px; }
+/* C3: the info rows above "קשור ל" are 58px */
+.k-dl.tasks-dl-linked .k-dl__row { padding-top: 2px; padding-bottom: 2px; min-height: 58px; box-sizing: border-box; }
+/* C8: under the shell's offline strip the title block starts 4px closer (scoped to the tasks root) */
+.k-screen:has(.k-strip-btn) .k-screen__body:has(.tasks-overline) { padding-top: 14px; }
+/* L5: the done block sits 8px lower than the kit's centring */
+.k-empty--done.tasks-empty-mine { padding-bottom: 4px; }
 .tasks-halves > * { flex: 1 1 0; min-width: 0; }
 .tasks-halves input { width: 100%; min-width: 0; box-sizing: border-box; }
 

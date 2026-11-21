@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, RootHead, go, useToast, useV2 } from '../../core';
-import { ProgressSegments, NextUpCard, Button, Segmented, ListCard, Row, CheckButton, EmptyState } from '../../kit';
+import { ProgressSegments, NextUpCard, Button, Segmented, ListCard, Row, CheckButton, EmptyState, ChipRow, Chip, Icon } from '../../kit';
 import { useParam } from '../../../router';
 import { useClockVersion, nowMs, nowIso } from '../../../clock';
 import { useDemo, useDemoStates } from '../../../demo/store';
@@ -16,7 +16,7 @@ import {
   useRootTasks, pickNextUp, progressOf, progressCaption, groupByPlace, groupByTime, ordered, isMine, isForToday, isFree,
   rowMeta, dueText, DONE_VISIBLE_MS,
 } from '../../data/tasks';
-import { TaskRow, TasksCapture, useTaskActions, useFail, to } from './shared';
+import { TaskRow, TasksCapture, useTaskActions, useFail, useDoneHere, useProfileOf, to } from './shared';
 import './tasks.css';
 
 type View = 'place' | 'time' | 'mine';
@@ -31,6 +31,9 @@ export function TasksRoot({ ctx }: ScreenProps) {
   // C8: without reception the queue of kept writes takes the place of "הבא בתור" and the view switch
   const offline = !online || (demo.on && states.offline);
   const viewParam = useParam('view');
+  // L5 "לקחת אחת מהפנויות": by place, free tasks only, until the chip is closed
+  const onlyFree = useParam('free') === '1';
+  const doneHere = useDoneHere(); const profileOf = useProfileOf();
   const view = (offline ? 'place' : viewParam || 'place') as View;
   const root = useRootTasks(ctx);
   const steps = useMySteps(ctx);
@@ -58,7 +61,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
 
   const setView = (v: View) => go(v === 'place' ? '/tasks' : `/tasks?view=${v}`, true);
   const free = tasks.filter((t) => isFree(t) && isForToday(t, today));
-  const placeGroups = groupByPlace(lists, uid, today, nameOf);
+  const placeGroups = groupByPlace(onlyFree ? lists.filter((t) => isFree(t) && !t.done) : lists, uid, today, nameOf, doneHere).filter((g) => g.rows.length);
   const timeGroups = groupByTime(lists, uid, today);
   const myOpen = lists.filter((t) => isMine(t, uid) && !t.done);
   const myRows = ordered(lists.filter((t) => isMine(t, uid) && (!t.done || now - Date.parse(t.doneAt || '') < DONE_VISIBLE_MS)), uid, today);
@@ -66,14 +69,14 @@ export function TasksRoot({ ctx }: ScreenProps) {
 
   return (
     <AppScreen variant="root" capture={<TasksCapture />}>
-      <RootHead overline={dayOverline(today)} title="משימות" />
+      <RootHead overline={<span className="tasks-overline">{dayOverline(today)}</span>} title="משימות" />
       <BroadcastCard ctx={ctx} />
-      {progress.total > 0 && <ProgressSegments total={progress.total} done={progress.done} caption={caption} />}
+      {progress.total > 0 && <ProgressSegments className="tasks-progress" total={progress.total} done={progress.done} caption={caption} />}
       {offline && <OfflineQueue uid={uid} />}
       {nextStep && <NextStepCard s={nextStep} />}
       {nextTask && (
         <NextUpCard title={nextTask.title}
-          meta={[nextTask.location?.placeName, rowMeta(nextTask, { uid, view: 'place', today, now })].filter(Boolean).join(' · ')}
+          meta={[nextTask.location?.placeName, rowMeta(nextTask, { uid, view: 'place', today, now, profileOf })].filter(Boolean).join(' · ')}
           actions={<>
             <Button size="big" grow icon="check" onClick={() => a.done(nextTask)}>בוצע</Button>
             <Button variant="secondary" size="lg" icon="camera" onClick={() => go(`/tasks/${nextTask.id}/done`)}>צילום</Button>
@@ -90,9 +93,14 @@ export function TasksRoot({ ctx }: ScreenProps) {
       {ctx.manager && <ProjectsBlock ctx={ctx} />}
       {ctx.manager && <div className="tasks-allhead"><h2>כל המשימות בחווה</h2></div>}
       {!offline && <Segmented label="תצוגה" value={view} onChange={setView} options={VIEWS} />}
+      {view === 'place' && onlyFree && (
+        <ChipRow label="סינון">
+          <Chip selected onClick={() => go('/tasks', true)}><span className="tasks-chip-x">רק פנויות<Icon name="close" size={16} /></span></Chip>
+        </ChipRow>
+      )}
 
       {view === 'place' && placeGroups.map((g) => (
-        <ListCard key={g.key} title={g.title} icon="pin" count={g.rows.length}>
+        <ListCard key={g.key} title={g.title} icon="pin" count={g.open}>
           {g.rows.map((t) => <TaskRow key={t.id} t={t} view="place" placeName={g.title} strip />)}
         </ListCard>
       ))}
@@ -102,8 +110,8 @@ export function TasksRoot({ ctx }: ScreenProps) {
         </ListCard>
       ))}
       {view === 'mine' && (myOpen.length === 0 && !nextTask && !root.loading ? (
-        <EmptyState variant="done" title="סיימת את כל מה שעליך" text={doneToday === 1 ? 'משימה אחת היום' : `${doneToday} משימות היום`}
-          action={free.length > 0 ? <Button className="tasks-take-free" onClick={() => setView('place')}>{`לקחת אחת מהפנויות · ${free.length}`}</Button> : undefined} />
+        <EmptyState variant="done" className="tasks-empty-mine" title="סיימת את כל מה שעליך" text={doneToday === 1 ? 'משימה אחת היום' : `${doneToday} משימות היום`}
+          action={free.length > 0 ? <Button className="tasks-take-free" onClick={() => go('/tasks?free=1', true)}>{`לקחת אחת מהפנויות · ${free.length}`}</Button> : undefined} />
       ) : myRows.length > 0 && (
         <ListCard title="עליך" count={myRows.length}>
           {myRows.map((t) => <TaskRow key={t.id} t={t} view="mine" />)}

@@ -11,9 +11,16 @@ import { addShopItem, setItemPhoto } from './shopping';
 import { notify } from './notify';
 import { byPriority } from '../../taskOrder';
 import { firstName, hhmm, dayName, ddmm, daysFromToday } from '../format';
+import { gw } from '../gender';
 import type { Actor, Profile, Task, Template, Place, ShoppingItem, ShoppingCategory, CalendarItem, Activity, FarmEvent } from '../../types';
 
 // ======================= pure helpers =======================
+
+/** The profile behind an actor, when the screen has the team (an explicit gender wins over the name guess). */
+export type ProfileOf = (uid: string) => Profile | undefined;
+/** The verb form for this actor: "ביקש" / "ביקשה", "לקח" / "לקחה". */
+export const gwA = (a: Actor | null | undefined, male: string, female: string, profileOf?: ProfileOf) =>
+  gw(a?.name || '', male, female, a?.uid && profileOf ? profileOf(a.uid) : undefined);
 
 const DAY = 86400_000;
 /** A done task stays on the root, struck through, for this long; then it lives in history (T6). Decided by the owner. */
@@ -121,13 +128,13 @@ export function dueLong(due: string, today: string) {
 
 export type RowView = 'place' | 'time' | 'later' | 'mine' | 'placeList';
 /** The soft line under a task row. Copy follows T1, T2, T4, P6, L4. */
-export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string; now: number }) {
+export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string; now: number; profileOf?: ProfileOf }) {
   if (t.done) {
     const at = t.doneAt ? (o.now - Date.parse(t.doneAt) < 120_000 ? 'עכשיו' : daysAgo(t.doneAt, o.today) === 0 ? hhmm(t.doneAt) : ddmm(t.doneAt)) : '';
     return [`בוצע ${at}`.trim(), t.templateId ? 'שגרה' : t.doneBy ? firstName(t.doneBy.name) : ''].filter(Boolean).join(' · ');
   }
   const req = requesterOf(t);
-  const asked = req.uid && req.uid !== o.uid && req.name ? `${firstName(req.name)} ביקש` : '';
+  const asked = req.uid && req.uid !== o.uid && req.name ? `${firstName(req.name)} ${gwA(req, 'ביקש', 'ביקשה', o.profileOf)}` : '';
   const due = dueText(t.dueDate, o.today);
   let who: string;
   if (!t.assignee) who = 'פנויה';
@@ -148,33 +155,36 @@ export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string;
 }
 const daysAgo = (iso: string, today: string) => Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(dateKeyOf(new Date(iso)) + 'T12:00:00Z')) / DAY);
 
-export type Group = { key: string; title: string; placeId?: string; rows: Task[] };
+export type Group = { key: string; title: string; placeId?: string; rows: Task[]; open?: number };
 /** Open rows by priority (urgent, mine, overdue, due today, oldest), then done rows, latest first. */
 export function ordered(rows: Task[], uid: string, today: string) {
   const open = rows.filter((t) => !t.done).sort(byPriority(uid, today));
   const done = rows.filter((t) => t.done).sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || ''));
   return [...open, ...done];
 }
-/** T1 "לפי מקום": open tasks for today (future-dated ones wait in "לפי זמן") and done ones of the last 24h, by place.
+/** T1 "לפי מקום": open tasks for today (future-dated ones wait in "לפי זמן"), by place. Done tasks stay out, except the
+ *  ones ticked in this session (`kept`): those stay struck through in their place (T4), never in "בלי מקום".
  *  Places with an urgent task first, then the place whose task has waited longest; tasks without a place last.
- *  Places with only done rows come after, the latest done first. `nameOf` gives the saved place's current name. */
-export function groupByPlace(tasks: Task[], uid: string, today: string, nameOf: (placeId: string) => string | undefined = () => undefined): Group[] {
-  type G = Group & { oldest: string; urgent: boolean; open: number; latest: string };
+ *  `open` is the count the header shows (open tasks only). `nameOf` gives the saved place's current name. */
+export function groupByPlace(tasks: Task[], uid: string, today: string, nameOf: (placeId: string) => string | undefined = () => undefined, kept: ReadonlySet<string> = new Set()): Group[] {
+  type G = Group & { oldest: string; urgent: boolean; open: number };
   const map = new Map<string, G>();
   for (const t of tasks) {
     if (!t.done && t.dueDate && t.dueDate > today) continue;
     const pid = t.location?.placeId || '';
     const key = pid || (t.location?.placeName ? 'n:' + t.location.placeName : '_none');
-    const g: G = map.get(key) || { key, title: (pid && nameOf(pid)) || t.location?.placeName || 'בלי מקום', placeId: pid || undefined, rows: [], oldest: '9999', urgent: false, open: 0, latest: '' };
+    if (t.done && (!kept.has(t.id) || key === '_none')) continue;
+    const g: G = map.get(key) || { key, title: (pid && nameOf(pid)) || t.location?.placeName || 'בלי מקום', placeId: pid || undefined, rows: [], oldest: '9999', urgent: false, open: 0 };
     g.rows.push(t);
-    if (!t.done) { g.open++; g.urgent ||= t.urgent; if (t.createdAt < g.oldest) g.oldest = t.createdAt; }
-    else if ((t.doneAt || '') > g.latest) g.latest = t.doneAt || '';
+    // a task ticked a moment ago still holds its group's place in the order
+    g.urgent ||= t.urgent; if (t.createdAt < g.oldest) g.oldest = t.createdAt;
+    if (!t.done) g.open++;
     map.set(key, g);
   }
+  const asOpen = (t: Task) => (t.done ? { ...t, done: false } : t);
   return [...map.values()]
-    .sort((a, b) => Number(!a.open) - Number(!b.open)
-      || (a.open ? Number(a.key === '_none') - Number(b.key === '_none') || Number(b.urgent) - Number(a.urgent) || a.oldest.localeCompare(b.oldest) : b.latest.localeCompare(a.latest)))
-    .map(({ key, title, placeId, rows }) => ({ key, title, placeId, rows: ordered(rows, uid, today) }));
+    .sort((a, b) => Number(a.key === '_none') - Number(b.key === '_none') || Number(b.urgent) - Number(a.urgent) || a.oldest.localeCompare(b.oldest))
+    .map(({ key, title, placeId, rows, open }) => ({ key, title, placeId, open, rows: [...rows].sort((x, y) => byPriority(uid, today)(asOpen(x), asOpen(y))) }));
 }
 /** T2 "לפי זמן" (open tasks only): להיום (incl. overdue) · השבוע (next 6 days) · בהמשך · בלי תאריך. */
 export function groupByTime(tasks: Task[], uid: string, today: string): Group[] {
@@ -223,6 +233,19 @@ export function placeMeta(placeId: string, open: Task[], templates: Template[], 
   const tpl = templates.find((t) => t.active && t.placeId === placeId);
   if (tpl) return `שגרה: ${tpl.title}`;
   return 'אין משימות פתוחות';
+}
+/** L3 order (as the design): the most open everyday tasks first; then places with none; places a routine runs at after
+ *  those; places busy only with an event's tasks ("לקראת …") last. Ties keep the given order. */
+export function sortPlaces<P extends Pick<Place, 'id'>>(places: P[], open: Task[], templates: Pick<Template, 'active' | 'placeId'>[]): P[] {
+  const rank = (id: string, i: number) => {
+    const here = open.filter((t) => !t.done && t.location?.placeId === id);
+    const everyday = here.filter((t) => !t.eventId).length;
+    const tier = everyday ? 0 : here.length ? 3 : templates.some((t) => t.active && t.placeId === id) ? 2 : 1;
+    return { tier, n: everyday, i };
+  };
+  return places.map((p, i) => ({ p, r: rank(p.id, i) }))
+    .sort((a, b) => a.r.tier - b.r.tier || b.r.n - a.r.n || a.r.i - b.r.i)
+    .map((x) => x.p);
 }
 /** Metres between two points (equirectangular is plenty inside a farm). */
 export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -304,8 +327,8 @@ export function presenceHours(c: Pick<CalendarItem, 'time' | 'from' | 'to'>): { 
   return m ? { from: m[1].padStart(5, '0'), to: m[2].padStart(5, '0') } : null;
 }
 export type PresenceState = { here: boolean; text: string; order: number };
-/** "עד 13:00" / "כל היום" when here now; "בחווה מ־15:00" later today; "היום עד 11:00" after; "לא רשום היום". */
-export function presenceOf(entries: Pick<CalendarItem, 'time' | 'from' | 'to'>[], nowHHMM: string): PresenceState {
+/** "עד 13:00" / "כל היום" when here now; "מגיעה ב־15:00" / "מגיע ב־15:00" later today; "היום עד 11:00" after; "לא רשום היום". */
+export function presenceOf(entries: Pick<CalendarItem, 'time' | 'from' | 'to'>[], nowHHMM: string, female = false): PresenceState {
   if (!entries.length) return { here: false, text: 'לא רשום היום', order: 3 };
   const hours = entries.map(presenceHours);
   if (hours.some((h) => h === null)) return { here: true, text: 'כל היום', order: 0 };
@@ -313,7 +336,7 @@ export function presenceOf(entries: Pick<CalendarItem, 'time' | 'from' | 'to'>[]
   const now = hs.find((h) => h.from <= nowHHMM && nowHHMM < h.to);
   if (now) return { here: true, text: `עד ${now.to}`, order: 0 };
   const next = hs.filter((h) => h.from > nowHHMM).sort((a, b) => a.from.localeCompare(b.from))[0];
-  if (next) return { here: false, text: `בחווה מ־${next.from}`, order: 1 };
+  if (next) return { here: false, text: `${female ? "מגיעה" : "מגיע"} ב־${next.from}`, order: 1 };
   const last = [...hs].sort((a, b) => b.to.localeCompare(a.to))[0];
   return { here: false, text: `היום עד ${last.to}`, order: 2 };
 }
@@ -363,31 +386,32 @@ export const waitingText = (n: number) => (n === 0 ? 'מחר אין משימות
 
 // ---------- the timeline of one task (T3 "מה קרה עד עכשיו") ----------
 /** From the activity log when it has entries; otherwise from the task document itself (older tasks, demo rows). */
-export function timeline(t: Task, activity: Pick<Activity, 'action' | 'text' | 'by' | 'at' | 'subjectUid'>[], fmt: (iso: string) => string): string[] {
+export function timeline(t: Task, activity: Pick<Activity, 'action' | 'text' | 'by' | 'at' | 'subjectUid'>[], fmt: (iso: string) => string, profileOf?: ProfileOf): string[] {
   const fn = (a?: Actor | null) => (a?.name ? firstName(a.name) : '');
   const lines: { at: string; text: string }[] = [];
   const acts = [...activity].sort((a, b) => a.at.localeCompare(b.at));
-  if (!acts.some((a) => a.action === 'created') && t.createdAt) lines.push({ at: t.createdAt, text: `${fn(t.createdBy)} יצר את המשימה` });
+  // "יואב לקח אותה" / "נועה לקחה אותה": [masculine, feminine] per action
+  const say = (a: Actor | null | undefined, m: string, f: string, rest: string) => `${fn(a)} ${gwA(a, m, f, profileOf)} ${rest}`;
+  if (!acts.some((a) => a.action === 'created') && t.createdAt) lines.push({ at: t.createdAt, text: say(t.createdBy, 'יצר', 'יצרה', 'את המשימה') });
   if (acts.length) {
     for (const a of acts) {
-      const who = fn(a.by);
       const to = a.text.includes(' ← ') ? a.text.split(' ← ').pop() || '' : '';
       const text =
-        a.action === 'created' ? `${who} יצר את המשימה`
-        : a.action === 'assigned' ? (a.subjectUid && a.subjectUid === a.by.uid ? `${who} לקח אותה` : `${who} העביר ל${firstName(to)}`)
-        : a.action === 'released' ? `${who} שחרר אותה`
-        : a.action === 'done' ? `${who} סימן בוצע`
-        : a.action === 'undone' ? `${who} החזיר לביצוע`
-        : a.action === 'photo' ? `${who} הוסיף תמונה`
-        : a.action === 'note' ? `${who} הוסיף הערה`
-        : a.action === 'urgent' ? `${who} סימן דחוף`
-        : a.action === 'edited' ? `${who} ערך את המשימה`
+        a.action === 'created' ? say(a.by, 'יצר', 'יצרה', 'את המשימה')
+        : a.action === 'assigned' ? (a.subjectUid && a.subjectUid === a.by.uid ? say(a.by, 'לקח', 'לקחה', 'אותה') : say(a.by, 'העביר', 'העבירה', `ל${firstName(to)}`))
+        : a.action === 'released' ? say(a.by, 'שחרר', 'שחררה', 'אותה')
+        : a.action === 'done' ? say(a.by, 'סימן', 'סימנה', 'בוצע')
+        : a.action === 'undone' ? say(a.by, 'החזיר', 'החזירה', 'לביצוע')
+        : a.action === 'photo' ? say(a.by, 'הוסיף', 'הוסיפה', 'תמונה')
+        : a.action === 'note' ? say(a.by, 'הוסיף', 'הוסיפה', 'הערה')
+        : a.action === 'urgent' ? say(a.by, 'סימן', 'סימנה', 'דחוף')
+        : a.action === 'edited' ? say(a.by, 'ערך', 'ערכה', 'את המשימה')
         : '';
       if (text) lines.push({ at: a.at, text });
     }
   } else {
-    if (t.assignee && t.takenAt) lines.push({ at: t.takenAt, text: `${fn(t.assignee)} לקח אותה` });
-    if (t.done && t.doneAt) lines.push({ at: t.doneAt, text: `${fn(t.doneBy)} סימן בוצע` });
+    if (t.assignee && t.takenAt) lines.push({ at: t.takenAt, text: say(t.assignee, 'לקח', 'לקחה', 'אותה') });
+    if (t.done && t.doneAt) lines.push({ at: t.doneAt, text: say(t.doneBy, 'סימן', 'סימנה', 'בוצע') });
   }
   return lines.sort((a, b) => a.at.localeCompare(b.at)).map((l) => `${fmt(l.at)} · ${l.text}`);
 }
@@ -453,17 +477,26 @@ export async function setTaskPhoto(actor: Actor, t: Task, photo: string) {
   await write.update('tasks', t.id, { photo, updatedAt: nowIso() });
   logActivity(actor, taskKind(t), t.id, 'photo', short(t.title));
 }
+/** X1 for a take that came second: "לא נשמר. נועה לקחה את המשימה לפני רגע". `by` lets the screen re-word it with the profile. */
+export const takenText = (by: Actor, profileOf?: ProfileOf) => `לא נשמר. ${firstName(by.name)} ${gwA(by, 'לקח', 'לקחה', profileOf)} את המשימה לפני רגע`;
+const takenBy = (by: Actor) => Object.assign(new ConflictError(takenText(by)), { by });
 /** "לקחת": only while still free (or already mine). */
 export async function takeTask(actor: Actor, t: Task) {
   await transact(async (tx) => {
     const cur = await tx.get<Task>('tasks', t.id);
     if (!cur) throw new ConflictError('לא נשמר. המשימה כבר לא קיימת');
     if (cur.done) throw new ConflictError('לא נשמר. המשימה כבר בוצעה');
-    if (cur.assignee && cur.assignee.uid !== actor.uid) throw new ConflictError(`לא נשמר. המשימה כבר על ${firstName(cur.assignee.name)}`);
+    if (cur.assignee && cur.assignee.uid !== actor.uid) throw takenBy(cur.assignee);
     const now = nowIso();
     tx.update('tasks', t.id, { assignee: actor, takenAt: now, updatedAt: now });
   });
   logActivity(actor, taskKind(t), t.id, 'assigned', `${short(t.title)} ← ${actor.name}`, { subjectUid: actor.uid });
+}
+/** Demo only (X1 with `refuseNext`): the sandbox refuses before anyone is known, so the screen plays out the case the design
+ *  shows, a teammate taking it first. A plain local write: in demo db.ts never reaches Firestore. */
+export async function playTakenInDemo(t: Task, by: Actor) {
+  const at = nowIso();
+  await write.update('tasks', t.id, { assignee: by, takenAt: at, updatedAt: at });
 }
 /** "לשחרר": back to free, only while it is still mine (a manager may release anyone's). */
 export async function releaseTask(actor: Actor, t: Task, manager: boolean) {
@@ -488,7 +521,7 @@ export async function assignTask(actor: Actor, t: Task, to: Actor | null, seenUi
   });
   if (to) {
     logActivity(actor, taskKind(t), t.id, 'assigned', `${short(t.title)} ← ${to.name}`, { subjectUid: to.uid });
-    if (to.uid !== actor.uid) await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} העביר אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+    if (to.uid !== actor.uid) await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
   } else logActivity(actor, taskKind(t), t.id, 'released', short(t.title), { subjectUid: t.assignee?.uid || '' });
 }
 
@@ -496,12 +529,12 @@ export type TaskInput = NewTask;
 /** T5 add: the existing store action (activity log included), plus a notification when it is put on someone else. */
 export async function createTask(actor: Actor, data: TaskInput) {
   const id = await addTask(actor, data);
-  if (data.assignee && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} העביר אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
+  if (data.assignee && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
   return id;
 }
 export async function updateTask(actor: Actor, t: Task, data: Partial<TaskInput>) {
   await editTask(actor, t, data);
-  if (data.assignee && data.assignee.uid !== t.assignee?.uid && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} העביר אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+  if (data.assignee && data.assignee.uid !== t.assignee?.uid && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
 }
 
 export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
