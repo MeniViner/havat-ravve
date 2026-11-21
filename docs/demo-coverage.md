@@ -100,11 +100,11 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | Y5-Close | manager | afterEvent | /manage/events/demo-e-festival/close |  |
 | L6-Me | staff | regular | /me |  |
 | C12-Profile | owner | regular | /me |  |
-| C13-ProfileEdit | staff | regular | /me/edit |  |
+| C13-ProfileEdit | owner | regular | /me/edit |  |
 | A1-Photo | staff | regular | /me/photo |  |
 | A2-Crop | staff | regular | /me/photo/crop |  |
 | C1-Notifs | staff | regular | /notifications |  |
-| C2-Search | staff | regular | /search |  |
+| C2-Search | owner | regular | /search | fill:חיפוש בכל האפליקציה=כהן |
 | C9-Welcome | new | regular | /welcome |  |
 | C10-Install | staff | regular | /install |  |
 | X2-Suspended | blocked | regular | / |  |
