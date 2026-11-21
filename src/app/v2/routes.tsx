@@ -55,7 +55,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/farm/presence', farm.PresenceScreen, 'farm', 'page'),
   R('/farm/today', farm.FeedScreen, 'farm', 'tab'),
   R('/farm/events/:id', farm.FarmEventScreen, 'farm', 'page'),
-  R('/people/:uid', farm.TeammateScreen, null, 'tab'),
+  R('/people/:uid', farm.TeammateScreen, 'farm', 'tab'),
   // Event tab (event day only)
   R('/event', eventday.EventHome, 'event', 'tab'),
   R('/event/gate', eventday.GateScreen, 'event', 'page'),

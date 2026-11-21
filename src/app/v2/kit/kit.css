@@ -354,7 +354,7 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-chips--wrap { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding-inline: 0; }
 .k-chip {
   flex: none; height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line);
-  background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 400; white-space: nowrap;
+  background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 400; white-space: nowrap; text-align: center;
 }
 .k-chip[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; font-weight: 600; }
 .k-choice {
@@ -702,3 +702,6 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-gallery__section { display: flex; flex-direction: column; gap: 10px; }
 .k-gallery__h { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--soft); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 .k-gallery__frame { position: relative; margin-inline: -16px; border-block: 1px dashed var(--line-strong); overflow: hidden; }
+
+/* the legacy app.css sets button{text-align:start}; centred controls say so explicitly */
+.v2 .k-chip, .v2 .k-tabs__tab, .v2 .k-btn, .v2 .k-gatebtn { text-align: center; }
