@@ -123,7 +123,7 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
   const approve = () => run(() => approvePayment(ctx.actor, p, open), { text: `התשלום אושר: ${money(d.amount)}`, undo: () => undoApproval(ctx.actor, p, open, []) });
   const notYet = () => run(() => paymentNotArrived(ctx.actor, p, open), 'סומן: עוד לא הגיע');
   const thanks = fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': money(d.amount) });
-  const confirmText = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, { 'שם': firstName(d.name), 'סכום': money(d.amount), 'עבור': `תרומה${d.label ? ' · ' + d.label : ''}`, 'אירוע': 'תרומה' });
+  const confirmText = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, { 'שם': firstName(d.name), 'סכום': money(d.amount), 'עבור': `תרומה${d.label ? ' · ' + d.label : ''}`, 'אירוע': 'התרומה' });
   const sendConfirmation = () => { ext(waUrl(d.phone, confirmText)); run(() => markPaymentConfirmation(ctx.actor, 'donations', [d.id]), 'סומן: אישור התשלום נשלח'); };
   const orders = [...new Map(tickets.map((t) => [t.orderId, tickets.filter((x) => x.orderId === t.orderId && x.status === 'valid')])).values()].filter((o) => o.length);
   const more = [

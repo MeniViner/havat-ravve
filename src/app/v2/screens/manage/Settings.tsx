@@ -113,11 +113,13 @@ const TEMPLATES: { k: TplKey; t: string; ph: string[] }[] = [
   { k: 'visitApproved', t: 'אישור ביקור', ph: ['שם', 'תאריך', 'שעה', 'הערה'] },
   { k: 'donationThanks', t: 'תודה על תרומה', ph: ['שם', 'סכום'] },
   { k: 'debtReminder', t: 'תזכורת חוב', ph: ['שם', 'אירוע', 'סכום', 'ביט'] },
-  { k: 'paymentConfirmation', t: 'אישור תשלום', ph: ['שם', 'סכום', 'עבור', 'אירוע'] },
+  { k: 'paymentConfirmation', t: 'אישור תשלום', ph: ['שם', 'סכום', 'אירוע'] },
   { k: 'ticketReminder', t: 'תזכורת לאירוע', ph: ['שם', 'אירוע', 'תאריך'] },
   { k: 'vendorInvite', t: 'הזמנת בעל דוכן', ph: ['שם', 'אירוע', 'תאריך'] },
   { k: 'guestIntro', t: 'משפט פתיחה לאורחים', ph: [] },
 ];
+/** A placeholder whose name repeats the word before it ("עבור [עבור]" in the default text) gets a clearer chip. */
+const PH_LABEL: Record<string, string> = { 'עבור': 'מה שולם' };
 function MessagesPage({ ctx }: ScreenProps) {
   const s = ctx.settings;
   const [edit, setEdit] = useState<TplKey | null>(null);
@@ -143,7 +145,7 @@ function MessagesPage({ ctx }: ScreenProps) {
             <TextLink onClick={() => open(x.k)}>עריכה</TextLink>
           </div>
           <p className="manage-tpl__text">
-            {templateParts(value(x.k)).map((part, i) => (typeof part === 'string' ? <span key={i}>{part}</span> : <span key={i} className="manage-ph">{part.ph}</span>))}
+            {templateParts(value(x.k)).map((part, i) => (typeof part === 'string' ? <span key={i}>{part}</span> : <span key={i} className="manage-ph">{PH_LABEL[part.ph] || part.ph}</span>))}
           </p>
         </Card>
       ))}
