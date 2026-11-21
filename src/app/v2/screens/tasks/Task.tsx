@@ -11,10 +11,12 @@ import { useClockVersion, now } from '../../../clock';
 import { useTaskActivity } from '../../../activity';
 import { useEvent } from '../../../data';
 import { dayTime, ago, daysLeft, firstName, hhmm, daysFromToday } from '../../format';
+import { isFemale } from '../../gender';
 import type { Actor, Task } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, useTasksAt, useRootTasks, usePresenceToday, timeline, dueLong, requesterOf, releaseTask, assignTask,
   setTaskPhoto, doneWithPhoto, presenceOf, loadText, isForToday, setDone,
+  gwA,
 } from '../../data/tasks';
 import { to, useFail, useTaskActions, usePhotoPicker } from './shared';
 import './tasks.css';
@@ -47,7 +49,7 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   const linked = !!(t.eventId || t.shoppingId);
   const mine = t.assignee?.uid === uid;
   const req = requesterOf(t);
-  const lines = timeline(t, acts.items, dayTime);
+  const lines = timeline(t, acts.items, dayTime, (u) => ctx.team.find((p) => p.uid === u));
   const navBtn = t.location ? <Button variant="outline" icon="nav" iconSize={16} style={{ padding: '0 12px' }} onClick={() => external(mapsUrl(t.location!.lat, t.location!.lng))}>ניווט</Button> : undefined;
 
   let who: ReactNode; let whoAction: ReactNode;
@@ -76,11 +78,11 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
       <TopBar back={{ label: 'משימות', onClick: (e) => { e.preventDefault(); back('/tasks'); }, href: appHref('/tasks') }}
         end={<Button variant="outline" icon="edit" iconSize={16} {...to(`/tasks/${t.id}/edit`)}>עריכה</Button>} />
       <PageTitle size="detail">{t.title}</PageTitle>
-      <DetailList>
+      <DetailList className={linked ? "tasks-dl-linked" : undefined}>
         <DetailRow term="על מי" action={whoAction}>{who}</DetailRow>
         {t.location && !linked && <DetailRow term="איפה" action={navBtn}>{t.location.placeName || 'נקודה על המפה'}</DetailRow>}
         {t.dueDate && <DetailRow term="עד מתי">{dueLong(t.dueDate, ctx.today)}</DetailRow>}
-        {req.name && <DetailRow term="ביקש">{`${req.name} · ${askedWhen(t.createdAt)}`}</DetailRow>}
+        {req.name && <DetailRow term={gwA(req, "ביקש", "ביקשה", (u) => ctx.team.find((p) => p.uid === u))}>{`${req.name} · ${askedWhen(t.createdAt)}`}</DetailRow>}
         {t.note && <DetailRow term="הערה" plain>{t.note}</DetailRow>}
         {t.done && <DetailRow term="בוצע">{[t.doneBy ? firstName(t.doneBy.name) : '', t.doneAt ? dayTime(t.doneAt) : ''].filter(Boolean).join(' · ')}</DetailRow>}
         {t.done && t.doneNote && <DetailRow term="נכתב" plain>{t.doneNote}</DetailRow>}
@@ -142,7 +144,7 @@ export function AssignScreen({ ctx, params }: ScreenProps) {
   const canOthers = ctx.manager || t.createdBy.uid === uid || t.assignee?.uid === uid;
   const people = ctx.team.filter((p) => p.status === 'active' && (canOthers || p.uid === uid) && (!q.trim() || p.displayName.includes(q.trim())));
   const rows = people.map((p) => {
-    const st = presenceOf(presence.items.filter((c) => c.ownerUid === p.uid), nowHHMM);
+    const st = presenceOf(presence.items.filter((c) => c.ownerUid === p.uid), nowHHMM, isFemale(p.displayName, p));
     const load = root.items.filter((x) => x.assignee?.uid === p.uid && isForToday(x, ctx.today)).length;
     return { p, st, load, me: p.uid === uid };
   }).sort((a, b) => a.st.order - b.st.order || Number(a.me) - Number(b.me) || a.p.displayName.localeCompare(b.p.displayName, 'he'));

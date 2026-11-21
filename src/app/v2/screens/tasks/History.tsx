@@ -46,7 +46,7 @@ export function HistoryScreen({ ctx }: ScreenProps) {
     <AppScreen variant="detail">
       <TopBar back={{ label: 'משימות', ...to('/tasks') }} />
       <PageTitle size="root">היסטוריה</PageTitle>
-      <SearchField label="חיפוש בהיסטוריה" placeholder="חיפוש: משימה, מקום או שם" size="sm" value={q} onChange={(e) => setQ(e.target.value)} />
+      <SearchField label="חיפוש בהיסטוריה" placeholder="חיפוש: משימה, מקום או שם" size="sm" className="tasks-search" value={q} onChange={(e) => setQ(e.target.value)} />
       <ChipRow label="תקופה">
         {PERIODS.map((x) => <Chip key={x.value} selected={period === x.value} onClick={() => setPeriod(x.value)}>{x.label}</Chip>)}
       </ChipRow>

@@ -1,13 +1,14 @@
 // Shared parts of the tasks area: in-app links, the X1 failure handler, the task row, the capture bar and photo picking.
-import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { go, useToast, useV2 } from '../../core';
 import { Row, CheckButton, Tag, Button, CaptureBar } from '../../kit';
 import { href as appHref } from '../../../router';
 import { isConflict } from '../../../db';
 import { nowMs } from '../../../clock';
 import { compressPhoto } from '../../../store';
-import type { Task } from '../../../types';
-import { rowMeta, stripPlace, setDone, takeTask, type RowView } from '../../data/tasks';
+import type { Actor, Task } from '../../../types';
+import { useDemo } from '../../../demo/store';
+import { rowMeta, stripPlace, setDone, takeTask, takenText, playTakenInDemo, type RowView, type ProfileOf } from '../../data/tasks';
 
 /** Props for an in-app link: a real href (long-press, new tab) that navigates inside the SPA. */
 export const to = (path: string) => ({
@@ -25,11 +26,30 @@ export function useFail() {
   };
 }
 
+/** The team's profile for an actor (explicit gender wins over the name guess). */
+export function useProfileOf(): ProfileOf {
+  const ctx = useV2();
+  return (uid: string) => ctx.team.find((p) => p.uid === uid);
+}
+
+// Tasks ticked in this session stay struck through in their place on the root (T4); other done tasks leave the lists.
+const SESSION_KEY = 'v2-tasks-done-here';
+const readKept = (): Set<string> => { try { return new Set(JSON.parse(sessionStorage.getItem(SESSION_KEY) || '[]')); } catch { return new Set(); } };
+let kept = readKept();
+const keptListeners = new Set<() => void>();
+const keep = (id: string, on: boolean) => {
+  kept = new Set(kept); if (on) kept.add(id); else kept.delete(id);
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify([...kept])); } catch { /* blocked */ }
+  keptListeners.forEach((l) => l());
+};
+export const useDoneHere = () => useSyncExternalStore((l) => { keptListeners.add(l); return () => keptListeners.delete(l); }, () => kept);
+
 /** Done / take with the T4 toast ("בוצע: …" with צילום and ביטול) and X1 on conflict. */
 export function useTaskActions() {
-  const ctx = useV2(); const toast = useToast(); const fail = useFail();
+  const ctx = useV2(); const toast = useToast(); const fail = useFail(); const demo = useDemo(); const profileOf = useProfileOf();
   const done = async (t: Task, placeName?: string) => {
     try {
+      keep(t.id, true);
       await setDone(ctx.actor, t, true);
       toast.show({
         text: `בוצע: ${stripPlace(t.title, placeName || t.location?.placeName)}`,
@@ -41,13 +61,22 @@ export function useTaskActions() {
     } catch (e) { fail(e); }
   };
   const undo = (t: Task) => setDone(ctx.actor, t, false).catch(fail);
-  const take = (t: Task) => takeTask(ctx.actor, t).catch(fail);
+  const take = (t: Task) => takeTask(ctx.actor, t).catch(async (e: unknown) => {
+    let by = (e as { by?: Actor }).by;
+    // demo refuseNext refuses before anyone is known: play out a teammate (Noa) taking it first, as X1 shows
+    if (!by && demo.on && isConflict(e)) {
+      const mate = ctx.team.find((p) => p.uid === 'demo-u-noa') || ctx.team.find((p) => p.uid !== ctx.user.uid && p.status === 'active');
+      if (mate) { by = { uid: mate.uid, name: mate.displayName }; await playTakenInDemo(t, by).catch(() => {}); }
+    }
+    if (by && isConflict(e)) toast.refused(takenText(by, profileOf));
+    else fail(e);
+  });
   return { done, undo, take };
 }
 
 /** One task row on the roots: check, title (place stripped under a place header), tags, meta and "לקחת" for free tasks. */
 export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; view: RowView; placeName?: string; strip?: boolean; extraTags?: ReactNode }) {
-  const ctx = useV2(); const a = useTaskActions();
+  const ctx = useV2(); const a = useTaskActions(); const profileOf = useProfileOf();
   const uid = ctx.user.uid;
   const title = strip ? stripPlace(t.title, placeName) : t.title;
   const mine = !t.done && t.assignee?.uid === uid;
@@ -61,7 +90,7 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
     <Row
       check={<CheckButton checked={t.done} onChange={(v) => (v ? a.done(t, placeName) : a.undo(t))} label={`סימון בוצע: ${title}`} />}
       title={title} tags={tags} done={t.done}
-      meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs() })}
+      meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs(), profileOf })}
       {...to(`/tasks/${t.id}`)} chevron={false}
       actions={!t.done && !t.assignee ? <Button variant="outline" onClick={() => a.take(t)}>לקחת</Button> : undefined}
     />

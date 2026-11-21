@@ -177,10 +177,29 @@ await test('by place: urgent places first, then the longest waiting, no place la
     task({ id: 'g', location: { lat: 1, lng: 1, placeName: 'ליד הבריכה' }, createdAt: ago(10) }),
   ];
   const g = T.groupByPlace(ts, yoav.uid, TODAY, (id) => (id === 'p-green' ? 'החממה החדשה' : undefined));
-  assert.deepEqual(g.map((x) => x.key), ['p-gate', 'p-green', 'n:ליד הבריכה', '_none', 'p-shed']);
+  assert.deepEqual(g.map((x) => x.key), ['p-gate', 'p-green', 'n:ליד הבריכה', '_none'], 'done-only places are gone');
   assert.equal(g[1].title, 'החממה החדשה', 'the saved place name wins');
-  assert.deepEqual(g[1].rows.map((t) => t.id), ['a', 'e'], 'open first, done after');
+  assert.deepEqual(g[1].rows.map((t) => t.id), ['a'], 'done rows leave the lists');
+  assert.deepEqual(g.map((x) => x.open), [1, 1, 1, 1], 'counts are open tasks only');
   assert.equal(g[3].title, 'בלי מקום');
+});
+
+await test('by place: a task ticked in this session stays struck through in its place (T4), never in "בלי מקום"', () => {
+  const toolbox = task({ id: 'toolbox', assignee: yoav, location: loc(shed), createdAt: ago(30), done: true, doneBy: yoav, doneAt: ago(0) });
+  const paint = task({ id: 'paint', location: loc(shed), createdAt: ago(2) });
+  const nowhere = task({ id: 'nowhere', done: true, doneBy: yoav, doneAt: ago(0) });
+  const old = task({ id: 'old', location: loc(green), done: true, doneBy: noa, doneAt: ago(3) });
+  const g = T.groupByPlace([paint, toolbox, nowhere, old], yoav.uid, TODAY, undefined, new Set(['toolbox', 'nowhere']));
+  assert.deepEqual(g.map((x) => x.key), ['p-shed']);
+  assert.deepEqual(g[0].rows.map((t) => t.id), ['toolbox', 'paint'], 'the done one keeps its first place');
+  assert.equal(g[0].open, 1);
+});
+
+await test('places list (L3): most open everyday tasks first, then none, then routine places, event-only places last', () => {
+  const ps = [place('a', 'אזור הדוכן'), place('b', 'חממה'), place('c', 'ליד הכניסה'), place('d', 'פינת החי'), place('e', 'מכולה'), place('f', 'הדוכן')];
+  const open = [task({ location: loc(ps[2]) }), task({ location: loc(ps[2]) }), task({ location: loc(ps[1]) }), task({ location: loc(ps[4]) }), task({ location: loc(ps[4]) }), task({ location: loc(ps[0]), done: true }), task({ location: loc(ps[5]), eventId: 'ev' })];
+  const order = T.sortPlaces(ps, open, [{ active: true, placeId: 'd' }, { active: false, placeId: 'a' }]).map((p) => p.id);
+  assert.deepEqual(order, ['c', 'e', 'b', 'a', 'd', 'f']);
 });
 
 await test('by time: today (with overdue and mine first), this week, later, undated', () => {
@@ -268,7 +287,8 @@ await test('presence (C4): v2 hours, the older text, all day and nothing', () =>
   assert.deepEqual(T.presenceOf([], '10:30'), { here: false, text: 'לא רשום היום', order: 3 });
   assert.deepEqual(T.presenceOf([{ time: '' }], '10:30'), { here: true, text: 'כל היום', order: 0 });
   assert.deepEqual(T.presenceOf([{ from: '08:00', to: '13:00' }], '10:30'), { here: true, text: 'עד 13:00', order: 0 });
-  assert.deepEqual(T.presenceOf([{ from: '15:00', to: '18:00' }], '10:30'), { here: false, text: 'בחווה מ־15:00', order: 1 });
+  assert.deepEqual(T.presenceOf([{ from: '15:00', to: '18:00' }], '10:30'), { here: false, text: 'מגיע ב־15:00', order: 1 });
+  assert.deepEqual(T.presenceOf([{ from: '15:00', to: '18:00' }], '10:30', true), { here: false, text: 'מגיעה ב־15:00', order: 1 });
   assert.deepEqual(T.presenceOf([{ time: '07:00–09:00' }], '10:30'), { here: false, text: 'היום עד 09:00', order: 2 });
   assert.equal(T.loadText(0), 'אין משימות היום'); assert.equal(T.loadText(1), 'משימה אחת היום'); assert.equal(T.loadText(3), '3 משימות היום');
 });
@@ -338,7 +358,9 @@ await test('take, release and assign refuse with X1 text when the server moved o
   await T.takeTask(yoav, t);
   assert.deepEqual(calls[0], ['tx.update', 'tasks', 'tk', { assignee: yoav, takenAt: new Date(NOW).toISOString(), updatedAt: new Date(NOW).toISOString() }]);
   globalThis.__server = { 'tasks/tk': { ...t, assignee: noa } };
-  await assert.rejects(T.takeTask(yoav, t), (e) => e.name === 'ConflictError' && e.message === 'לא נשמר. המשימה כבר על נועה');
+  await assert.rejects(T.takeTask(yoav, t), (e) => e.name === 'ConflictError' && e.message === 'לא נשמר. נועה לקחה את המשימה לפני רגע' && e.by.uid === noa.uid);
+  assert.equal(T.takenText(yoav), 'לא נשמר. יואב לקח את המשימה לפני רגע');
+  assert.equal(T.takenText(yoav, () => ({ gender: 'f' })), 'לא נשמר. יואב לקחה את המשימה לפני רגע', 'the profile wins over the name');
   globalThis.__server = { 'tasks/tk': { ...t, done: true } };
   await assert.rejects(T.takeTask(yoav, t), /כבר בוצעה/);
   globalThis.__server = {};
