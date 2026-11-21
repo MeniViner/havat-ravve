@@ -10,6 +10,7 @@ import { useDemo, useDemoStates, setDemoStates, demoOnly } from '../../../demo/s
 import { write } from '../../../db';
 import { nowIso } from '../../../clock';
 import { ddmm } from '../../format';
+import { gw } from '../../gender';
 import type { ScreenProps } from '../../ctx';
 import type { Profile, RoleInvite, Settings } from '../../../types';
 import type { Session } from '../../../firebase';
@@ -55,7 +56,7 @@ export function WelcomeForm({ user, profile, invite }: { user: Session; profile:
         <Hero className="system-added">
           <Avatar initials={initials(by)} tone="ondark" size={40} />
           <div className="system-added__text">
-            <span className="system-added__title">{firstName(by)} הוסיף אותך {INVITE_ROLE_WORD[invite.role] || 'לצוות'}</span>
+            <span className="system-added__title">{firstName(by)} {gw(by, 'הוסיף', 'הוסיפה')} אותך {INVITE_ROLE_WORD[invite.role] || 'לצוות'}</span>
             <span className="k-hero__meta" dir="ltr">{invite.email || user.email}</span>
           </div>
         </Hero>
