@@ -1,0 +1,38 @@
+/* Broadcast area (B1-B4, C1). Only what the kit does not cover; tokens from the kit (.v2). */
+
+/* B1: counter under the text, the phone preview */
+.broadcast-field { display: flex; flex-direction: column; gap: 6px; }
+.broadcast-count { font-size: 13px; color: var(--soft); text-align: end; font-variant-numeric: tabular-nums; }
+.broadcast-preview { display: flex; flex-direction: column; gap: 6px; }
+.broadcast-phone {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.broadcast-phone__icon {
+  flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--action); color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+}
+.broadcast-phone__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.broadcast-phone__top { display: flex; justify-content: space-between; font-size: 13px; color: var(--soft); }
+.broadcast-phone__title { font-size: 15px; font-weight: 700; }
+.broadcast-phone__text { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.broadcast-phone__text--empty { color: var(--soft); }
+
+/* B2: one sent broadcast */
+.broadcast-sent { color: var(--ink); text-decoration: none; }
+.broadcast-sent__text { font-size: 16px; font-weight: 600; line-height: 1.4; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; overflow-wrap: anywhere; }
+.broadcast-sent__meta { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--soft); }
+.broadcast-sent__count { font-weight: 600; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* B3 hero text, B4 card */
+.broadcast-hero__text { font-size: 18px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.broadcast-card__head { display: flex; align-items: center; gap: 8px; font-size: 14px; color: rgba(255, 255, 255, .9); }
+.broadcast-card__text { font-size: 17px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.broadcast-card .k-btn { align-self: flex-start; }
+.broadcast-card--out { animation: broadcast-out .22s ease-in forwards; }
+@keyframes broadcast-out { to { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .broadcast-card--out { animation: none; } }
+
+/* C1: the "מה לקבל" sheet */
+.broadcast-sheet { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
+.broadcast-sheet__note { margin: 0; font-size: 14px; line-height: 1.4; color: var(--soft); }
