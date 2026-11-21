@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, useToast, useExternal } from '../../core';
-import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, TextLink } from '../../kit';
+import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { nowIso } from '../../../clock';
@@ -32,7 +32,7 @@ function openStored(url: string, external: (u: string) => void) {
   window.open(URL.createObjectURL(new Blob([bytes], { type: mime })), '_blank', 'noopener');
 }
 
-type Draft = { url: string; kind: 'doc' | 'image'; mime: string; size: number; name: string; link?: boolean };
+type Draft = { url: string; kind: 'doc' | 'image'; mime: string; size: number; name: string };
 
 function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const toast = useToast(); const run = useRun(); const external = useExternal();
@@ -51,7 +51,7 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         setDraft({ url, kind: 'image', mime: url.slice(5, url.indexOf(';')), size: url.length, name: fromCamera ? '' : baseName(f.name) });
       } else if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
         const url = await readAsDataUrl(f);
-        if (url.length > FILE_MAX_CHARS) { toast.show({ text: 'הקובץ גדול מדי לשמירה כאן. אפשר לצלם את המסמך, או לשמור קישור אליו.', tone: 'error' }); return; }
+        if (url.length > FILE_MAX_CHARS) { toast.show({ text: 'הקובץ גדול מדי לשמירה כאן. אפשר לצלם את המסמך.', tone: 'error' }); return; }
         setDraft({ url, kind: 'doc', mime: 'application/pdf', size: f.size, name: baseName(f.name) });
       } else {
         toast.show({ text: 'אפשר להוסיף תמונה או PDF', tone: 'error' });
@@ -61,9 +61,8 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   };
   const save = async () => {
     if (!draft || !draft.name.trim()) return;
-    if (draft.link && !/^https:\/\/\S+$/.test(draft.url.trim())) { toast.show({ text: 'קישור מתחיל ב־https://', tone: 'error' }); return; }
     const name = draft.name.trim();
-    const id = await run(() => addFileV2(e.id, { name, url: draft.url.trim(), kind: draft.kind, by: ctx.actor, at: nowIso(), ...(draft.link ? {} : { mime: draft.mime, size: draft.size }) }));
+    const id = await run(() => addFileV2(e.id, { name, url: draft.url.trim(), kind: draft.kind, by: ctx.actor, at: nowIso(), mime: draft.mime, size: draft.size }));
     if (!id) return;
     logActivity(ctx.actor, 'event', e.id, 'edited', `${e.title}: נוסף קובץ "${name}"`, { eventId: e.id });
     setDraft(null);
@@ -97,14 +96,12 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => { pick(ev.target.files?.[0], true); ev.target.value = ''; }} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { pick(ev.target.files?.[0], false); ev.target.value = ''; }} />
       <span className="events-softline">רק מנהלים רואים את הקבצים.</span>
-      <TextLink className="events-quietlink" onClick={() => setDraft({ url: 'https://', kind: 'doc', mime: '', size: 0, name: '', link: true })}>הוספת קישור לקובץ</TextLink>
 
-      <Sheet open={!!draft} onClose={() => setDraft(null)} title={draft?.link ? 'קישור לקובץ' : 'שם הקובץ'}>
+      <Sheet open={!!draft} onClose={() => setDraft(null)} title="שם הקובץ">
         {draft && (
           <div className="events-sheet">
-            {draft.kind === 'image' && !draft.link && <img src={draft.url} alt="" className="events-filepreview" />}
+            {draft.kind === 'image' && <img src={draft.url} alt="" className="events-filepreview" />}
             <Field label="שם" value={draft.name} onChange={(ev) => setDraft({ ...draft, name: ev.target.value })} placeholder="אישור משטרה" autoFocus />
-            {draft.link && <Field label="קישור" ltr inputMode="url" value={draft.url} onChange={(ev) => setDraft({ ...draft, url: ev.target.value })} />}
             <Button size="bar" block disabled={!draft.name.trim()} onClick={save}>שמירה</Button>
           </div>
         )}

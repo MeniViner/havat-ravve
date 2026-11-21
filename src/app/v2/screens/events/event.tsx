@@ -60,11 +60,20 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const fileNames = files.items.map((f) => f.name);
   const share = async () => {
     const url = `${location.origin}/app/events/${e.id}`;
-    try {
-      if (navigator.share) { await navigator.share({ title: e.title, url }); return; }
-      await navigator.clipboard?.writeText(url);
-      toast.show({ text: 'הקישור הועתק', check: true, duration: 2500 });
-    } catch { /* closed the share sheet */ }
+    if (navigator.share) {
+      try { await navigator.share({ title: e.title, url }); return; } catch (err) { if ((err as Error)?.name === 'AbortError') return; /* closed the share sheet */ }
+    }
+    // no share sheet, or it failed: copy the link
+    let copied = false;
+    try { await navigator.clipboard.writeText(url); copied = true; } catch { /* no clipboard permission */ }
+    if (!copied) {
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { copied = document.execCommand('copy'); } catch { /* not supported */ }
+      ta.remove();
+    }
+    toast.show(copied ? { text: 'הקישור הועתק', check: true, duration: 2500 } : { text: url, duration: 6000 });
   };
   const remind = () => {
     const t = fillTemplate(ctx.settings.templates.ticketReminder || DEFAULT_SETTINGS.templates.ticketReminder, { 'שם': '', 'אירוע': e.title, 'תאריך': `${dayName(e.start)} ${ddmm(e.start)}`, 'שעה': hhmm(e.start) });
