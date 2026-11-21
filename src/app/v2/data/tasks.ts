@@ -3,7 +3,7 @@
 // demo sandbox and on Firestore, and every write is applied locally at once (offline first). Take / release / assign use
 // transact(); a ConflictError is shown by the screen as X1.
 import { useMemo } from 'react';
-import { useList, useDoc, write, newId, transact, ConflictError } from '../../db';
+import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
 import { logActivity, taskKind } from '../../activity';
 import { addTask, editTask, editShopping, type NewTask } from '../../store';
@@ -482,14 +482,23 @@ export const takenText = (by: Actor, profileOf?: ProfileOf) => `לא נשמר. $
 const takenBy = (by: Actor) => Object.assign(new ConflictError(takenText(by)), { by });
 /** "לקחת": only while still free (or already mine). */
 export async function takeTask(actor: Actor, t: Task) {
-  await transact(async (tx) => {
-    const cur = await tx.get<Task>('tasks', t.id);
-    if (!cur) throw new ConflictError('לא נשמר. המשימה כבר לא קיימת');
-    if (cur.done) throw new ConflictError('לא נשמר. המשימה כבר בוצעה');
-    if (cur.assignee && cur.assignee.uid !== actor.uid) throw takenBy(cur.assignee);
-    const now = nowIso();
-    tx.update('tasks', t.id, { assignee: actor, takenAt: now, updatedAt: now });
-  });
+  try {
+    await transact(async (tx) => {
+      const cur = await tx.get<Task>('tasks', t.id);
+      if (!cur) throw new ConflictError('לא נשמר. המשימה כבר לא קיימת');
+      if (cur.done) throw new ConflictError('לא נשמר. המשימה כבר בוצעה');
+      if (cur.assignee && cur.assignee.uid !== actor.uid) throw takenBy(cur.assignee);
+      const now = nowIso();
+      tx.update('tasks', t.id, { assignee: actor, takenAt: now, updatedAt: now });
+    });
+  } catch (e) {
+    // two people at the same moment: the slower commit comes back as a plain refusal. Read who has it now, so X1 names them.
+    if (isConflict(e) && !(e as { by?: Actor }).by) {
+      const cur = await transact((tx) => tx.get<Task>('tasks', t.id)).catch(() => null);
+      if (cur?.assignee && cur.assignee.uid !== actor.uid) throw takenBy(cur.assignee);
+    }
+    throw e;
+  }
   logActivity(actor, taskKind(t), t.id, 'assigned', `${short(t.title)} ← ${actor.name}`, { subjectUid: actor.uid });
 }
 /** Demo only (X1 with `refuseNext`): the sandbox refuses before anyone is known, so the screen plays out the case the design
