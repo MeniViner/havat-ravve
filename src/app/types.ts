@@ -164,6 +164,7 @@ export type Ticket = {
   secret: string; price: number; paymentStatus: PaymentStatus; status: 'valid' | 'cancelled';
   scans: TicketScan[]; entries: number; answers: Record<string, string>;
   paymentConfirmation?: PaymentConfirmation;
+  /** v2 (optional): when the payment reminder went out. */ reminderSentAt?: string | null;
   createdAt: string; updatedAt: string;
 };
 
@@ -183,7 +184,7 @@ export type Donation = {
 
 export type Vendor = { id: string; name: string; phone: string; product: string; external: boolean; notes: string; createdAt: string; updatedAt: string };
 export type EventVendor = { id: string; vendorId: string; name: string; confirmed: boolean; notes: string };
-export type Product = { id: string; name: string; price: number; active: boolean; sort: number };
+export type Product = { id: string; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
 export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor };
 export type TabStatus = 'open' | 'claimed' | 'paid' | 'waived';
 export const TAB_LABELS: Record<TabStatus, string> = { open: 'פתוח', claimed: 'הועבר, ממתין לאישור', paid: 'שולם', waived: 'נמחל' };
@@ -191,6 +192,7 @@ export type Tab = {
   id: string; eventId: string; eventTitle: string; guestUid: string; guestName: string; guestPhone: string; ticketId: string;
   items: TabItem[]; total: number; status: TabStatus; createdBy: Actor; createdAt: string; updatedAt: string;
   paymentConfirmation?: PaymentConfirmation;
+  /** v2 (optional): when the guest said they paid; when the reminder went out. */ claimedAt?: string; reminderSentAt?: string | null;
 };
 
 export type RegistrationField = { id: string; label: string; type: 'text' | 'date' | 'choice'; options: string[]; required: boolean };
