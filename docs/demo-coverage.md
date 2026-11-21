@@ -50,9 +50,9 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | E3-Ok | staff | eventDay | /event/gate | click:QR תקין |
 | E4-Pay | staff | eventDay | /event/gate | click:QR לא שולם |
 | E5-Bad | staff | eventDay | /event/gate | click:QR מבוטל |
-| E6-Search | staff | eventDay | /event/gate/search |  |
+| E6-Search | staff | eventDay | /event/gate/search | fill:שם או טלפון=מיכל |
 | E7-StallWho | staff | eventDay | /event/stall |  |
-| E8-StallSell | staff | eventDay | /event/stall/demo-tab-roni-fest |  |
+| E8-StallSell | staff | eventDay | /event/stall/demo-tab-roni-fest | click:לימונדה; click:לימונדה; click:עוגת תפוחים |
 | E9-Tabs | manager | eventDay | /event/stall/tabs |  |
 | M1-Root | owner | regular | /manage |  |
 | M2-Inbox | manager | regular | /manage/inbox |  |
