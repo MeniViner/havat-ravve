@@ -59,7 +59,7 @@ Rules requested (exact shape changes):
 | `tasks` | `eventId ==` | M4 "משימות הכנה" |
 | `events/{id}/staffing`, `/files`, `/products`, `/vendors` | all | V4, V3, N9, M4 |
 | `events/{id}/counters/live` | doc | M6 |
-| `events/{id}/scans` | `orderBy at desc, limit 6` | M6 "סריקות אחרונות" |
+| `events/{id}/scans` | `orderBy at desc, limit 3` | M6 "סריקות אחרונות" |
 | `calendar` | `date ==`, filtered to `kind == 'presence'` | V4 "פנויים באותו יום" |
 
 No new composite index: every query is a single-field filter, or one `orderBy` without a filter.
