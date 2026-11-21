@@ -20,12 +20,15 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<ActivityFilter>((FILTERS.some((f) => f.v === params.filter) ? params.filter : 'all') as ActivityFilter);
   const team = useMemo(() => new Set<string>(ctx.team.filter(isTeam).map((p) => p.uid)), [ctx.team]);
+  // A guest who fills the donation form and marks it paid did one thing: the "created" line is hidden when the same person's "claimed" follows.
+  const claimed = useMemo(() => new Set(items.filter((a) => a.kind === 'donation' && a.action === 'claimed').map((a) => a.refId + a.by.uid)), [items]);
   const rows = useMemo(() => items
+    .filter((a) => !(a.kind === 'donation' && a.action === 'created' && claimed.has(a.refId + a.by.uid)))
     .filter((a) => !params.event || a.eventId === params.event)
     .filter((a) => filter === 'all' || activityGroup(a.kind) === filter)
     .map((a) => ({ a, line: activityLine(a, team) }))
     .filter(({ a, line }) => activityMatches(a, q, `${line.title} ${line.meta}`))
-    .sort((x, y) => (x.a.at < y.a.at ? 1 : -1)), [items, filter, q, team, params.event]);
+    .sort((x, y) => (x.a.at < y.a.at ? 1 : -1)), [items, filter, q, team, params.event, claimed]);
   const days = useMemo(() => {
     const m = new Map<string, { a: Activity; line: { title: string; meta: string } }[]>();
     for (const r of rows.slice(0, shown)) { const k = keyOf(r.a.at); m.set(k, [...(m.get(k) || []), r]); }

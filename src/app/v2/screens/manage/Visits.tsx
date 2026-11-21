@@ -68,7 +68,9 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
     if (status === 'approved') toast.show({ text: 'אושר ונכנס ליומן', check: true, actions: contactPhoneOk(phone) ? [{ label: 'וואטסאפ', onClick: () => ext(waUrl(phone, message)) }] : [] });
     else toast.show({ text: status === 'rejected' ? 'סומן: לא מתאים' : 'הביקור בוטל', check: true, duration: 3000 });
   };
-  const items = sameDay.filter((c) => c.refId !== v.id);
+  // One line per entry: the same title, hours and person twice (an old manual item next to a new one) shows once.
+  const items = sameDay.filter((c) => c.refId !== v.id).filter((c, i, all) => all.findIndex((x) => x.title === c.title && calWhen(x) === calWhen(c) && x.ownerUid === c.ownerUid) === i)
+    .sort((a, b) => { const sa = a.from || a.time || '99', sb = b.from || b.time || '99'; return sa.localeCompare(sb); }); // timed first, by start; all-day last
   const over = v.status === 'new' ? `בקשה חדשה · ${agoLong(v.createdAt)}` : v.status === 'approved' ? `אושר${v.handledBy ? ` · ${firstName(v.handledBy.name)}` : ''}` : v.status === 'rejected' ? 'לא מתאים' : 'בוטל';
   const bar = v.status === 'approved'
     ? <BottomBar>{n !== v.managerNote ? <Button size="bar" grow onClick={() => decideAs('approved')}>שמירת ההערה</Button> : <Button size="bar" grow variant="outline" icon="message" onClick={() => ext(waUrl(phone, message))} disabled={!contactPhoneOk(phone)}>הודעת אישור בוואטסאפ</Button>}<Button size="bar" variant="secondary" onClick={() => decideAs('cancelled')}>ביטול הביקור</Button></BottomBar>
