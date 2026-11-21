@@ -5,19 +5,19 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 
 | id | persona | scenario | route | steps |
 |---|---|---|---|---|
-| T1-Root | staff | regular | /tasks |  |
-| T2-Time | staff | regular | /tasks?view=time |  |
-| T4-Done | staff | regular | /tasks | click:בוצע |
+| T1-Root | staff | regular | /tasks | click:קראתי |
+| T2-Time | staff | regular | /tasks?view=time | click:קראתי |
+| T4-Done | staff | regular | /tasks | click:קראתי; click:בוצע |
 | T3-Task | staff | regular | /tasks/demo-t-toolbox |  |
 | C3-TaskLinks | staff | regular | /tasks/demo-t-tables |  |
 | C4-Assign | manager | regular | /tasks/demo-t-tap/assign |  |
 | T5-Add | staff | regular | /new |  |
 | T6-History | staff | regular | /tasks/history |  |
-| L5-MineEmpty | staff | regular | /tasks?view=mine | demo:empty |
+| L5-MineEmpty | staff | regular | /tasks?view=mine | click:קראתי; demo:empty |
 | C6-DonePhoto | staff | regular | /tasks/demo-t-toolbox/done |  |
 | C7-DayEnd | staff | regular | /day |  |
-| C8-Offline | staff | regular | /tasks | demo:offline |
-| X1-Refused | staff | regular | /tasks | demo:refuseNext; click:לקחת |
+| C8-Offline | staff | regular | /tasks | click:קראתי; demo:offline |
+| X1-Refused | staff | regular | /tasks | click:קראתי; demo:refuseNext; click:לקחת |
 | B4-Receive | staff | regular | /tasks |  |
 | P1-Root | owner | regular | /tasks |  |
 | P6-Full | owner | regular | /tasks | fullpage |

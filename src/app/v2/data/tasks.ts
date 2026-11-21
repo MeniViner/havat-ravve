@@ -242,10 +242,18 @@ export function nearestPlace(pos: { lat: number; lng: number }, places: Place[],
 const PLACE_STOP = new Set(['ליד', 'מאחורי', 'מעל', 'בתוך', 'אזור', 'שורת']);
 /** A place named in the text: "לתקן את הברז ליד החממה" -> חממה. */
 export function suggestPlace(text: string, places: Pick<Place, 'id' | 'name'>[]): string | null {
-  const words = text.split(/[\s,.]+/).map((w) => w.replace(/^[ובלמה]{1,2}(?=\S{3,})/, ''));
+  // every reading of a word's prefix letters: "במכולה" -> במכולה, מכולה, כולה (and without a leading ה)
+  const stems = new Set<string>();
+  for (const w of text.split(/[\s,.]+/)) {
+    for (let i = 0; i <= 2 && i < w.length; i++) {
+      if (i > 0 && !'ובלמה'.includes(w[i - 1])) break;
+      const s = w.slice(i);
+      if (s.length >= 3) { stems.add(s); stems.add(s.replace(/^ה/, '')); }
+    }
+  }
   for (const p of places) {
     const parts = p.name.split(/\s+/).filter((w) => w.length > 2 && !PLACE_STOP.has(w)).map((w) => w.replace(/^ה/, ''));
-    if (parts.some((w) => words.some((x) => x === w || x.replace(/^ה/, '') === w))) return p.id;
+    if (parts.some((w) => stems.has(w))) return p.id;
   }
   return null;
 }
