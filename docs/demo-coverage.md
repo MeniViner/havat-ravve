@@ -27,7 +27,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | P5-New | owner | regular | /projects/new | fill:לאן רוצים להגיע=מערכת השקיה חדשה; fill:עד מתי=סוף דצמבר; fill:צעד 1=למדוד את השטח ולשרטט; click:צעד נוסף; fill:צעד 2=לקבל שלוש הצעות מחיר; click:צעד נוסף; fill:צעד 3=לאשר תקציב עם אליה; click:צעד נוסף; fill:צעד 4=להזמין ולהתקין |
 | L1-Templates | manager | regular | /manage/recurring |  |
 | L2-Template | manager | regular | /manage/recurring/demo-tpl-pots |  |
-| L3-Places | staff | regular | /places |  |
+| L3-Places | manager | regular | /places |  |
 | L4-Place | manager | regular | /places/demo-p-greenhouse |  |
 | S1-Root | staff | regular | /shopping |  |
 | S2-Wish | staff | regular | /shopping?list=wish |  |
@@ -120,7 +120,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | D6-DayLive | vendor | eventDay | /vendor | click:הגעתי לחווה |
 | D9-Summary | vendor | afterEvent | /vendor/events/demo-e-festival/summary | click:מצוין |
 | Z1-DemoStart | staff | regular | /demo |  |
-| Z2-DemoBanner | staff | regular | /tasks |  |
+| Z2-DemoBanner | staff | regular | /tasks | click:קראתי |
 | Z3-DemoSwitch | staff | regular | /tasks | click:נתוני דמו |
 | Z4-DemoOwner | owner | regular | /manage |  |
 | Z5-DemoVendor | vendor | regular | /vendor |  |

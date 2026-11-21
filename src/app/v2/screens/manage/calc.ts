@@ -1,4 +1,5 @@
 // Manage area: pure helpers (no React, no data access). Everything that turns rows into numbers or words lives here,
+import { isFemale as sharedIsFemale } from '../../gender';
 // so tests/v2-manage.mjs can check it without a browser. "today" is always passed in (YYYY-MM-DD from clock.ts).
 import type { Activity, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, RegistrationField } from '../../../types';
 
@@ -94,15 +95,8 @@ export function visitBuckets(visits: Visit[], today: string) {
 export const approvedSoon = (visits: Visit[], today: string) => visits.filter((v) => v.status === 'approved' && v.date >= today && v.date <= addDaysKey(today, 30)).length;
 
 // ---------- people (M8, M9, N13, G5) ----------
-const FEMALE = new Set(['מיכל', 'רחל', 'אסתר', 'אורלי', 'יעל', 'סיגל', 'מירב', 'ענבל', 'רונית', 'גלית', 'שלומית', 'פזית', 'קרן', 'אורית', 'יפית', 'שני', 'נגה', 'הדס', 'תהל', 'אביגיל', 'רות', 'דבורה', 'שושן', 'ליאור', 'מורן', 'אלה', 'בתיה', 'הילה', 'נעמה', 'תמר']);
-const MALE = new Set(['משה', 'שלמה', 'אריה', 'יהודה', 'יונה', 'נוח', 'ישעיה', 'מתנה']);
-/** Hebrew wording needs a gender; the profile has none, so it is guessed from the first name (feminine endings and common names). */
-export function isFemale(name: string) {
-  const f = (name || '').trim().split(/\s+/)[0] || '';
-  if (FEMALE.has(f)) return true;
-  if (MALE.has(f)) return false;
-  return /[הת]$/.test(f);
-}
+/** Hebrew wording follows the person: the shared rule in v2/gender.ts. */
+export function isFemale(name: string) { return sharedIsFemale(name); }
 export const gw = (name: string, male: string, female: string) => (isFemale(name) ? female : male);
 const ROLE_WORDS: Record<Role, [string, string]> = { guest: ['אורח', 'אורחת'], staff: ['מתנדב', 'מתנדבת'], manager: ['מנהל', 'מנהלת'], owner: ['בעלים', 'בעלים'], vendor: ['בעל דוכן', 'בעלת דוכן'] };
 export const roleWord = (role: Role, female: boolean) => ROLE_WORDS[role][female ? 1 : 0];

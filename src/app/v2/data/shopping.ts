@@ -1,4 +1,5 @@
 // Shopping area data (S1-S8): the four lists, the trip (someone is at the store), history and suggestions.
+import { isFemale as sharedIsFemale } from '../gender';
 // Old shopping docs keep loading: every v2 field (tripId, notAvailable, notAvailableAt, foundWhere, taskId) is optional,
 // and a write outside a trip keeps exactly the old document shape. All "now" from clock.ts, all writes offline-first via db.ts.
 import { useMemo } from 'react';
@@ -30,17 +31,8 @@ export const doneWord = (c: ShoppingCategory) => (c === 'giveaway' ? 'נמצא' 
 // ---------- Hebrew forms ----------
 /** First name: "דנה אברהם" -> "דנה". */
 export const first = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
-const FEMALE = new Set(['מיכל', 'אסתר', 'רחל', 'תמר', 'רות', 'יעל', 'שרון', 'אורלי', 'שירלי', 'נעמי', 'הדס', 'שני', 'כרמל', 'אביגיל', 'מרים', 'דבורה', 'ענבל', 'גלי', 'מורן', 'סיון', 'אילנית', 'ליאת', 'רוני']);
-const MALE = new Set(['אליה', 'משה', 'שלמה', 'יונה', 'אריה', 'יהודה', 'נח', 'עזרא', 'ישעיה', 'ירמיה', 'זכריה', 'נחמיה', 'טוביה', 'עובדיה', 'אלישע', 'שמעיה', 'מתניה', 'יוסף', 'אהרן']);
-/** Hebrew verbs follow the person. Uses Profile.gender when it exists ('f' | 'm'), else the first name. */
-export function isFem(name: string, profile?: { gender?: string } | null): boolean {
-  if (profile?.gender === 'f') return true;
-  if (profile?.gender === 'm') return false;
-  const f = first(name);
-  if (FEMALE.has(f)) return true;
-  if (MALE.has(f)) return false;
-  return /(ה|ית)$/.test(f);
-}
+/** Hebrew verbs follow the person: the shared rule in v2/gender.ts (Profile.gender, else the first name). */
+export function isFem(name: string, profile?: { gender?: string } | null): boolean { return sharedIsFemale(name, profile); }
 export const g = (name: string, m: string, f: string, profile?: { gender?: string } | null) => (isFem(name, profile) ? f : m);
 
 // ---------- quantities (free text "6 קרטונים") ----------

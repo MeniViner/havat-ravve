@@ -1,4 +1,5 @@
 // Events area: pure helpers (no data access), shared by the screens and tests/v2-events.mjs.
+import { isFemale as sharedIsFemale } from '../../gender';
 // Numbers here are what the screens show: summary sums (M7), debts (V5, M3, M7), guests (M5), staffing (V4, M4), live (M6).
 import type { FarmEvent, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
 import { MONTHS, dayName, ddmm, hhmm, inDays, money, firstName, keyOf } from '../../format';
@@ -148,14 +149,8 @@ export function tabLines(items: TabItem[]): { key: string; name: string; qty: nu
   });
   return out;
 }
-const MALE_E = ['משה', 'אליה', 'יהודה', 'שלמה', 'אריה', 'נוה', 'יונה', 'אהרון', 'ישעיה', 'זכריה', 'ברכה'];
-const FEMALE = ['אורלי', 'מיכל', 'רחל', 'אסתר', 'תמר', 'יעל', 'קרן', 'ענבל', 'גלית', 'שירן', 'רוני', 'אביגיל', 'הדס', 'מירב', 'סיגל', 'רונית', 'נעמי', 'שני', 'אור'];
-/** A guess from the first name, for one verb ("רשמה נועה"). Unknown names read as masculine, like the rest of the app. */
-export function looksFeminine(name: string): boolean {
-  const f = firstName(name);
-  if (MALE_E.includes(f)) return false;
-  return FEMALE.includes(f) || /ה$|ית$/.test(f);
-}
+/** A guess from the first name (shared rule in v2/gender.ts). */
+export function looksFeminine(name: string): boolean { return sharedIsFemale(name); }
 /** N12 footer "רשמה נועה · 17:05, 17:40". */
 export function recordedLine(items: TabItem[]): string {
   if (!items.length) return '';

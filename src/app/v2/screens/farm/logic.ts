@@ -1,4 +1,5 @@
 // Farm area: pure helpers (no React, no Firestore), so tests/v2-farm.mjs can run them in node.
+import { isFemale as sharedIsFemale } from '../../gender';
 // Dates are 'YYYY-MM-DD' keys in Israel; hours are 'HH:MM' strings; '' means an open end.
 
 /** The minimal calendar shape these helpers read (CalendarItem in types.ts, all v2 fields optional). */
@@ -171,18 +172,8 @@ export function barSpan(h: Hours): { start: number; width: number } {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ---------- Hebrew wording ----------
-const FEMALE = new Set(['רחל', 'מיכל', 'אסתר', 'תמר', 'שירן', 'ענבל', 'הדס', 'כרמל', 'מירב', 'סיגל', 'קרן', 'יעל', 'רות', 'מורן', 'אורלי', 'שני', 'נעמי', 'אורנה', 'מרים', 'דבורה', 'שושנה', 'רינת', 'ליאת', 'אביגיל', 'אילת', 'אפרת', 'גלית', 'עדן', 'שקד']);
-const MALE_ENDING_HE = new Set(['משה', 'שלמה', 'יהודה', 'אריה', 'אליה', 'ישעיה', 'זכריה', 'יונה', 'טוביה', 'עזריה', 'מתתיה', 'נחמיה', 'ירמיה', 'שמעיה', 'יחיאל']);
-/** Grammatical gender for verbs and role words. An explicit profile field wins; otherwise a first-name guess (most Hebrew female names end in ה or ית). */
-export function isFemale(name: string, gender?: string): boolean {
-  const g = (gender || '').toLowerCase();
-  if (['f', 'female', 'נ', 'נקבה', 'אישה'].includes(g)) return true;
-  if (['m', 'male', 'ז', 'זכר', 'גבר'].includes(g)) return false;
-  const f = firstOf(name).replace(/[׳'"״]/g, '');
-  if (FEMALE.has(f)) return true;
-  if (MALE_ENDING_HE.has(f)) return false;
-  return f.endsWith('ה') || f.endsWith('ית');
-}
+/** Grammatical gender: the shared rule in v2/gender.ts. */
+export function isFemale(name: string, gender?: string): boolean { return sharedIsFemale(name, gender); }
 /** "מגיעה" / "מגיע" style pick. */
 export const g = (female: boolean, m: string, f: string) => (female ? f : m);
 /** F1 hero line end: "כל היום" / "עד 14:00" / "מגיעה ב־15:00". */

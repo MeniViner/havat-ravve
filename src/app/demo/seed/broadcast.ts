@@ -50,6 +50,13 @@ const slice: Slice = (seed) => {
     n('demo-n-tripdone', 'trip', 'הקנייה בסופר נסגרה', '5 נקנו · קפה שחור לא היה', '/shopping/history', at('2026-11-17', '17:30'), at('2026-11-17', '18:02'), { by: A.noa }),
   ]);
 
+  // The owner's bell shows 3 new (M1, Z4).
+  put(seed, `users/${U.beni}/notifications`, [
+    n('demo-n-b-cement', 'urgent', 'דחוף לכולם', '2 שקי מלט לגדר', '/shopping', at(TODAY, '09:40'), null, { by: A.noa }),
+    n('demo-n-b-tap', 'task', 'נועה לקחה משימה שהוספת', 'לסדר את השולחנות לפסטיבל', '/tasks/demo-t-tables', at(TODAY, '09:05'), null, { refId: 'demo-t-tables', by: A.noa }),
+    n('demo-n-b-trip', 'trip', 'גיל יוצא לסופר עכשיו', 'צריך משהו? עוד אפשר להוסיף', '/shopping', at(TODAY, '10:26'), null, { action: { label: 'הוספה', kind: 'addToTrip' }, by: A.gil }),
+  ]);
+
   // "צוות האירוע" in B1 counts the festival's staffing (V4). Added only when the events slice did not seed it.
   const staffing = `events/${E.fall}/staffing`;
   if (!seed.collections[staffing]?.length) {

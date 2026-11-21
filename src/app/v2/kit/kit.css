@@ -393,6 +393,7 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
   background: var(--toggle-off); display: flex; justify-content: flex-start;
 }
 .k-toggle[aria-checked="true"] { background: var(--action); justify-content: flex-end; }
+.v2 .k-toggle:disabled { opacity: 1; cursor: default; } /* the legacy button:disabled fade does not apply; the off track colour carries it */
 .k-toggle__knob { width: 26px; height: 26px; border-radius: 50%; background: #FFFFFF; }
 @media (prefers-reduced-motion: no-preference) {
   .k-toggle__knob { transition: transform .15s ease; }

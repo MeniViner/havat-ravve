@@ -35,6 +35,8 @@ export type Profile = {
   push?: { enabled: boolean; kinds?: string[]; updatedAt?: string };
   /** First entry (C9) was completed. */
   welcomedAt?: string;
+  /** v2 (optional): grammatical gender for Hebrew wording; missing = guessed from the first name (v2/gender.ts). */
+  gender?: 'f' | 'm';
 };
 
 export type Actor = { uid: string; name: string };
