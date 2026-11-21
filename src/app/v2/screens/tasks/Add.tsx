@@ -1,0 +1,202 @@
+// T5 (add a task) and S5 (add a shopping item) in one form, plus edit mode for both (/tasks/:id/edit, /shopping/:id/edit).
+// The capture bar opens it with ?text= (and ?photo=1 after a camera shot); C3 opens it with ?kind=shopping&task=<id>.
+import { useEffect, useMemo, useState } from 'react';
+import type { ScreenProps } from '../../ctx';
+import { AppScreen, useToast } from '../../core';
+import {
+  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState,
+} from '../../kit';
+import { back, param } from '../../../router';
+import { getPosition } from '../../../store';
+import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation } from '../../../types';
+import {
+  useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
+  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, type TaskInput,
+} from '../../data/tasks';
+import { useFail, usePhotoPicker, takeStashedPhoto } from './shared';
+import './tasks.css';
+
+type Kind = 'task' | 'shopping';
+type Where = '' | 'sug' | 'here' | 'other';
+type Who = 'free' | 'me' | 'other';
+type When = 'today' | 'tomorrow' | 'week' | 'none';
+const WHEN: { value: When; label: string }[] = [{ value: 'today', label: 'היום' }, { value: 'tomorrow', label: 'מחר' }, { value: 'week', label: 'השבוע' }, { value: 'none', label: 'בלי תאריך' }];
+
+export function AddScreen(p: ScreenProps) {
+  const shopEdit = typeof location !== 'undefined' && /\/shopping\/[^/]+\/edit/.test(location.pathname);
+  const taskEdit = !shopEdit && !!p.params.id;
+  const task = useTaskV2(taskEdit ? p.params.id : '', p.ctx);
+  const item = useShoppingDoc(shopEdit ? p.params.id : '');
+  if (taskEdit && !task.item) return task.loading ? <AppScreen variant="form"><div /></AppScreen> : <NotFound />;
+  if (shopEdit && !item.item) return item.loading ? <AppScreen variant="form"><div /></AppScreen> : <NotFound />;
+  return <AddForm {...p} task={taskEdit ? task.item : null} item={shopEdit ? (item.item as ShoppingItem) : null} />;
+}
+const NotFound = () => (
+  <AppScreen variant="form">
+    <FormHeader title="עריכה" onCancel={() => back('/tasks')} />
+    <EmptyState variant="card" title="הפריט לא נמצא" text="אולי נמחק בינתיים" />
+  </AppScreen>
+);
+
+function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: ShoppingItem | null }) {
+  const toast = useToast(); const fail = useFail();
+  const editing = !!(task || item);
+  const forTask = param('task');
+  const initialText = task?.title ?? item?.title ?? param('text');
+  const [text, setText] = useState(initialText);
+  const [kind, setKind] = useState<Kind>(item ? 'shopping' : task ? 'task' : param('kind') === 'shopping' ? 'shopping' : initialText ? guessKind(initialText) : 'task');
+  const [photo, setPhoto] = useState(() => task?.photo ?? item?.photo ?? (param('photo') ? takeStashedPhoto() : ''));
+  const [note, setNote] = useState(task?.note ?? item?.note ?? '');
+  const [showNote, setShowNote] = useState(!!(task?.note || item?.note));
+  const [urgent, setUrgent] = useState<boolean | null>(task ? task.urgent : item ? item.urgent : null);
+  const [busy, setBusy] = useState(false);
+
+  // ---- task fields
+  const sugId = useMemo(() => suggestPlace(text, ctx.places), [text, ctx.places]);
+  const [where, setWhere] = useState<Where>(task?.location ? 'other' : 'sug');
+  const [otherPlace, setOtherPlace] = useState(task?.location?.placeId || '');
+  const [herePos, setHerePos] = useState<TaskLocation | null>(null);
+  const [who, setWho] = useState<Who>(!task?.assignee ? 'free' : task.assignee.uid === ctx.user.uid ? 'me' : 'other');
+  const [otherWho, setOtherWho] = useState(task?.assignee && task.assignee.uid !== ctx.user.uid ? task.assignee.uid : '');
+  const [when, setWhen] = useState<When>(() => {
+    const d = task?.dueDate || '';
+    return !d ? 'none' : d === ctx.today ? 'today' : d === addDays(ctx.today, 1) ? 'tomorrow' : 'week';
+  });
+  const [managersOnly, setManagersOnly] = useState(!!task?.managersOnly);
+
+  // ---- shopping fields (derived from the text until touched)
+  const parsed = parseShopping(text);
+  const [list, setList] = useState<ShoppingCategory | null>(item?.category ?? null);
+  const [qty, setQty] = useState<string | null>(item ? item.qty : null);
+  const [link, setLink] = useState(item?.link ?? '');
+  const [showLink, setShowLink] = useState(!!item?.link);
+  const listNow: ShoppingCategory = list ?? parsed.category ?? 'super';
+  const qtyNow = qty ?? parsed.qty;
+  const urgentNow = urgent ?? (kind === 'shopping' ? parsed.urgent : parseTaskText(text).urgent);
+
+  const pick = usePhotoPicker(setPhoto);
+  useEffect(() => { if (where === 'sug' && !sugId && !task) setWhere(''); else if (where === '' && sugId && !task) setWhere('sug'); }, [sugId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sugPlace = ctx.places.find((x) => x.id === sugId);
+  const placeOptions = [
+    ...(sugPlace ? [{ value: 'sug' as Where, label: sugPlace.name }] : []),
+    { value: 'here' as Where, label: herePos?.placeName ? `כאן: ${herePos.placeName}` : 'כאן, לפי המיקום שלי' },
+    { value: 'other' as Where, label: 'אחר' },
+  ];
+  const people = ctx.team.filter((x) => x.status === 'active' && x.uid !== ctx.user.uid);
+
+  const chooseWhere = async (v: Where) => {
+    if (v === where) { setWhere(''); return; }
+    setWhere(v);
+    if (v === 'here') {
+      try {
+        const pos = await getPosition();
+        const near = nearestPlace(pos, ctx.places);
+        setHerePos(near ? { lat: near.lat, lng: near.lng, placeId: near.id, placeName: near.name } : { lat: pos.lat, lng: pos.lng });
+      } catch (e) { setWhere(''); fail(e); }
+    }
+  };
+  const locationNow = (): TaskLocation | null => {
+    if (where === 'sug' && sugPlace) return { lat: sugPlace.lat, lng: sugPlace.lng, placeId: sugPlace.id, placeName: sugPlace.name };
+    if (where === 'here') return herePos;
+    if (where === 'other') {
+      const pl = ctx.places.find((x) => x.id === otherPlace);
+      if (pl) return { lat: pl.lat, lng: pl.lng, placeId: pl.id, placeName: pl.name };
+      return task?.location && !task.location.placeId ? task.location : null;
+    }
+    return null;
+  };
+  const assigneeNow = (): Actor | null => {
+    if (who === 'me') return ctx.actor;
+    if (who === 'other') { const x = ctx.team.find((y) => y.uid === otherWho); return x ? { uid: x.uid, name: x.displayName } : null; }
+    return null;
+  };
+  const dueNow = () => (when === 'today' ? ctx.today : when === 'tomorrow' ? addDays(ctx.today, 1) : when === 'week' ? (task?.dueDate && task.dueDate > addDays(ctx.today, 1) ? task.dueDate : endOfWeek(ctx.today)) : '');
+
+  const reset = () => { setText(''); setPhoto(''); setNote(''); setShowNote(false); setUrgent(null); setQty(null); setList(null); setLink(''); setShowLink(false); setWhere(''); setWho('free'); setWhen('none'); };
+  const submit = async (more: boolean) => {
+    if (!text.trim() || busy) return;
+    if (kind === 'task' && who === 'other' && !otherWho) { toast.refused('לא נשמר. בחרו על מי המשימה'); return; }
+    setBusy(true);
+    try {
+      if (kind === 'task') {
+        const { title } = parseTaskText(text);
+        const data: TaskInput = { title, note: note.trim(), photo, location: locationNow(), dueDate: dueNow(), managersOnly: ctx.manager && managersOnly, assignee: assigneeNow(), urgent: urgentNow };
+        if (task) { await updateTask(ctx.actor, task, data); toast.show({ text: 'נשמר' }); back(`/tasks/${task.id}`); return; }
+        await createTask(ctx.actor, data);
+        toast.show({ text: `נוספה משימה: ${title}` });
+      } else {
+        const title = item ? text.trim() : parsed.title || text.trim();
+        const data = { title, qty: qtyNow, note, link, category: listNow, urgent: urgentNow, photo };
+        if (item) { await updateShopping(ctx.actor, item, data); toast.show({ text: 'נשמר' }); back(`/shopping/${item.id}`); return; }
+        await createShopping(ctx.actor, data, forTask || undefined);
+        toast.show({ text: `נוסף ל${SHOP_LISTS.find((l) => l.id === listNow)?.label}: ${title}` });
+      }
+      if (more) { reset(); setBusy(false); return; }
+      back(kind === 'task' ? '/tasks' : forTask ? `/tasks/${forTask}` : '/shopping');
+    } catch (e) { fail(e); setBusy(false); }
+  };
+
+  const listLabel = SHOP_LISTS.find((l) => l.id === listNow)?.label || '';
+  const bar = (
+    <BottomBar column={!editing}>
+      <Button size="bar" block disabled={!text.trim() || busy} onClick={() => submit(false)}>
+        {editing ? 'שמירה' : kind === 'task' ? 'הוספת משימה' : `הוספה ל${listLabel}`}
+      </Button>
+      {!editing && <Button variant="link" disabled={!text.trim() || busy} onClick={() => submit(true)}>{kind === 'task' ? 'הוספה, ועוד אחת' : 'הוספה, ועוד פריט'}</Button>}
+    </BottomBar>
+  );
+  const extras = (
+    <>
+      {photo && <img className="tasks-photo-thumb" src={photo} alt="התמונה שנבחרה" />}
+      {showNote && <TextAreaField label="הערה" value={note} onChange={(e) => setNote(e.target.value)} />}
+      {showLink && kind === 'shopping' && <Field label="קישור" ltr type="url" inputMode="url" placeholder="https://" value={link} onChange={(e) => setLink(e.target.value)} />}
+    </>
+  );
+  return (
+    <AppScreen variant="form" bar={bar}>
+      {pick.input}
+      <FormHeader title={editing ? 'עריכה' : 'הוספה'} onCancel={() => back(task ? `/tasks/${task.id}` : item ? `/shopping/${item.id}` : '/tasks')} />
+      <BigTextInput label={kind === 'task' ? 'מה צריך לעשות' : 'מה צריך לקנות'} value={text} onChange={(e) => setText(e.target.value)} autoFocus={!initialText} />
+      {!editing && <Segmented label="סוג" size="lg" value={kind} onChange={setKind} options={[{ value: 'task', label: 'משימה' }, { value: 'shopping', label: 'קנייה' }]} />}
+
+      {kind === 'task' ? (
+        <>
+          <ChoiceGroup label="איפה" value={where} onChange={chooseWhere} options={placeOptions} />
+          {where === 'other' && (
+            <ChoiceGroup label="באיזה מקום" value={otherPlace} onChange={setOtherPlace} options={ctx.places.map((x) => ({ value: x.id, label: x.name }))} />
+          )}
+          <ChoiceGroup label="על מי" value={who} onChange={setWho} options={[{ value: 'free', label: 'פנויה' }, { value: 'me', label: 'עליי' }, { value: 'other', label: 'מישהו אחר' }]} />
+          {who === 'other' && <ChoiceGroup label="מי" value={otherWho} onChange={setOtherWho} options={people.map((x) => ({ value: x.uid, label: x.displayName }))} />}
+          <ChoiceGroup label="מתי" value={when} onChange={setWhen} options={WHEN} />
+          <Inline gap={8}>
+            <Button variant="neutral" size="tall" grow icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>
+            <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
+            <Button variant={urgentNow ? 'secondary' : 'neutral'} size="tall" grow aria-pressed={urgentNow} onClick={() => setUrgent(!urgentNow)}>דחוף</Button>
+          </Inline>
+          {ctx.manager && (
+            <Card pad="md" layout="row" style={{ alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 16, fontWeight: 600 }}>רק מנהלים רואים</span>
+              <Toggle checked={managersOnly} onChange={setManagersOnly} label="רק מנהלים רואים" />
+            </Card>
+          )}
+          {extras}
+        </>
+      ) : (
+        <>
+          <ChoiceGroup label="לאיזו רשימה" value={listNow} onChange={setList} options={SHOP_LISTS.map((l) => ({ value: l.id, label: l.label }))} />
+          <div className="tasks-qty">
+            <Field label="כמות" size="sm" value={qtyNow} onChange={(e) => setQty(e.target.value)} />
+            <ChoiceGroup label="דחיפות" value={urgentNow ? 'u' : 'n'} onChange={(v) => setUrgent(v === 'u')} options={[{ value: 'n', label: 'רגיל' }, { value: 'u', label: 'דחוף' }]} />
+          </div>
+          <Inline gap={8}>
+            <Button variant="neutral" size="tall" grow icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>
+            <Button variant="neutral" size="tall" grow icon="link" iconSize={20} aria-pressed={showLink} onClick={() => setShowLink(!showLink)}>קישור</Button>
+            <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
+          </Inline>
+          {extras}
+        </>
+      )}
+    </AppScreen>
+  );
+}
