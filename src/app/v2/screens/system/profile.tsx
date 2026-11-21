@@ -8,15 +8,20 @@ import { useDemo, setDemo } from '../../../demo/store';
 import { setViewAsStaff } from '../../App';
 import type { ScreenProps } from '../../ctx';
 import type { Profile } from '../../../types';
+import { revokeThisDevice, usePush, PUSH_KINDS } from '../../data/push';
+import { PushSettings } from '../broadcast';
+import type { V2Ctx } from '../../ctx';
 import {
-  roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync, pushKindsOf, savePushKinds, PUSH_KINDS,
+  roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
   receiptOf, saveProfile, parseBirth, birthText, type ProfileDraft,
 } from '../../data/system';
 import './system.css';
 
-export function signOutEverywhere(demoOn: boolean) {
+export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
   if (demoOn) { setDemo({ persona: 'anon' }); go('/', true); return; }
-  void signOutUser().then(() => go('/', true));
+  // this phone stops getting pushes for this account (best effort; sign-out never waits for it)
+  const revoke = profile ? revokeThisDevice(profile).catch(() => {}) : Promise.resolve();
+  void Promise.race([revoke, new Promise((r) => setTimeout(r, 1500))]).then(() => signOutUser()).then(() => go('/', true));
 }
 
 /** L6 / C12: the same structure; managers and owners get the number, "view as volunteer", and no "contact managers". */
@@ -31,7 +36,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const [notifs, setNotifs] = useState(false);
   useGooglePhotoSync(p);
   const src = photoOf(p);
-  const kinds = pushKindsOf(p);
+  const kinds = usePush(p).kinds;
   const role = ctx.viewAsStaff ? 'מתנדב' : roleWord(p, ctx.owner, ctx.manager);
   const sub = [role, lead && p.customerNumber ? `מספר ${p.customerNumber}` : '', sinceText(p.createdAt)].filter(Boolean).join(' · ');
   return (
@@ -69,30 +74,21 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         {!demo.on && <Row leading={<IconTile icon="help" />} title="לראות איך האפליקציה עובדת" meta="הדגמה עם נתונים לא אמיתיים" onClick={() => go('/demo')} />}
       </ListCard>
       <div className="system-foot">
-        <Button variant="outline" size="tall" onClick={() => signOutEverywhere(demo.on)}>יציאה מהחשבון</Button>
+        <Button variant="outline" size="tall" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
         <Button variant="quiet" onClick={() => go('/delete-account')}>מחיקת החשבון</Button>
       </div>
-      <NotificationsSheet open={notifs} onClose={() => setNotifs(false)} profile={p} onError={(t) => toast.refused(t)} />
+      <NotificationsSheet open={notifs} onClose={() => setNotifs(false)} ctx={ctx} />
     </AppScreen>
   );
 }
 
-/** The notification preferences behind the L6 / C12 "התראות" row (stored on users/{uid}.push). */
-function NotificationsSheet({ open, onClose, profile, onError }: { open: boolean; onClose: () => void; profile: Profile; onError: (t: string) => void }) {
-  const kinds = pushKindsOf(profile);
-  const set = (key: string, on: boolean) => {
-    const next = on ? [...new Set([...kinds, key])] : kinds.filter((k) => k !== key);
-    savePushKinds(profile, PUSH_KINDS.map((k) => k.key).filter((k) => next.includes(k))).catch((e: Error) => onError(`לא נשמר. ${e.message}`));
-  };
+/** The notification preferences behind the L6 / C12 "התראות" row: the push area's settings (device subscription + kinds on users/{uid}.push). */
+function NotificationsSheet({ open, onClose, ctx }: { open: boolean; onClose: () => void; ctx: V2Ctx }) {
+  const kinds = usePush(ctx.profile).kinds;
   return (
     <Sheet open={open} onClose={onClose} title="התראות" aside={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`}>
-      <ListCard>
-        {PUSH_KINDS.map((k) => (
-          <Row key={k.key} className="system-togglerow" title={k.label} actions={<Toggle checked={kinds.includes(k.key)} onChange={(v) => set(k.key, v)} label={k.label} />} />
-        ))}
-      </ListCard>
-      <span className="system-note">ההתראות עובדות אחרי שמתקינים על מסך הבית.</span>
+      <PushSettings ctx={ctx} />
     </Sheet>
   );
 }
