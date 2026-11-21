@@ -102,7 +102,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   const soldSum = sold.reduce((s, t) => s + t.total, 0);
   const l = last.items[0];
   const attention = (open.length ? 1 : 0) + unstaffed.length + (n.payLaterCount ? 1 : 0);
-  const e = `?e=${id}`;
+  const e = `?e=${id}&from=live`;
   return (
     <AppScreen variant="detail" gap={10} bar={
       <BottomBar>

@@ -15,7 +15,7 @@ import {
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to } from './common';
 
-const q = (ctx: V2Ctx, id: string) => (id === ctx.eventToday?.id ? '' : `?e=${id}`);
+const q = (ctx: V2Ctx, id: string, from?: string) => (id === ctx.eventToday?.id && !from ? '' : `?e=${id}${from ? `&from=${from}` : ''}`);
 const stallOpen = (event: EventV2 | null) => !!event && !isEventClosed(event) && event.stall !== false;
 const avatarFor = (tab: Tab) => (isWalkInTab(tab) ? shortInitials(tab.guestName, true) : shortInitials(tab.guestName));
 
@@ -36,7 +36,8 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
   const orders = useMemo(() => groupOrders(tickets.items).filter((o) => !o.cancelled), [tickets.items]);
   void products;
   if (!stallOpen(event) || !event) return <NoEvent loading={loading} closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
-  const qs = q(ctx, id);
+  const qs = q(ctx, id, params.from);
+  const live = params.from === 'live';
   const openTabs = tabs.items.filter((t) => t.status === 'open' && hasTabPurchases(t));
   const recent = [...openTabs].sort((a, b) => tabLast(b).localeCompare(tabLast(a))).slice(0, 3);
   const choose = async (g: StallGuest) => {
@@ -46,8 +47,8 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
     catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
     finally { setBusy(false); }
   };
-  const onCode = (code: string) => {
-    if (!fresh(code)) return;
+  const onCode = (code: string, tapped = false) => {
+    if (!tapped && !fresh(code)) return;
     const p = parseQr(code);
     const t = p && tickets.items.find((x) => x.id === p.id && x.secret === p.secret);
     if (!t || t.eventId !== id || t.status !== 'valid') { toast.show({ text: 'הכרטיס לא נמצא באירוע הזה. אפשר לחפש לפי שם.', tone: 'error', duration: 4000 }); return; }
@@ -61,7 +62,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
         <GateCamera place={`דוכן · ${event.title}`} onExit={() => setScan(false)} exitLabel="חזרה" hint={cam.error || undefined} showHint={demo || !!cam.error}
           onSearch={() => setScan(false)}>
           {cam.render(onCode)}
-          {demo && sample && <div className="eventday-demoqr"><button type="button" className="eventday-demoqr__btn" onClick={() => onCode(qrPayload(sample))}>QR תקין</button></div>}
+          {demo && sample && <div className="eventday-demoqr"><button type="button" className="eventday-demoqr__btn" onClick={() => onCode(qrPayload(sample), true)}>QR תקין</button></div>}
         </GateCamera>
         <GateToasts />
       </>
@@ -73,7 +74,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
   const walkIns = query.trim() ? tabs.items.filter((t) => isWalkInTab(t) && t.status === 'open' && (t.guestName.toLowerCase().includes(query.trim().toLowerCase()) || (d.length >= 4 && digits(t.guestPhone).includes(d)))) : [];
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'אירוע', ...to('/event' + qs) }}
+      <TopBar back={live ? { label: 'האירוע חי', ...to(`/manage/events/${id}/live`) } : { label: 'אירוע', ...to('/event' + qs) }}
         end={<TextLink {...to('/event/stall/tabs' + qs)}>{openTabs.length === 1 ? 'חשבון פתוח אחד' : `${openTabs.length} חשבונות פתוחים`}</TextLink>} />
       <PageTitle>מי קונה?</PageTitle>
       <button type="button" className="eventday-scanbtn" onClick={() => setScan(true)}><Icon name="qr" size={24} />סריקת הכרטיס של האורח</button>
@@ -127,7 +128,7 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
   const toast = useToast();
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
-  const qs = q(ctx, id);
+  const qs = q(ctx, id, params.from);
   if (!tab && tabDoc.loading) return <AppScreen variant="detail">{null}</AppScreen>;
   if (!stallOpen(event) && !loading) return <NoEvent closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
   if (!tab || tab.status !== 'open') {
@@ -204,7 +205,7 @@ export function StallTabs({ ctx, params }: ScreenProps): ReactNode {
   const [filter, setFilter] = useState<TabFilter>('open');
   const managed = !!params.id;
   if (!event) return <NoEvent loading={loading} back={managed ? '/manage/events' : '/event'} backLabel={managed ? 'אירועים' : 'אירוע'} />;
-  const qs = q(ctx, id);
+  const qs = q(ctx, id, params.from);
   const groups: Record<TabFilter, Tab[]> = {
     open: tabs.items.filter((t) => t.status === 'open' && hasTabPurchases(t)),
     claimed: tabs.items.filter((t) => t.status === 'claimed'),

@@ -6,12 +6,13 @@ import { GateCamera, GateResult, GateButton, TopBar, PageTitle, SearchField, Sec
 import { AppScreen, useToast, useV2 } from '../../core';
 import { hhmm, money } from '../../format';
 import { isConflict } from '../../../db';
+import { nowIso } from '../../../clock';
 import { useDemo } from '../../../demo/store';
 import { navigate } from '../../../router';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
   useEventTickets, useScans, useCounters, judge, judgeCode, admit, logRejected, admitWalkIn, ensureCounters, groupOrders, orderName, ticketMatcher,
-  ticketWord, qrPayload, DEMO_QR, isEventClosed, type EventV2, type TicketV2, type Verdict, type ScanV2,
+  ticketWord, isUnpaid, qrPayload, DEMO_QR, isEventClosed, type EventV2, type TicketV2, type Verdict, type ScanV2,
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to } from './common';
 
@@ -22,31 +23,37 @@ const RESULT_WORD: Record<ScanV2['result'], string> = { ok: 'מאושר', paidAt
 function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
   const toast = useToast();
   const [view, setView] = useState<View | null>(null);
+  const [mine, setMine] = useState<{ name: string; result: ScanV2['result']; at: string } | null>(null);
+  const note = (name: string, result: ScanV2['result']) => setMine({ name, result, at: nowIso() });
   const okDetail = (t: TicketV2) => `${t.total === 1 ? 'כרטיס אחד' : `כרטיס ${t.index} מתוך ${t.total}`} · ${(t.entries || 0) === 0 ? 'כניסה ראשונה' : `כניסה ${(t.entries || 0) + 1}, יצא וחזר`}`;
   const letIn = (t: TicketV2, order: TicketV2[], pay: 'none' | 'gate' | 'later') => {
     if (!event) return;
     setView({ tone: 'ok', name: t.holderName || t.ownerName, detail: okDetail(t) });
+    note(t.holderName || t.ownerName, pay === 'gate' && order.some(isUnpaid) ? 'paidAtGate' : pay === 'later' && order.some(isUnpaid) ? 'payLater' : 'ok');
     admit(ctx.actor, event, t, order, pay).catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
   };
   const show = (v: Verdict) => {
     if (!event) return;
     if (v.kind === 'ok') return letIn(v.ticket, v.order, 'none');
     setView({ tone: v.kind, v });
+    if (v.kind === 'bad') note(v.name || 'לא מזוהה', 'rejected');
     if (v.kind === 'bad') logRejected(ctx.actor, event, { ticket: v.ticket, name: v.name, reason: v.reason }).catch(() => {});
   };
   return {
-    view, clear: () => setView(null),
+    view, mine, clear: () => setView(null),
     scan: (code: string) => { if (event) show(judgeCode(code, tickets, event.id)); },
     open: (t: TicketV2) => { if (event) show(judge(t, tickets, event.id)); },
     paid: () => { if (view?.tone === 'pay' && view.v.kind === 'pay') letIn(view.v.ticket, view.v.order, 'gate'); },
     later: () => { if (view?.tone === 'pay' && view.v.kind === 'pay') letIn(view.v.ticket, view.v.order, 'later'); },
     refuse: () => {
+      if (view?.tone === 'pay' && view.v.kind === 'pay') note(view.v.name, 'rejected');
       if (event && view?.tone === 'pay' && view.v.kind === 'pay') logRejected(ctx.actor, event, { ticket: view.v.ticket, reason: 'לא שולם', meta: `לא שולם · ${money(view.v.amount)}` }).catch(() => {});
       setView(null);
     },
     walkIn: (g: { name: string; phone: string; count: number }, pay: 'gate' | 'later') => {
       if (!event) return;
       setView({ tone: 'ok', name: g.name, detail: `${ticketWord(g.count)} · כניסה ראשונה` });
+      note(g.name, (event.price || 0) ? (pay === 'gate' ? 'paidAtGate' : 'payLater') : 'ok');
       admitWalkIn(ctx.actor, event, g, pay).catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
     },
   };
@@ -84,7 +91,7 @@ function ResultPage({ view, place, origin, onNext, onPaid, onLater, onRefuse, on
       : <GateButton onClick={onNext}>חזרה לחיפוש</GateButton>} /><GateToasts /></>;
 }
 
-const gateQuery = (ctx: V2Ctx, id: string) => (id === ctx.eventToday?.id ? '' : `?e=${id}`);
+const gateQuery = (ctx: V2Ctx, id: string, from?: string) => (id === ctx.eventToday?.id && !from ? '' : `?e=${id}${from ? `&from=${from}` : ''}`);
 
 /** E2-E5 */
 export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
@@ -98,27 +105,29 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   const fresh = useDebounce();
   useEffect(() => { if (id && !counters.loading && !counters.item && event && !isEventClosed(event)) ensureCounters(id); }, [id, counters.loading, counters.item, event]);
   if (!event || isEventClosed(event) || event.entry === false) return <NoEvent loading={loading} closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
-  const q = gateQuery(ctx, id);
+  const q = gateQuery(ctx, id, params.from);
   const place = `שער · ${event.title}`;
   const onCode = (code: string) => { if (!gate.view && fresh(code)) gate.scan(code); };
+  const tap = (code: string) => { if (!gate.view) gate.scan(code); }; // demo buttons: a deliberate tap, no camera debounce
   if (gate.view) {
     return <ResultPage view={gate.view} place={place} origin="scan" onNext={gate.clear} onPaid={gate.paid} onLater={gate.later} onRefuse={gate.refuse}
       onSearch={() => { gate.clear(); navigate('/event/gate/search' + q); }} />;
   }
-  const l = last.items[0];
+  const q0 = last.items[0];
+  const l = gate.mine && (!q0 || gate.mine.at >= q0.at) ? gate.mine : q0;
   const demoCode = (tid: string) => { const t = tickets.items.find((x) => x.id === tid); return t ? qrPayload(t) : `HR1|${tid}|00`; };
   return (
     <>
-      <GateCamera place={place} onExit={() => navigate(ctx.eventToday?.id === id ? '/event' : `/manage/events/${id}/live`)}
+      <GateCamera place={place} onExit={() => navigate(params.from === 'live' || ctx.eventToday?.id !== id ? `/manage/events/${id}/live` : '/event')}
         hint={cam.error || undefined} showHint={demo || !!cam.error}
         lastScan={l ? { text: `הקודם: ${l.name} · ${RESULT_WORD[l.result]}`, time: hhmm(l.at), tone: l.result === 'rejected' ? 'bad' : l.result === 'payLater' ? 'pay' : 'ok' } : undefined}
         onSearch={() => navigate('/event/gate/search' + q)}>
         {cam.render(onCode)}
         {demo && (
           <div className="eventday-demoqr" role="group" aria-label="קודים להדגמה">
-            <button type="button" className="eventday-demoqr__btn" onClick={() => onCode(demoCode(DEMO_QR.ok))}>QR תקין</button>
-            <button type="button" className="eventday-demoqr__btn" onClick={() => onCode(demoCode(DEMO_QR.pay))}>QR לא שולם</button>
-            <button type="button" className="eventday-demoqr__btn" onClick={() => onCode(demoCode(DEMO_QR.bad))}>QR מבוטל</button>
+            <button type="button" className="eventday-demoqr__btn" onClick={() => tap(demoCode(DEMO_QR.ok))}>QR תקין</button>
+            <button type="button" className="eventday-demoqr__btn" onClick={() => tap(demoCode(DEMO_QR.pay))}>QR לא שולם</button>
+            <button type="button" className="eventday-demoqr__btn" onClick={() => tap(demoCode(DEMO_QR.bad))}>QR מבוטל</button>
           </div>
         )}
       </GateCamera>
@@ -136,7 +145,7 @@ export function GateSearch({ ctx, params }: ScreenProps): ReactNode {
   const [walk, setWalk] = useState(false);
   const orders = useMemo(() => groupOrders(tickets.items), [tickets.items]);
   if (!event || isEventClosed(event) || event.entry === false) return <NoEvent loading={loading} closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
-  const qs = gateQuery(ctx, id);
+  const qs = gateQuery(ctx, id, params.from);
   if (gate.view) {
     return <ResultPage view={gate.view} place={`שער · ${event.title}`} origin="search" onNext={gate.clear} onPaid={gate.paid} onLater={gate.later} onRefuse={gate.refuse} onSearch={gate.clear} />;
   }
