@@ -168,20 +168,48 @@ const VERBS: Record<string, Verb> = {
   'added': { m: 'הוסיף לקניות', f: 'הוסיפה לקניות', join: ':' },
   'published': { m: 'פרסם', f: 'פרסמה', join: ':' },
   'saved': { m: 'שמר', f: 'שמרה', join: ':' },
+  // the other actions the app logs, in the words the task and shopping histories already use (data/tasks.ts, data/shopping.ts)
+  'assigned': { m: 'העביר', f: 'העבירה', join: ':' },
+  'released': { m: 'שחרר', f: 'שחררה', join: ':' },
+  'deleted': { m: 'מחק', f: 'מחקה', join: ':' },
+  'unbought': { m: 'החזיר לרשימה', f: 'החזירה לרשימה', join: ':' },
+  'found': { m: 'מצא', f: 'מצאה', join: ':' },
+  'unavailable': { m: 'סימן שלא היה במדף', f: 'סימנה שלא היה במדף', join: ':' },
+  'unpublished': { m: 'הוריד מפרסום', f: 'הורידה מפרסום', join: ':' },
+  'closed': { m: 'סגר', f: 'סגרה', join: ':' },
+  'reopened': { m: 'פתח מחדש', f: 'פתחה מחדש', join: ':' },
 };
+/** Same action, other meaning on another kind: a vendor invited to an event, a ticket stopped at the gate. */
+const KIND_VERBS: Record<string, Verb> = {
+  'event:invited': { m: 'הזמין', f: 'הזמינה', join: ':' },
+  'event:added': { m: 'הוסיף', f: 'הוסיפה', join: ':' },
+  'event:removed': { m: 'הסיר', f: 'הסירה', join: ':' },
+  'ticket:rejected': { m: 'סרק', f: 'סרקה', join: ':' },
+};
+/** Role labels in older texts carry both forms ("מתנדב/ת"): keep the one that fits the person. */
+const roleFor = (label: string, name: string) => label.replace(/\/ת$/, isFemale(name) ? 'ת' : '');
 const KIND_WORD: Record<string, string> = { task: 'משימות', task_private: 'משימות מנהלים', shopping: 'קניות', event: 'אירועים', ticket: 'כרטיסים', tab: 'דוכן', place: 'מקומות', visit: 'ביקורים', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
 /**
  * One feed line: "בני אישר תשלום: 150 ₪ · רוני לוי" + meta "פסטיבל הסתיו · 3 כרטיסים".
  * Team members appear by first name, guests by full name. The text's first segment goes in the line, the rest is the meta
  * (a text with a line break puts everything before it in the line). Shopping "created" reads "הוסיף לקניות".
  */
-export function activityLine(a: Pick<Activity, 'kind' | 'action' | 'text' | 'by'>, team: Set<string>) {
+export function activityLine(a: Pick<Activity, 'kind' | 'action' | 'text' | 'by'> & { subjectUid?: string }, team: Set<string>) {
   const who = team.has(a.by.uid) ? (a.by.name.trim().split(/\s+/)[0] || a.by.name) : a.by.name;
   const female = isFemale(a.by.name);
   const action = a.kind === 'shopping' && a.action === 'created' ? 'added' : a.action;
-  const v = VERBS[action] || { m: action, f: action, join: ':' as const };
+  const took = action === 'assigned' && !!a.subjectUid && a.subjectUid === a.by.uid;
+  const v = took ? { m: 'לקח', f: 'לקחה', join: ':' as const } : KIND_VERBS[`${a.kind}:${action}`] || VERBS[action] || { m: action, f: action, join: ':' as const };
   let text = a.text || '';
-  if (action === 'role') { const m = text.match(/^(.*?): (.*) ← (.*)$/); if (m) text = `${m[1]}, ${m[3]}`; }
+  let m: RegExpMatchArray | null;
+  if (action === 'role' && (m = text.match(/^(.*?): (.*) ← (.*)$/))) text = `${m[1]}, ${roleFor(m[3], m[1])}`;
+  // older texts repeat the action with both gender forms ("מיכל בר נחסם/ה"): the verb already says it
+  else if ((action === 'blocked' || action === 'unblocked') && a.kind === 'user') text = text.replace(/ (נחסם|שוחרר)\/ה$/, '');
+  else if (action === 'joined' && / נרשם\/ה$/.test(text)) text = '';
+  else if (action === 'invited' && a.kind === 'user' && (m = text.match(/^(.*) הוגדר\/ה מראש כ(.*)$/))) text = `${m[1]} · ${roleFor(m[2], '')}`;
+  else if (action === 'invited' && a.kind === 'event') text = text.replace(/ הוזמן לדוכן$/, '');
+  else if (a.kind === 'event' && (action === 'closed' || action === 'reopened')) text = text.replace(/ (נסגר|נפתח מחדש)$/, '');
+  else if (action === 'assigned' && (m = text.match(/^(.*) ← (.*)$/))) text = took ? m[1] : `${m[1]} · ל${m[2].trim().split(/\s+/)[0]}`;
   let head = '', meta = '';
   if (text.includes('\n')) [head, meta] = [text.split('\n')[0], text.split('\n').slice(1).join(' · ')];
   else if (v.join === '') meta = text;

@@ -100,6 +100,20 @@ assert.deepEqual(line('donation', 'claimed', '180 ₪ · תרומה · לזכר 
 assert.deepEqual(line('shopping', 'created', 'חלב 3% · דחוף · סופר', 'demo-u-dana', 'דנה אברהם'), { title: 'דנה הוסיפה לקניות: חלב 3%', meta: 'דחוף · סופר' });
 assert.deepEqual(line('user', 'role', 'עומר לוי: מנהל/ת ← מתנדב', 'demo-u-noa', 'נועה שחר'), { title: 'נועה שינתה תפקיד: עומר לוי, מתנדב', meta: 'אנשים' });
 assert.deepEqual(line('visit', 'requested', 'שישי 27.11 · 8 אנשים', 'demo-u-ester', 'אסתר כהן'), { title: 'אסתר כהן ביקשה ביקור', meta: 'שישי 27.11 · 8 אנשים' });
+// every logged action reads in Hebrew (smoke round 1: "דנה assigned: ..."), older "/ה" texts lose the doubled verb
+const line2 = (kind, action, text, uid, name, subjectUid) => c.activityLine({ kind, action, text, by: { uid, name }, subjectUid }, team);
+assert.deepEqual(line2('task', 'assigned', 'להביא שק מלט ← יואב פרץ', 'demo-u-dana', 'דנה אברהם', 'demo-u-yoav'), { title: 'דנה העבירה: להביא שק מלט', meta: 'ליואב' });
+assert.deepEqual(line2('task', 'assigned', 'להביא שק מלט ← יואב פרץ', 'demo-u-yoav', 'יואב פרץ', 'demo-u-yoav'), { title: 'יואב פרץ לקח: להביא שק מלט', meta: 'משימות' });
+assert.deepEqual(line('user', 'blocked', 'מיכל בר נחסם/ה', 'demo-u-dana', 'דנה אברהם'), { title: 'דנה חסמה: מיכל בר', meta: 'אנשים' });
+assert.deepEqual(line('user', 'unblocked', 'מיכל בר שוחרר/ה', 'demo-u-beni', 'בני גוטמן'), { title: 'בני שחרר חסימה: מיכל בר', meta: 'אנשים' });
+assert.deepEqual(line('user', 'joined', 'נגה שמיר נרשם/ה', 'u-noga', 'נגה שמיר'), { title: 'נגה שמיר נרשמה', meta: 'אנשים' });
+assert.deepEqual(line('user', 'invited', 'a@b.com הוגדר/ה מראש כמתנדב/ת', 'demo-u-dana', 'דנה אברהם'), { title: 'דנה הגדירה תפקיד: a@b.com', meta: 'מתנדב' });
+assert.deepEqual(line('user', 'role', 'מיכל בר: אורח/ת ← מתנדב/ת', 'demo-u-beni', 'בני גוטמן'), { title: 'בני שינה תפקיד: מיכל בר, מתנדבת', meta: 'אנשים' });
+assert.deepEqual(line('event', 'invited', 'גבינות העמק הוזמן לדוכן', 'demo-u-dana', 'דנה אברהם'), { title: 'דנה הזמינה: גבינות העמק', meta: 'אירועים' });
+assert.deepEqual(line('event', 'closed', 'פסטיבל החורף נסגר', 'demo-u-dana', 'דנה אברהם'), { title: 'דנה סגרה: פסטיבל החורף', meta: 'אירועים' });
+for (const a of ['assigned', 'released', 'deleted', 'unbought', 'found', 'unavailable', 'unpublished', 'closed', 'reopened', 'rejected', 'removed', 'added']) {
+  assert.doesNotMatch(line('event', a, 'משהו', 'demo-u-dana', 'דנה אברהם').title + line('task', a, 'משהו', 'demo-u-dana', 'דנה אברהם').title, /[a-z]/, a);
+}
 assert.equal(c.activityGroup('donation'), 'money');
 assert.equal(c.activityGroup('visit'), 'people');
 assert.equal(c.activityGroup('shopping'), 'tasks');
