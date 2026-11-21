@@ -2,7 +2,7 @@
 
 Each designed screen is opened in demo mode (390x844, device scale 2) with the persona, scenario and steps from `docs/demo-coverage.md`, and compared pixel by pixel with `design/png/<id>.png`.
 
-- Latest full run: `docs/visual-check/final/`. Each screen has `<id>.pair.jpg` (design on the left, app on the right) ; scores are in `results.json`. The full-size `<id>.actual.png` files are not committed: re-run the check to get them.
+- Latest full run: `docs/visual-check/final/`. Each screen has `<id>.pair.jpg` (design on the left, app on the right); scores are in `results.json`. The full-size `<id>.actual.png` files are not committed: re-run the check to get them.
 - Earlier verifier passes, with notes per screen: `A/`, `B/`, `C/`.
 - Re-run it: `node scripts/dev.mjs`, then `node scripts/visual-check.mjs --out=docs/visual-check/final --design=havat-raveh-redesign/design`.
 
