@@ -130,21 +130,7 @@ export function saveProfile(p: Profile, d: ProfileDraft) {
 }
 
 // ---------- notifications preferences (L6 / C12 row) ----------
-export const PUSH_KINDS: { key: string; label: string }[] = [
-  { key: 'broadcast', label: 'הודעות לצוות' },
-  { key: 'task', label: 'משימה חדשה הוקצתה לי' },
-  { key: 'urgent', label: 'משימה דחופה לכולם' },
-  { key: 'trip', label: 'מישהו יצא לקניות' },
-  { key: 'event', label: 'תזכורת ביום אירוע' },
-];
-export const DEFAULT_PUSH_KINDS = ['broadcast', 'task', 'urgent'];
-export const pushKindsOf = (p: Profile) => (p.push?.kinds ?? DEFAULT_PUSH_KINDS).filter((k) => PUSH_KINDS.some((x) => x.key === k));
-export async function savePushKinds(p: Profile, kinds: string[]) {
-  if (kinds.length && !getDemo().on && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-    try { await Notification.requestPermission(); } catch { /* the preference is kept; the phone asks again later */ }
-  }
-  return write.update('users', p.uid, { push: { enabled: kinds.length > 0, kinds, updatedAt: nowIso() }, updatedAt: nowIso() });
-}
+// push preferences are saved by the push area (src/app/v2/data/push.ts), which keeps the device list
 
 // ---------- counts and presence (L6 / C12) ----------
 /** Tasks I marked done today, this week (from Sunday) and this month. */

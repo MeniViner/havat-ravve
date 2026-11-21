@@ -156,11 +156,7 @@ assert.equal(m.demoDoc('users/demo-u-yoav').photoSource, 'none');
 await sys.saveCustomPhoto('demo-u-yoav', 'data:image/jpeg;base64,AAAA');
 after = m.demoDoc('users/demo-u-yoav');
 assert.equal(after.photoSource, 'custom'); assert.equal(after.photo, 'data:image/jpeg;base64,AAAA');
-await sys.savePushKinds(after, ['task', 'trip']);
-after = m.demoDoc('users/demo-u-yoav');
-assert.deepEqual(after.push.kinds, ['task', 'trip']); assert.equal(after.push.enabled, true);
-await sys.savePushKinds(after, []);
-assert.equal(m.demoDoc('users/demo-u-yoav').push.enabled, false, 'all kinds off = push off');
+// push preferences moved to the push area (src/app/v2/data/push.ts, tested in tests/v2-broadcast.mjs and tests/api.mjs)
 await sys.markWelcomed('demo-u-yoav', { displayName: 'יואב פרץ', phone: '052-1234567' });
 assert.ok(m.demoDoc('users/demo-u-yoav').welcomedAt, 'C9 marks the first entry');
 

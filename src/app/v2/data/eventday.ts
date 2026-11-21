@@ -324,7 +324,8 @@ export async function saveCash(actor: Actor, eventId: string, which: 'gate' | 's
  *  phones, open tabs and pay-later orders show as debts (V5 derives them). Reopen until noon the next day. */
 export async function closeEvent(actor: Actor, event: FarmEvent, cash: Cash | null) {
   const at = nowIso();
-  const closed: EventClose = { at, by: actor, cashGate: cash?.gate?.amount || 0, cashGateBy: cash?.gate?.by || '', cashStall: cash?.stall?.amount || 0, cashStallBy: cash?.stall?.by || '', reopenUntil: nextNoon(at) };
+  void cash; // already saved in counters/cash; the event document is public
+  const closed: EventClose = { at, by: actor, reopenUntil: nextNoon(at) };
   await write.update('events', event.id, { closed, updatedAt: at });
   logActivity(actor, 'event', event.id, 'closed', `${event.title} נסגר`, { eventId: event.id });
 }

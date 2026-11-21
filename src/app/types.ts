@@ -301,7 +301,8 @@ export type LiveCounters = { entered: number; paidAtGate: number; payLater: numb
 export type Staffing = { id: string; station: string; people: { uid: string; name: string; hours: string }[]; needed: number };
 
 /** Event close (Y5). Stored on the event document as `closed`. */
-export type EventClose = { at: string; by: Actor; cashGate: number; cashGateBy: string; cashStall: number; cashStallBy: string; reopenUntil: string };
+/** events/{id}.closed. Public with the event, so it holds no money: the cash counts live in events/{id}/counters/cash (managers only). */
+export type EventClose = { at: string; by: Actor; reopenUntil: string };
 
 /** Debts (V5): derived from pay-later tickets and unpaid tabs; reminders stamped on the source document as reminderSentAt. */
 export type Debt = { id: string; kind: 'tickets' | 'tab'; refId: string; eventId: string; name: string; phone: string; what: string; amount: number; reminderSentAt: string | null };

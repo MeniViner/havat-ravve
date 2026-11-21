@@ -3,7 +3,7 @@
 // New, optional fields (see docs/redesign-data/events.md): products.unit, tickets.reminderSentAt, tabs.reminderSentAt / claimedAt,
 // files.mime / size, events/{id}/staffing/{station}.
 import { useMemo } from 'react';
-import { useList, useDoc, write, transact, newId, ConflictError } from '../../db';
+import { useList, useDoc, write, transact, newId, ConflictError, serverNow } from '../../db';
 import { nowIso } from '../../clock';
 import { logActivity } from '../../activity';
 import {
@@ -80,7 +80,7 @@ export async function addGuestOrder(actor: Actor, e: FarmEvent, g: { name: strin
   await write.batch(ops);
   logActivity(actor, 'ticket', orderId, 'ordered', `${g.name.trim()} · ${g.count} כרטיסים · ${e.title} · נוסף/ה על ידי ${actor.name}`, { eventId: e.id });
   if (g.paid && e.price > 0) {
-    await write.batch(ids.map((id) => ({ op: 'update' as const, col: 'tickets', id, data: { paymentStatus: 'paid', paidAt: now, updatedAt: now } })));
+    await write.batch(ids.map((id) => ({ op: 'update' as const, col: 'tickets', id, data: { paymentStatus: 'paid', paidAt: serverNow(), updatedAt: now } })));
     logActivity(actor, 'ticket', orderId, 'paid', `${g.name.trim()} · ${e.title} · ${e.price * g.count} ₪ · ${g.count} כרטיסים`, { eventId: e.id });
   }
   return orderId;
