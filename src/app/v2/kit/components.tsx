@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type CSSProperties,
@@ -1381,6 +1382,39 @@ export function Sheet({ open, onClose, title, aside, children, contained, classN
         {children}
       </section>
     </div>
+  );
+}
+
+export interface ConfirmSheetProps extends Base {
+  open: boolean;
+  onClose: () => void;
+  /** The question: "למחוק את המשימה?" */
+  title: ReactNode;
+  /** One line saying what happens (what goes with it, what stays). */
+  text?: ReactNode;
+  /** The red button: "מחיקה", "כן, למחוק". */
+  confirmLabel: string;
+  cancelLabel?: string;
+  /** Runs once per press; both buttons wait while it runs. */
+  onConfirm: () => unknown;
+}
+/** The one confirmation before anything is deleted: a Sheet with the question, one line, a red outlined button and "ביטול". */
+export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelLabel = 'ביטול', onConfirm, className, style }: ConfirmSheetProps) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!open) setBusy(false); }, [open]);
+  const go = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onConfirm(); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet open={open} onClose={busy ? () => {} : onClose} title={title} className={cx('k-confirm', className)} style={style}>
+      {text && <p className="k-confirm__text">{text}</p>}
+      <div className="k-confirm__actions">
+        <Button variant="danger" size="lg" block className="k-confirm__go" disabled={busy} onClick={go}>{confirmLabel}</Button>
+        <Button variant="secondary" size="lg" block disabled={busy} onClick={onClose}>{cancelLabel}</Button>
+      </div>
+    </Sheet>
   );
 }
 

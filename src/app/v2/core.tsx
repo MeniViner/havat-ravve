@@ -58,6 +58,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return <ToastCtx.Provider value={api}>{children}</ToastCtx.Provider>;
 }
 export const useToast = () => useContext(ToastCtx);
+/** A confirmed delete (ConfirmSheet's onConfirm): runs it, then `after` (usually back to the list) and a short "נמחק".
+ *  A refusal shows the red X1 toast and stays put. Resolves true when it went through. */
+export function useRemove() {
+  const toast = useToast();
+  return useCallback(async (fn: () => Promise<unknown>, o: { text?: string; after?: () => void } = {}) => {
+    try { await fn(); } catch (e) {
+      const m = (e as Error)?.message || '';
+      toast.refused(m.startsWith('לא נשמר.') ? m : `לא נשמר. ${m}`.trim());
+      return false;
+    }
+    o.after?.();
+    toast.show({ text: o.text || 'נמחק', check: true, duration: 3000 });
+    return true;
+  }, [toast]);
+}
 
 // ---------- links that leave the app ----------
 const digits = (phone: string) => phone.replace(/[^\d+]/g, '');

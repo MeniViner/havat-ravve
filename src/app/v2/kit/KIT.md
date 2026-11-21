@@ -106,6 +106,7 @@ Visual QA: `node scripts/kit-gallery.mjs <outDir> --design <havat-raveh-redesign
 | `Strip` | `tone` ink/warm/red/amber/green, `icon`, `action`, `role` | Full-width strip in `Screen top` (C8 offline: `tone="ink" icon="offline"`). |
 | `DemoStrip` | `roleName`, `day`, `onSwitch`, `onExit`, `expanded` | 28px demo strip. Z2-Z5. |
 | `Sheet` | `open`, `onClose`, `title`, `aside`, `contained` | Bottom sheet; Escape or a tap on the backdrop closes it. Z3. |
+| `ConfirmSheet` | `open`, `onClose`, `title`, `text`, `confirmLabel`, `cancelLabel`, `onConfirm` | The confirmation before every delete: question, one line on what happens, red outlined button, "ביטול". Both wait while `onConfirm` runs. |
 | `EmptyState` | `variant` fill/card/done/blocked, `icon`, `title`, `text`, `action` | S3, D10, L5, X2. |
 | `ProgressSegments` | `total`, `done`, `tone` ink/warm, `caption` | T1 ("3 מתוך 5 שלך בוצעו"), P1. |
 | `Bar` | `value` 0-1, `tone` default/hero/chart | |

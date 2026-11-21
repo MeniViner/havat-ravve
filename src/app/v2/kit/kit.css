@@ -588,6 +588,9 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
   .k-sheet__panel { animation: k-sheet-in .2s ease-out; }
   .k-sheet__backdrop { animation: k-fade-in .2s ease-out; }
 }
+.k-confirm__text { margin: 0; font-size: 16px; line-height: 1.45; color: var(--soft); }
+.k-confirm__actions { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.v2 .k-confirm__go { border: 1.5px solid var(--red); }
 @keyframes k-sheet-in { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
 @keyframes k-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
