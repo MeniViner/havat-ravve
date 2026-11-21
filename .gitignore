@@ -29,3 +29,4 @@ android/local.properties
 android/*.apk
 android/*.aab
 havat-raveh-redesign/
+docs/visual-check/final/*.actual.png

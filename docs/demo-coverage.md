@@ -10,7 +10,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | T4-Done | staff | regular | /tasks | click:קראתי; button:בוצע |
 | T3-Task | staff | regular | /tasks/demo-t-toolbox |  |
 | C3-TaskLinks | staff | regular | /tasks/demo-t-tables |  |
-| C4-Assign | owner | regular | /tasks/demo-t-tap/assign |  |
+| C4-Assign | owner | regular | /tasks/demo-t-tap/assign | click:יואב פרץ |
 | T5-Add | staff | regular | /new?text=לתקן את הברז ליד החממה |  |
 | T6-History | staff | regular | /tasks/history |  |
 | L5-MineEmpty | staff | regular | /tasks?view=mine | click:קראתי; demo:empty |
@@ -117,10 +117,10 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | D8-Helper | vendor | regular | /vendor/stall/helpers/new |  |
 | D11-HelperHome | helper | regular | /vendor |  |
 | D5-Day | vendor | eventDay | /vendor |  |
-| D6-DayLive | vendor | eventDay | /vendor | click:הגעתי לחווה |
+| D6-DayLive | vendor | eventDay | /vendor | click:הגעתי לחווה; wait:6500 |
 | D9-Summary | vendor | afterEvent | /vendor/events/demo-e-festival/summary | click:מצוין |
 | Z1-DemoStart | staff | regular | /demo |  |
 | Z2-DemoBanner | staff | regular | /tasks | click:קראתי |
-| Z3-DemoSwitch | staff | regular | /tasks | click:נתוני דמו |
+| Z3-DemoSwitch | staff | regular | /tasks | click:קראתי; click:נתוני דמו |
 | Z4-DemoOwner | owner | regular | /manage |  |
 | Z5-DemoVendor | vendor | regular | /vendor |  |

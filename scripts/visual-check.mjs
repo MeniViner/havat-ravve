@@ -57,7 +57,7 @@ for (const r of rows) {
       await page.waitForTimeout(250);
     }
     // the designs show the demo strip only on Z2-Z5: hide it elsewhere so the comparison lines up
-    if (!r.id.startsWith('Z') && !args.includes('--strip')) await page.addStyleTag({ content: '.k-demo{display:none!important}' });
+    if (!r.id.startsWith('Z') && !args.includes('--strip')) await page.addStyleTag({ content: '.k-demo{display:none!important}#root>.v2:not(.k-screen):has(>.k-demo){display:none!important}.v2:has(>.k-demo)+.k-screen{height:100dvh!important}.v2:has(>.k-demo)+.v2 .system-suspended{min-height:100dvh!important}' });
     await page.waitForTimeout(100);
     const full = steps.includes('fullpage');
     // the v2 screen body scrolls on its own: let it grow so a full-page shot shows everything

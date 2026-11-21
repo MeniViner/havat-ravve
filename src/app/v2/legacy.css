@@ -9,4 +9,4 @@
 /* the offline strip is a button that opens C8 */
 .v2 .k-strip-btn{ display:block; width:100%; padding:0; border:0; background:none; text-align:start; font:inherit; color:inherit; cursor:pointer; }
 /* wide screens: the 390-480 column sits on the app background */
-body:has(#root > .v2.k-screen){ background:#F3F4F2; }
+body:has(#root > .v2.k-screen), body:has(#root > .v2 > .system-suspended){ background:#F3F4F2; }

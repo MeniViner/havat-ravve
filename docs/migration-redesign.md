@@ -23,6 +23,11 @@ Almost nothing is renamed or removed. Old documents keep loading: every new fiel
    ACCESS_TOKEN="$(gcloud auth print-access-token)" node scripts/migrate-redesign.mjs --project=havat-ravve --apply
    ```
    It also lists any event-level vendor records that still carry notes, so you can decide whether those should stay visible to the vendor.
+
+   Tested on the emulator (2026-11-21) with three vendors: one with notes, one empty, and one whose private notes already existed. The dry run changed nothing. `--apply` moved the notes, merged them with the existing private notes, and blanked the public field. A second `--apply` reported "0 to change". To repeat the test:
+   ```
+   npx firebase emulators:exec --only firestore --project demo-havat-ravve "bash scripts/proofs/migrate-proof.sh"
+   ```
 3. **Rules and the app together.** Merging the PR into `main` deploys hosting, rules and indexes (`.github/workflows/deploy.yml`). Merge only after steps 1 and 2.
 4. **Push notifications (optional, later).** Follow `docs/push-setup.md`: generate keys, set the Worker secrets, deploy the Worker, then flip `PUSH_MODE`. Until then, everything still appears inside the app under התראות.
 
