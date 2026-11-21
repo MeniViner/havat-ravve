@@ -19,7 +19,7 @@
 .farm-cardhead__aside { font-size: 14px; color: var(--soft); }
 .farm-list { list-style: none; margin: 0; padding: 0; }
 .farm-item {
-  display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 2px 14px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px; min-height: 55px; padding: 2px 14px; border-top: 1px solid var(--line); /* the design: 50px content + 2px padding + 1px line (content-box) */
   color: var(--ink); text-decoration: none; width: 100%; background: transparent; border-inline: 0; border-bottom: 0; font: inherit; text-align: start;
 }
 button.farm-item, a.farm-item { cursor: pointer; }

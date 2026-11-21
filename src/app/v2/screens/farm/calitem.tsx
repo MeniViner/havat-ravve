@@ -44,8 +44,13 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
   const [reminder, setReminder] = useState(existing ? !!existing.reminder : true);
   const start = date < today || date > addDays(today, 6) ? date : today;
   const rank = (r: string) => (r === 'owner' ? 0 : r === 'manager' ? 1 : 2);
+  // the design's order: the people already taking part first (in the order they were added), then owners, managers,
+  // volunteers. Re-sorted only when the form opens or "מי רואה" changes, so chips never jump under a finger.
+  const [first, setFirst] = useState<string[]>(() => existing?.participants || []);
+  const pickAudience = (a: 'all' | 'managers') => { setAudience(a); setFirst(participants); };
+  const pos = (uid: string) => { const i = first.indexOf(uid); return i < 0 ? first.length : i; };
   const people = ctx.team.filter((p) => audience === 'all' || rank(p.role) < 2)
-    .sort((a, b) => rank(a.role) - rank(b.role) || a.displayName.localeCompare(b.displayName, 'he'));
+    .sort((a, b) => pos(a.uid) - pos(b.uid) || rank(a.role) - rank(b.role) || a.displayName.localeCompare(b.displayName, 'he'));
   const extra = participants.filter((u) => !people.some((p) => p.uid === u));
   const h = { from: normTime(from) || from, to: normTime(to) || to };
   const fromBad = !!from && !normTime(from), toBad = !!to && !normTime(to);
@@ -85,8 +90,8 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
       <div className="farm-group">
         <span className="farm-group__label">מי רואה</span>
         <div className="k-chips k-chips--wrap">
-          <ChoiceChip selected={audience === 'all'} onClick={() => setAudience('all')}>כל הצוות</ChoiceChip>
-          <ChoiceChip selected={audience === 'managers'} onClick={() => setAudience('managers')}>מנהלים בלבד</ChoiceChip>
+          <ChoiceChip selected={audience === 'all'} onClick={() => pickAudience('all')}>כל הצוות</ChoiceChip>
+          <ChoiceChip selected={audience === 'managers'} onClick={() => pickAudience('managers')}>מנהלים בלבד</ChoiceChip>
         </div>
       </div>
       <div className="farm-group">
