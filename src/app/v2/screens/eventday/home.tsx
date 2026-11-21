@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { Hero, Icon, StatRow, StatTile } from '../../kit';
 import { AppScreen, RootHead } from '../../core';
 import { dayOverline, hhmm } from '../../format';
-import { now } from '../../../clock';
+import { now, nowMs } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
 import { useEventTickets, useEventTabs, useStallProducts, myScans, mySales, isEventClosed } from '../../data/eventday';
 import { useRouteEvent, NoEvent, to } from './common';
@@ -23,7 +23,7 @@ export function EventHome({ ctx, params }: ScreenProps): ReactNode {
     <AppScreen variant="root">
       <RootHead overline={`${dayOverline()} · ${hhmm(now())}`} title="אירוע" />
       <Hero>
-        <span className="eventday-hero-over">קורה עכשיו · {hhmm(event.start)}–{hhmm(event.end)}</span>
+        <span className="eventday-hero-over">{nowMs() >= Date.parse(event.start) ? 'קורה עכשיו' : 'היום'} · {hhmm(event.start)}–{hhmm(event.end)}</span>
         <h2 className="eventday-hero-title">{event.title}</h2>
         <span className="eventday-hero-line">
           <Icon name="check" size={18} />
