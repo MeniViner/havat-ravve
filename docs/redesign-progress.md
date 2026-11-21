@@ -61,5 +61,36 @@ Branch `redesign/v2`. Nothing merged to `main`, nothing deployed. Development on
 - Push: Web Push and FCM are both ready behind `PUSH_MODE` on the Worker (off until Meni sets it). The Worker cron drains `push_jobs`. Setup and an iPhone PWA test script are in `docs/push-setup.md` and `scripts/push-test.mjs`.
 - Green on 2026-11-21: both typechecks, `npm test`, `npm run test:rules` (553 + 72 v2 cases and the old suites), `npm run test:api` (323), and all ten `tests/v2-*.mjs`.
 
-## Stage 5: emulator smoke cycle (running)
-A fresh agent runs every role end to end on the emulators and fixes what it finds, repeating until one cycle is clean. Results will go to `docs/smoke/redesign/README.md`.
+## Stage 5: emulator smoke cycle (done)
+A fresh agent ran every role end to end on the emulators. The cycle covered:
+- a volunteer's day and a manager's day
+- the full event lifecycle with a vendor invited through `?k=`
+- role boundaries
+- offline use, and a refused write
+- demo mode for every persona and scenario
+- the guest flows
+
+Every Google host was blocked in the browser, and no request outside localhost got through. Report and screenshots: `docs/smoke/redesign/README.md`. Scripts: `scripts/smoke-cycle.mjs` and `scripts/smoke-seed.mjs`.
+
+Round 1 found 7 defects, each fixed in its own commit:
+- the C9 inviter's verb gender
+- English verbs in the N14 feed
+- a double vendor-link claim on remount
+- "undefined" for a supply request in M2
+- E1 saying "קורה עכשיו" before the start
+- two vendor screens navigating during render
+- X1 not naming who took the task
+
+Round 2 ran all 8 items in one go: 236 of 236 checks passed, with no console errors.
+
+After the run, a task ticked under "בלי מקום" now stays struck through like in every other group (T4).
+
+## Open for Meni
+- Deploy steps, in order: `docs/migration-redesign.md` (indexes, then the vendor-notes move, then merge), then push setup in `docs/push-setup.md`.
+- Product questions from the area work:
+  - town, birth date, photo and push devices are visible to the whole team
+  - a blocked person can still edit their own profile document
+  - event crew means all active staff
+  - CSV export has no place in the new screens (code kept)
+  - the optional gender field
+- Smoke-run notes: a pending volunteer sees the guest app until approved; vendor screens follow the event's end time rather than the manager's close.
