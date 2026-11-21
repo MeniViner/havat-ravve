@@ -85,6 +85,27 @@ Round 2 ran all 8 items in one go: 236 of 236 checks passed, with no console err
 
 After the run, a task ticked under "בלי מקום" now stays struck through like in every other group (T4).
 
+## Delete everywhere (2026-11-21)
+Meni asked for delete on everything managed, behind a confirmation. Every delete now goes through one kit `ConfirmSheet` (red "מחיקה" or "הסרה", grey "ביטול"). After a delete the screen goes back to its list and a short toast says what was removed. Delete only shows to the roles the rules allow.
+
+Entities and who can delete them:
+- Tasks: a manager deletes any task; a team member deletes a one-time task they made. On a recurring task only today's copy goes, and the template remembers the skipped day (`skip`, at most 30), so it does not come back.
+- Managers: recurring tasks, places, shopping items, shopping trips (from the finished-trip screen), calendar items, presence days, events, products, event files, ticket orders, stall tabs, stalls from the pool (with their access, invite links, notes and event records), a stall taken off one event (X on the N8 row), visit requests (with the calendar entry), donations, items in the "לטיפול" list, stall requests.
+- The owner only: projects (with all their steps), broadcasts, people (not themselves, not the owner email).
+- The six instant deletes that existed before (recurring tasks, places, calendar items, presence, products, the event's inline confirm) now confirm too. The broken undo on places and recurring tasks is gone.
+
+Rules changed: `task_templates` accept `skip`; managers delete shopping trips (not other staff); a manager deletes a project step that is not done, the owner deletes done steps too. Rules tests added for every delete.
+
+New Hebrew strings:
+- Buttons: "מחיקת המשימה", "מחיקת הקנייה", "מחיקת ההזמנה", "מחיקת בעל הדוכן", "מחיקת הפרויקט", "מחיקת {שם}", "מחיקה" (top bar), "מחיקה מהרשימה" (X on a "לטיפול" card), "הסרה מהאירוע: {שם}" (X on N8).
+- Titles: "למחוק את המשימה?", "למחוק את המשימה החוזרת?", "למחוק את המקום?", "למחוק מהרשימה?", "למחוק את הקנייה?", "למחוק מהיומן?", "להסיר מהיומן?", "למחוק את האירוע?", "למחוק את המוצר?", "למחוק את הקובץ?", "למחוק את ההזמנה?", "למחוק את החשבון?", "למחוק את בעל הדוכן?", "להסיר מהאירוע?", "למחוק את הפרויקט?", "למחוק את ההודעה?", "למחוק את {שם}?", "למחוק את הבקשה?", "למחוק את התרומה?".
+- One-line texts, for example: "רק המשימה של היום תימחק. "{משימה}" תמשיך לחזור בימים הבאים.", "ההזמנה של {שם} תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.", "החשבון של {שם} יימחק לגמרי, גם מהדוחות. כדי לוותר על התשלום ולהשאיר תיעוד, יש מחילה.", and for a person: "היא תימחק מהאפליקציה. הכרטיסים, התרומות והביקורים נשארים. אם תיכנס שוב עם אותו חשבון גוגל, תתחיל מההתחלה כמו חדשה." (gendered).
+- Toasts: "נמחק", "המשימה נמחקה", "המשימה החוזרת נמחקה", "המקום נמחק", "הקנייה נמחקה", "הפריט הוסר מהיומן", "הוסר מהיומן", "ההזמנה נמחקה", "החשבון נמחק", "{דוכן} נמחק מהמאגר", "הוסר מהאירוע", "הפרויקט נמחק", "ההודעה נמחקה", "{שם} נמחק/נמחקה", "הבקשה נמחקה", "התרומה נמחקה".
+
+Left as they are, on purpose: broadcast reads and the personal copies of a broadcast (people who got it keep it), a deleted person's own notifications, scans of deleted tickets (rules keep them), stall requests of a deleted stall, and small inline removals inside forms.
+
+Tests: `tests/v2-delete.mjs` (demo click-through, owner, manager and staff, 75 checks); v2 rules 580 + vendor rules 72.
+
 ## Open for Meni
 - Deploy steps, in order: `docs/migration-redesign.md` (indexes, then the vendor-notes move, then merge), then push setup in `docs/push-setup.md`.
 - Product questions from the area work:
