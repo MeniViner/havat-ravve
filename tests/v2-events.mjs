@@ -130,14 +130,14 @@ t('staffing stations and stats', () => {
   const { s } = of('regular', L.E.fall);
   const saved = s.collections[`events/${L.E.fall}/staffing`];
   const stations = L.stationsOf({ entry: true, stall: true }, saved);
-  assert.deepEqual(stations.map((x) => [x.station, x.people.length]), [['שער', 2], ['דוכן', 2], ['חניה', 0]]);
+  assert.deepEqual(stations.map((x) => [x.station, x.people.length]), [['שער', 2], ['דוכן החווה', 2], ['חניה', 2]]);
   const presence = s.collections.calendar.filter((c) => c.kind === 'presence' && c.date === '2026-11-28');
   const team = s.collections.users.map((u) => u.uid);
   const st = L.staffingStats(stations, presence, team);
-  assert.equal(st.assigned, 4);
+  assert.equal(st.assigned, 6);
   assert.equal(st.missing, 1);
   assert.equal(st.available, 4);
-  assert.equal(L.staffingMeta(st), '4 משובצים · בחניה חסר מישהו');
+  assert.equal(L.staffingMeta(st), '6 משובצים · בחניה חסר מישהו');
   assert.equal(L.hoursText('15:30-18:30'), '15:30–18:30');
   // never saved: the usual stations appear, without the stall when the event has none
   assert.deepEqual(L.stationsOf({ entry: true, stall: false }, []).map((x) => x.station), ['שער', 'חניה']);

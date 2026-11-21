@@ -4,7 +4,7 @@
 import { A, E, U, profiles, settings } from '../data';
 import type { Slice, Seed, Row } from './types';
 import { put, drop, patch } from './types';
-import type { Actor, Ticket, Tab, TabItem, GateScan, Staffing } from '../../types';
+import type { Actor, Ticket, Tab, TabItem, GateScan } from '../../types';
 
 const ANCHOR_MS = new Date('2026-11-19T10:30:00+02:00').getTime();
 const ago = (h: number) => new Date(ANCHOR_MS - h * 3600_000).toISOString();
@@ -52,19 +52,15 @@ function festival(seed: Seed, scenario: string) {
     done('demo-t-fest-map', 'לשרטט מפת הצבה לדוכנים', A.noa, 4),
   ]);
 
-  // V4 staffing (M4 "בחניה חסר מישהו")
-  const station = (id: string, name: string, people: Staffing['people']): Row => ({ id, station: name, people, needed: 1 });
-  put(seed, `events/${E.fall}/staffing`, [
-    station('gate', 'שער', [{ uid: U.yoav, name: 'יואב פרץ', hours: '15:30-18:30' }, { uid: U.dana, name: 'דנה אברהם', hours: '18:30-21:00' }]),
-    station('stall', 'דוכן', [{ uid: U.noa, name: 'נועה שחר', hours: '15:30-21:00' }, { uid: U.orly, name: 'אורלי לוי', hours: '16:00-20:00' }]),
-    station('parking', 'חניה', []),
-  ]);
+  // V4 staffing builds on the farm slice's festival crew (gate / stall / parking, 6 people, F6 "6 בצוות האירוע").
+  // Parking needs a third person, so M4 reads "6 משובצים · בחניה חסר מישהו" and V4 shows the parking card short.
+  patch(seed, `events/${E.fall}/staffing`, 'parking', { needed: 3 });
   // V4 "4 פנויים באותו יום": team at the farm on the festival day, not assigned (regular day only: the event day has its own presence)
   if (scenario === 'regular') {
     const pres = (id: string, a: Actor, time: string): Row => ({ id, ownerUid: a.uid, ownerName: a.name, title: `${a.name.split(' ')[0]} בחווה`, date: FEST, time, kind: 'presence', refId: '', createdAt: ago(30) });
     put(seed, 'calendar', [
-      pres('demo-c-fest-beni', A.beni, '14:00–21:00'), pres('demo-c-fest-eliya', A.eliya, '15:00–20:00'),
-      pres('demo-c-fest-roi', A.roi, '16:00–21:00'), pres('demo-c-fest-shira', A.shira, '15:00–19:00'),
+      pres('demo-c-fest-eliya', A.eliya, '15:00–20:00'), pres('demo-c-fest-orly', A.orly, '16:00–21:00'),
+      pres('demo-c-fest-omer', A.omer, '14:00–21:00'), pres('demo-c-fest-gil', A.gil, '15:00–19:00'),
     ]);
   }
 
