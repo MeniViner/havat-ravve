@@ -18,6 +18,7 @@ import {
   shortInitials, type ScanV2, type TicketV2, type Counters, type EventV2, type CashCount,
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, to } from './common';
+import { gw } from '../../gender';
 
 const HOURS = ['שתים עשרה', 'אחת', 'שתיים', 'שלוש', 'ארבע', 'חמש', 'שש', 'שבע', 'שמונה', 'תשע', 'עשר', 'אחת עשרה'];
 const hourWord = (h: number) => HOURS[h % 12];
@@ -62,16 +63,15 @@ function EntryChart({ event, counters }: { event: EventV2; counters: Counters | 
         {keys.map((k, i) => {
           const v = per[k] || 0;
           const future = nowIdx >= 0 ? i > nowIdx : false;
+          const flat = future || !v;
           return (
             <span key={k} className="eventday-chart__col">
-              {!future && v > 0 && <span className="eventday-chart__val">{v}</span>}
-              <span className={`eventday-chart__bar${i === nowIdx ? ' eventday-chart__bar--now' : ''}${future || !v ? ' eventday-chart__bar--future' : ''}`} style={future || !v ? undefined : { height: Math.max(4, Math.round((v / max) * 46)) }} />
+              <span className="eventday-chart__val">{flat ? '\u00a0' : v}</span>
+              <span className={`eventday-chart__bar${i === nowIdx && !flat ? ' eventday-chart__bar--now' : ''}${flat ? ' eventday-chart__bar--future' : ''}`} style={flat ? undefined : { height: Math.max(4, Math.floor((v / max) * 46)) }} />
+              <span className={`eventday-chart__label${i === nowIdx ? ' is-now' : ''}`} aria-hidden="true">{k.endsWith(':00') ? Number(k.slice(0, 2)) : '\u00a0'}</span>
             </span>
           );
         })}
-      </div>
-      <div className="eventday-chart__labels" aria-hidden="true">
-        {keys.map((k, i) => <span key={k} className={i === nowIdx ? 'is-now' : undefined}>{k.endsWith(':00') ? Number(k.slice(0, 2)) : ''}</span>)}
       </div>
     </Card>
   );
@@ -162,7 +162,7 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const excel = () => downloadCsv(`סריקות-${event.title}.csv`, ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
     scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' }[s.result], s.meta, s.amount || '', s.by?.name || '']));
   return (
-    <AppScreen variant="detail">
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} end={<Button variant="outline" icon="download" iconSize={18} onClick={excel}>אקסל</Button>} />
       <PageTitle>סריקות · {c?.scans ?? scans.items.length}</PageTitle>
       <SearchField label="שם או טלפון" value={query} active={!!query} onChange={(ev) => setQuery(ev.target.value)} />
@@ -229,7 +229,7 @@ export function RejectedScan({ ctx, params }: ScreenProps): ReactNode {
   };
   const canAct = !resolved && order.length > 0 && !isEventClosed(event);
   return (
-    <AppScreen variant="detail" bar={canAct ? (
+    <AppScreen variant="detail" gap={10} bar={canAct ? (
       <BottomBar>
         <Button size="bar" grow disabled={busy} onClick={() => void reopen()}>{cancelled ? 'לפתוח מחדש ולהכניס' : 'להכניס, ישלמו אחר כך'}</Button>
         <Button size="bar" variant="secondary" disabled={busy} onClick={() => void keep()}>נשאר דחוי</Button>
@@ -257,10 +257,10 @@ export function RejectedScan({ ctx, params }: ScreenProps): ReactNode {
       </DetailList>
       {cancelled && note && <Quote>{note}</Quote>}
       <ListCard title="מה קרה">
-        {scan.reopenedAt && <Row title={`${hhmm(scan.reopenedAt)} · נפתח מחדש ונכנסו`} meta={scan.reopenedBy?.name ? firstName(scan.reopenedBy.name) : undefined} />}
-        {scan.keptAt && <Row title={`${hhmm(scan.keptAt)} · נשאר דחוי`} meta={scan.keptBy?.name ? firstName(scan.keptBy.name) : undefined} />}
-        <Row title={`${hhmm(scan.at)} · הכרטיס נסרק ונדחה`} meta={`${firstName(scan.by?.name || '')}, בשער`} />
-        {cancelled && cancelAt && <Row title={`${ddmm(cancelAt)} · ההזמנה בוטלה`} meta={cancelBy ? firstName(cancelBy) : undefined} />}
+        {scan.reopenedAt && <Row minHeight={50} title={`${hhmm(scan.reopenedAt)} · נפתח מחדש ונכנסו`} meta={scan.reopenedBy?.name ? firstName(scan.reopenedBy.name) : undefined} />}
+        {scan.keptAt && <Row minHeight={50} title={`${hhmm(scan.keptAt)} · נשאר דחוי`} meta={scan.keptBy?.name ? firstName(scan.keptBy.name) : undefined} />}
+        <Row minHeight={50} title={`${hhmm(scan.at)} · הכרטיס נסרק ונדחה`} meta={`${firstName(scan.by?.name || '')}, בשער`} />
+        {cancelled && cancelAt && <Row minHeight={50} title={`${ddmm(cancelAt)} · ההזמנה בוטלה`} meta={cancelBy ? firstName(cancelBy) : undefined} />}
       </ListCard>
     </AppScreen>
   );
@@ -284,7 +284,7 @@ export function WaitingScreen({ ctx, params }: ScreenProps): ReactNode {
   const rush = hmOf(minsOf(hhmm(event.start)) + 150);
   const tpl = ctx.settings.templates.ticketReminder;
   return (
-    <AppScreen variant="detail">
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} />
       <PageTitle>עוד לא הגיעו</PageTitle>
       <StatRow>
@@ -338,7 +338,7 @@ export function CloseEvent({ ctx, params }: ScreenProps): ReactNode {
     const place = which === 'gate' ? 'בשער' : 'בדוכן';
     if (!event[which === 'gate' ? 'entry' : 'stall'] && event[which === 'gate' ? 'entry' : 'stall'] === false) return null;
     return <Row key={which} minHeight={60} leading={<span className={`eventday-check${cc ? ' eventday-check--done' : ''}`}>{cc && <Icon name="check" size={16} />}</span>}
-      title={cc ? `מזומן ${place} נספר` : `מזומן ${place}`} meta={cc ? `${money(cc.amount)} · ${cc.by}` : 'עוד לא נספר'}
+      title={cc ? `מזומן ${place} נספר` : `מזומן ${place}`} meta={cc ? `${money(cc.amount)} · ${gw(cc.by, 'ספר', 'ספרה')} ${cc.by}` : 'עוד לא נספר'}
       actions={closed ? undefined : <TextLink onClick={() => setEdit(which)}>{cc ? 'תיקון' : 'ספירה'}</TextLink>} />;
   };
   const doClose = async () => {
