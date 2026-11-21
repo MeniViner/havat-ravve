@@ -142,6 +142,8 @@ export const VENDOR_ROUTES: Route[] = [
 /** Old paths (bookmarks, notification links stored in Firestore, the Worker) -> new paths. */
 export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['role']): string | null {
   let m: Record<string, string> | null;
+  // the guest account page is for guests only: signing in from it (or a bookmark) lands the team and vendors on their profile
+  if (route === '/me/account') return '/me';
   if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/notifications', '/install'].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
   if (route === '/') return '/tasks';
   if (route === '/more') return '/me';
