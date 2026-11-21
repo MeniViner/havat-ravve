@@ -9,6 +9,8 @@ import { useDemo, useDemoStates } from '../../../demo/store';
 import { dayOverline, ddmm } from '../../format';
 import { ProjectsBlock } from '../projects';
 import { BroadcastCard } from '../broadcast';
+import { OfflineQueue } from '../system';
+import { useOnline } from '../../../store';
 import { useMySteps, useSteps, completeStep, reopenStep, projectLink, stepLink, type MyStep } from '../../data/projects';
 import {
   useRootTasks, pickNextUp, progressOf, progressCaption, groupByPlace, groupByTime, ordered, isMine, isForToday, isFree,
@@ -25,7 +27,11 @@ const DAY30 = 30 * 86400_000;
 export function TasksRoot({ ctx }: ScreenProps) {
   useClockVersion();
   const demo = useDemo(); const states = useDemoStates();
-  const view = (useParam('view') || 'place') as View;
+  const online = useOnline();
+  // C8: without reception the queue of kept writes takes the place of "הבא בתור" and the view switch
+  const offline = !online || (demo.on && states.offline);
+  const viewParam = useParam('view');
+  const view = (offline ? 'place' : viewParam || 'place') as View;
   const root = useRootTasks(ctx);
   const steps = useMySteps(ctx);
   const uid = ctx.user.uid; const today = ctx.today; const now = nowMs();
@@ -37,8 +43,8 @@ export function TasksRoot({ ctx }: ScreenProps) {
     : root.items), [root.items, demo.on, states.empty, uid, today, ctx.actor]);
 
   const nameOf = (id: string) => ctx.places.find((p) => p.id === id)?.name;
-  const nextStep: MyStep | undefined = ctx.manager ? steps.items.find((s) => !s.step.done) : undefined;
-  const nextTask = nextStep ? null : pickNextUp(tasks, uid, today);
+  const nextStep: MyStep | undefined = ctx.manager && !offline ? steps.items.find((s) => !s.step.done) : undefined;
+  const nextTask = nextStep || offline ? null : pickNextUp(tasks, uid, today);
   const lists = nextTask ? tasks.filter((t) => t.id !== nextTask.id) : tasks;
 
   // P6 "עליך": my tasks (open, and done in the last 24h) and my project steps, without the one in "הבא בתור".
@@ -63,6 +69,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
       <RootHead overline={dayOverline(today)} title="משימות" />
       <BroadcastCard ctx={ctx} />
       {progress.total > 0 && <ProgressSegments total={progress.total} done={progress.done} caption={caption} />}
+      {offline && <OfflineQueue uid={uid} />}
       {nextStep && <NextStepCard s={nextStep} />}
       {nextTask && (
         <NextUpCard title={nextTask.title}
@@ -74,13 +81,15 @@ export function TasksRoot({ ctx }: ScreenProps) {
       )}
       {ctx.manager && mineCount > 0 && (
         <ListCard title="עליך" count={mineCount}>
-          {mineTasks.map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
-          {mineSteps.map((s) => <StepRow key={s.step.id} s={s} />)}
+          {mineTasks.filter((t) => !t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
+          {mineSteps.filter((s) => !s.step.done).map((s) => <StepRow key={s.step.id} s={s} />)}
+          {mineTasks.filter((t) => t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
+          {mineSteps.filter((s) => s.step.done).map((s) => <StepRow key={s.step.id} s={s} />)}
         </ListCard>
       )}
       {ctx.manager && <ProjectsBlock ctx={ctx} />}
       {ctx.manager && <div className="tasks-allhead"><h2>כל המשימות בחווה</h2></div>}
-      <Segmented label="תצוגה" value={view} onChange={setView} options={VIEWS} />
+      {!offline && <Segmented label="תצוגה" value={view} onChange={setView} options={VIEWS} />}
 
       {view === 'place' && placeGroups.map((g) => (
         <ListCard key={g.key} title={g.title} icon="pin" count={g.rows.length}>

@@ -94,31 +94,36 @@ export const stashPhoto = (p: string) => { try { sessionStorage.setItem(PHOTO_KE
 export const takeStashedPhoto = () => { try { const p = sessionStorage.getItem(PHOTO_KEY) || ''; sessionStorage.removeItem(PHOTO_KEY); return p; } catch { return ''; } };
 
 type Speech = { lang: string; interimResults: boolean; onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void; onerror: () => void; onend: () => void; start: () => void };
-/** "משימה או קנייה חדשה": typing opens the add form with the text; camera picks a photo first; mic dictates (Hebrew). */
-export function TasksCapture({ kind }: { kind?: 'shopping' }) {
-  const [value, setValue] = useState('');
-  const open = (text: string, photo = false) => {
-    const q = new URLSearchParams();
-    if (text.trim()) q.set('text', text.trim());
-    if (kind) q.set('kind', kind);
-    if (photo) q.set('photo', '1');
-    setValue('');
-    go('/new' + (q.toString() ? '?' + q.toString() : ''));
-  };
-  const photo = usePhotoPicker((p) => { stashPhoto(p); open(value, true); });
-  const mic = () => {
-    const W = window as unknown as { SpeechRecognition?: new () => Speech; webkitSpeechRecognition?: new () => Speech };
-    const SR = W.SpeechRecognition || W.webkitSpeechRecognition;
-    if (!SR) { open(value); return; }
+/** Hebrew dictation (Web Speech) where the browser has it; silently nothing elsewhere. */
+export function dictate(onText: (said: string) => void) {
+  const W = window as unknown as { SpeechRecognition?: new () => Speech; webkitSpeechRecognition?: new () => Speech };
+  const SR = W.SpeechRecognition || W.webkitSpeechRecognition;
+  if (!SR) return false;
+  try {
     const r = new SR(); r.lang = 'he-IL'; r.interimResults = false;
     let said = '';
     r.onresult = (e) => { said = Array.from(e.results).map((x) => x[0].transcript).join(' '); };
     r.onerror = () => {};
-    r.onend = () => open(said || value);
+    r.onend = () => { if (said.trim()) onText(said.trim()); };
     r.start();
+    return true;
+  } catch { return false; }
+}
+/** "משימה או קנייה חדשה": typing opens the add form with the text; camera picks a photo first (&photo=1); the mic opens
+ *  the form listening (&mic=1). Same parameters as the S1 capture bar. */
+export function TasksCapture({ kind }: { kind?: 'shopping' }) {
+  const [value, setValue] = useState('');
+  const open = (text: string, extra?: 'photo' | 'mic') => {
+    const q = new URLSearchParams();
+    if (kind) q.set('kind', kind);
+    if (text.trim()) q.set('text', text.trim());
+    if (extra) q.set(extra, '1');
+    setValue('');
+    go('/new' + (q.toString() ? '?' + q.toString() : ''));
   };
+  const photo = usePhotoPicker((p) => { stashPhoto(p); open(value, 'photo'); });
   return <>
     {photo.input}
-    <CaptureBar value={value} onChange={setValue} onSubmit={(v) => open(v)} onCamera={() => photo.pick(true)} onMic={mic} />
+    <CaptureBar value={value} onChange={setValue} onSubmit={(v) => open(v)} onCamera={() => photo.pick(true)} onMic={() => open(value, 'mic')} />
   </>;
 }

@@ -6,12 +6,12 @@ import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, ConflictError } from '../../db';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
 import { logActivity, taskKind } from '../../activity';
-import { addTask, editTask, type NewTask } from '../../store';
+import { addTask, editTask, editShopping, type NewTask } from '../../store';
+import { addShopItem, setItemPhoto } from './shopping';
 import { notify } from './notify';
 import { byPriority } from '../../taskOrder';
 import { firstName, hhmm, dayName, ddmm, daysFromToday } from '../format';
-import type { Actor, Task, Template, Place, ShoppingItem, ShoppingCategory, CalendarItem, Activity, FarmEvent } from '../../types';
-import { CATEGORY_LABELS } from '../../types';
+import type { Actor, Profile, Task, Template, Place, ShoppingItem, ShoppingCategory, CalendarItem, Activity, FarmEvent } from '../../types';
 
 // ======================= pure helpers =======================
 
@@ -378,7 +378,7 @@ export function timeline(t: Task, activity: Pick<Activity, 'action' | 'text' | '
       if (text) lines.push({ at: a.at, text });
     }
   } else {
-    if (t.assignee && t.takenAt) lines.push({ at: t.takenAt, text: t.assignee.uid === requesterOf(t).uid && t.takenAt === t.createdAt ? `${fn(t.assignee)} לקח אותה` : `${fn(t.assignee)} לקח אותה` });
+    if (t.assignee && t.takenAt) lines.push({ at: t.takenAt, text: `${fn(t.assignee)} לקח אותה` });
     if (t.done && t.doneAt) lines.push({ at: t.doneAt, text: `${fn(t.doneBy)} סימן בוצע` });
   }
   return lines.sort((a, b) => a.at.localeCompare(b.at)).map((l) => `${fmt(l.at)} · ${l.text}`);
@@ -498,22 +498,18 @@ export async function updateTask(actor: Actor, t: Task, data: Partial<TaskInput>
 
 export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
 /** S5 add: the existing ShoppingItem shape plus an optional taskId; the task gets shoppingId back (C3). */
-export async function createShopping(actor: Actor, data: ShopInput, taskId?: string) {
-  const now = nowIso();
-  const id = newId('shopping');
-  const doc: Record<string, unknown> = { title: data.title.trim(), qty: data.qty.trim(), note: data.note.trim(), link: fixLink(data.link), category: data.category, urgent: data.urgent, createdBy: actor, createdAt: now, bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now };
-  if (data.photo) doc.photo = data.photo;
-  if (taskId) doc.taskId = taskId;
-  if (taskId) await write.batch([{ op: 'set', col: 'shopping', id, data: doc }, { op: 'update', col: 'tasks', id: taskId, data: { shoppingId: id, updatedAt: now } }]);
-  else await write.set('shopping', id, doc);
-  logActivity(actor, 'shopping', id, 'added', `${data.title.trim()}${data.qty.trim() ? ' · ' + data.qty.trim() : ''} (${CATEGORY_LABELS[data.category]})`);
+/** The shopping area owns the shopping collection: adding goes through its addShopItem (urgent items tell the team,
+ *  taskId is kept); here only the task side of the link (shoppingId) is written. */
+export async function createShopping(actor: Actor, data: ShopInput, team: Profile[], taskId?: string) {
+  const id = await addShopItem(actor, { ...data, title: data.title.trim(), link: fixLink(data.link), photo: data.photo || undefined, taskId: taskId || undefined }, team);
+  if (taskId) await write.update('tasks', taskId, { shoppingId: id, updatedAt: nowIso() });
   return id;
 }
+/** Edit (/shopping/:id/edit) with the existing store helper; a changed photo through the shopping area's helper. */
 export async function updateShopping(actor: Actor, item: ShoppingItem, data: ShopInput) {
-  const patch: Record<string, unknown> = { title: data.title.trim(), qty: data.qty.trim(), note: data.note.trim(), link: fixLink(data.link), category: data.category, urgent: data.urgent, updatedAt: nowIso() };
-  if (data.photo !== undefined && data.photo !== (item.photo || '')) patch.photo = data.photo;
-  await write.update('shopping', item.id, patch);
-  logActivity(actor, 'shopping', item.id, 'edited', data.title.trim());
+  const { photo, ...rest } = data;
+  await editShopping(actor, item, { ...rest, title: rest.title.trim(), qty: rest.qty.trim(), note: rest.note.trim(), link: fixLink(rest.link) });
+  if (photo !== undefined && photo !== (item.photo || '')) await setItemPhoto(actor, item, photo);
 }
 
 // ---------- recurring templates (L1, L2) ----------

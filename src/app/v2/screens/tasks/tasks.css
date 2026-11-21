@@ -79,7 +79,8 @@
 .tasks-map { height: 170px; border-radius: 8px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--soft); font-size: 14px; box-sizing: border-box; overflow: hidden; position: relative; text-decoration: none; }
 .tasks-map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .tasks-btnrow { display: flex; gap: 8px; }
-.tasks-btnrow > .k-btn--dashed { flex: 1; }
+.tasks-halves > * { flex: 1 1 0; min-width: 0; }
+.tasks-halves input { width: 100%; min-width: 0; box-sizing: border-box; }
 
 /* S5 */
 .tasks-qty { display: flex; gap: 12px; align-items: flex-start; }

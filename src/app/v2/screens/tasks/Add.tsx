@@ -1,5 +1,5 @@
 // T5 (add a task) and S5 (add a shopping item) in one form, plus edit mode for both (/tasks/:id/edit, /shopping/:id/edit).
-// The capture bar opens it with ?text= (and ?photo=1 after a camera shot); C3 opens it with ?kind=shopping&task=<id>.
+// The capture bars open it with ?text=, ?photo=1 or ?camera=1 (a camera shot), ?mic=1 and, from shopping, ?kind=shopping&list=; C3 opens it with ?kind=shopping&task=<id>.
 import { useEffect, useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, useToast } from '../../core';
@@ -13,7 +13,8 @@ import {
   useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
   createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, type TaskInput,
 } from '../../data/tasks';
-import { useFail, usePhotoPicker, takeStashedPhoto } from './shared';
+import { catOfKey } from '../../data/shopping';
+import { useFail, usePhotoPicker, takeStashedPhoto, dictate } from './shared';
 import './tasks.css';
 
 type Kind = 'task' | 'shopping';
@@ -45,7 +46,7 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   const initialText = task?.title ?? item?.title ?? param('text');
   const [text, setText] = useState(initialText);
   const [kind, setKind] = useState<Kind>(item ? 'shopping' : task ? 'task' : param('kind') === 'shopping' ? 'shopping' : initialText ? guessKind(initialText) : 'task');
-  const [photo, setPhoto] = useState(() => task?.photo ?? item?.photo ?? (param('photo') ? takeStashedPhoto() : ''));
+  const [photo, setPhoto] = useState(() => task?.photo ?? item?.photo ?? (param('photo') || param('camera') ? takeStashedPhoto() : ''));
   const [note, setNote] = useState(task?.note ?? item?.note ?? '');
   const [showNote, setShowNote] = useState(!!(task?.note || item?.note));
   const [urgent, setUrgent] = useState<boolean | null>(task ? task.urgent : item ? item.urgent : null);
@@ -66,7 +67,7 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
 
   // ---- shopping fields (derived from the text until touched)
   const parsed = parseShopping(text);
-  const [list, setList] = useState<ShoppingCategory | null>(item?.category ?? null);
+  const [list, setList] = useState<ShoppingCategory | null>(item?.category ?? (param('list') ? catOfKey(param('list')) : null));
   const [qty, setQty] = useState<string | null>(item ? item.qty : null);
   const [link, setLink] = useState(item?.link ?? '');
   const [showLink, setShowLink] = useState(!!item?.link);
@@ -75,6 +76,10 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   const urgentNow = urgent ?? (kind === 'shopping' ? parsed.urgent : parseTaskText(text).urgent);
 
   const pick = usePhotoPicker(setPhoto);
+  // the capture bars' mic (?mic=1): dictate into the text right away where the browser allows it
+  // the S1 camera (?photo=1) comes without a stashed shot: open the camera (the browser may want a tap on "תמונה")
+  useEffect(() => { if ((param('photo') || param('camera')) && !photo && !editing) pick.pick(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (param('mic') && !editing) dictate((said) => setText((t) => (t ? t + ' ' : '') + said)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (where === 'sug' && !sugId && !task) setWhere(''); else if (where === '' && sugId && !task) setWhere('sug'); }, [sugId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sugPlace = ctx.places.find((x) => x.id === sugId);
@@ -129,7 +134,7 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
         const title = item ? text.trim() : parsed.title || text.trim();
         const data = { title, qty: qtyNow, note, link, category: listNow, urgent: urgentNow, photo };
         if (item) { await updateShopping(ctx.actor, item, data); toast.show({ text: 'נשמר' }); back(`/shopping/${item.id}`); return; }
-        await createShopping(ctx.actor, data, forTask || undefined);
+        await createShopping(ctx.actor, data, ctx.team, forTask || undefined);
         toast.show({ text: `נוסף ל${SHOP_LISTS.find((l) => l.id === listNow)?.label}: ${title}` });
       }
       if (more) { reset(); setBusy(false); return; }

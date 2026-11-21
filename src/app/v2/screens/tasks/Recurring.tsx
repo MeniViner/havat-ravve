@@ -109,7 +109,7 @@ function TemplateForm({ ctx, existing }: ScreenProps & { existing?: Template }) 
           ))}
         </div>
       </div>
-      <FieldRow>
+      <FieldRow className="tasks-halves">
         <Field label="עד איזו שעה" ltr inputMode="numeric" placeholder="07:00" value={time} onChange={(e) => setTime(e.target.value)} error={timeBad ? 'למשל 07:00' : undefined} />
         <Field label="איפה" list="tasks-places" value={placeText} onChange={(e) => setPlaceText(e.target.value)} error={placeBad ? 'אין מקום בשם הזה' : undefined} />
       </FieldRow>
