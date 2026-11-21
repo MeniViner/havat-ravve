@@ -11,6 +11,7 @@ import { href as appHref, back, useParam } from '../../../router';
 import { isConflict } from '../../../db';
 import { useClockVersion } from '../../../clock';
 import { ddmm, dayComma, dayTime, firstName } from '../../format';
+import { gw } from '../../gender';
 import type { Actor } from '../../../types';
 import {
   useProjects, useProject, useSteps, projectLink, stepLink,
@@ -92,7 +93,7 @@ export function ProjectsList({ ctx }: ScreenProps): ReactNode {
   const uid = ctx.user.uid;
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.value, filterProjects(projects.items, t.value, uid).length])), [projects.items, uid]);
   const list = filterProjects(projects.items, tab, uid);
-  const empty = tab === 'done' ? 'עוד אין פרויקטים שהושלמו.' : tab === 'mine' ? 'אין פרויקט שאת/ה חלק ממנו.' : 'אין פרויקטים פעילים.';
+  const empty = tab === 'done' ? 'עוד אין פרויקטים שהושלמו.' : tab === 'mine' ? gw(ctx.profile.displayName || ctx.actor.name, 'אין פרויקט שאתה חלק ממנו.', 'אין פרויקט שאת חלק ממנו.', ctx.profile as never) : 'אין פרויקטים פעילים.';
   return (
     <AppScreen variant="detail">
       <TopBar back={{ label: 'משימות', ...to('/tasks') }} end={<Button icon="plus" iconSize={18} {...to('/projects/new')}>פרויקט חדש</Button>} />
@@ -309,8 +310,12 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
   const [picking, setPicking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const focusKey = useRef<number | null>(null);
-  const managers = useMemo(() => ctx.team.filter((u) => (u.role === 'manager' || u.role === 'owner') && u.status !== 'blocked')
-    .map((u): Actor => ({ uid: u.uid, name: u.displayName })).sort((a, b) => (a.uid === ctx.user.uid ? -1 : b.uid === ctx.user.uid ? 1 : a.name.localeCompare(b.name, 'he'))), [ctx.team, ctx.user.uid]);
+  // managers and owners only: staff cannot read projects under the rules, so a step is never given to them
+  const managers = useMemo(() => {
+    const list = ctx.team.filter((u) => (u.role === 'manager' || u.role === 'owner') && u.status !== 'blocked').map((u): Actor => ({ uid: u.uid, name: u.displayName }));
+    if (!list.some((a) => a.uid === ctx.actor.uid)) list.push(ctx.actor); // the bootstrap owner (by email) may not carry the role yet
+    return list.sort((a, b) => (a.uid === ctx.actor.uid ? -1 : b.uid === ctx.actor.uid ? 1 : a.name.localeCompare(b.name, 'he')));
+  }, [ctx.team, ctx.actor]);
 
   // edit mode: fill the form once the project and its steps arrive; "?add=1" (P3 "צעד נוסף") opens an empty row at the end
   useEffect(() => {
