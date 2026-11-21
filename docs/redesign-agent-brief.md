@@ -30,7 +30,7 @@ Do **not** edit shared files (`types.ts`, `db.ts`, `store.ts`, `data.ts`, `route
 - New fields are optional with defaults; never rename or drop an existing field. Images: compress in the browser (`compressPhoto` in `store.ts`) and keep each document well under 1 MiB. No Storage, no Cloud Functions.
 - Writes must work offline (no screen waits for the server). Conflicts (take, assign, scan) go through `transact`; on `ConflictError` call `useToast().refused()` (X1).
 - WhatsApp, phone, maps, mail: `useExternal()` / `useExternalLink()` from `core.tsx` (in demo they show "בהדגמה לא נשלח").
-- Screens do not render the bottom nav or the demo/offline strips (the shell does). Roots render their own header (`RootHead` from `core.tsx`), capture bar, hero and content; detail screens their top bar; forms their header and bottom bar.
+- **Frame.** Every screen renders inside `AppScreen` from `core.tsx` (a wrapper over kit `Screen`; same `variant`, `gap`, `auto` props). The shell injects the demo strip, offline strip, toasts and bottom nav through it, so screens never render those themselves. Root screens pass `capture={<CaptureBar .../>}` and render `RootHead` (kit RootHeader wired to unread count, avatar, search, bell, profile) first in the body. Detail and form screens pass `bar={<BottomBar>...</BottomBar>}` (a bar replaces the nav, as in the designs); `noNav` hides the nav on a tab route when the design has none. Full-bleed gate pages (E2-E5) use kit `GateCamera`/`GateResult` directly, without AppScreen. Toasts: `useToast().show({text, actions})` and `refused()`; they appear first in the bottom area automatically.
 - Logging: follow the old screens' `logActivity` calls so history and timelines keep working.
 
 ## Demo

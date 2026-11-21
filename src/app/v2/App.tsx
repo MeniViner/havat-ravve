@@ -13,8 +13,8 @@ import type { Session } from '../firebase';
 import type { TeamCtx } from '../ctx';
 import type { V2Ctx, V2Role } from './ctx';
 import { TEAM_ROUTES, VENDOR_ROUTES, resolve, redirectOf, type NavTab } from './routes';
-import { V2Provider, ToastProvider, useToast, useUnread } from './core';
-import { BottomNav, DemoStrip, Toast, Strip } from './kit';
+import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
+import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet } from './screens/system';
 import * as legacy from './legacy';
 
@@ -22,18 +22,18 @@ const VIEW_AS_STAFF = 'farm-view-as-staff';
 export const setViewAsStaff = (on: boolean) => { try { on ? sessionStorage.setItem(VIEW_AS_STAFF, '1') : sessionStorage.removeItem(VIEW_AS_STAFF); } catch { /* private mode */ } location.reload(); };
 const viewAsStaffOn = () => { try { return sessionStorage.getItem(VIEW_AS_STAFF) === '1'; } catch { return false; } };
 
-type NavItem = { key: Exclude<NavTab, null>; label: string; icon: string; href: string; badge?: number };
+type NavItem = { key: Exclude<NavTab, null>; label: string; icon: IconName; href: string; badge?: number };
 const TEAM_NAV: Record<string, NavItem> = {
   tasks: { key: 'tasks', label: 'משימות', icon: 'tasks', href: '/tasks' },
   shopping: { key: 'shopping', label: 'קניות', icon: 'cart', href: '/shopping' },
-  farm: { key: 'farm', label: 'החווה', icon: 'home', href: '/farm' },
+  farm: { key: 'farm', label: 'החווה', icon: 'farm', href: '/farm' },
   manage: { key: 'manage', label: 'ניהול', icon: 'grid', href: '/manage' },
   event: { key: 'event', label: 'אירוע', icon: 'qr', href: '/event' },
   vendorEvents: { key: 'vendorEvents', label: 'האירועים', icon: 'calendar', href: '/vendor' },
   vendorStall: { key: 'vendorStall', label: 'הדוכן שלי', icon: 'stall', href: '/vendor/stall' },
 };
 
-/** Shell chrome shared by team and vendor: strips on top, the screen, toasts, the bottom nav. */
+/** Shell chrome shared by team and vendor: the strips and nav go into every AppScreen through the chrome context. */
 function Frame({ nav, tab, showNav, children }: { nav: NavItem[]; tab: NavTab; showNav: boolean; children: ReactNode }) {
   const demo = useDemo(); const states = useDemoStates(); const online = useOnline(); const sync = useSync(); const toast = useToast();
   const [sheet, setSheet] = useState(false);
@@ -41,15 +41,16 @@ function Frame({ nav, tab, showNav, children }: { nav: NavItem[]; tab: NavTab; s
   // a write the server refused after the screen moved on (X1)
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
   const pending = demo.on && states.offline ? Math.max(3, sync.pending) : sync.pending;
+  const top = (demo.on || offline) ? <>
+    {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate('/demo', true); }} />}
+    {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
+  </> : null;
+  const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   return (
-    <div className="v2 k-app" dir="rtl" data-nav={showNav ? 'on' : 'off'}>
-      {demo.on && <DemoStrip role={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} onOpen={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate('/', true); }} />}
-      {offline && <Strip tone="dark" role="status" text={pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'} onClick={() => navigate('/offline')} />}
-      <main className="k-main">{children}</main>
-      <div className="k-toasts">{toast.items.map((t) => <Toast key={t.id} tone={t.tone} check={t.check} text={t.text} actions={(t.actions || []).map((a) => ({ label: a.label, onClick: () => { a.onClick(); toast.dismiss(t.id); } }))} />)}</div>
-      {showNav && <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, onClick: () => navigate(i.href) }))} />}
+    <ChromeProvider value={{ top, nav: navNode }}>
+      {children}
       {demo.on && <DemoSheet open={sheet} onClose={() => setSheet(false)} />}
-    </div>
+    </ChromeProvider>
   );
 }
 
@@ -74,7 +75,6 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const eventToday = useEventToday(today);
   const staffing = useList<Staffing>(`events/${eventToday?.id || '_'}/staffing`, {}, !!eventToday);
   const crew = !!eventToday && (manager || staffing.items.some((s) => s.people?.some((p) => p.uid === user.uid)));
-  const unread = useUnread(user.uid);
   useEffect(() => {
     if (viewAsStaff || templates.loading || instances.loading || instances.error || !templates.items.length) return;
     materializeToday(templates.items, instances.items, actor, today);
@@ -90,11 +90,10 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   useEffect(() => { if (hit && !allowed) navigate('/tasks', true); }, [hit, allowed]);
 
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(crew ? [TEAM_NAV.event] : [])];
-  void unread;
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <legacy.NotFound />;
+  else screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings }) ?? <legacy.NotFound />}</AppScreen>;
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 

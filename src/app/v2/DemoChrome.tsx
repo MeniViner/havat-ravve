@@ -11,7 +11,7 @@ export function V2DemoStrip() {
   if (!demo.on) return null;
   return (
     <div className="v2" dir="rtl">
-      <DemoStrip role={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} onOpen={() => setOpen(true)} onExit={() => { setDemo({ on: false }); navigate('/', true); }} />
+      <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={open} onSwitch={() => setOpen(true)} onExit={() => { setDemo({ on: false }); navigate('/demo', true); }} />
       <DemoSheet open={open} onClose={() => setOpen(false)} />
     </div>
   );

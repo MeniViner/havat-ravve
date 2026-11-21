@@ -1,6 +1,8 @@
 // Shell services shared by every v2 screen: the screen context, toasts (info with actions, refused-write alert),
 // links that leave the app (WhatsApp, phone, maps: in demo they show "בהדגמה לא נשלח" instead), and the unread count.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { Screen, RootHeader, Toast, type ScreenProps } from './kit';
+import { initials } from './format';
 import { useDemo, getDemo } from '../demo/store';
 import { useList } from '../db';
 import { navigate } from '../router';
@@ -84,6 +86,55 @@ export function useExternalLink() {
 export function useUnread(uid: string, enabled = true) {
   const r = useList<UserNotification>(`users/${uid || '_'}/notifications`, { where: [['readAt', '==', null]], limit: 100 }, enabled && !!uid);
   return r.items.length;
+}
+
+// ---------- the screen frame with the shell's chrome ----------
+/** What the shell puts around every screen: strips on top (demo Z2, offline C8) and the bottom nav. */
+export type Chrome = { top: ReactNode; nav: ReactNode };
+const ChromeCtx = createContext<Chrome>({ top: null, nav: null });
+export const ChromeProvider = ({ value, children }: { value: Chrome; children: ReactNode }) => <ChromeCtx.Provider value={value}>{children}</ChromeCtx.Provider>;
+export const useChrome = () => useContext(ChromeCtx);
+
+/** The current toasts rendered as kit Toasts (first in Screen bottom). */
+export function ToastStack() {
+  const toast = useToast();
+  if (!toast.items.length) return null;
+  return <>{toast.items.map((t) => (
+    <Toast key={t.id} tone={t.tone === 'error' ? 'alert' : 'info'} icon={t.tone === 'error' ? null : t.check === false ? null : undefined}
+      actions={(t.actions || []).map((a) => ({ label: a.label, onClick: () => { a.onClick(); toast.dismiss(t.id); } }))}>
+      {t.tone === 'error' && t.text.startsWith('לא נשמר.') ? <><b>לא נשמר.</b>{t.text.slice('לא נשמר.'.length)}</> : t.text}
+    </Toast>
+  ))}</>;
+}
+
+export type AppScreenProps = Omit<ScreenProps, 'top' | 'bottom'> & {
+  /** CaptureBar on root screens (sits above the nav). */
+  capture?: ReactNode;
+  /** BottomBar on detail and form screens. When set, it replaces the nav (the designs never show both). */
+  bar?: ReactNode;
+  /** Hide the bottom nav on this screen even if the route shows it. */
+  noNav?: boolean;
+  /** Extra content pinned above the body, under the strips. */
+  top?: ReactNode;
+};
+/** Every v2 screen renders inside this: the kit Screen with the shell's strips on top and toast, capture bar, nav or bar at the bottom. */
+export function AppScreen({ capture, bar, noNav, top, children, ...rest }: AppScreenProps) {
+  const chrome = useChrome();
+  const nav = bar ? null : noNav ? null : chrome.nav;
+  const bottom = <><ToastStack />{capture}{bar}{nav}</>;
+  return <Screen {...rest} top={chrome.top || top ? <>{chrome.top}{top}</> : undefined} bottom={bottom}>{children}</Screen>;
+}
+
+/** Root header with the shell's wiring: unread badge, the person's photo or initials, search, notifications, profile. */
+export function RootHead({ overline, title, hideSearch, hideBell }: { overline?: ReactNode; title: ReactNode; hideSearch?: boolean; hideBell?: boolean }) {
+  const ctx = useV2();
+  const unread = useUnread(ctx.user.uid);
+  const p = ctx.profile as { photo?: string; photoSource?: string; googlePhoto?: string; displayName?: string };
+  const src = p.photoSource === 'none' ? undefined : p.photo || (p.photoSource !== 'custom' ? p.googlePhoto : undefined) || undefined;
+  return (
+    <RootHeader overline={overline} title={title} unread={unread} avatar={initials(p.displayName || ctx.actor.name || '')} avatarSrc={src}
+      onSearch={() => navigate('/search')} onBell={() => navigate('/notifications')} onAvatar={() => navigate('/me')} hideSearch={hideSearch} hideBell={hideBell} />
+  );
 }
 
 /** Navigate helper for screens: go(path) / go(path, true) to replace. */
