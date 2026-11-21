@@ -77,7 +77,7 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         {e.stall !== false && <Row minHeight={58} title="מוצרי הדוכן" meta={productsMeta(products.items)} {...link(`/manage/events/${e.id}/products`)} />}
         <Row minHeight={58} title="משימות הכנה" meta={`${openTasks} פתוחות מתוך ${tasks.items.length}`} {...link(`/farm/events/${e.id}`)} />
         <Row minHeight={58} title="מי עובד באירוע" meta={staffingMeta(st)} {...link(`/manage/events/${e.id}/staffing`)} />
-        <Row minHeight={58} title="קבצים" meta={fileNames.length ? fileNames.slice(0, 2).join(', ') + (fileNames.length > 2 ? ` ועוד ${fileNames.length - 2}` : '') : 'עוד אין קבצים'} {...link(`/manage/events/${e.id}/files`)} />
+        <Row minHeight={58} title="קבצים" meta={fileNames.length ? fileNames.slice(0, 2).join(', ') : 'עוד אין קבצים'} {...link(`/manage/events/${e.id}/files`)} />
       </ListCard>
       <ButtonRow>
         <Button variant="outline" size="tall" onClick={share}>שיתוף הקישור</Button>
