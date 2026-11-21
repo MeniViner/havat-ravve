@@ -1,10 +1,10 @@
 // M4-M7: one event, four stages chosen by ?tab (הכנה / נרשמים / יום האירוע / סיכום). Opens on the stage that fits the time.
 import { useMemo, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
-import { AppScreen, go, useToast, useExternal, waUrl, telUrl } from '../../core';
+import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
 import {
   TopBar, Segmented, ListCard, Row, Tag, Button, StatRow, StatTile, SearchField, ChipRow, Chip, CheckButton, Hero, HeroNumber, Bar,
-  TextLink, Card, SectionHeader, BarList, Sheet, Field, Stepper, Toggle, EmptyState,
+  TextLink, Card, SectionHeader, BarList, Sheet, Field, Stepper, Toggle, EmptyState, ConfirmSheet,
 } from '../../kit';
 import {
   useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
@@ -12,7 +12,7 @@ import {
 } from '../../../data';
 import { nowMs, useClockVersion } from '../../../clock';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
-import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder } from '../../data/events';
+import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
   filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
@@ -184,6 +184,8 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
 function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; e: FarmEvent; order: Order | null; onClose: () => void; onApprove: (o: Order) => void; notes: import('../../../types').AppNotification[] }) {
   const open = useExternal(); const toast = useToast(); const run = useRun();
   const [cancelling, setCancelling] = useState(false); const [reason, setReason] = useState('');
+  const [askDelete, setAskDelete] = useState(false);
+  const remove = useRemove();
   if (!order) return null;
   const t0 = order.tickets[0];
   const owing = order.owed > 0;
@@ -212,7 +214,8 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; 
   const holders = order.tickets.filter((t) => t.holderName).map((t) => `כרטיס ${t.index}: ${t.holderName}`);
   const answers = Object.entries(t0.answers || {}).map(([k, v]) => `${e.questions.find((x) => x.id === k)?.label || k} ${v}`);
   return (
-    <Sheet open onClose={() => { setCancelling(false); onClose(); }} title={order.name} aside={money(order.owed || order.total)}>
+    <>
+    <Sheet open={!askDelete} onClose={() => { setCancelling(false); onClose(); }} title={order.name} aside={money(order.owed || order.total)}>
       <div className="events-sheet">
         <p className="events-sheet__meta">
           {ticketsWord(order.count)} · {STATUS_TAG[order.status].text}{order.arrived ? ` · ${order.arrived} נכנסו` : ''}<br />
@@ -238,10 +241,15 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; 
             {order.phone && <Button variant="outline" size="tall" block icon="phone" onClick={() => open(telUrl(order.phone))}>התקשרות</Button>}
             {order.ownerUid !== ctx.user.uid && <Button variant="quiet" size="tall" block onClick={() => { onClose(); go(`/manage/people/${order.ownerUid}`); }}>הכרטיס של {firstName(order.name)}</Button>}
             <Button variant="danger" size="tall" block onClick={() => setCancelling(true)}>ביטול ההזמנה</Button>
+            <Button variant="quiet" size="tall" block onClick={() => setAskDelete(true)}>מחיקת ההזמנה</Button>
           </div>
         )}
       </div>
     </Sheet>
+    <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את ההזמנה?"
+      text={`ההזמנה של ${order.name} (${ticketsWord(order.tickets.length)}) תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.`} confirmLabel="מחיקה"
+      onConfirm={() => remove(() => deleteOrder(ctx.actor, order.tickets, notes), { text: 'ההזמנה נמחקה', after: () => { setAskDelete(false); onClose(); } })} />
+    </>
   );
 }
 

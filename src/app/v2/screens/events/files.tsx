@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, useToast, useExternal } from '../../core';
-import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState } from '../../kit';
+import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ConfirmSheet } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { nowIso } from '../../../clock';
@@ -68,10 +68,11 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     setDraft(null);
     toast.show({ text: `${name} נשמר`, check: true });
   };
+  const [askDelete, setAskDelete] = useState<EventFileV2 | null>(null);
   const remove = async (f: EventFileV2) => {
     const ok = await run(async () => { await removeFileV2(e.id, f.id); return true; });
     if (!ok) return;
-    setOpened(null);
+    setAskDelete(null);
     logActivity(ctx.actor, 'event', e.id, 'edited', `${e.title}: נמחק קובץ "${f.name}"`, { eventId: e.id });
     const { id: _id, ...rest } = f;
     toast.show({ text: `${f.name} נמחק`, check: true, actions: [{ label: 'ביטול', onClick: () => { addFileV2(e.id, rest); } }] });
@@ -113,11 +114,13 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
             <p className="events-sheet__meta">{opened.by?.name} · {ddmm(opened.at)}</p>
             <div className="events-sheet__actions">
               <Button size="tall" block onClick={() => openStored(opened.url, external)}>פתיחה</Button>
-              <Button variant="danger" size="tall" block onClick={() => remove(opened)}>מחיקה</Button>
+              <Button variant="danger" size="tall" block onClick={() => { setAskDelete(opened); setOpened(null); }}>מחיקה</Button>
             </div>
           </div>
         )}
       </Sheet>
+      <ConfirmSheet open={!!askDelete} onClose={() => setAskDelete(null)} title="למחוק את הקובץ?"
+        text={askDelete ? `"${askDelete.name}" יימחק מהאירוע.` : ''} confirmLabel="מחיקה" onConfirm={() => askDelete && remove(askDelete)} />
     </AppScreen>
   );
 }

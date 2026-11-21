@@ -50,6 +50,23 @@ export async function deleteEventV2(actor: Actor, e: FarmEvent) {
   await deleteCalendarRef('event', e.id);
 }
 
+/** M5: deletes an order outright (every ticket of it) and its inbox items. Unlike "ביטול ההזמנה" nothing of it stays. */
+export async function deleteOrder(actor: Actor, tickets: Ticket[], open: AppNotification[]) {
+  const t = tickets[0];
+  if (!t) return;
+  await write.batch([
+    ...tickets.map((x) => ({ op: 'remove' as const, col: 'tickets', id: x.id })),
+    ...open.filter((n) => n.refId === t.orderId).map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id })),
+  ]);
+  logActivity(actor, 'ticket', t.orderId, 'deleted', `${t.ownerName} · ${tickets.length} כרטיסים · ${t.eventTitle}`, { subjectUid: t.ownerUid, eventId: t.eventId });
+}
+
+/** N12: deletes a stall tab and its inbox items. */
+export async function deleteTab(actor: Actor, t: Tab, open: AppNotification[]) {
+  await write.batch([{ op: 'remove', col: 'tabs', id: t.id }, ...open.filter((n) => n.refId === t.id).map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id }))]);
+  logActivity(actor, 'tab', t.id, 'deleted', `${t.guestName} · ${t.total} ₪ · ${t.eventTitle}`, { subjectUid: t.guestUid, eventId: t.eventId });
+}
+
 // ---------- guests (M5) ----------
 /** Approves orders as paid (the guest said they transferred). Returns the tickets as they were, for undo. */
 export async function approveOrders(actor: Actor, orders: Ticket[][], open: AppNotification[]): Promise<Ticket[][]> {

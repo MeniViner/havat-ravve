@@ -2,7 +2,7 @@
 import { useId, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
-import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton } from '../../kit';
+import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton, ConfirmSheet } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { back } from '../../../router';
@@ -138,9 +138,11 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           <ListCard>
             <Row minHeight={58} title="פתוח להרשמה" meta="אורחים יכולים להזמין כרטיסים" actions={<Toggle checked={open} onChange={setOpen} label="פתוח להרשמה" />} />
           </ListCard>
-          {existing && (confirmDel
-            ? <Button variant="danger" size="tall" onClick={remove}>לאשר מחיקה של "{existing.title}"</Button>
-            : <Button variant="danger" size="tall" onClick={() => setConfirmDel(true)}>מחיקת האירוע</Button>)}
+          {existing && <Button variant="danger" size="tall" onClick={() => setConfirmDel(true)}>מחיקת האירוע</Button>}
+          {existing && (
+            <ConfirmSheet open={confirmDel} onClose={() => setConfirmDel(false)} title="למחוק את האירוע?"
+              text={`"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`} confirmLabel="מחיקה" onConfirm={remove} />
+          )}
         </div>
       )}
     </AppScreen>

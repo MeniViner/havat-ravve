@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
-import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow } from '../../kit';
+import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, ConfirmSheet } from '../../kit';
 import { useEvent, useProducts, useAllEvents, useEventTabs, copyProducts, deleteProduct } from '../../../data';
 import { nowMs } from '../../../clock';
 import { money, ddmm } from '../../format';
@@ -116,7 +116,6 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
   };
   const remove = async () => {
     if (!existing) return;
-    if (!confirmDel) { setConfirmDel(true); return; }
     const done = await run(async () => { await deleteProduct(e.id, existing.id); return true; });
     if (!done) return;
     logActivity(ctx.actor, 'event', e.id, 'edited', `מוצר נמחק: ${existing.name}`, { eventId: e.id });
@@ -128,7 +127,7 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
     <AppScreen variant="form" gap={16} bar={
       <BottomBar>
         <Button size="bar" grow onClick={save}>שמירה</Button>
-        {existing && <Button size="bar" variant="secondary" onClick={remove}>{confirmDel ? 'למחוק?' : 'מחיקה'}</Button>}
+        {existing && <Button size="bar" variant="secondary" onClick={() => setConfirmDel(true)}>מחיקה</Button>}
       </BottomBar>
     }>
       <FormHeader title="מוצר בדוכן" onCancel={() => back(parent)} />
@@ -141,6 +140,10 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
         <Row minHeight={58} title="מוצג בדוכן" meta="כשכבוי, לא מופיע במסך המכירה" actions={<Toggle checked={active} onChange={setActive} label="מוצג בדוכן" />} />
       </ListCard>
       {sales && <span className="events-softline">{sales}</span>}
+      {existing && (
+        <ConfirmSheet open={confirmDel} onClose={() => setConfirmDel(false)} title="למחוק את המוצר?"
+          text={`"${existing.name}" לא יופיע יותר בדוכן. מה שכבר נמכר נשאר בחשבונות.`} confirmLabel="מחיקה" onConfirm={remove} />
+      )}
     </AppScreen>
   );
 }

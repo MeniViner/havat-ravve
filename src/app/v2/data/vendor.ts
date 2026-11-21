@@ -3,7 +3,7 @@
 // (vendor_invites/{code}, claimed at first sign-in). Everything goes through db.ts, so demo and Firestore behave the same.
 // Model and rules: docs/redesign-data/vendor.md.
 import { useMemo } from 'react';
-import { useDoc, useList, write, newId, push, transact, ConflictError } from '../../db';
+import { useDoc, useList, write, newId, push, pull, transact, ConflictError } from '../../db';
 import { isFemale } from '../gender';
 import { nowIso, nowMs, todayKey } from '../../clock';
 import { logActivity } from '../../activity';
@@ -353,6 +353,33 @@ export async function removeAccess(ctx: V2Ctx, v: VendorDoc, invites: VendorInvi
   ops.push({ op: 'update', col: 'vendors', id: v.id, data: { people: [], updatedAt: at } });
   await write.batch(ops);
   logActivity(ctx.actor, 'event', v.id, 'removed', `הגישה של ${v.name} לאפליקציה הוסרה`);
+}
+
+/** Deletes a stall from the pool: its invitation on every event (vendor.events), every access link, the team's notes,
+ *  and the access of whoever is linked (back to guest, as V6). One batch, so a half-deleted stall never stays behind. */
+export async function deleteVendorV2(ctx: V2Ctx, v: VendorDoc, invites: VendorInviteDoc[], peopleByUid: Map<string, Profile>) {
+  const at = nowIso();
+  const ops: Parameters<typeof write.batch>[0] = [];
+  const uids = new Set<string>([...peopleOf(v, invites).map((p) => p.uid || ''), ...invites.map((i) => i.usedBy || '')].filter(Boolean));
+  for (const uid of uids) {
+    const p = peopleByUid.get(uid);
+    if (!p || p.role !== 'vendor' || (p as { vendorId?: string }).vendorId !== v.id) continue;
+    ops.push({ op: 'update', col: 'users', id: uid, data: { role: 'guest', notes: (p as { notes?: string }).notes || '', updatedAt: at, log: [...(p.log || []).slice(-29), { at, by: ctx.actor, text: `הדוכן ${v.name} נמחק מהמאגר` }] } });
+  }
+  for (const i of invites) ops.push({ op: 'remove', col: 'vendor_invites', id: i.code });
+  for (const eid of new Set(v.events || [])) ops.push({ op: 'remove', col: `events/${eid}/vendors`, id: v.id });
+  ops.push({ op: 'remove', col: `vendors/${v.id}/private`, id: 'main' });
+  ops.push({ op: 'remove', col: 'vendors', id: v.id });
+  await write.batch(ops);
+  logActivity(ctx.actor, 'event', v.id, 'deleted', `${v.name} נמחק ממאגר בעלי הדוכנים`);
+}
+/** N8: takes a stall off one event (the record) and the event off the stall's history. */
+export async function removeFromEvent(ctx: V2Ctx, v: VendorDoc | undefined, eventId: string, rec: EventVendorDoc) {
+  const vid = rec.vendorId || rec.id;
+  const ops: Parameters<typeof write.batch>[0] = [{ op: 'remove', col: `events/${eventId}/vendors`, id: rec.id }];
+  if (v) ops.push({ op: 'update', col: 'vendors', id: vid, data: { events: pull(eventId), updatedAt: nowIso() } });
+  await write.batch(ops);
+  logActivity(ctx.actor, 'event', eventId, 'removed', `${rec.name || v?.name || 'בעל דוכן'} הוסר מהדוכנים של האירוע`, { eventId });
 }
 
 // ---------- access: claiming an invite at first sign-in ----------

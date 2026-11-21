@@ -2,16 +2,16 @@
 import { useMemo, useState } from 'react';
 import {
   Avatar, BottomBar, Button, ChoiceChip, DetailList, DetailRow, Dot, EmptyState, Field, FormHeader, IconButton, ListCard, PageTitle, Quote, Row,
-  SearchField, Sheet, StatRow, StatTile, Tag, TextAreaField, TextLink, Toggle, TopBar,
+  SearchField, Sheet, StatRow, StatTile, Tag, TextAreaField, TextLink, Toggle, TopBar, ConfirmSheet,
 } from '../../kit';
-import { AppScreen, useToast, useExternal, waUrl, telUrl } from '../../core';
+import { AppScreen, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
 import { navigate, back, useParam } from '../../../router';
 import { nowMs } from '../../../clock';
 import { isConflict } from '../../../db';
 import { ddmm, hhmm, ago } from '../../format';
 import {
   useVendorDoc, useVendorPool, useEventDoc, useEventVendorList, useEventRequests, useVendorInvites, useVendorInfo, useVendorBundles, useEvents,
-  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, inviteMany, savePoolVendor, addPerson, removeAccess, closeRequest, helperText, inviteLink,
+  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, inviteMany, savePoolVendor, addPerson, removeAccess, deleteVendorV2, removeFromEvent, closeRequest, helperText, inviteLink,
   needsText, requestLabel, phaseOf, femName, first, g, andList, NEED_ORDER, type VendorDoc, type EventVendorDoc, type PoolForm, type VendorPerson,
 } from '../../data/vendor';
 import { NEED_LABELS, type FarmEvent, type VendorNeed } from '../../../types';
@@ -66,6 +66,9 @@ function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorD
   });
   const [errs, setErrs] = useState<{ name?: string; phone?: string }>({});
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const invites = useVendorInvites(existing?.id || '', !!existing);
+  const remove = useRemove();
   const toggle = (n: VendorNeed) => setF((s) => ({ ...s, needs: s.needs.includes(n) ? s.needs.filter((x) => x !== n) : [...s.needs, n] }));
   const cancel = () => (existing ? navigate(`/manage/vendors/${existing.id}`, true) : navigate('/manage/vendors', true));
   const save = async () => {
@@ -102,6 +105,12 @@ function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorD
         <Toggle checked={f.external} onChange={(external) => setF({ ...f, external })} label="דוכן חיצוני" />
       </div>
       <TextAreaField label="הערות לצוות" placeholder="מה חשוב לדעת עליו" value={f.notes} onChange={(x) => setF({ ...f, notes: x.target.value })} maxLength={1000} />
+      {existing && <div><Button variant="danger" onClick={() => setAskDelete(true)}>מחיקת בעל הדוכן</Button></div>}
+      {existing && (
+        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את בעל הדוכן?"
+          text={`"${existing.name}" יימחק מהמאגר ומההזמנות לאירועים, והגישה של מי שמקושר לדוכן תוסר.`} confirmLabel="מחיקה"
+          onConfirm={() => remove(() => deleteVendorV2(ctx, existing, invites.items, ctx.peopleByUid), { text: `${existing.name} נמחק מהמאגר`, after: () => navigate('/manage/vendors', true) })} />
+      )}
     </AppScreen>
   );
 }
@@ -275,6 +284,8 @@ export function EventVendors({ ctx, params }: ScreenProps) {
   const all = useEvents(true);
   const open = useExternal(); const toast = useToast();
   const [pick, setPick] = useState(false); const [busy, setBusy] = useState(false);
+  const [askRemove, setAskRemove] = useState<EventVendorDoc | null>(null);
+  const remove = useRemove();
   const prev = useMemo(() => {
     const ev = e.item; if (!ev) return null;
     return all.items.filter((x) => x.id !== ev.id && x.stall !== false && phaseOf(x) === 'past' && x.start < ev.start).sort((a, b) => b.start.localeCompare(a.start))[0] || null;
@@ -323,9 +334,12 @@ export function EventVendors({ ctx, params }: ScreenProps) {
               tags={st === 'confirmed' ? <Tag tone="paid">{g(f, 'אישר', 'אישרה')}</Tag> : st === 'declined' ? <Tag>{g(f, 'לא מגיע', 'לא מגיעה')}</Tag> : <Tag tone="waiting">לא ענו</Tag>}
               meta={[who, sellsShort(r) || sellsShort(v)].filter(Boolean).join(' · ')}
               onClick={() => navigate(`/manage/vendors/${r.vendorId || r.id}`)} chevron={false}
-              actions={!phone || !v ? undefined : st === 'invited'
-                ? <Button variant="outline" icon="message" iconSize={16} onClick={() => remind(v)}>תזכורת</Button>
-                : <IconButton icon="message" variant="outline" label={`וואטסאפ ל${first(who || v.name)}`} onClick={() => open(waUrl(phone))} />} />;
+              actions={<>
+                {!phone || !v ? null : st === 'invited'
+                  ? <Button variant="outline" icon="message" iconSize={16} onClick={() => remind(v)}>תזכורת</Button>
+                  : <IconButton icon="message" variant="outline" label={`וואטסאפ ל${first(who || v.name)}`} onClick={() => open(waUrl(phone))} />}
+                <IconButton icon="close" variant="quiet" label={`הסרה מהאירוע: ${r.name || v?.name || ''}`} onClick={() => setAskRemove(r)} />
+              </>} />;
           })}
         </ListCard>
       ) : <EmptyState variant="card" icon="stall" title="עוד לא הזמנו דוכנים" text="מזמינים מהמאגר, וכל אחד מקבל קישור בוואטסאפ." />}
@@ -337,6 +351,9 @@ export function EventVendors({ ctx, params }: ScreenProps) {
         </ul>
         <Button variant="secondary" size="lg" block onClick={() => setPick(false)}>סגירה</Button>
       </Sheet>
+      <ConfirmSheet open={!!askRemove} onClose={() => setAskRemove(null)} title="להסיר מהאירוע?"
+        text={askRemove ? `"${askRemove.name || byId.get(askRemove.vendorId || askRemove.id)?.name || ''}" יוסר מהדוכנים של ${ev.title}. הוא נשאר במאגר.` : ''} confirmLabel="הסרה"
+        onConfirm={() => askRemove && remove(() => removeFromEvent(ctx, byId.get(askRemove.vendorId || askRemove.id), eid, askRemove), { text: 'הוסר מהאירוע', after: () => setAskRemove(null) })} />
     </AppScreen>
   );
 }
