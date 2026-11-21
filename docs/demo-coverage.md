@@ -111,13 +111,13 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | D1-Invite | vendor | regular | /vendor/invite/demo-e-festival |  |
 | D2-Confirm | vendor | regular | /vendor/events/demo-e-festival/needs |  |
 | D3-Home | vendor | regular | /vendor |  |
-| D10-Empty | vendor | regular | /vendor | demo:empty |
+| D10-Empty | vendor | afterEvent | /vendor |  |
 | D4-Event | vendor | regular | /vendor/events/demo-e-festival |  |
 | D7-Stall | vendor | regular | /vendor/stall |  |
 | D8-Helper | vendor | regular | /vendor/stall/helpers/new |  |
 | D11-HelperHome | helper | regular | /vendor |  |
 | D5-Day | vendor | eventDay | /vendor |  |
-| D6-DayLive | vendor | eventDay | /vendor |  |
+| D6-DayLive | vendor | eventDay | /vendor | click:הגעתי לחווה |
 | D9-Summary | vendor | afterEvent | /vendor/events/demo-e-festival/summary |  |
 | Z1-DemoStart | staff | regular | /demo |  |
 | Z2-DemoBanner | staff | regular | /tasks |  |
