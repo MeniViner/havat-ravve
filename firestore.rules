@@ -29,6 +29,8 @@ service cloud.firestore {
   }
 
   // ---------- Team app (users, tasks, shopping) ----------
+  // Roles (users/{uid}.role, counted only while status == 'active'): owner > manager > staff; vendor (a stall's owner or helper,
+  // never staff); guest; and blocked (status). docs/redesign-data/rules.md lists who reads and writes each collection.
   function uid(){return request.auth.uid;}
   function self(id){return google() && id == uid();}
   function userPath(){return /databases/$(database)/documents/users/$(uid());}
@@ -37,28 +39,63 @@ service cloud.firestore {
   function isOwner(){return google() && (bootstrapOwner() || activeRole() == 'owner');}
   function isManager(){return google() && (bootstrapOwner() || activeRole() in ['owner','manager']);}
   function isStaff(){return google() && (bootstrapOwner() || activeRole() in ['owner','manager','staff']);}
+  // ---------- vendors: a stall's owner and helpers (role 'vendor', users/{uid}.vendorId) ----------
+  // kept small on purpose: Firestore stops a rule after 1000 evaluated expressions, and the record update has five branches
+  function vendorMe(){return get(userPath()).data;}
+  function isVendor(){return google() && exists(userPath()) && vendorMe().role == 'vendor' && vendorMe().status == 'active';}
+  function myVendor(){return isVendor() ? vendorMe().get('vendorId', '') : '';}
+  function vendorPerson(vid){return vid is string && vid != '' && isVendor() && vendorMe().get('vendorId', '') == vid;}
+  function vendorOwner(vid){return vendorPerson(vid) && vendorMe().get('helper', false) == false;}
+  function invitedTo(eid){return isVendor() && vendorMe().get('vendorId', '') != '' && exists(/databases/$(database)/documents/events/$(eid)/vendors/$(vendorMe().get('vendorId', '')));}
   function str(v, max){return v is string && v.size() <= max;}
   function actorOk(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid == uid() && str(a.name, 80);}
+  // an Actor that is not necessarily the writer (the person a task or step is put on)
+  function actorMap(a){return a is map && a.keys().hasOnly(['uid','name']) && str(a.uid, 128) && a.uid.size() > 0 && str(a.name, 80);}
   function photoOk(v){return v == '' || (v is string && v.size() <= 400000 && v.matches('data:image/(webp|jpeg);base64,[A-Za-z0-9+/=]+'));}
   function inviteValid(code){return code is string && exists(/databases/$(database)/documents/invites/$(code)) && get(/databases/$(database)/documents/invites/$(code)).data.active == true && get(/databases/$(database)/documents/invites/$(code)).data.role == 'staff';}
   function incoming(){return request.resource.data;}
   function changed(){return request.resource.data.diff(resource.data).affectedKeys();}
   function isoTime(v){return v is string && v.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z');}
+  // optional ISO field: absent, null, or an ISO instant
+  function optIso(field){return incoming().get(field, null) == null || isoTime(incoming().get(field, null));}
+  // event day: gate and stall writes by the crew stop once a manager closed the event (Y5); managers keep writing
+  function eventOpen(eid){return eid is string && eid != '' && exists(/databases/$(database)/documents/events/$(eid)) && get(/databases/$(database)/documents/events/$(eid)).data.get('closed', null) == null;}
 
   match /users/{id} {
-   function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   // vendor keys (vendorId, helper, addedBy, inviteCode) are written only by a claim; photo, town, birthDate, push and welcomedAt by the person
+   function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt','vendorId','helper','addedBy','inviteCode','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && str(incoming().get('vendorId', ''), 60) && incoming().get('helper', false) is bool && str(incoming().get('addedBy', ''), 60) && str(incoming().get('inviteCode', ''), 40) && ownShapeOk();}
+   function ownShapeOk(){return (!('photo' in incoming()) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40));}
+   function pushOk(){let p = incoming().push; return p is map && p.keys().hasOnly(['enabled','kinds','devices','updatedAt']) && p.get('enabled', false) is bool && p.get('kinds', []) is list && p.get('kinds', []).size() <= 10 && p.get('devices', []) is list && p.get('devices', []).size() <= 6 && str(p.get('updatedAt', ''), 40);}
+   // a vendor profile is written only in the commit that uses up a matching invite (claimVendorInvite)
+   function inviteBefore(){return get(/databases/$(database)/documents/vendor_invites/$(incoming().inviteCode)).data;}
+   function inviteAfter(){return getAfter(/databases/$(database)/documents/vendor_invites/$(incoming().inviteCode)).data;}
+   function claimsInvite(){return incoming().role == 'vendor' && incoming().get('inviteCode', '') is string && incoming().get('inviteCode', '').size() >= 8 && inviteBefore().active == true && inviteBefore().usedBy == null && inviteAfter().usedBy == id && inviteAfter().active == false && incoming().vendorId == inviteBefore().vendorId && incoming().helper == (inviteBefore().role == 'helper') && incoming().addedBy == inviteBefore().createdBy.uid;}
    function emailInvite(){return get(/databases/$(database)/documents/role_invites/$(request.auth.token.email)).data;}
    function hasEmailInvite(){return exists(/databases/$(database)/documents/role_invites/$(request.auth.token.email));}
-   function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']));}
-   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
-   function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && incoming().role in ['guest','staff','manager','owner'] && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
+   function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']) || claimsInvite());}
+   // the person's own details; never role, status, email, customerNumber, notes, log or the vendor link
+   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
+   // a vendor stays a vendor (status, notes); a manager never makes one: only a claim can (V6 sets the role back to guest)
+   function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && (incoming().role in ['guest','staff','manager','owner'] || (incoming().role == 'vendor' && resource.data.role == 'vendor')) && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
+   function claimEdit(){return self(id) && resource.data.role in ['guest','vendor'] && resource.data.status == 'active' && changed().hasOnly(['role','vendorId','helper','addedBy','inviteCode','updatedAt']) && claimsInvite();}
    allow get: if self(id) || isManager();
    // volunteers need the names of the team (who a task is on), never the guests
    allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
    function fieldsOk(){return incoming().get('fields', {}) is map && incoming().get('fields', {}).get('receiptPreference', '') in ['', 'whatsapp', 'email'];}
-   allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole();
-   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()));
+   allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole() && (incoming().role == 'vendor' || !incoming().keys().hasAny(['vendorId','helper','addedBy','inviteCode']));
+   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit());
    allow delete: if isOwner();
+
+   // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()
+   match /notifications/{nid} {
+    function noteShape(){return incoming().keys().hasOnly(['id','kind','title','sub','link','refId','action','by','createdAt','readAt']) && incoming().id == nid && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 120) && str(incoming().sub, 240) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().get('refId', ''), 80) && (!('action' in incoming()) || (incoming().action is map && incoming().action.keys().hasOnly(['label','kind']) && str(incoming().action.label, 40) && incoming().action.kind in ['addToTrip','open'])) && isoTime(incoming().createdAt);}
+    function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff']));}
+    allow read: if self(id);
+    allow create: if noteShape() && incoming().readAt == null && sender();
+    // the owner of the list only marks read; "לשלוח שוב" rewrites b_<id> as new (a manager overwrites a broadcast notification)
+    allow update: if (self(id) && changed().hasOnly(['readAt']) && isoTime(incoming().readAt)) || (isManager() && noteShape() && resource.data.kind == 'broadcast' && incoming().kind == 'broadcast' && incoming().readAt == null && actorOk(incoming().by));
+    allow delete: if self(id);
+   }
   }
   // Account deletion request: the person themselves, stamped with the server's time. The Worker removes the
   // account after 30 days (api/src/accounts.ts); until then deleting this document cancels the request.
@@ -87,27 +124,39 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /tasks/{id} {
-   function taskShape(){return incoming().keys().hasOnly(['title','note','photo','location','dueDate','managersOnly','templateId','dateKey','createdBy','createdAt','done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','urgent','eventId']) && str(incoming().get('eventId', ''), 60) && str(incoming().title, 200) && (incoming().assignee == null || (incoming().assignee is map && incoming().assignee.keys().hasOnly(['uid','name']) && str(incoming().assignee.name, 80))) && incoming().urgent is bool && incoming().title.size() >= 1 && str(incoming().note, 4000) && photoOk(incoming().photo) && (incoming().location == null || (incoming().location is map && incoming().location.lat is number && incoming().location.lng is number)) && str(incoming().dueDate, 10) && incoming().managersOnly is bool && (incoming().templateId == null || (str(incoming().templateId, 60) && str(incoming().dateKey, 10) && id == incoming().templateId + '_' + incoming().dateKey)) && incoming().done is bool && photoOk(incoming().donePhoto) && str(incoming().doneNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().managersOnly == false || isManager());}
+   function taskShape(){return incoming().keys().hasOnly(['title','note','photo','location','dueDate','managersOnly','templateId','dateKey','createdBy','createdAt','done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','urgent','eventId','takenAt','shoppingId','requestedBy']) && str(incoming().get('eventId', ''), 60) && str(incoming().get('takenAt', ''), 40) && str(incoming().get('shoppingId', ''), 80) && (!('requestedBy' in incoming()) || actorMap(incoming().requestedBy)) && str(incoming().title, 200) && (incoming().assignee == null || (incoming().assignee is map && incoming().assignee.keys().hasOnly(['uid','name']) && str(incoming().assignee.name, 80))) && incoming().urgent is bool && incoming().title.size() >= 1 && str(incoming().note, 4000) && photoOk(incoming().photo) && (incoming().location == null || (incoming().location is map && incoming().location.lat is number && incoming().location.lng is number)) && str(incoming().dueDate, 10) && incoming().managersOnly is bool && (incoming().templateId == null || (str(incoming().templateId, 60) && str(incoming().dateKey, 10) && id == incoming().templateId + '_' + incoming().dateKey)) && incoming().done is bool && photoOk(incoming().donePhoto) && str(incoming().doneNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().managersOnly == false || isManager());}
    function doneShape(){return (incoming().done == false && incoming().doneBy == null && incoming().doneAt == null) || (incoming().done == true && actorOk(incoming().doneBy) && str(incoming().doneAt, 40)) || (incoming().done == true && incoming().doneBy == resource.data.doneBy && incoming().doneAt == resource.data.doneAt);}
    function canSee(){return isStaff() && (resource.data.managersOnly == false || isManager());}
+   // take / release / hand on, for a volunteer who did not create the task: a free open task only to themselves, and only
+   // their own task to anyone or back to free. A late offline take of a task someone else took meanwhile is refused (X1).
+   function assigneeOk(){let was = resource.data.get('assignee', null); return !changed().hasAny(['assignee']) || (was == null && resource.data.done == false && incoming().assignee != null && incoming().assignee.uid == uid()) || (was != null && was.uid == uid());}
    allow read: if canSee();
    allow create: if isStaff() && taskShape() && actorOk(incoming().createdBy) && incoming().done == false && incoming().doneBy == null && incoming().doneAt == null && incoming().donePhoto == '' && incoming().doneNote == '';
-   allow update: if canSee() && taskShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && incoming().templateId == resource.data.templateId && doneShape() && (isManager() || resource.data.createdBy.uid == uid() || changed().hasOnly(['done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee']));
+   allow update: if canSee() && taskShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && incoming().templateId == resource.data.templateId && doneShape() && (isManager() || resource.data.createdBy.uid == uid() || (changed().hasOnly(['done','doneBy','doneAt','donePhoto','doneNote','updatedAt','assignee','takenAt','photo','shoppingId']) && assigneeOk()));
    allow delete: if canSee() && (isManager() || resource.data.createdBy.uid == uid());
   }
   match /task_templates/{id} {
-   function templateShape(){return incoming().keys().hasOnly(['title','note','days','time','active','managersOnly','createdBy','createdAt','updatedAt']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 4000) && incoming().days is list && incoming().days.size() <= 7 && str(incoming().time, 5) && incoming().active is bool && incoming().managersOnly is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function templateShape(){return incoming().keys().hasOnly(['title','note','days','time','active','managersOnly','createdBy','createdAt','updatedAt','assignee','placeId']) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 4000) && incoming().days is list && incoming().days.size() <= 7 && str(incoming().time, 5) && incoming().active is bool && incoming().managersOnly is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && (incoming().get('assignee', null) == null || actorMap(incoming().assignee)) && str(incoming().get('placeId', ''), 80);}
    allow read: if isStaff() && (resource.data.managersOnly == false || isManager());
    allow create: if isManager() && templateShape() && actorOk(incoming().createdBy);
    allow update: if isManager() && templateShape() && incoming().createdBy == resource.data.createdBy;
    allow delete: if isManager();
   }
   match /shopping/{id} {
-   function itemShape(){return incoming().keys().hasOnly(['title','note','link','photo','category','createdBy','createdAt','bought','boughtBy','boughtAt','expireAt','updatedAt','qty','urgent']) && photoOk(incoming().get('photo','')) && str(incoming().qty, 40) && incoming().urgent is bool && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 1000) && str(incoming().link, 2000) && (incoming().link == '' || incoming().link.matches('https://.*')) && incoming().category in ['super','building','online','giveaway'] && incoming().bought is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ((incoming().bought == false && incoming().boughtBy == null && incoming().boughtAt == null && incoming().expireAt == null) || (incoming().bought == true && incoming().boughtBy is map && str(incoming().boughtAt, 40) && str(incoming().expireAt, 40)));}
+   function itemShape(){return incoming().keys().hasOnly(['title','note','link','photo','category','createdBy','createdAt','bought','boughtBy','boughtAt','expireAt','updatedAt','qty','urgent','taskId','notAvailable','notAvailableAt','tripId','foundWhere']) && photoOk(incoming().get('photo','')) && str(incoming().get('taskId', ''), 80) && incoming().get('notAvailable', false) is bool && optStr('notAvailableAt', 40) && str(incoming().get('tripId', ''), 80) && str(incoming().get('foundWhere', ''), 200) && str(incoming().qty, 40) && incoming().urgent is bool && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 1000) && str(incoming().link, 2000) && (incoming().link == '' || incoming().link.matches('https://.*')) && incoming().category in ['super','building','online','giveaway'] && incoming().bought is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ((incoming().bought == false && incoming().boughtBy == null && incoming().boughtAt == null && incoming().expireAt == null) || (incoming().bought == true && incoming().boughtBy is map && str(incoming().boughtAt, 40) && str(incoming().expireAt, 40)));}
+   function optStr(field, max){return incoming().get(field, null) == null || str(incoming().get(field, null), max);}
    allow read: if isStaff();
    allow create: if isStaff() && itemShape() && actorOk(incoming().createdBy) && incoming().bought == false;
    allow update: if isStaff() && itemShape() && incoming().createdBy == resource.data.createdBy && incoming().createdAt == resource.data.createdAt && (incoming().bought == resource.data.bought || incoming().bought == false || actorOk(incoming().boughtBy));
    allow delete: if isStaff();
+  }
+  // S6, S7: a shopping trip. Only the shopper writes it; nobody deletes it
+  match /shopping_trips/{id} {
+   function tripShape(){return incoming().keys().hasOnly(['id','by','list','startedAt','closedAt','bought','missing']) && incoming().get('id', id) == id && incoming().list in ['super','building','online','giveaway'] && str(incoming().startedAt, 40) && (incoming().closedAt == null || str(incoming().closedAt, 40)) && incoming().bought is list && incoming().bought.size() <= 200 && incoming().missing is list && incoming().missing.size() <= 200;}
+   allow read: if isStaff();
+   allow create: if isStaff() && tripShape() && actorOk(incoming().by) && incoming().closedAt == null;
+   allow update: if isStaff() && tripShape() && resource.data.by.uid == uid() && incoming().by == resource.data.by && incoming().startedAt == resource.data.startedAt && incoming().list == resource.data.list;
+   allow delete: if false;
   }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
@@ -118,11 +167,32 @@ service cloud.firestore {
    allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
    allow delete: if false;
   }
+  // L3, L4: anyone on the team saves a place where they stand and names it; only managers delete one
   match /places/{id} {
+   function placeExtras(){return photoOk(incoming().get('photo', '')) && incoming().get('accuracy', 0) is number;}
    allow read: if isStaff();
-   allow create: if isManager() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
-   allow update: if isManager() && changed().hasOnly(['name','lat','lng']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number;
+   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && actorOk(incoming().createdBy) && str(incoming().createdAt, 40) && placeExtras();
+   allow update: if isStaff() && changed().hasOnly(['name','lat','lng','photo','accuracy']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && placeExtras();
    allow delete: if isManager();
+  }
+  // P1-P6: manager projects. Nobody below a manager reads or writes any of it
+  match /projects/{pid} {
+   function projectShape(){return incoming().keys().hasOnly(['id','title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','createdBy','createdAt','updatedAt']) && incoming().get('id', pid) == pid && str(incoming().title, 120) && incoming().title.size() > 0 && str(incoming().get('goal', ''), 120) && str(incoming().get('deadline', ''), 10) && str(incoming().get('deadlineText', ''), 60) && str(incoming().get('short', ''), 40) && incoming().get('members', []) is list && incoming().get('members', []).size() <= 50 && incoming().get('memberUids', []) is list && incoming().get('memberUids', []).size() <= 50 && incoming().status in ['active','done'] && optIso('doneAt') && str(incoming().updatedAt, 40);}
+   allow read: if isManager();
+   allow create: if isManager() && projectShape() && incoming().status == 'active' && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
+   allow update: if isManager() && projectShape() && changed().hasOnly(['title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','updatedAt']);
+   allow delete: if isOwner();
+   match /steps/{sid} {
+    function stepShape(){return incoming().keys().hasOnly(['id','projectId','n','title','assignee','due','note','done','doneBy','doneAt','parentId','updates','createdBy','createdAt','updatedAt']) && incoming().get('id', sid) == sid && incoming().projectId == pid && incoming().n is number && str(incoming().title, 200) && incoming().title.size() > 0 && str(incoming().get('note', ''), 1000) && str(incoming().get('due', ''), 10) && (incoming().get('assignee', null) == null || actorMap(incoming().assignee)) && (incoming().get('parentId', null) == null || str(incoming().parentId, 80)) && incoming().done is bool && incoming().get('updates', []) is list && incoming().get('updates', []).size() <= 300 && str(incoming().updatedAt, 40);}
+    // "בוצע" is stamped by the person marking it, once: a late second "done" from another phone is refused
+    function doneOk(){return !changed().hasAny(['done','doneBy','doneAt']) || (incoming().done == true && resource.data.done == false && actorOk(incoming().doneBy) && isoTime(incoming().doneAt)) || (incoming().done == false && incoming().doneBy == null && incoming().doneAt == null);}
+    // the P4 thread only grows, by one entry written by the poster
+    function updatesOk(){let before = resource.data.get('updates', []); let after = incoming().updates; return !changed().hasAny(['updates']) || (after.size() == before.size() + 1 && (before.size() == 0 || after[0:before.size()] == before) && after[before.size()] is map && after[before.size()].keys().hasOnly(['by','at','text']) && actorOk(after[before.size()].by) && isoTime(after[before.size()].at) && str(after[before.size()].text, 500));}
+    allow read: if isManager();
+    allow create: if isManager() && stepShape() && incoming().done == false && incoming().get('doneBy', null) == null && incoming().get('doneAt', null) == null && incoming().get('updates', []).size() == 0 && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
+    allow update: if isManager() && stepShape() && changed().hasOnly(['n','title','assignee','due','note','done','doneBy','doneAt','updates','updatedAt']) && doneOk() && updatesOk();
+    allow delete: if isManager() && resource.data.done == false;
+   }
   }
   // ---------- Guest side: events, tickets, visits, donations, stalls ----------
   function signed(){return google() && exists(userPath()) && get(userPath()).data.status != 'blocked';}
@@ -143,6 +213,7 @@ service cloud.firestore {
    allow write: if false;
   }
   match /settings/{name} {
+   // public; settings/push (public keys) is written only by the Worker
    allow read: if true;
    // where guests send money is the owners' decision; every other part of the settings is any manager's
    function numberOk(v){return str(v, 25) && (v == '' || v.matches('[+]?([() .-]*[0-9]){9,15}[() .-]*'));}
@@ -153,36 +224,106 @@ service cloud.firestore {
    allow delete: if isOwner() && name == 'app';
   }
   match /events/{id} {
-   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','publishedAt','questions','files','entry','stall','createdBy','createdAt','updatedAt']) && (!('publishedAt' in incoming()) || isoTime(incoming().publishedAt)) && incoming().get('entry', true) is bool && incoming().get('stall', true) is bool && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10;}
-   allow read: if resource.data.published == true || isStaff();
+   // closed (Y5): when and by whom, and until when it may reopen. The event document is public once published, so the cash
+   // counts stay in counters/cash (managers only) and never in here.
+   function closedOk(){let c = incoming().get('closed', null); return c == null || (c is map && c.keys().hasOnly(['at','by','reopenUntil']) && isoTime(c.at) && actorOk(c.by) && isoTime(c.reopenUntil));}
+   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','publishedAt','questions','files','entry','stall','closed','reopenedAt','reopenedBy','createdBy','createdAt','updatedAt']) && (!('publishedAt' in incoming()) || isoTime(incoming().publishedAt)) && incoming().get('entry', true) is bool && incoming().get('stall', true) is bool && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10 && (!changed().hasAny(['closed']) || closedOk()) && optIso('reopenedAt') && (incoming().get('reopenedBy', null) == null || actorMap(incoming().reopenedBy));}
+   allow get: if resource.data.published == true || isStaff() || invitedTo(id);
+   allow list: if resource.data.published == true || isStaff();
    allow create: if isManager() && eventShape() && actorOk(incoming().createdBy) && (!('publishedAt' in incoming()) || (incoming().published && incoming().publishedAt == incoming().createdAt));
    allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy && (!changed().hasAny(['publishedAt']) || (incoming().published && !resource.data.published && incoming().publishedAt == incoming().updatedAt));
    allow delete: if isManager();
    match /vendors/{vid} {
-    allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['vendorId','name','confirmed','notes']) && str(incoming().name, 200) && incoming().confirmed is bool && str(incoming().notes, 1000)));
+    function recShape(){return incoming().keys().hasOnly(['vendorId','name','confirmed','notes','status','invitedAt','invitedBy','answeredAt','sells','needs','people','withVehicle','vehicle','note','spot','spotNote','arrivedAt','arrivedBy','guidelinesReadAt','feedback','remindedAt','updatedAt']) && str(incoming().name, 200) && incoming().confirmed is bool && str(incoming().notes, 1000) && incoming().get('status', 'invited') in ['invited','confirmed','declined'] && str(incoming().get('sells', ''), 300) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && str(incoming().get('note', ''), 1000) && str(incoming().get('vehicle', ''), 100) && incoming().get('withVehicle', false) is bool && (incoming().get('people', 1) is int && incoming().get('people', 1) >= 1 && incoming().get('people', 1) <= 10);}
+    // D1/D2: the owner answers; the answer can be changed until a manager closes the invite
+    function ownerAnswer(){return changed().hasOnly(['status','confirmed','answeredAt','sells','needs','people','withVehicle','vehicle','note','updatedAt']) && incoming().status in ['confirmed','declined'] && incoming().confirmed == (incoming().status == 'confirmed') && isoTime(incoming().answeredAt) && vendorOwner(vid);}
+    // D9: the owner's feedback after the event
+    function ownerFeedback(){return changed().hasOnly(['feedback','updatedAt']) && incoming().feedback is map && incoming().feedback.keys().hasOnly(['rating','text','inviteNext','at']) && incoming().feedback.rating is int && incoming().feedback.rating >= 1 && incoming().feedback.rating <= 5 && str(incoming().feedback.text, 1000) && incoming().feedback.inviteNext is bool && isoTime(incoming().feedback.at) && vendorOwner(vid);}
+    // D5: the owner or a helper presses "הגעתי לחווה", once, as themselves, on a confirmed stall
+    function checkIn(){return changed().hasOnly(['arrivedAt','arrivedBy','updatedAt']) && resource.data.get('status', '') == 'confirmed' && resource.data.get('arrivedAt', null) == null && isoTime(incoming().arrivedAt) && incoming().arrivedBy == uid() && vendorPerson(vid);}
+    function guidelinesRead(){return changed().hasOnly(['guidelinesReadAt']) && isoTime(incoming().guidelinesReadAt) && vendorPerson(vid);}
+    allow get: if isStaff() || vendorPerson(vid);
+    allow list: if isStaff();
+    allow create: if isManager() && recShape();
+    allow update: if recShape() && incoming().vendorId == resource.data.vendorId && (ownerAnswer() || ownerFeedback() || checkIn() || guidelinesRead() || isManager());
+    allow delete: if isManager();
    }
-   // links to permits, layout maps and lists: managers only (they used to sit in the public event document)
+   // what an invited vendor reads about the event (D1, D3, D4, D5, D9); managers write it
+   match /vendor_info/{doc} {
+    function infoShape(){return incoming().keys().hasOnly(['setupFrom','vehiclesUntil','teardownFrom','peakUntil','expected','provided','bring','contact','guidelines','mapUrl','answerBy','note','thanks','visitors','stalls','managerUids','updatedAt']) && str(incoming().get('provided', ''), 300) && str(incoming().get('bring', ''), 300) && str(incoming().get('note', ''), 1000) && str(incoming().get('thanks', ''), 1000) && str(incoming().get('mapUrl', ''), 2000) && incoming().get('managerUids', []) is list && incoming().get('managerUids', []).size() <= 20 && incoming().get('contact', {}) is map && incoming().get('guidelines', {}) is map;}
+    allow get: if isStaff() || invitedTo(id);
+    allow list: if isStaff();
+    allow write: if isManager() && doc == 'main' && (request.method == 'delete' || infoShape());
+   }
+   // D6 "need something": the stall creates and may close its own; staff take and close (V7, M2)
+   match /vendor_requests/{rid} {
+    function reqShape(){return incoming().keys().hasOnly(['id','eventId','vendorId','vendorName','kind','text','by','createdAt','takenBy','closedAt','closedBy']) && incoming().id == rid && incoming().eventId == id && incoming().kind in ['power','help','supply','other','water'] && str(incoming().text, 200) && str(incoming().vendorName, 200) && actorOf(incoming().by);}
+    function confirmedStall(){return get(/databases/$(database)/documents/events/$(id)/vendors/$(incoming().vendorId)).data.get('status', '') == 'confirmed';}
+    allow get, list: if isStaff() || vendorPerson(resource.data.vendorId);
+    allow create: if reqShape() && vendorPerson(incoming().vendorId) && confirmedStall() && actorOk(incoming().by) && isoTime(incoming().createdAt) && incoming().takenBy == null && incoming().closedAt == null && incoming().closedBy == null;
+    allow update: if reqShape() && incoming().vendorId == resource.data.vendorId && incoming().by == resource.data.by && incoming().createdAt == resource.data.createdAt && ((isStaff() && changed().hasOnly(['takenBy']) && (incoming().takenBy == null || actorOk(incoming().takenBy))) || ((isStaff() || vendorPerson(resource.data.vendorId)) && resource.data.closedAt == null && changed().hasOnly(['closedAt','closedBy']) && isoTime(incoming().closedAt) && actorOk(incoming().closedBy)));
+    allow delete: if isManager();
+   }
+   // links to permits, layout maps and lists: managers only (they used to sit in the public event document).
+   // No Storage on Spark: a compressed image or a small PDF may sit in the document as a data: URL
    match /files/{fid} {
     allow read: if isManager();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','url','kind','by','at']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().url, 2000) && incoming().url.matches('https://.*') && incoming().kind in ['doc','image'] && actorOf(incoming().by) && str(incoming().at, 40)));
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','url','kind','by','at','mime','size']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().url, 700000) && (incoming().url.matches('https://.*') || incoming().url.matches('data:(image/(jpeg|webp|png)|application/pdf);base64,[A-Za-z0-9+/=]+')) && incoming().kind in ['doc','image'] && actorOf(incoming().by) && str(incoming().at, 40) && str(incoming().get('mime', ''), 60) && incoming().get('size', 0) is int));
    }
    match /products/{pid} {
     allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','price','active','sort']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number));
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','price','active','sort','unit']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number && str(incoming().get('unit', ''), 20)));
+   }
+   // V4: stations, their people and hours. The crew (F6) and the broadcast audience read it
+   match /staffing/{sid} {
+    allow read: if isStaff();
+    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['station','people','needed']) && str(incoming().station, 60) && incoming().station.size() >= 1 && incoming().people is list && incoming().people.size() <= 30 && incoming().needed is int && incoming().needed >= 1 && incoming().needed <= 30));
+   }
+   // E2-E6, Y1-Y3: the gate log. Create-only: two gates that let in the same entry write the same id ("<ticket>-<n>"),
+   // so the second (also a late offline one) is refused. Managers only mark a rejected scan reopened or kept, once.
+   match /scans/{sid} {
+    function scanShape(){return incoming().keys().hasOnly(['eventId','ticketId','orderId','name','phone','meta','result','reason','amount','method','count','by','at','reopenedBy','reopenedAt','keptBy','keptAt']) && incoming().eventId == id && str(incoming().ticketId, 60) && str(incoming().orderId, 60) && str(incoming().name, 120) && str(incoming().get('phone', ''), 25) && str(incoming().meta, 300) && incoming().result in ['ok','paidAtGate','payLater','rejected'] && str(incoming().get('reason', ''), 200) && incoming().get('amount', 0) is number && str(incoming().get('method', ''), 20) && incoming().get('count', 1) is int && isoTime(incoming().at);}
+    allow read: if isStaff();
+    allow create: if isStaff() && scanShape() && actorOk(incoming().by) && incoming().get('reopenedBy', null) == null && incoming().get('reopenedAt', null) == null && incoming().get('keptBy', null) == null && incoming().get('keptAt', null) == null && (isManager() || eventOpen(id));
+    allow update: if isManager() && resource.data.result == 'rejected' && resource.data.get('reopenedAt', null) == null && (
+      (changed().hasOnly(['reopenedBy','reopenedAt']) && resource.data.get('keptAt', null) == null && actorOk(incoming().reopenedBy) && isoTime(incoming().reopenedAt))
+      || (changed().hasOnly(['keptBy','keptAt']) && actorOk(incoming().keptBy) && isoTime(incoming().keptAt)));
+    allow delete: if false;
+   }
+   // live: the gate's counters, added to in the scan's transaction (never down, except a manager's reopen: rejected -1).
+   // cash: what was counted before closing (Y5), managers only. An invited vendor reads the live visitors count.
+   match /counters/{name} {
+    function counted(f){return incoming().get(f, 0) is number && (incoming().get(f, 0) >= resource.data.get(f, 0) || (f == 'rejected' && isManager()));}
+    function liveShape(){return incoming().keys().hasOnly(['eventId','entered','scans','paidAtGate','payLater','payLaterAmount','rejected','perHalfHour','per10m']) && incoming().eventId == id && incoming().get('perHalfHour', {}) is map && incoming().get('per10m', {}) is map;}
+    allow get: if (name == 'live' && (isStaff() || invitedTo(id))) || (name == 'cash' && isManager());
+    allow list: if isManager();
+    allow create: if (name == 'live' && isStaff() && liveShape() && (isManager() || eventOpen(id))) || (name == 'cash' && isManager() && incoming().keys().hasOnly(['gate','stall']));
+    allow update: if (name == 'live' && isStaff() && liveShape() && (isManager() || eventOpen(id)) && counted('entered') && counted('scans') && counted('paidAtGate') && counted('payLater') && counted('payLaterAmount') && counted('rejected'))
+      || (name == 'cash' && isManager() && incoming().keys().hasOnly(['gate','stall']));
+    allow delete: if false;
    }
   }
   match /tickets/{id} {
    function event(){return get(/databases/$(database)/documents/events/$(incoming().eventId)).data;}
-   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','paymentConfirmation','paidAt','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','paymentConfirmation','paidAt','createdAt','updatedAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ticketExtras();}
+   function ticketExtras(){return incoming().get('payLater', false) is bool && str(incoming().get('payLaterAt', ''), 40) && (incoming().get('payLaterBy', null) == null || actorMap(incoming().payLaterBy)) && optIso('cancelledAt') && (incoming().get('cancelledBy', null) == null || actorMap(incoming().cancelledBy)) && str(incoming().get('cancelNote', ''), 500) && incoming().get('walkIn', false) is bool && optIso('reminderSentAt');}
+   // E4 "להכניס, ישלמו אחר כך": the crew lets an unpaid ticket in as a debt, stamped by themselves
+   function laterOk(){return !changed().hasAny(['payLater','payLaterAt','payLaterBy']) || (resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'pending' && incoming().payLater == true && actorOk(incoming().payLaterBy) && isoTime(incoming().payLaterAt));}
+   function crewOpen(){return eventOpen(resource.data.eventId);}
    allow read: if isStaff() || mine('ownerUid');
-   allow create: if signed() && ticketShape() && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
-   allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && paidAtOk(incoming().paymentStatus in ['paid','paid_onsite']) && (
-     (isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'valid' && resource.data.price > 0 && resource.data.paymentStatus in ['paid','paid_onsite'] && marksConfirmation())))
-     || (isStaff() && changed().hasOnly(['scans','entries','paymentStatus','paidAt','updatedAt']) && incoming().entries == resource.data.entries + 1 && incoming().scans.size() == resource.data.scans.size() + 1 && actorOk(incoming().scans[resource.data.scans.size()].by) && (incoming().paymentStatus == resource.data.paymentStatus || incoming().paymentStatus == 'paid_onsite'))
-     || (isStaff() && changed().hasOnly(['paymentStatus','paidAt','updatedAt']) && resource.data.paymentStatus in ['pending','claimed'] && incoming().paymentStatus == 'paid_onsite')
-     || (mine('ownerUid') && changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed')
-     || (mine('ownerUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'valid' && resource.data.entries == 0 && incoming().status == 'cancelled'));
+   allow create: if signed() && !incoming().keys().hasAny(['paymentConfirmation','paidAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && ticketShape() && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
+   // (both creates test their cheap marker first: Firestore counts the expressions of every allow statement it evaluates, 1000 at most)
+   // E6 "אורח בלי כרטיס": the crew creates tickets for a guest without one, already inside, on an event that is not closed
+   allow create: if incoming().get('walkIn', false) == true && isStaff() && ticketShape() && actorOk(incoming().createdBy) && incoming().ownerUid == '' && incoming().status == 'valid' && incoming().entries == 1 && incoming().scans.size() == 1 && actorOk(incoming().scans[0].by) && incoming().total <= 20 && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && !incoming().keys().hasAny(['cancelledAt','cancelledBy','cancelNote','reminderSentAt']) && eventOpen(incoming().eventId) && incoming().price == event().price && (event().price > 0 ? ((incoming().paymentStatus == 'paid_onsite' && incoming().get('payLater', false) == false) || (incoming().paymentStatus == 'pending' && incoming().payLater == true && actorOk(incoming().payLaterBy) && isoTime(incoming().payLaterAt))) : incoming().paymentStatus == 'free');
+   // each branch tests the cheap changed() first and the role last: Firestore stops a rule after 1000 evaluated expressions
+   function ownerClaim(){return changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed' && mine('ownerUid');}
+   function ownerCancel(){return changed().hasOnly(['status','updatedAt']) && resource.data.status == 'valid' && resource.data.entries == 0 && incoming().status == 'cancelled' && mine('ownerUid');}
+   function crewScan(){return changed().hasOnly(['scans','entries','paymentStatus','paidAt','payLater','payLaterAt','payLaterBy','updatedAt']) && resource.data.status == 'valid' && incoming().entries == resource.data.entries + 1 && incoming().scans.size() == resource.data.scans.size() + 1 && actorOk(incoming().scans[resource.data.scans.size()].by) && (incoming().paymentStatus == resource.data.paymentStatus || incoming().paymentStatus == 'paid_onsite') && laterOk() && isStaff() && crewOpen();}
+   function crewPaidOnsite(){return changed().hasOnly(['paymentStatus','paidAt','updatedAt']) && resource.data.paymentStatus in ['pending','claimed'] && incoming().paymentStatus == 'paid_onsite' && isStaff() && crewOpen();}
+   function crewLater(){return changed().hasOnly(['payLater','payLaterAt','payLaterBy','updatedAt']) && resource.data.status == 'valid' && laterOk() && isStaff() && crewOpen();}
+   function managerTicket(){return (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'valid' && resource.data.price > 0 && resource.data.paymentStatus in ['paid','paid_onsite'] && marksConfirmation())) && isManager();}
+   allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && paidAtOk(incoming().paymentStatus in ['paid','paid_onsite'])
+     && (ownerClaim() || ownerCancel() || crewScan() || crewPaidOnsite() || crewLater() || managerTicket());
    allow delete: if isManager();
   }
   match /visits/{id} {
@@ -200,14 +341,38 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /vendors/{id} {
-   allow read: if isStaff();
-   allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().product, 300) && incoming().external is bool && str(incoming().notes, 2000)));
+   function poolShape(){return incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt','contact','sells','needs','note','photo','events','people','inviteNext','fem']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().get('product', ''), 300) && str(incoming().get('sells', ''), 300) && str(incoming().get('contact', ''), 80) && incoming().get('external', true) is bool && incoming().get('fem', false) is bool && str(incoming().get('notes', ''), 2000) && str(incoming().get('note', ''), 1000) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && incoming().get('events', []) is list && incoming().get('events', []).size() <= 300 && incoming().get('people', []) is list && incoming().get('people', []).size() <= 12 && photoOk(incoming().get('photo', '')) && incoming().get('inviteNext', false) is bool;}
+   // D2, D7, D9, D10: the owner edits what the farm shows about the stall, never the farm's fields
+   function ownerEdit(){return changed().hasOnly(['name','phone','product','sells','needs','note','photo','inviteNext','updatedAt']) && vendorOwner(id);}
+   // D8 adds a helper, D7 removes one (display only: access comes from users/{uid}.vendorId)
+   function ownerPeople(){return changed().hasOnly(['people','updatedAt']) && vendorOwner(id);}
+   allow get: if isStaff() || vendorPerson(id);
+   allow list: if isStaff();
+   allow create: if isManager() && poolShape();
+   allow update: if poolShape() && (ownerEdit() || ownerPeople() || isManager());
+   allow delete: if isManager();
+   // the team's notes about a vendor (V2 "הערות לצוות"): never readable by the vendor
+   match /private/{doc} {
+    allow read: if isManager();
+    allow write: if isManager() && doc == 'main' && (request.method == 'delete' || (incoming().keys().hasOnly(['notes','updatedAt']) && str(incoming().notes, 2000)));
+   }
+  }
+  // access links (V2/N8 invite, V6, D8): the code is the secret; claiming one makes a vendor profile (users rules)
+  match /vendor_invites/{code} {
+   function vInviteShape(){return incoming().keys().hasOnly(['code','vendorId','vendorName','role','name','phone','fem','active','usedBy','usedAt','createdBy','createdAt']) && incoming().code == code && code.matches('[a-z0-9-]{8,40}') && str(incoming().vendorId, 60) && incoming().vendorId.size() > 0 && str(incoming().vendorName, 200) && incoming().role in ['owner','helper'] && str(incoming().name, 80) && incoming().name.size() >= 1 && str(incoming().phone, 25) && incoming().get('fem', false) is bool && incoming().active is bool && isoTime(incoming().createdAt);}
+   allow get: if google();
+   allow list: if isManager() || vendorOwner(resource.data.vendorId);
+   allow create: if vInviteShape() && actorOk(incoming().createdBy) && incoming().active == true && incoming().usedBy == null && incoming().usedAt == null && (isManager() || (vendorOwner(incoming().vendorId) && incoming().role == 'helper'));
+   allow update: if vInviteShape()
+     && ((changed().hasOnly(['active']) && incoming().active == false && (isManager() || (vendorOwner(resource.data.vendorId) && resource.data.role == 'helper')))
+      || (google() && resource.data.active == true && resource.data.usedBy == null && changed().hasOnly(['usedBy','usedAt','active']) && incoming().usedBy == uid() && incoming().active == false && isoTime(incoming().usedAt) && getAfter(userPath()).data.get('inviteCode', '') == code && getAfter(userPath()).data.role == 'vendor'));
+   allow delete: if isManager();
   }
   match /tabs/{id} {
-   function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','paymentConfirmation','paidAt','createdAt','updatedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','paymentConfirmation','paidAt','createdAt','updatedAt','reminderSentAt','claimedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && optIso('reminderSentAt') && optIso('claimedAt');}
    allow read: if isStaff() || mine('guestUid');
-   allow create: if isStaff() && tabShape() && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0;
-   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt'])) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid') || (mine('guestUid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow create: if isStaff() && tabShape() && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && !incoming().keys().hasAny(['reminderSentAt','claimedAt']) && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0 && (isManager() || eventOpen(incoming().eventId));
+   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
   match /notifications/{id} {
@@ -217,13 +382,40 @@ service cloud.firestore {
    allow delete: if isManager();
   }
   match /calendar/{id} {
-   function calendarShape(){return incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event','presence','meeting','planning'];}
+   // presence, team items (C11, with an audience, participants and a reminder the Worker sends), visits and events
+   function calendarShape(){return incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt','from','to','note','audience','participants','reminder','remindAt','reminderSentAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event','presence','meeting','planning'] && str(incoming().get('from', ''), 5) && str(incoming().get('to', ''), 5) && str(incoming().get('note', ''), 200) && incoming().get('audience', 'all') in ['all','managers'] && incoming().get('participants', []) is list && incoming().get('participants', []).size() <= 30 && incoming().get('reminder', '') in ['', '60'] && str(incoming().get('remindAt', ''), 40) && (incoming().get('reminderSentAt', null) == null || str(incoming().reminderSentAt, 40));}
    function ownsPresence(){return isStaff() && resource.data.kind == 'presence' && resource.data.ownerUid == uid();}
-   function createsPresence(){return isStaff() && incoming().kind == 'presence' && incoming().ownerUid == uid() && incoming().ownerName == get(userPath()).data.displayName && incoming().refId == '' && str(incoming().createdAt, 40);}
+   // a volunteer's own presence carries no manager fields
+   function createsPresence(){return isStaff() && incoming().kind == 'presence' && incoming().ownerUid == uid() && incoming().ownerName == get(userPath()).data.displayName && incoming().refId == '' && str(incoming().createdAt, 40) && !incoming().keys().hasAny(['audience','participants','reminder','remindAt','reminderSentAt']);}
    allow read: if isStaff();
    allow create: if calendarShape() && (isManager() || createsPresence());
-   allow update: if calendarShape() && (isManager() || (ownsPresence() && changed().hasOnly(['title','date','time'])));
+   allow update: if calendarShape() && (isManager() || (ownsPresence() && changed().hasOnly(['title','date','time','from','to','note'])));
    allow delete: if isManager() || ownsPresence();
+  }
+  // B1-B4, D3: team broadcasts. Managers send; a recipient (staff or vendor) reads the ones addressed to them
+  match /broadcasts/{bid} {
+   function shape(){return incoming().keys().hasOnly(['id','text','audience','eventId','urgent','by','createdAt','recipients','recipientCount','resentAt']) && incoming().id == bid && str(incoming().text, 200) && incoming().text.size() >= 1 && incoming().audience in ['all','farmToday','managers','crew','vendors'] && str(incoming().get('eventId', ''), 60) && incoming().urgent is bool && incoming().recipients is list && incoming().recipients.size() <= 500 && incoming().recipientCount == incoming().recipients.size() && isoTime(incoming().createdAt);}
+   allow get, list: if isManager() || (signed() && uid() in resource.data.recipients);
+   allow create: if isManager() && shape() && actorOk(incoming().by) && incoming().resentAt == null;
+   allow update: if isManager() && changed().hasOnly(['resentAt']) && isoTime(incoming().resentAt);
+   allow delete: if isOwner();
+   // the read receipt: only the person themselves, only as a recipient; once read it stays read
+   match /reads/{rid} {
+    function receiptOk(){return incoming().keys().hasOnly(['id','uid','name','at','seenAt']) && incoming().uid == rid && incoming().id == rid && str(incoming().name, 80) && (incoming().get('at', null) == null || isoTime(incoming().at)) && (!('seenAt' in incoming()) || isoTime(incoming().seenAt));}
+    function recipient(){return uid() in getAfter(/databases/$(database)/documents/broadcasts/$(bid)).data.recipients;}
+    allow get: if self(rid) || isManager();
+    allow list: if isManager();
+    allow create: if self(rid) && receiptOk() && recipient();
+    allow update: if self(rid) && receiptOk() && (resource.data.get('at', null) == null || incoming().get('at', null) != null);
+    allow delete: if false;
+   }
+  }
+  // the push outbox: the app creates jobs, only the Worker (service account) reads and updates them
+  match /push_jobs/{jid} {
+   allow read: if false;
+   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && !(uid() in incoming().to) && incoming().urgent is bool
+     && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor'));
+   allow update, delete: if false;
   }
  }
 }
