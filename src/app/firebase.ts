@@ -2,8 +2,10 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence, signInWithPopup, signInWithRedirect, signOut, connectAuthEmulator, type Auth, type User } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from 'firebase/firestore';
 import config from '../../site.config.json';
+import { nowIso, todayKey, dateKeyOf, hoursAgoIso } from './clock';
 
 const useEmulator = location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator');
+export const emulatorMode = useEmulator;
 export const app = getApps()[0] || initializeApp(config.firebase);
 export const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 export const ownerEmail = config.ownerEmail;
@@ -54,10 +56,7 @@ export function isGoogleUser(user: User | null) {
   return !!user && !!user.email && user.providerData.some((p) => p.providerId === 'google.com');
 }
 
-export const nowIso = () => new Date().toISOString();
-export const todayKey = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem' }).format(new Date());
-export const dateKeyOf = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem' }).format(d);
-export const hoursAgoIso = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+export { nowIso, todayKey, dateKeyOf, hoursAgoIso };
 
 export const authErrorMessage = (e: any) =>
   ({

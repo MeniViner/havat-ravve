@@ -8,14 +8,17 @@ import { Top, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chip,
 import { navigate, param } from '../router';
 import { useUpcomingEvents, useEvent, useMyTickets, orderTickets, qrPayload, claimOrderPaid, useMyVisits, createVisit, cancelVisit, useMyDonations, createDonation, claimDonationPaid, useMyTabs, claimTabPaid, waLink, telLink, contactPhoneOk, notify, receiptPreference, hasTabPurchases } from '../data';
 import { signIn, signOutUser, authErrorMessage, nowIso, type Session } from '../firebase';
-import { createProfile } from '../store';
+import { createProfile, isTeam } from '../store';
 import { useDemo, setDemo } from '../demo/store';
 import { demoPreviousGuestVisit } from '../demo/data';
 import { ProfileSection, NotificationsSection, InstallHint, SignOut, DemoSection } from './More';
 import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
 import { DeleteAccountLink } from './Account';
 import { ReceiptChoice, ReceiptPreferenceSection, canChooseReceipt, saveReceiptPreference, useReceiptChoice } from './PaymentConfirmation';
+import { now as clockNow } from '../clock';
 
+/** An open stall account with nothing on it is not shown to the guest (no "0 ₪ · פתוח" with "העברתי"). */
+const shownTab = (t: Tab) => t.status !== 'open' || t.total > 0;
 const needLogin = (ctx: GuestCtx, next: string) => { if (ctx.profile) return false; navigate('/login?next=' + encodeURIComponent(next)); return true; };
 export const PaymentLine = ({ ctx }: { ctx: GuestCtx }) => { const p = ctx.settings.payment; return <>{[p.bit && `ביט ${p.bit}`, p.paybox && 'PayBox', p.cash && 'או מזומן בשער'].filter(Boolean).join(' · ')}{p.note ? <><br />{p.note}</> : null}</>; };
 
@@ -41,7 +44,7 @@ function usePreviousGuestVisit(uid: string | undefined, eventsReady: boolean) {
 export function GuestHome({ ctx }: { ctx: GuestCtx }) {
   const { items: events, loading, error } = useUpcomingEvents();
   const previousVisit = usePreviousGuestVisit(ctx.profile?.uid, !loading && !error);
-  const now = new Date().toISOString();
+  const now = clockNow().toISOString();
   const upcoming = events.filter((e) => e.end >= now);
   const desktop = useDesktop();
   return (
@@ -71,7 +74,7 @@ export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
   const { item: e, loading } = useEvent(id);
   if (loading) return <Loading />;
   if (!e || !e.published) return <><Top backTo="/" title="האירוע לא נמצא" /><Empty title="אולי הוסר מפרסום" action={<Btn kind="ghost" to="/">לדף הבית</Btn>} /></>;
-  const past = e.end < new Date().toISOString();
+  const past = e.end < clockNow().toISOString();
   return (
     <>
       {e.image ? <div className="hero" style={{ height: 240 }}><img src={e.image} alt="" /><div className="over"><div className="sub">{fmtDayLong(e.start)} · {fmtRange(e.start, e.end)}</div><h1>{e.title}</h1></div></div>
@@ -92,7 +95,7 @@ export function EventPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
 }
 export function downloadIcs(e: FarmEvent) {
   const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Havat Ravve//HE', 'BEGIN:VEVENT', `UID:${e.id}@havat-ravve.web.app`, `DTSTAMP:${stamp(new Date().toISOString())}`, `DTSTART:${stamp(e.start)}`, `DTEND:${stamp(e.end)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location || 'חוות רווה'}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Havat Ravve//HE', 'BEGIN:VEVENT', `UID:${e.id}@havat-ravve.web.app`, `DTSTAMP:${stamp(clockNow().toISOString())}`, `DTSTART:${stamp(e.start)}`, `DTEND:${stamp(e.end)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location || 'חוות רווה'}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = `${e.title}.ics`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
@@ -116,7 +119,8 @@ export function OrderPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
       if (e.price > 0) await saveReceiptPreference(ctx.profile!, choice.method);
       await orderTickets(ctx.profile!, e, count, [ctx.profile!.displayName, ...holders], answers);
       toast({ text: e.price ? `${count} כרטיסים נוצרו. נשאר לשלם ${money(total)}.` : 'נרשמתם! הכרטיסים בטלפון.' }, 4000);
-      navigate('/me', true);
+      // a team member's /me is the team profile: their tickets are at /me/tickets
+      navigate(isTeam(ctx.profile, ctx.user?.email) ? '/me/tickets' : '/me', true);
     }
     catch (err) { toast({ text: authErrorMessage(err), kind: 'error' }); } finally { setBusy(false); }
   };
@@ -233,7 +237,8 @@ export function MyTicketsPage({ ctx }: { ctx: GuestCtx }) {
   const tickets = useMyTickets(uid, !!uid);
   const visits = useMyVisits(uid, !!uid);
   const donations = useMyDonations(uid, !!uid);
-  const tabs = useMyTabs(uid, !!uid);
+  const allTabs = useMyTabs(uid, !!uid);
+  const tabs = { ...allTabs, items: allTabs.items.filter(shownTab) };
   const toast = useToast();
   const [idx, setIdx] = useState<Record<string, number>>({});
   const orders = useMemo(() => { const m = new Map<string, Ticket[]>(); for (const t of tickets.items) m.set(t.orderId, [...(m.get(t.orderId) || []), t]); return [...m.values()].map((o) => o.sort((a, b) => a.index - b.index)).sort((a, b) => a[0].eventId === b[0].eventId ? 0 : b[0].createdAt.localeCompare(a[0].createdAt)); }, [tickets.items]);
@@ -405,34 +410,76 @@ export function DonatePage({ ctx }: { ctx: GuestCtx }) {
 }
 
 // ---------- guest account ----------
+/** Signs in with Google right here (no detour through /login). In demo mode it becomes the example guest. */
+function AccountSignIn() {
+  const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const demo = useDemo();
+  const go = async () => {
+    if (demo.on) { setDemo({ persona: 'guest' }); return; }
+    setBusy(true); setError('');
+    try { await signIn(); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
+  };
+  return (
+    <section className="acct-welcome">
+      <img src="/assets/rava-logo.png" alt="" className="acct-logo" />
+      <h1 className="serif">החשבון שלי</h1>
+      <p>כדי לראות את הכרטיסים, הביקורים והתרומות שלכם, נכנסים פעם אחת עם חשבון Google. לא נשאל שוב.</p>
+      <Btn kind="google" size="big" block disabled={busy} onClick={go}><GoogleG />המשך עם Google</Btn>
+      {error && <p className="acct-error" role="alert">{error}</p>}
+      <p className="acct-fine">בהרשמה ממלאים שם בעברית, טלפון ופרטים נוספים לפי שאלות החווה.</p>
+    </section>
+  );
+}
+const MoreLinks = ({ signedIn }: { signedIn: boolean }) => (
+  <div className="links">
+    {signedIn && <A to="/contact"><Icon name="phone" />פנייה למנהלים<Icon name="chev" className="chev" size={18} /></A>}
+    {signedIn && <InstallHint />}
+    <A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A>
+    <a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a>
+    <DeleteAccountLink />
+  </div>
+);
+/** Signed out: the way into the demo (/demo), where the old page had the demo switch. */
+const DemoLink = () => (
+  <>
+    <Sec title="מצב הדגמה" />
+    <div className="links"><A to="/demo"><Icon name="eye" />לראות איך האפליקציה עובדת<Icon name="chev" className="chev" size={18} /></A></div>
+  </>
+);
 export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
   const uid = ctx.profile?.uid || '';
-  const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const tabs = useMyTabs(uid, !!uid);
-  if (!ctx.profile) return <><Top title="החשבון שלי" /><Empty title="עוד לא נכנסתם" text="נכנסים פעם אחת עם Google, וזה נשמר בטלפון." action={<Btn to="/login?next=/me/account">כניסה</Btn>} /><div className="links" style={{ marginTop: 20 }}><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><DeleteAccountLink /></div><DemoSection role="guest" /></>;
+  const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const allTabs = useMyTabs(uid, !!uid);
+  const tabs = { ...allTabs, items: allTabs.items.filter(shownTab) };
+  if (!ctx.profile) return <div className="acct"><AccountSignIn /><div className="acct-group"><MoreLinks signedIn={false} /></div><div className="acct-group"><DemoLink /></div></div>;
   const p = ctx.profile;
   const missing = signupQuestions(ctx.settings.registrationFields).filter((f) => !answerOf(p.fields, f).trim());
   const orders = [...new Map(tickets.items.map((t) => [t.orderId, t])).values()];
+  const empty = !orders.length && !visits.items.length && !donations.items.length && !tabs.items.length;
   return (
-    <>
-      <Top title="החשבון שלי" sub={`${p.displayName} · ${p.email}`} end={<Avatar name={p.displayName} />} />
+    <div className="acct">
+      <header className="acct-head">
+        <Avatar name={p.displayName} size="lg" />
+        <div className="acct-who"><h1 className="serif">{p.displayName}</h1><div className="sub"><bdi>{p.email}</bdi></div></div>
+      </header>
       {donations.items.some((d) => d.paymentStatus === 'claimed') && <div className="strip ok" style={{ alignItems: 'flex-start' }}><Icon name="heart" size={18} /><span>תודה על תרומתך! המנהלים יאשרו את ההעברה{donations.items.find((d) => d.paymentStatus === 'claimed')?.receiptWanted ? ' וישלחו קבלה' : ''}.</span></div>}
       {missing.length > 0 && <div className="strip"><Icon name="user" size={18} /><span>רוצים להשלים כמה פרטים? {missing.map((m) => m.label).join(', ')}. לוקח רגע, אפשר אחר כך.</span></div>}
+      <div className="acct-group">
       <Sec title="הפעילות שלי" />
-      <div className="list">
-        {orders.map((t) => <Row key={t.orderId} center to="/me" title={`כרטיסים · ${t.eventTitle}`} meta={<><span>{tickets.items.filter((x) => x.orderId === t.orderId && x.status === 'valid').length} כרטיסים</span><Pill tone={t.paymentStatus === 'paid' || t.paymentStatus === 'free' || t.paymentStatus === 'paid_onsite' ? 'ok' : t.status === 'cancelled' ? 'rust' : 'ochre'}>{t.status === 'cancelled' ? 'בוטל' : PAYMENT_LABELS[t.paymentStatus]}</Pill></>} chev />)}
-        {visits.items.map((v) => <Row key={v.id} center title={`ביקור · ${fmtWeekday(v.date)} ${fmtDateShort(v.date)} · ${v.people} אנשים`} meta={<Pill tone={v.status === 'approved' ? 'ok' : v.status === 'new' ? 'ochre' : undefined}>{v.status === 'new' ? 'התקבל, נחזור אליכם' : VISIT_LABELS[v.status]}</Pill>} />)}
-        {donations.items.map((d) => <Row key={d.id} center title={`תרומה · ${money(d.amount)}${d.memorial ? ` · לזכר ${d.memorial}` : ''}`} meta={<><Pill tone={d.paymentStatus === 'paid' ? 'ok' : 'ochre'}>{PAYMENT_LABELS[d.paymentStatus]}</Pill>{d.receiptWanted && <span>קבלה: {d.receiptName}{d.receiptSent ? ' · נשלחה' : ''}</span>}</>} />)}
-        {tabs.items.map((t) => <Row key={t.id} center title={`החשבון שלי בדוכן · ${t.eventTitle}`} meta={<><span className="money">{money(t.total)}</span><Pill tone={t.status === 'paid' ? 'ok' : t.status === 'open' ? 'ochre' : undefined}>{TAB_LABELS[t.status]}</Pill></>} />)}
-        {!orders.length && !visits.items.length && !donations.items.length && !tabs.items.length && <p className="lead">עוד אין פעילות. <A to="/" style={{ textDecoration: 'underline' }}>לאירועים</A></p>}
+      {empty ? <div className="acct-empty"><p>עוד אין פעילות.</p><Btn kind="ghost" size="sm" to="/">לאירועים</Btn></div>
+        : <div className="list">
+          {orders.map((t) => <Row key={t.orderId} center to="/me" title={`כרטיסים · ${t.eventTitle}`} meta={<><span>{tickets.items.filter((x) => x.orderId === t.orderId && x.status === 'valid').length} כרטיסים</span><Pill tone={t.paymentStatus === 'paid' || t.paymentStatus === 'free' || t.paymentStatus === 'paid_onsite' ? 'ok' : t.status === 'cancelled' ? 'rust' : 'ochre'}>{t.status === 'cancelled' ? 'בוטל' : PAYMENT_LABELS[t.paymentStatus]}</Pill></>} chev />)}
+          {visits.items.map((v) => <Row key={v.id} center title={`ביקור · ${fmtWeekday(v.date)} ${fmtDateShort(v.date)} · ${v.people} אנשים`} meta={<Pill tone={v.status === 'approved' ? 'ok' : v.status === 'new' ? 'ochre' : undefined}>{v.status === 'new' ? 'התקבל, נחזור אליכם' : VISIT_LABELS[v.status]}</Pill>} />)}
+          {donations.items.map((d) => <Row key={d.id} center title={`תרומה · ${money(d.amount)}${d.memorial ? ` · לזכר ${d.memorial}` : ''}`} meta={<><Pill tone={d.paymentStatus === 'paid' ? 'ok' : 'ochre'}>{PAYMENT_LABELS[d.paymentStatus]}</Pill>{d.receiptWanted && <span>קבלה: {d.receiptName}{d.receiptSent ? ' · נשלחה' : ''}</span>}</>} />)}
+          {tabs.items.map((t) => <Row key={t.id} center title={`החשבון שלי בדוכן · ${t.eventTitle}`} meta={<><span className="money">{money(t.total)}</span><Pill tone={t.status === 'paid' ? 'ok' : t.status === 'open' ? 'ochre' : undefined}>{TAB_LABELS[t.status]}</Pill></>} />)}
+        </div>}
       </div>
-      <ProfileSection profile={p} fields={ctx.settings.registrationFields} />
-      <ReceiptPreferenceSection profile={p} />
-      <NotificationsSection team={false} />
-      <Sec title="עוד" />
-      <div className="links"><A to="/contact"><Icon name="phone" />פנייה למנהלים<Icon name="chev" className="chev" size={18} /></A><InstallHint /><A to="/terms"><Icon name="info" />תנאי שימוש ופרטיות<Icon name="chev" className="chev" size={18} /></A><DeleteAccountLink /><a href="/"><Icon name="globe" />האתר של החווה<Icon name="chev" className="chev" size={18} /></a></div>
-      <DemoSection role={p.role} />
+      <div className="acct-group"><ProfileSection profile={p} fields={ctx.settings.registrationFields} /></div>
+      <div className="acct-group"><ReceiptPreferenceSection profile={p} /></div>
+      <div className="acct-group"><NotificationsSection team={false} /></div>
+      <div className="acct-group"><Sec title="עוד" /><MoreLinks signedIn /></div>
+      <div className="acct-group"><DemoSection role={p.role} /></div>
       <SignOut />
-    </>
+    </div>
   );
 }
 

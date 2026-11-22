@@ -8,6 +8,7 @@ import { Top, Sec, Btn, A, Icon, useToast, fmtDateShort, firstName } from '../ui
 import { useDoc, write, serverNow } from '../db';
 import { isOwner } from '../store';
 import { SignOut } from './More';
+import { now } from '../clock';
 
 export const DELETION_DAYS = 30;
 export type DeletionRequest = { id: string; uid: string; email: string; requestedAt: unknown };
@@ -18,7 +19,7 @@ export const useDeletionRequest = (uid: string | undefined) => useDoc<DeletionRe
 function requestedDate(v: unknown): Date {
   if (v && typeof v === 'object' && 'toDate' in v && typeof (v as { toDate: unknown }).toDate === 'function') return (v as { toDate: () => Date }).toDate();
   if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) return new Date(v);
-  return new Date();
+  return now();
 }
 export const deletionDate = (r: DeletionRequest) => new Date(requestedDate(r.requestedAt).getTime() + DELETION_DAYS * 86_400_000);
 

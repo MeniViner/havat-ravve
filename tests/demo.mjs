@@ -23,9 +23,27 @@ const stub = {
       export const setDoc = async (ref) => { calls.push(['set', ref.path]); if (globalThis.__server === 'silent') await new Promise(() => {}); if (globalThis.__server === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } };
       export const updateDoc = async (ref) => { calls.push(['update', ref.path]); };
       export const deleteDoc = async (ref) => { calls.push(['delete', ref.path]); };
-      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); } });
+      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); if (globalThis.__batch === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } } });
       export const arrayUnion = (...v) => ({ union: v }), arrayRemove = (...v) => ({ remove: v }), increment = (n) => ({ inc: n });
-      export const runTransaction = async (db, fn) => { calls.push(['tx']); return fn({ get: async () => ({ exists: () => false, data: () => ({}) }), set: (r) => calls.push(['tx.set', r.path]) }); };
+      // __tx: '' runs fn and commits; 'unavailable' / 'denied' fail like the server; 'hang' never answers;
+      // 'slowRead' answers the reads only after __slowMs; 'slowCommit' commits after __slowMs.
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const snap = (path, d) => ({ id: path.split('/').pop(), exists: () => !!d, data: () => d });
+      export const runTransaction = async (db, fn) => {
+        calls.push(['tx']);
+        const mode = globalThis.__tx || '';
+        if (mode === 'unavailable') { await wait(10); throw Object.assign(new Error('offline'), { code: 'unavailable' }); }
+        if (mode === 'hang') await new Promise(() => {});
+        const out = await fn({
+          get: async (r) => { if (mode === 'slowRead') await wait(globalThis.__slowMs); return snap(r.path, (globalThis.__serverDocs || {})[r.path]); },
+          set: (r) => calls.push(['tx.set', r.path]), update: (r) => calls.push(['tx.update', r.path]),
+        });
+        if (mode === 'slowCommit') await wait(globalThis.__slowMs);
+        if (mode === 'denied') throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+        calls.push(['tx.commit']);
+        return out;
+      };
+      export const getDocFromCache = async (r) => { const d = (globalThis.__cacheDocs || {})[r.path]; if (d === undefined) throw Object.assign(new Error('not cached'), { code: 'unavailable' }); return snap(r.path, d); };
     ` }));
     b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {};' }));
     b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: `
@@ -46,14 +64,14 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
-assert.deepEqual(getDemo(), { on: false, persona: 'real' }, 'an old mixed state loads as "demo off"');
+assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'an old mixed state loads as "demo off"');
 
 // ---- demo on: every kind of write stays local, whatever the id looks like
-for (const persona of ['owner', 'manager', 'staff', 'guest', 'blocked', 'anon', 'new']) {
+for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest', 'blocked', 'anon', 'new']) {
   setDemo({ on: true, persona });
   calls.length = 0;
   const id = newId('activity');
@@ -78,11 +96,11 @@ assert.deepEqual(writes(), [], 'registration and profile updates remain in the l
 // ---- there is no "demo on top of the real account": turning demo on without a persona picks an example person
 setDemo({ on: false });
 setDemo({ on: true });
-assert.deepEqual(getDemo(), { on: true, persona: 'owner' });
+assert.deepEqual(getDemo(), { on: true, persona: 'owner', scenario: 'regular' });
 setDemo({ on: false }); setDemo({ on: true }, 'staff');
-assert.deepEqual(getDemo(), { on: true, persona: 'staff' });
+assert.deepEqual(getDemo(), { on: true, persona: 'staff', scenario: 'regular' });
 setDemo({ persona: 'real' });
-assert.deepEqual(getDemo(), { on: false, persona: 'real' }, 'choosing "my account" leaves demo');
+assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'choosing "my account" leaves demo');
 
 // ---- demo off: real writes go through, and a demo id or a path under a demo document is refused
 calls.length = 0;
@@ -112,6 +130,76 @@ assert.equal(syncState().failure?.text, 'אין הרשאה לפעולה הזו',
 globalThis.__server = '';
 
 console.log('PASS: demo mode never reaches Firestore, demo ids are refused outside it, and writes never wait for the server');
+
+// ---- the gate on weak reception (transact with queue): a scan is never lost, a server that answers still refuses a second entry
+{
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true }); // "online", as a phone with one bar says
+  txTiming.waitMs = 60;
+  const ticket = { id: 't9', status: 'valid', entries: 0 };
+  globalThis.__serverDocs = { 'tickets/t9': ticket }; globalThis.__cacheDocs = { 'tickets/t9': ticket };
+  // the shape of admit(): read the ticket, refuse when someone else counted it first, write the scan and the ticket
+  const scan = (seen = 0) => async (tx) => {
+    const cur = await tx.get('tickets', 't9');
+    if (!cur || (cur.entries || 0) !== seen) throw new ConflictError();
+    tx.set('events/e1/scans', `t9-${seen + 1}`, { result: 'ok' });
+    tx.update('tickets', 't9', { entries: inc(1) });
+    return { entries: seen + 1 };
+  };
+  const sent = () => calls.filter((c) => c[0] === 'tx.commit' || c[0] === 'commit').map((c) => c[0]);
+  const reset = () => { calls.length = 0; globalThis.__tx = ''; globalThis.__batch = ''; setSyncFailureMark(); };
+  let mark = syncState().failure?.id; const setSyncFailureMark = () => { mark = syncState().failure?.id; };
+  const newFailure = () => (syncState().failure?.id !== mark ? syncState().failure?.text : undefined);
+
+  reset();
+  assert.deepEqual(await transact(scan(), { queue: true }), { entries: 1 }, 'the server answers: an ordinary transaction');
+  assert.deepEqual(sent(), ['tx.commit']);
+
+  reset(); globalThis.__tx = 'unavailable';
+  assert.deepEqual(await transact(scan(), { queue: true }), { entries: 1 }, 'the server cannot be reached: the scan is saved on the phone');
+  assert.deepEqual(sent(), ['commit'], 'as one queued batch');
+  assert.deepEqual(calls.filter((c) => c[0].startsWith('batch.')).map((c) => c[1]), ['events/e1/scans/t9-1', 'tickets/t9']);
+
+  reset(); globalThis.__tx = 'hang';
+  const t0 = Date.now();
+  assert.deepEqual(await transact(scan(), { queue: true }), { entries: 1 }, 'no answer at all: saved on the phone after the short wait');
+  assert.ok(Date.now() - t0 < 1000, 'the gate does not wait for the network');
+  assert.deepEqual(sent(), ['commit']);
+
+  reset(); globalThis.__tx = 'slowRead'; globalThis.__slowMs = 150;
+  await transact(scan(), { queue: true });
+  await new Promise((r) => setTimeout(r, 250));
+  assert.deepEqual(sent(), ['commit'], 'the late transaction gives up instead of committing a second copy');
+
+  reset(); globalThis.__tx = 'slowCommit'; globalThis.__slowMs = 150; globalThis.__batch = 'refuse';
+  await transact(scan(), { queue: true });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(sent().sort(), ['commit', 'tx.commit'], 'the slow transaction landed and the queued copy was refused by the rules');
+  assert.equal(newFailure(), undefined, 'that refusal of the repeat is not shown as a failure');
+
+  reset(); globalThis.__tx = 'hang'; globalThis.__batch = 'refuse';
+  await assert.rejects(transact(scan(), { queue: true }), /אין הרשאה/, 'a queued scan the rules refuse is still reported');
+
+  reset(); globalThis.__serverDocs = { 'tickets/t9': { ...ticket, entries: 1 } };
+  await assert.rejects(transact(scan(0), { queue: true }), (e) => isConflict(e), 'another gate counted it first: X1, nothing written');
+  assert.deepEqual(sent(), []);
+  globalThis.__serverDocs = { 'tickets/t9': ticket };
+
+  reset(); globalThis.__tx = 'denied';
+  await assert.rejects(transact(scan(), { queue: true }), (e) => !isConflict(e) && e.message === 'אין הרשאה לפעולה הזו', 'a refusal by the rules is reported as such, not as "someone else was first"');
+  await assert.rejects(transact(scan()), (e) => !isConflict(e) && e.message === 'אין הרשאה לפעולה הזו');
+
+  reset(); globalThis.__tx = 'unavailable';
+  await assert.rejects(transact(scan()), (e) => e.message === 'אין קליטה כרגע', 'without queue a transaction still needs the server');
+  assert.deepEqual(sent(), []);
+
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, configurable: true });
+  reset();
+  assert.deepEqual(await transact(scan()), { entries: 1 }, 'offline: the cached copy, as before');
+  assert.deepEqual(sent(), ['commit']);
+  reset();
+  txTiming.waitMs = 4000; globalThis.__serverDocs = undefined; globalThis.__cacheDocs = undefined;
+  console.log('PASS: a gate scan is saved on the phone when the server cannot be reached, and refusals are reported honestly');
+}
 
 // ---- Today: completed rows never push an open task off its group
 {

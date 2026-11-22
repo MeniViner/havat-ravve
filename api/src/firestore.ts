@@ -32,8 +32,23 @@ export type Env = {
   /** Test mode only (emulator + TEST_FAULTS): a mock Brevo endpoint, and no grace or backoff delays. */
   BREVO_API_URL?: string;
   EMAIL_TEST_FAST?: string;
-  /** Tests only: the Firebase Auth emulator (account deletion). */
+  /** Tests only: the Firebase Auth emulator (account deletion, and the app's sign-in tokens for /v1/files). */
   FIREBASE_AUTH_EMULATOR_HOST?: string;
+  /** R2 bucket for the app's images and event files (files.ts). */
+  FILE_BUCKET?: import('./files').R2;
+  /** Optional host for the links /v1/files returns (no trailing slash). Default: the Worker's own origin. */
+  FILES_PUBLIC_BASE?: string;
+  /** Emulator mode only: the project the Auth emulator puts in its tokens, when it differs from FIRESTORE_PROJECT_ID. */
+  AUTH_EMULATOR_PROJECT?: string;
+  /** Test mode only (emulator + TEST_FAULTS): where the sign-in public keys are fetched from. */
+  GOOGLE_JWKS_URL?: string;
+  /** Payment-confirmation fallback (email.ts): used when Brevo refuses a send or its daily allowance is used up. */
+  RESEND_API_KEY?: string;
+  RESEND_SENDER_EMAIL?: string;
+  /** Test mode only: a mock Resend endpoint. */
+  RESEND_API_URL?: string;
+  /** Sends a day through Brevo before going straight to Resend (Brevo free plan: 300 a day). Default 290. */
+  BREVO_DAILY_LIMIT?: string;
 };
 
 /** Production projects. Served only when PRODUCTION_APPROVED names the same project (an explicit, approved step). */

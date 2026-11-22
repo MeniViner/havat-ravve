@@ -1,0 +1,129 @@
+/* System area: profile (L6, C12, C13), photo (A1, A2), search (C2), welcome (C9), install (C10), offline (C8), suspended (X2), demo (Z1, Z3). */
+
+/* the legacy stylesheet sets button { text-align: start }; segmented labels are centred in the designs */
+.system-scr .k-seg__btn { text-align: center; }
+
+/* screens whose back link sits 12px higher than the body padding (L6, C12, C2, Z1) */
+.system-pull { margin-top: -12px; }
+
+/* L6 / C12 header: 64 warm avatar with a camera badge, name 26/700 and the role line */
+.system-me { display: flex; align-items: center; gap: 14px; }
+.system-me__avatar {
+  position: relative; flex: none; width: 64px; height: 64px; border-radius: 50%;
+  background: var(--selected); color: #FFFFFF; font-size: 20px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; text-decoration: none; border: 0; padding: 0; font-family: inherit; cursor: pointer;
+}
+.system-me__avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.system-me__badge {
+  position: absolute; bottom: -4px; inset-inline-end: -4px; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink); box-sizing: content-box;
+  display: flex; align-items: center; justify-content: center;
+}
+.system-me__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.system-me__name { font-size: 26px; line-height: 1.2; font-weight: 700; }
+.system-me__role { font-size: 14px; color: var(--soft); }
+
+/* the key/value card of L6, C12 and C13 has 50px rows */
+.system-dl .k-dl__row { min-height: 50px; }
+.system-dl .k-textlink { margin-inline-start: auto; }
+
+/* footer row of L6 / C12 */
+.system-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* C13 photo row */
+.system-photorow {
+  flex: none; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 6px 14px; box-sizing: content-box; width: auto !important;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--ink);
+  font: inherit; text-align: start; cursor: pointer;
+}
+.system-photorow__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.system-photorow__title { font-size: 16px; font-weight: 600; }
+.system-photorow__meta { font-size: 14px; color: var(--soft); }
+.system-photorow__action { font-size: 15px; font-weight: 600; color: var(--action); }
+.system-note { font-size: 14px; color: var(--soft); }
+.system-note a, .system-note button { color: var(--action); font-weight: 600; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.system-togglerow .k-row__body { gap: 0; }
+.system-togglerow { min-height: 58px !important; }
+
+/* A1 preview and photo choices */
+.system-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; }
+.system-preview__circle {
+  flex: none; width: 128px; height: 128px; border-radius: 50%; background: var(--photo-empty, #D9D3CD); color: var(--selected);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 40px; font-weight: 600;
+}
+.system-preview__circle img, .system-mini img { width: 100%; height: 100%; object-fit: cover; }
+.system-mini { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--photo-empty, #D9D3CD); color: var(--selected); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.system-mini--initials { background: var(--bg); color: var(--ink); font-size: 13px; font-weight: 600; }
+.system-btnrow { display: flex; gap: 8px; }
+.system-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* A2 crop frame */
+.system-crop {
+  position: relative; height: 358px; border-radius: 12px; background: var(--crop-bg, #2A2F36);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; user-select: none;
+}
+.system-crop__img { position: absolute; left: 50%; top: 50%; max-width: none; pointer-events: none; transform-origin: center; }
+.system-crop__ring { position: absolute; width: 280px; height: 280px; border-radius: 50%; border: 3px solid #FFFFFF; box-shadow: 0 0 0 400px rgba(14, 17, 20, .55); pointer-events: none; }
+.system-crop__empty { position: relative; color: #C9CED4; font-size: 15px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.system-zoom { display: flex; align-items: center; gap: 12px; }
+.system-zoom span { font-size: 14px; color: var(--soft); }
+.system-zoom input { flex: 1; accent-color: var(--action); height: 44px; margin: 0; }
+
+/* C2 result rows: small avatar */
+.system-hit-avatar { flex: none; }
+
+/* C8 queue tag "מחכה" */
+.system-wait { font-size: 13px; font-weight: 600; color: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; white-space: nowrap; }
+
+/* C9 */
+.system-welcome { display: flex; flex-direction: column; gap: 4px; margin-top: 24px; }
+.system-welcome__farm { font-size: 15px; color: var(--soft); }
+.system-welcome__title { margin: 0; font-size: 32px; line-height: 1.15; font-weight: 700; }
+.system-added { flex-direction: row; align-items: center; gap: 12px; }
+.system-added__text { display: flex; flex-direction: column; min-width: 0; }
+.system-added__title { font-size: 17px; font-weight: 700; }
+
+/* C10 */
+.system-install-top { display: flex; justify-content: flex-end; }
+.system-install-title { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; }
+.system-lead { font-size: 16px; line-height: 1.5; }
+.system-step { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 6px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
+.system-step__n { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--selected); color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.system-step__body { display: flex; flex-direction: column; }
+.system-step__title { font-size: 17px; font-weight: 600; }
+.system-step__meta { font-size: 14px; color: var(--soft); }
+
+/* X2 */
+.system-suspended { min-height: 100vh; min-height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; padding: 24px 16px; padding-top: max(24px, env(safe-area-inset-top)); background: var(--bg); color: var(--ink); max-width: 480px; margin-inline: auto; }
+.system-suspended__main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
+.system-suspended__title { margin: 8px 0 0; font-size: 28px; font-weight: 700; }
+.system-suspended__text { margin: 0; font-size: 17px; line-height: 1.5; max-width: 300px; }
+.system-suspended__actions { display: flex; flex-direction: column; gap: 8px; }
+.system-bigbtn {
+  height: 56px; border: 0; border-radius: 12px; background: var(--action); color: #FFFFFF; font: inherit; font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
+}
+.system-bigbtn--line { height: 52px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); font-size: 17px; }
+.system-bigbtn--quiet { height: 48px; background: transparent; color: var(--soft); font-size: 16px; font-weight: 400; }
+
+/* Z1 */
+.system-z1-head { display: flex; flex-direction: column; gap: 6px; }
+.system-z1-head p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--soft); }
+.system-group { display: flex; flex-direction: column; gap: 8px; }
+.system-group__label { font-size: 14px; font-weight: 600; color: var(--soft); }
+
+/* Z3 states (collapsed) */
+.system-states summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--action); }
+.system-states summary::-webkit-details-marker { display: none; }
+.system-states[open] summary svg { transform: rotate(180deg); }
+.system-states > .k-card { margin-top: 4px; }
+
+/* outside the shell (first entry, suspended) src/app/App.tsx puts the demo strip above the screen: keep the screen inside the viewport */
+.v2:has(> .k-demo) + .k-screen { height: calc(100vh - 28px); height: calc(100dvh - 28px); }
+.v2:has(> .k-demo) + .v2 .system-suspended { min-height: calc(100dvh - 28px); }
+
+/* the install invitation in the shell's top chrome (the old team shell's banner): a warm strip, title, the Safari steps, close */
+.system-installbar .k-strip__text { display: flex; flex-direction: column; gap: 2px; }
+.system-installbar__how { font-size: 14px; font-weight: 400; line-height: 1.35; }
+.system-installbar__how b { font-weight: 700; }
+.system-installbar__x { width: 44px; justify-content: center; padding: 0; text-decoration: none; }

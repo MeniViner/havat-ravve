@@ -1,0 +1,1752 @@
+{
+  "out": [
+    {
+      "id": "E1-Home",
+      "census": {
+        "controls": 9,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שער",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "הקודם: דוד כהן · מאושר17:19",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "דוכן",
+          "ok": true,
+          "path": "/app/event/stall",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "חיפוש",
+          "ok": true,
+          "path": "/app/search",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E2-Scan",
+      "census": {
+        "controls": 5,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "חיפוש בשם או טלפון",
+          "ok": true,
+          "path": "/app/event/gate/search",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "יציאה מהשער",
+          "ok": true,
+          "path": "/app/event",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E3-Ok",
+      "census": {
+        "controls": 1,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "הבא",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "הקודם: מיכל ברק · מאושר17:20",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E4-Pay",
+      "census": {
+        "controls": 3,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שולם, להכניס",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "מאושרמיכל ברקכרטיס אחד · כניסה ראשונה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "להכניס, ישלמו אחר כך",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "מאושרמיכל ברקכרטיס אחד · כניסה ראשונה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "לא להכניס",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "הקודם: מיכל ברק · נדחה17:20",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E5-Bad",
+      "census": {
+        "controls": 2,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "חיפוש בשם",
+          "ok": true,
+          "path": "/app/event/gate/search",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "לסרוק שוב",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "הקודם: יוסי מזרחי · נדחה17:20",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E6-Search",
+      "census": {
+        "controls": 4,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "להכניס",
+          "ok": true,
+          "path": "/app/event/gate/search",
+          "toast": "מאושרמיכל ברקכרטיס 1 מתוך 3 · כניסה ראשונה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "פתיחה",
+          "ok": true,
+          "path": "/app/event/gate/search",
+          "toast": "נשאר לשלם50 ₪מיכל ברקכרטיס אחד · הוזמן היום 11:07ביט 050-000-0000 · PayBox · מזו",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אורח בלי כרטיס",
+          "ok": true,
+          "path": "/app/event/gate/search",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "אורח בלי כרטיס50 ₪ לתשלוםשםטלפוןכמה נכנס",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "למצלמה",
+          "ok": true,
+          "path": "/app/event/gate",
+          "toast": "הקודם: דוד כהן · מאושר17:19",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E7-StallWho",
+      "census": {
+        "controls": 7,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "סריקת הכרטיס של האורח",
+          "ok": true,
+          "path": "/app/event/stall",
+          "toast": "",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "רוני לוי",
+          "ok": true,
+          "path": "/app/event/stall/demo-tab-roni-fest",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "לקוח בלי כרטיס",
+          "ok": true,
+          "path": "/app/event/stall",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "לקוח בלי כרטיסשםטלפוןלתזכורת תשלום אחרי ",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "4 חשבונות פתוחים",
+          "ok": true,
+          "path": "/app/event/stall/tabs",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E8-StallSell",
+      "census": {
+        "controls": 18,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "רישום לחשבון",
+          "ok": true,
+          "path": "/app/event/stall/demo-tab-roni-fest",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה / נרשם 42 ₪ לחשבון של רוני",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "החלפת קונה",
+          "ok": true,
+          "path": "/app/event/stall",
+          "toast": "נתוני דמו· מחובר כמתנדב · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "E9-Tabs",
+      "census": {
+        "controls": 8,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "סימנו ששילמו",
+          "ok": true,
+          "path": "/app/event/stall/tabs",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "נסגרו",
+          "ok": true,
+          "path": "/app/event/stall/tabs",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שירה כץ",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/tabs/demo-tab-shirak-fest",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "Y1-Live",
+      "census": {
+        "controls": 11,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "דורש אותך",
+          "ok": false,
+          "path": "/app/manage/events/demo-e-festival/live",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה / חי · 17:20",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "2 סריקות נדחו בשער",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans?filter=rejected",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "חניה בלי איש צוות",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/staffing",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שער · יואב",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "סגירת האירוע",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/close",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "הודעה לצוות האירוע",
+          "ok": true,
+          "path": "/app/manage/broadcasts/new?audience=crew&event=demo-e-festival",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "Y2-Scans",
+      "census": {
+        "controls": 8,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "נדחו",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "יוסי מזרחי",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אקסל",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "סריקות-פסטיבל הסתיו.csv"
+          ],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "Y3-Rejected",
+      "census": {
+        "controls": 5,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "לפתוח מחדש ולהכניס",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה / נפתח מחדש. יוסי בפנים",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "נשאר דחוי",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה / נשאר דחוי",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "וואטסאפ",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה / בהדגמה לא נשלח",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "Y4-Waiting",
+      "census": {
+        "controls": 135,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "לא שילמו",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/waiting",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "הגיעו חלקית",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/waiting",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "Y5-Close",
+      "census": {
+        "controls": 6,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "סגירת האירוע",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=summary",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה / האירוע נסגרביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "תיקון",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/close",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה",
+          "dlg": "מזומן בשערכמה נספר (₪)מי ספרשמירה",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "5 חשבונות דוכן פתוחים",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/tabs",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "ביטול",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה / הסתיים",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M1-Root",
+      "census": {
+        "controls": 16,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "מחכים לטיפול שלך",
+          "ok": true,
+          "path": "/app/manage/inbox",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אירועים",
+          "ok": true,
+          "path": "/app/manage/events",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אנשים",
+          "ok": true,
+          "path": "/app/manage/people",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "הודעות לצוות",
+          "ok": true,
+          "path": "/app/manage/broadcasts",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "כל הפעילות בחווה",
+          "ok": true,
+          "path": "/app/manage/activity",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M2-Inbox",
+      "census": {
+        "controls": 20,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "תשלומים",
+          "ok": true,
+          "path": "/app/manage/inbox",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אישור ליומן",
+          "ok": true,
+          "path": "/app/manage/inbox",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / אושר ונכנס ליומן",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "טופל",
+          "ok": true,
+          "path": "/app/manage/inbox?view=handled",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מה שטופל",
+          "ok": true,
+          "path": "/app/manage/inbox?view=handled",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M3-Events",
+      "census": {
+        "controls": 13,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "אירוע חדש",
+          "ok": true,
+          "path": "/app/manage/events/new",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "פסטיבל הסתיו",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אירועים קודמים",
+          "ok": true,
+          "path": "/app/manage/events",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מאגר בעלי הדוכנים",
+          "ok": true,
+          "path": "/app/manage/vendors",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M4-Prep",
+      "census": {
+        "controls": 18,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "נרשמים",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "עריכה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/edit",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שיתוף הקישור",
+          "ok": false,
+          "path": "/app/manage/events/demo-e-festival?tab=prep",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "תזכורת לנרשמים",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=prep",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / בהדגמה לא נשלח",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "פרטי האירוע",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/edit",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "משימות הכנה",
+          "ok": true,
+          "path": "/app/farm/events/demo-e-festival",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M5-Guests",
+      "census": {
+        "controls": 20,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "אישור של שניהם",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / 2 הזמנות · שולםביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "הוספת נרשם",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "הוספת נרשםשםטלפוןכמה כרטיסים−1כבר שילם ·",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אקסל",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "פסטיבל הסתיו - נרשמים.csv"
+          ],
+          "errors": []
+        },
+        {
+          "item": "לא שילמו",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M6-Live",
+      "census": {
+        "controls": 16,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "מסך חי מלא",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה / חי · 17:20",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "חשבונות",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/tabs",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "הכל",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/live/scans",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M7-Summary",
+      "census": {
+        "controls": 14,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "תזכורות",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-october/debts",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "ייצוא לאקסל",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-october?tab=summary",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "יריד אוקטובר - דוח.csv"
+          ],
+          "errors": []
+        },
+        {
+          "item": "היסטוריית האירוע",
+          "ok": true,
+          "path": "/app/manage/activity?event=demo-e-october",
+          "toast": "נתוני דמו· מחובר כמנהלת · אחרי אירועיציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M8-People",
+      "census": {
+        "controls": 166,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "צוות",
+          "ok": true,
+          "path": "/app/manage/people",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "עם חוב",
+          "ok": true,
+          "path": "/app/manage/people",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אקסל",
+          "ok": true,
+          "path": "/app/manage/people",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "אנשים.csv"
+          ],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M9-Person",
+      "census": {
+        "controls": 18,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "מתנדבת",
+          "ok": true,
+          "path": "/app/manage/people/demo-u-michal",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / מיכל ברק: מתנדבתביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "חסימה",
+          "ok": true,
+          "path": "/app/manage/people/demo-u-michal",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / מיכל ברק נחסמהביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "פסטיבל הסתיו",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival?tab=guests",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "M10-Reports",
+      "census": {
+        "controls": 10,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "3 חודשים",
+          "ok": true,
+          "path": "/app/manage/reports",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "חובות פתוחים",
+          "ok": true,
+          "path": "/app/manage/people?filter=debt",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אקסל",
+          "ok": true,
+          "path": "/app/manage/reports",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "דוח החודש.csv"
+          ],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N1-Visits",
+      "census": {
+        "controls": 13,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "חדשים",
+          "ok": true,
+          "path": "/app/manage/visits",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "משפחת כהן",
+          "ok": true,
+          "path": "/app/manage/visits/demo-vi-cohen",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "נדחו",
+          "ok": true,
+          "path": "/app/manage/visits",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N2-Visit",
+      "census": {
+        "controls": 6,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "אישור ליומן",
+          "ok": true,
+          "path": "/app/manage/visits/demo-vi-cohen",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / אושר ונכנס ליומןוואטסאפ",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "לא מתאים",
+          "ok": true,
+          "path": "/app/manage/visits/demo-vi-cohen",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / סומן: לא מתאים",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N3-Donations",
+      "census": {
+        "controls": 23,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "לאישור",
+          "ok": true,
+          "path": "/app/manage/donations",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מיכל ברק",
+          "ok": true,
+          "path": "/app/manage/donations/demo-d-michal",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אקסל",
+          "ok": true,
+          "path": "/app/manage/donations",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [
+            "תרומות.csv"
+          ],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N4-Donation",
+      "census": {
+        "controls": 9,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "אישור תשלום",
+          "ok": true,
+          "path": "/app/manage/donations/demo-d-michal",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / התשלום אושר: 180 ₪ביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "עוד לא הגיע",
+          "ok": true,
+          "path": "/app/manage/donations/demo-d-michal",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / סומן: עוד לא הגיע",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "נשלחה",
+          "ok": true,
+          "path": "/app/manage/donations/demo-d-michal",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / סומן: הקבלה נשלחהביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N5-Settings",
+      "census": {
+        "controls": 14,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "תשלומים",
+          "ok": true,
+          "path": "/app/manage/settings/payments",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "סכומי תרומה",
+          "ok": true,
+          "path": "/app/manage/settings/donation-amounts",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מנהלים ובעלים",
+          "ok": true,
+          "path": "/app/manage/settings/managers",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "עריכת אתר החווה",
+          "ok": true,
+          "path": "/app/manage/settings",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / עריכת האתר זמינה בחשבון האמיתי",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N6-Payments",
+      "census": {
+        "controls": 6,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "role:switch",
+          "ok": true,
+          "path": "/app/manage/settings/payments",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/settings",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / פרטי התשלום נשמרו",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N7-Messages",
+      "census": {
+        "controls": 12,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "עריכה",
+          "ok": true,
+          "path": "/app/manage/settings/messages",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "עריכה: אישור ביקורנוסח ההודעהשלום [שם], ",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N9-Products",
+      "census": {
+        "controls": 23,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "role:switch",
+          "ok": false,
+          "path": "/app/manage/events/demo-e-festival/products",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מוצר חדש",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products/new",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "העתקה מאירוע קודם",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "העתקה מאירוע קודםיריד אוקטובר26.10סיור ר",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "לימונדה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products/demo-pr-lemonade",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N10-Product",
+      "census": {
+        "controls": 4,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מחיקה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products/demo-pr-lemonade",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "ביטול",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/products",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N11-EventEdit",
+      "census": {
+        "controls": 8,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "תמונה, תיאור ושאלות לנרשמים",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival/edit",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "ביטול",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-festival",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N12-Tab",
+      "census": {
+        "controls": 8,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "אישור תשלום",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / רוני לוי · שולםביטול",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מחילה",
+          "ok": true,
+          "path": "/app/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "מחילה · 46 ₪למה? (תירשם בהיסטוריה)מחילה",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N13-Invite",
+      "census": {
+        "controls": 7,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "fill:name@gmail.com=test.person@gmail.com>שמירת התפקיד",
+          "ok": true,
+          "path": "/app/manage/people/invite",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / test.person@gmail.com יקבל תפקיד מתנדב",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "מנהל",
+          "ok": false,
+          "path": "/app/manage/people/invite",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "ביטול",
+          "ok": true,
+          "path": "/app/manage/people",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "N14-Activity",
+      "census": {
+        "controls": 11,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "כסף",
+          "ok": true,
+          "path": "/app/manage/activity",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אנשים",
+          "ok": true,
+          "path": "/app/manage/activity",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "G1-Amounts",
+      "census": {
+        "controls": 12,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "סכום נוסף",
+          "ok": true,
+          "path": "/app/manage/settings/donation-amounts",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/settings",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה / סכומי התרומה נשמרו",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "G2-VisitTypes",
+      "census": {
+        "controls": 11,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "סוג נוסף",
+          "ok": true,
+          "path": "/app/manage/settings/visit-types",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/settings",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / סוגי הביקור נשמרו",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "G3-Questions",
+      "census": {
+        "controls": 12,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שאלה נוספת",
+          "ok": true,
+          "path": "/app/manage/settings/questions",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "שאלה חדשההשאלהסוג תשובהטקסטבחירהתאריךחוב",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "יישוב",
+          "ok": false,
+          "path": "/app/manage/settings/questions",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "G4-Contact",
+      "census": {
+        "controls": 3,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "שמירה",
+          "ok": true,
+          "path": "/app/manage/settings",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה / פרטי הקשר נשמרו",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "role:switch",
+          "ok": false,
+          "path": "/app/manage/settings/contact",
+          "toast": "נתוני דמו· מחובר כמנהלת · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "id": "G5-Managers",
+      "census": {
+        "controls": 11,
+        "unnamed": 0,
+        "deadLinks": 0
+      },
+      "loadErrors": [],
+      "results": [
+        {
+          "item": "תפקיד לפי כתובת מייל",
+          "ok": true,
+          "path": "/app/manage/people/invite",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        },
+        {
+          "item": "אליה כהן",
+          "ok": true,
+          "path": "/app/manage/people/demo-u-eliya",
+          "toast": "נתוני דמו· מחובר כבעלים · יום רגיליציאה",
+          "dlg": "",
+          "popups": [],
+          "downloads": [],
+          "errors": []
+        }
+      ]
+    }
+  ],
+  "probes": {
+    "M1-Root": {
+      "bellBadge": [
+        "<button type=\"button\" class=\"k-headbtn\" aria-label=\"התראות\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"k-icon\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2"
+      ]
+    },
+    "Y4-Waiting": {
+      "footnote": true
+    },
+    "M8-People": {
+      "roleByMail": true
+    },
+    "N2-Visit": {
+      "guestNote": true,
+      "sameDay": 2
+    },
+    "Y5-Close": {
+      "text": null
+    },
+    "Y1-Live": {
+      "heroH": 129,
+      "align": "flow-end"
+    }
+  }
+}

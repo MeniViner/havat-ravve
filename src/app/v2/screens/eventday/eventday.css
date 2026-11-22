@@ -1,0 +1,117 @@
+/* Event day + live area (E1-E9, Y1-Y5). Kit tokens only; numbers copied from design/html. Prefix: eventday-. */
+
+/* ── E1 home ── */
+.eventday-hero-over { font-size: 14px; color: rgba(255, 255, 255, .8); }
+.eventday-hero-title { margin: 0; font-size: 26px; line-height: 1.15; font-weight: 700; }
+.eventday-hero-line { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.eventday-entry {
+  display: flex; align-items: center; gap: 16px; min-height: 108px; padding: 0 20px; border-radius: 12px; text-decoration: none;
+}
+.eventday-entry--gate { background: var(--action); color: #FFFFFF; }
+.eventday-entry--stall { background: var(--surface); color: var(--ink); border: 1.5px solid var(--ink); }
+.eventday-entry__icon { display: flex; }
+.eventday-entry__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.eventday-entry__title { font-size: 28px; font-weight: 700; }
+.eventday-entry__sub { font-size: 15px; opacity: .9; }
+
+/* ── gate (full bleed) ── */
+.eventday-gatetoasts { position: fixed; inset-inline: 0; bottom: 0; z-index: 30; max-width: 480px; margin-inline: auto; padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px)); background: transparent; }
+.eventday-demoqr { position: absolute; inset-inline: 12px; bottom: 12px; display: flex; gap: 8px; z-index: 2; }
+.eventday-demoqr__btn {
+  flex: 1; min-height: 44px; padding: 0 6px; border-radius: 8px; border: 1.5px solid var(--bg); background: transparent; color: var(--bg);
+  font-size: 15px; font-weight: 600;
+}
+.eventday-sheetrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+.eventday-sheetbar { margin: 4px 0 0; padding: 0; border: 0; background: transparent; }
+.eventday-sheetbody { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── E7 stall: who buys ── */
+.eventday-scanbtn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 64px; width: 100%; border: 0; border-radius: 12px;
+  background: var(--action); color: #FFFFFF; font-size: 19px; font-weight: 700;
+}
+
+/* ── E8 stall: sell ── */
+.eventday-who { display: flex; align-items: center; gap: 12px; }
+.eventday-who__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.eventday-who__name { font-size: 22px; line-height: 1.2; font-weight: 700; }
+.eventday-who__meta { font-size: 14px; color: var(--soft); }
+.eventday-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.eventday-tile {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line);
+}
+.eventday-tile--on { background: var(--selected); border-color: var(--selected); color: #FFFFFF; }
+.eventday-tile__head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; text-align: start; }
+.eventday-tile__name { font-size: 17px; line-height: 1.2; font-weight: 700; }
+.eventday-tile__price { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.eventday-tile__add {
+  display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.eventday-tile__qty { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.eventday-tile__qty b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.eventday-tile__step {
+  display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; font-size: 22px; font-weight: 700;
+}
+.eventday-tile__step--dec { background: transparent; color: #FFFFFF; border: 1.5px solid #FFFFFF; font-weight: 400; }
+.eventday-tile__step--inc { background: #FFFFFF; color: var(--selected); border: 0; }
+.eventday-total { display: flex; flex-direction: column; min-width: 72px; }
+.eventday-total b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.eventday-total span { font-size: 14px; color: var(--soft); }
+
+/* ── Y1 live ── */
+.eventday-hero-count { display: flex; align-items: baseline; gap: 12px; }
+.eventday-hero-count__text { display: flex; flex-direction: column; }
+.eventday-hero-count__text b { font-size: 19px; font-weight: 700; }
+.eventday-hero-count__text span { font-size: 15px; color: rgba(255, 255, 255, .85); }
+.eventday-chartcard { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.eventday-chartcard__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.eventday-chartcard__title { margin: 0; font-size: 16px; font-weight: 700; }
+.eventday-chartcard__end { font-size: 14px; color: var(--soft); }
+.eventday-chart { direction: ltr; display: flex; align-items: flex-end; gap: 5px; height: 88px; }
+.eventday-chart__col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; }
+.eventday-chart__val { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.eventday-chart__bar { width: 100%; border-radius: 3px; background: var(--selected); }
+.eventday-chart__bar--now { background: var(--action); }
+.eventday-chart__bar--future { height: 3px; background: var(--line); }
+.eventday-chart__label { font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.eventday-chart__label.is-now { color: var(--ink); font-weight: 700; }
+.eventday-barbtn { flex: none; padding-inline: 14px; gap: 6px; font-size: 15px; }
+
+/* ── Y2 scans ── */
+.eventday-time { flex: 0 0 44px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.eventday-by { font-size: 14px; color: var(--soft); white-space: nowrap; }
+
+/* ── Y3 rejected ── */
+.eventday-overhead { font-size: 14px; font-weight: 600; color: var(--soft); }
+.eventday-titleline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.eventday-titleline .k-h1 { font-size: 26px; line-height: 1.15; }
+.eventday-actions { display: flex; gap: 8px; }
+.eventday-head { display: flex; flex-direction: column; gap: 2px; }
+
+/* ── Y4 waiting ── */
+.eventday-foot { margin: 0; font-size: 14px; color: var(--soft); line-height: 1.5; padding: 0 4px; }
+
+/* ── Y5 close ── */
+.eventday-check {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--line-strong); background: transparent; color: #FFFFFF;
+}
+.eventday-check--done { border: 0; background: var(--selected); }
+.eventday-list { margin: 0; padding-inline-start: 18px; font-size: 15px; line-height: 1.6; list-style: disc; }
+.eventday-listcard { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.eventday-listcard__title { margin: 0; font-size: 15px; font-weight: 700; }
+.eventday-note { margin: 0; font-size: 14px; color: var(--soft); }
+.eventday-herolink { display: inline-flex; align-items: center; min-height: 44px; margin: -12px 0; color: inherit; text-decoration: none; }
+.eventday-hero-count__text .eventday-hero-count__of { font-size: 17px; font-weight: 600; }
+
+/* ── gate header: managers' arrived count, the quick link to the stall (old gate) ── */
+.eventday-gatehead { display: flex; align-items: center; gap: 10px; }
+.eventday-gateplace { display: inline-flex; flex-direction: column; }
+.eventday-gateplace__count { font-size: 14px; font-weight: 400; opacity: .85; font-variant-numeric: tabular-nums; }
+.eventday-gatelink {
+  height: 44px; padding: 0 12px; border-radius: 8px; border: 1.5px solid var(--bg); background: transparent; color: var(--bg);
+  font-size: 15px; font-weight: 600; white-space: nowrap;
+}
+
+/* ── E8 cart: clear all, lines already on the account ── */
+.eventday-clear { flex: none; }

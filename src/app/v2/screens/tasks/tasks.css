@@ -1,0 +1,112 @@
+/* Tasks area (T1-T6, C3, C4, C6, C7, L1-L5, P1/P6 task parts, S5). Kit tokens only; one-offs from the design HTML. */
+
+/* P6 "פרויקט" tag: warm outline */
+.tasks-tag-project { font-size: 13px; font-weight: 600; color: var(--selected); border: 1.5px solid var(--selected); border-radius: 4px; padding: 0 6px; white-space: nowrap; line-height: 1.35; }
+.tasks-allhead { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.tasks-allhead h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.tasks-nextup-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* L5 primary action under the empty state */
+.tasks-take-free { height: 52px; font-size: 15px; font-weight: 600; }
+
+/* C3 "קשור ל" rows */
+.tasks-rel { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 4px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
+.tasks-rel__link { flex: 1; min-width: 0; display: flex; flex-direction: column; text-decoration: none; color: var(--ink); }
+.tasks-rel__kind { font-size: 13px; font-weight: 600; color: var(--soft); }
+.tasks-rel__title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.tasks-rel__end { font-size: 14px; color: var(--soft); white-space: nowrap; }
+.tasks-rel__chev { display: flex; color: var(--soft); }
+.tasks-who { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+.tasks-photo-thumb { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+
+/* C6 photo box */
+.tasks-shot { height: 330px; border-radius: 12px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--soft); font-size: 15px; overflow: hidden; box-sizing: border-box; }
+.tasks-shot img { width: 100%; height: 100%; object-fit: cover; }
+.tasks-c6-title { font-size: 17px; font-weight: 600; }
+
+/* T6 history */
+.tasks-summary { margin: 0 0 3px; font-size: 15px; }
+.tasks-hrow { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 4px 14px; border-top: 1px solid var(--line); box-sizing: content-box; text-decoration: none; color: var(--ink); }
+.tasks-hrow__check { display: flex; color: var(--selected); }
+.tasks-hrow__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tasks-hrow__title { font-size: 16px; font-weight: 500; line-height: 1.3; }
+.tasks-hrow__meta { font-size: 14px; color: var(--soft); }
+
+/* C7 day end */
+.tasks-dayhero { background: var(--selected); color: #FFFFFF; border-radius: 12px; padding: 20px 16px; display: flex; flex-direction: column; gap: 4px; }
+.tasks-dayhero__date { font-size: 15px; color: rgba(255, 255, 255, .85); }
+.tasks-dayhero__line { display: flex; align-items: baseline; gap: 10px; }
+.tasks-dayhero__num { font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
+.tasks-dayhero__what { font-size: 20px; font-weight: 700; }
+.tasks-dayhero__thanks { font-size: 16px; }
+.tasks-drow { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 2px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
+.tasks-drow__check { display: flex; color: var(--selected); }
+.tasks-drow__title { flex: 1; font-size: 16px; }
+.tasks-drow__time { font-size: 14px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.tasks-team { padding-bottom: 8px; }
+.tasks-team__head { padding: 0 14px; min-height: 42px; display: flex; align-items: center; }
+.tasks-team__head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.tasks-team ul { list-style: none; margin: 0; padding: 0; }
+.tasks-trow { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 14px; }
+.tasks-trow__name { flex: none; width: 72px; font-size: 15px; font-weight: 400; }
+.tasks-trow--me .tasks-trow__name { font-weight: 700; }
+.tasks-trow__bar { flex: 1; height: 10px; border-radius: 3px; background: var(--bg); }
+.tasks-trow__fill { display: block; height: 10px; border-radius: 3px; background: var(--selected); }
+.tasks-trow--me .tasks-trow__fill { background: var(--action); }
+.tasks-trow__n { flex: none; width: 24px; font-size: 15px; font-variant-numeric: tabular-nums; text-align: end; }
+.tasks-tomorrow { display: flex; align-items: center; justify-content: space-between; min-height: 44px; text-decoration: none; font-size: 16px; color: var(--ink); }
+.tasks-tomorrow__chev { display: flex; color: var(--soft); }
+.tasks-close { display: flex; justify-content: flex-end; }
+
+/* L1 recurring list */
+.tasks-tpl { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 2px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
+.tasks-tpl__link { flex: 1; min-width: 0; display: flex; flex-direction: column; text-decoration: none; color: var(--ink); }
+.tasks-tpl--off .tasks-tpl__link { color: var(--soft); }
+.tasks-tpl__title { font-size: 16px; font-weight: 600; }
+.tasks-meta { font-size: 14px; color: var(--soft); }
+.tasks-days { display: flex; flex-direction: column; gap: 6px; }
+.tasks-days__label { font-size: 14px; font-weight: 600; color: var(--soft); }
+.tasks-days__row { display: flex; gap: 4px; }
+.tasks-days__row > * { flex: 1; padding: 0; }
+
+/* L3 / L4 places */
+.tasks-here { height: 60px; border-radius: 12px; font-size: 18px; font-weight: 700; gap: 10px; }
+.tasks-place { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 4px 14px; border-top: 1px solid var(--line); box-sizing: content-box; text-decoration: none; color: var(--ink); }
+.tasks-place__pin { display: flex; color: var(--action); }
+.tasks-place__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tasks-place__title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.tasks-place__chev { display: flex; color: var(--soft); }
+.tasks-map { height: 170px; border-radius: 8px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--soft); font-size: 14px; box-sizing: border-box; overflow: hidden; position: relative; text-decoration: none; }
+.tasks-map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tasks-btnrow { display: flex; gap: 8px; }
+/* B4: while the broadcast card shows, the hero follows it directly (no progress line) */
+.broadcast-card + .tasks-progress { display: none; }
+.tasks-chip-x { display: inline-flex; align-items: center; gap: 6px; }
+.k-search.tasks-search { height: 48px; }
+/* C3: the info rows above "קשור ל" are 58px */
+.k-dl.tasks-dl-linked .k-dl__row { padding-top: 2px; padding-bottom: 2px; min-height: 58px; box-sizing: border-box; }
+/* C8: under the shell's offline strip the title block starts 4px closer (scoped to the tasks root) */
+.k-screen:has(.k-strip-btn) .k-screen__body:has(.tasks-overline) { padding-top: 14px; }
+/* L5: the done block sits 8px lower than the kit's centring */
+.k-empty--done.tasks-empty-mine { padding-bottom: 4px; }
+.tasks-halves > * { flex: 1 1 0; min-width: 0; }
+.tasks-halves input { width: 100%; min-width: 0; box-sizing: border-box; }
+
+/* S5 */
+.tasks-qty { display: flex; gap: 12px; align-items: flex-start; }
+.tasks-qty > :first-child { flex: 1; min-width: 0; }
+.tasks-qty .k-field { gap: 8px; }
+.tasks-hidden { display: none; }
+.tasks-delete { align-self: flex-start; margin-top: 8px; }
+
+/* "באיחור": the overdue group and its rows in the late tone (the old list's late section) */
+.v2 .tasks-late .k-cardhead__title { color: var(--red); }
+.v2 .tasks-row--late .k-row__meta { color: var(--red); }
+/* T3 header tags: דחוף · שגרה יומית · מנהלים בלבד */
+.tasks-headtags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: -4px; }
+/* T6: the day's summary (C7) from the history */
+.tasks-daylink { display: flex; justify-content: flex-end; margin-top: -6px; }
+.tasks-cap { margin: 0; font-size: 14px; color: var(--soft); }
+.tasks-usual { display: flex; gap: 8px; flex-wrap: wrap; }
+/* the old list's load error (missing index), in the body instead of the empty state */
+.v2 .tasks-loaderr { border-radius: 8px; }
