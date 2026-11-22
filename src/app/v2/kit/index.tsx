@@ -4,3 +4,4 @@ import './kit.css';
 
 export * from './components';
 export { Icon, ICON_NAMES, type IconName, type IconProps } from './icons';
+export type { SwipeAction, SwipeActions } from './swipe';

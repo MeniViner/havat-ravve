@@ -16,6 +16,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { Icon, type IconName } from './icons';
+import { useSwipe, type SwipeActions } from './swipe';
 
 export const cx = (...parts: unknown[]) => parts.filter(Boolean).join(' ');
 
@@ -489,6 +490,9 @@ export interface RowProps extends Base, Target {
   minHeight?: number;
   /** Replaces title/meta when you need custom body content. */
   children?: ReactNode;
+  /** Swipe to reveal: a sideways drag slides the row part way and shows one button (`right` = dragging right).
+   *  Nothing runs until the button is pressed. The check, the link and every action keep working as taps. */
+  swipe?: SwipeActions;
   'aria-label'?: string;
 }
 /**
@@ -514,8 +518,10 @@ export function Row({
   children,
   className,
   style,
+  swipe,
   ...rest
 }: RowProps) {
+  const sw = useSwipe(swipe);
   const interactive = href !== undefined || onClick !== undefined;
   const showChevron = chevron ?? interactive;
   const body = (
@@ -541,11 +547,9 @@ export function Row({
     </>
   );
   const mh = minHeight ?? (check ? undefined : 54);
-  return (
-    <li
-      className={cx('k-row', check && 'k-row--check', interactive && 'k-row--hit', done && 'k-row--done', muted && 'k-row--muted', className)}
-      style={{ minHeight: mh, ...style }}
-    >
+  const rowCls = cx('k-row', check && 'k-row--check', interactive && 'k-row--hit', done && 'k-row--done', muted && 'k-row--muted');
+  const inner = (
+    <>
       {check}
       {interactive ? (
         <Press href={href} onClick={onClick} className="k-row__hit" style={check ? { minHeight: minHeight ?? 54 } : { minHeight: mh }} label={rest['aria-label']}>
@@ -555,6 +559,32 @@ export function Row({
         body
       )}
       {actions && <div className="k-row__trail">{actions}</div>}
+    </>
+  );
+  if (sw && swipe) {
+    const side = sw.offset > 0 ? 'right' : sw.offset < 0 ? 'left' : null;
+    const a = side ? swipe[side] : undefined;
+    const open = Math.abs(sw.offset) >= sw.width - 1 && !sw.dragging;
+    return (
+      <li className={cx('k-swipe', sw.dragging && 'k-swipe--drag', className)} style={style}>
+        {a && (
+          <div className={cx('k-swipe__under', `k-swipe__under--${side}`, `k-swipe__under--${a.tone}`)}>
+            <button type="button" className="k-swipe__btn" style={{ width: Math.max(sw.width, Math.abs(sw.offset)) }} tabIndex={open ? 0 : -1} aria-hidden={!open}
+              onClick={() => sw.run(a)}>
+              {a.icon && <Icon name={a.icon} size={22} />}
+              <span>{a.label}</span>
+            </button>
+          </div>
+        )}
+        <div ref={sw.front} className={cx(rowCls, 'k-swipe__front')} style={{ minHeight: mh, transform: sw.offset ? `translateX(${sw.offset}px)` : undefined }} {...sw.handlers}>
+          {inner}
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li className={cx(rowCls, className)} style={{ minHeight: mh, ...style }}>
+      {inner}
     </li>
   );
 }
