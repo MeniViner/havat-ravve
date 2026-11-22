@@ -9,12 +9,12 @@ import {
   Avatar, BottomBar, Button, Card, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
   TextLink, Toggle, TopBar,
 } from '../../kit';
-import { daysFromToday } from '../../format';
+import { dayTime, daysFromToday, firstName } from '../../format';
 import { useRoute } from '../../../router';
 import { getDemo } from '../../../demo/store';
 import type { RegistrationField, Settings } from '../../../types';
 import {
-  usePeople, useRoleInvites, useActivityAll, saveSettings, useRun, donationOptionsOf, contactMoreOf, paymentForm, paymentPatch, numberOk,
+  usePeople, useRoleInvites, useActivityAll, useActivityByKind, saveSettings, useRun, donationOptionsOf, contactMoreOf, paymentForm, paymentPatch, numberOk,
   cleanPresets, cleanTypes, templateParts, questionMeta, fieldId, settingsLines, gw, isFemale, emailOk, type ManageSettings, type PresetRow, type PaymentForm,
 } from '../../data/manage';
 import { lnk, useReorder, Grip } from './shared';
@@ -37,8 +37,8 @@ export function SettingsScreen({ ctx }: ScreenProps) {
       <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} />
       <PageTitle>הגדרות</PageTitle>
       <ListCard aria-label="הגדרות">
-        {ctx.owner && <Row {...lnk('/manage/settings/payments')} title="תשלומים" meta={l.payments} />}
-        {ctx.owner && <Row {...lnk('/manage/settings/donation-amounts')} title="סכומי תרומה" meta={l.amounts} />}
+        <Row {...lnk('/manage/settings/payments')} title="תשלומים" meta={l.payments} />
+        <Row {...lnk('/manage/settings/donation-amounts')} title="סכומי תרומה" meta={l.amounts} />
         <Row {...lnk('/manage/settings/visit-types')} title="סוגי ביקור" meta={l.types} />
         <Row {...lnk('/manage/settings/questions')} title="שאלות הרשמה" meta={l.questions} />
         <Row {...lnk('/manage/settings/messages')} title="הודעות מוכנות" meta={l.messages} />
@@ -84,25 +84,28 @@ function PaymentsPage({ ctx }: ScreenProps) {
   const [f, setF] = useState<PaymentForm>(() => paymentForm(s.payment));
   const [err, setErr] = useState('');
   const save = useSave();
-  const set = (patch: Partial<PaymentForm>) => { setF((x) => ({ ...x, ...patch })); setErr(''); };
+  // Only owners may change payment details (firestore.rules); managers see them as they are.
+  const ro = !ctx.owner;
+  const set = (patch: Partial<PaymentForm>) => { if (ro) return; setF((x) => ({ ...x, ...patch })); setErr(''); };
   const submit = () => {
     if (f.bitOn && (!f.bit.trim() || !numberOk(f.bit.trim()))) { setErr('מספר לביט: 9 עד 15 ספרות'); return; }
     if (f.payboxOn && !f.paybox.trim()) { setErr('צריך קישור לקבוצת PayBox'); return; }
     save(() => saveSettings(ctx.actor, { payment: paymentPatch(f) }, 'פרטי התשלום עודכנו'), 'פרטי התשלום נשמרו');
   };
   return (
-    <AppScreen variant="detail" bar={<BottomBar><Button size="bar" grow onClick={submit}>שמירה</Button></BottomBar>}>
+    <AppScreen variant="detail" bar={ro ? undefined : <BottomBar><Button size="bar" grow onClick={submit}>שמירה</Button></BottomBar>}>
       <TopBar back={back} />
       <PageTitle>איך משלמים</PageTitle>
+      {ro && <span className="manage-hint">רק בעלים יכולים לשנות את פרטי התשלום.</span>}
       <ListCard aria-label="אמצעי תשלום">
-        <Row minHeight={58} title="ביט" actions={<Toggle label="ביט" checked={f.bitOn} onChange={(v) => set({ bitOn: v })} />} />
-        {f.bitOn && <li className="manage-fieldrow"><Field label="מספר לביט" ltr inputMode="tel" value={f.bit} onChange={(e) => set({ bit: e.target.value })} error={err.startsWith('מספר') ? err : undefined} /></li>}
-        <Row minHeight={58} title="PayBox" actions={<Toggle label="PayBox" checked={f.payboxOn} onChange={(v) => set({ payboxOn: v })} />} />
-        {f.payboxOn && <li className="manage-fieldrow"><Field label="קישור לקבוצת PayBox" ltr inputMode="url" value={f.paybox} onChange={(e) => set({ paybox: e.target.value })} error={err.startsWith('צריך') ? err : undefined} /></li>}
-        <Row minHeight={58} title="מזומן בשער" meta='המתנדב מסמן "שולם" בסריקה' actions={<Toggle label="מזומן בשער" checked={f.cash} onChange={(v) => set({ cash: v })} />} />
+        <Row minHeight={58} title="ביט" actions={<Toggle label="ביט" disabled={ro} checked={f.bitOn} onChange={(v) => set({ bitOn: v })} />} />
+        {f.bitOn && <li className="manage-fieldrow"><Field label="מספר לביט" ltr inputMode="tel" readOnly={ro} value={f.bit} onChange={(e) => set({ bit: e.target.value })} error={err.startsWith('מספר') ? err : undefined} /></li>}
+        <Row minHeight={58} title="PayBox" actions={<Toggle label="PayBox" disabled={ro} checked={f.payboxOn} onChange={(v) => set({ payboxOn: v })} />} />
+        {f.payboxOn && <li className="manage-fieldrow"><Field label="קישור לקבוצת PayBox" ltr inputMode="url" readOnly={ro} value={f.paybox} onChange={(e) => set({ paybox: e.target.value })} error={err.startsWith('צריך') ? err : undefined} /></li>}
+        <Row minHeight={58} title="מזומן בשער" meta='המתנדב מסמן "שולם" בסריקה' actions={<Toggle label="מזומן בשער" disabled={ro} checked={f.cash} onChange={(v) => set({ cash: v })} />} />
         <Row minHeight={58} title="אשראי באתר" meta="עוד לא מחובר לספק" actions={<Toggle label="אשראי באתר" checked={false} disabled onChange={() => {}} />} />
       </ListCard>
-      <Field label="שורה שהאורח רואה ליד התשלום" value={f.note} onChange={(e) => set({ note: e.target.value })} maxLength={300} />
+      <Field label="שורה שהאורח רואה ליד התשלום" readOnly={ro} value={f.note} onChange={(e) => set({ note: e.target.value })} maxLength={300} />
     </AppScreen>
   );
 }
@@ -244,6 +247,11 @@ function VisitTypesPage({ ctx }: ScreenProps) {
 type Draft = { id: string; label: string; type: RegistrationField['type']; options: string; required: boolean };
 function QuestionsPage({ ctx }: ScreenProps) {
   const fields = ctx.settings.registrationFields;
+  const people = usePeople(true).items;
+  const answered = (f: RegistrationField) => {
+    const n = people.filter((p) => String(p.fields?.[f.id] || '').trim()).length;
+    return n ? `ענו: ${n} מתוך ${people.length}` : 'חדש, עוד לא נשאל';
+  };
   const run = useRun();
   const [draft, setDraft] = useState<Draft | null>(null);
   const store = (next: RegistrationField[], what: string, toast?: string) => run(() => saveSettings(ctx.actor, { registrationFields: next }, what), toast);
@@ -274,7 +282,7 @@ function QuestionsPage({ ctx }: ScreenProps) {
             <button type="button" className="manage-qrow__hit" onClick={() => open(f)}>
               <span className="manage-qrow__body">
                 <span className="manage-qrow__title">{f.label}</span>
-                <span className="k-meta">{questionMeta(f)}</span>
+                <span className="k-meta">{questionMeta(f)} · {answered(f)}</span>
               </span>
               {f.required ? <Tag tone="warm">חובה</Tag> : <Tag>רשות</Tag>}
               <span className="manage-chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>
@@ -359,6 +367,8 @@ function ManagersPage({ ctx }: ScreenProps) {
       : <Row key={p.uid} minHeight={56} {...lnk(`/manage/people/${p.uid}`)} leading={<Avatar name={p.displayName} />} title={p.displayName} meta={owner ? p.email : seen(p.uid, p.displayName, p.email)} />;
   };
   const ownerPending = pending('owner'), managerPending = pending('manager');
+  const staff = people.filter((p) => p.role === 'staff' && p.status === 'active');
+  const changes = useActivityByKind('user', true, 40).items.filter((a) => ['role', 'invited', 'blocked', 'unblocked'].includes(a.action)).slice(0, 8);
   return (
     <AppScreen variant="detail">
       <TopBar back={back} />
@@ -370,6 +380,14 @@ function ManagersPage({ ctx }: ScreenProps) {
       </ListCard>
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block {...lnk('/manage/people/invite')}>תפקיד לפי כתובת מייל</Button>
       <span className="manage-hint">בעלים יכולים למנות מנהלים ובעלים. מנהלים יכולים למנות מתנדבים.</span>
+      <ListCard title="צוות ומתנדבים" count={staff.length} end={<TextLink {...lnk('/manage/people?filter=team')}>כולם באנשים</TextLink>}>
+        <Row title={<span style={{ fontWeight: 400 }}>{staff.length ? staff.map((p) => firstName(p.displayName)).slice(0, 8).join(' · ') + (staff.length > 8 ? ` + ${staff.length - 8}` : '') : '—'}</span>} />
+      </ListCard>
+      {changes.length > 0 && (
+        <ListCard title="שינויים אחרונים">
+          {changes.map((a) => <Row key={a.id} title={<span style={{ fontWeight: 500 }}>{firstName(a.by.name)} · {a.text}</span>} meta={dayTime(a.at)} />)}
+        </ListCard>
+      )}
     </AppScreen>
   );
 }

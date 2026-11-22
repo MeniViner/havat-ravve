@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { useList, useDoc, write, newId, push, inc, serverNow, transact, ConflictError, type Tx } from '../../db';
 import { nowIso, nowMs, dateKeyOf } from '../../clock';
 import { logActivity } from '../../activity';
-import { openTab, addTabItems, parseQr, qrPayload, randomSecret, hasTabPurchases, type StallGuest } from '../../data';
+import { openTab, addTabItems, removeTabItem, setTabStatus, parseQr, qrPayload, randomSecret, hasTabPurchases, type StallGuest } from '../../data';
 import { ddmm, hhmm } from '../format';
 import type { Actor, Activity, EventClose, FarmEvent, GateScan, LiveCounters, Product, ScanResult, Staffing, Tab, TabItem, Ticket } from '../../types';
 
@@ -150,7 +150,8 @@ export function ensureCounters(eventId: string) { return write.merge(countersCol
 
 export type AdmitResult = { entries: number };
 /** Lets one ticket in. pay 'gate' marks the unpaid tickets of the order paid at the gate; 'later' lets them in as a debt.
- *  Refused (ConflictError -> X1) when another gate already counted this entry. */
+ *  Refused (ConflictError -> X1) when another gate already counted this entry. When the server cannot be reached in time
+ *  (weak reception), it is saved on the phone as a queued write and sent when the network is back (db.ts transact `queue`). */
 export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, order: TicketV2[], pay: Pay = 'none'): Promise<AdmitResult> {
   const at = nowIso();
   const owing = order.filter(isUnpaid);
@@ -171,7 +172,7 @@ export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, or
     tx.set('events/' + event.id + '/scans', sid, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: n === 1 ? 1 : 0, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: owing.length } : {}), ...(result === 'payLater' ? { payLater: owing.length, payLaterAmount: amount } : {}) });
     return { entries: n };
-  });
+  }, { queue: true }); // weak reception: saved on the phone like the old gate, never lost
   logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticketName(ticket)} · כניסה ${res.entries}${pay === 'gate' && amount ? ` · שולם במקום ${amount} ₪` : ''}${pay === 'later' && amount ? ` · ישלמו אחר כך ${amount} ₪` : ''}`, { subjectUid: ticket.ownerUid, eventId: event.id });
   return res;
 }
@@ -186,7 +187,7 @@ export async function logRejected(actor: Actor, event: FarmEvent, v: { ticket?: 
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: t?.id || '', orderId: t?.orderId || '', name: v.name || (t ? ticketName(t) : 'לא מזוהה'), phone: t?.ownerPhone || '', meta, result: 'rejected', reason: v.reason, by: actor, at, reopenedBy: null, reopenedAt: null, keptBy: null, keptAt: null };
     tx.set(`events/${event.id}/scans`, sid, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { scans: 1, rejected: 1 });
-  });
+  }, { queue: true });
   if (t) logActivity(actor, 'ticket', t.id, 'rejected', `${ticketName(t)} · נדחה בשער · ${v.reason}`, { subjectUid: t.ownerUid, eventId: event.id });
   return sid;
 }
@@ -211,7 +212,7 @@ export async function admitWalkIn(actor: Actor, event: FarmEvent, guest: { name:
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: ids[0], orderId, name: guest.name, phone: guest.phone, meta: `${ticketWord(guest.count)} · אורח בלי כרטיס${amount ? ` · ${amount} ₪` : ''}`, result, ...(amount ? { amount, method: '' } : {}), count: guest.count, by: actor, at, reopenedBy: null, reopenedAt: null };
     tx.set(`events/${event.id}/scans`, `${ids[0]}-1`, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: guest.count, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: guest.count } : {}), ...(result === 'payLater' ? { payLater: guest.count, payLaterAmount: amount } : {}) });
-  });
+  }, { queue: true });
   logActivity(actor, 'ticket', orderId, 'ordered', `${guest.name} · ${ticketWord(guest.count)} בשער · ${event.title}${amount ? ` · ${amount} ₪ ${pay === 'gate' ? 'שולם במקום' : 'ישלמו אחר כך'}` : ''}`, { eventId: event.id });
   return { orderId, ticketId: ids[0] };
 }
@@ -263,13 +264,9 @@ export function findOpenTab(tabs: Tab[], g: StallGuest) {
   const matching = tabs.filter((t) => t.status === 'open' && (g.uid ? t.guestUid === g.uid && person(t.guestName) === person(g.name) : g.ticketId ? t.ticketId === g.ticketId || (!!phone && digits(t.guestPhone) === phone && person(t.guestName) === person(g.name)) : !t.guestUid && !!phone && digits(t.guestPhone) === phone));
   return matching.find(hasTabPurchases) || matching[0];
 }
-/** Opens (or finds) the guest's account and returns its id. The empty account exists before the first item, as the rules require. */
-export async function tabFor(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest) {
-  const open = findOpenTab(tabs, g);
-  if (open) return open.id;
-  const t = await openTab(actor, event, g);
-  return t.id;
-}
+/** The guest's open account id, or '' when there is none yet. Picking a buyer creates nothing: the account is opened by the
+ *  first "רישום לחשבון" (sellToGuest), as in the old stall, so a guest never sees an empty "0 ₪ · פתוח" account. */
+export const tabFor = (tabs: Tab[], g: StallGuest) => findOpenTab(tabs, g)?.id || '';
 /** E8 "רישום לחשבון": adds the cart to the account without reading it first (works offline, two phones may add at once). */
 export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product; qty: number }[]) {
   const items: TabItem[] = cart.filter((c) => c.qty > 0).map((c) => ({ productId: c.product.id, name: c.product.name, price: c.product.price, qty: c.qty, at: nowIso(), by: actor }));
@@ -277,6 +274,43 @@ export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product
   await addTabItems(actor, tab, items);
   return items.reduce((s, i) => s + i.price * i.qty, 0);
 }
+/** The first sale to a buyer without an account: opens it (the rules need the empty account before its first item), then adds
+ *  the cart. An account another phone opened meanwhile is used instead. */
+export async function sellToGuest(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest, cart: { product: Product; qty: number }[]) {
+  if (!cart.some((c) => c.qty > 0)) return { tab: null, total: 0 };
+  const tab = findOpenTab(tabs, g) || await openTab(actor, event, g);
+  const total = await sellToTab(actor, tab, cart);
+  return { tab, total };
+}
+/** The buyer picked on E7 for a first sale, kept on this phone until "רישום לחשבון" opens the account (route /event/stall/new). */
+const pendingKey = (eventId: string) => 'farm-stall-buyer-' + eventId;
+export function rememberBuyer(eventId: string, g: StallGuest) { try { sessionStorage.setItem(pendingKey(eventId), JSON.stringify(g)); } catch { /* private mode */ } }
+export function pendingBuyer(eventId: string): StallGuest | null {
+  try { const v = sessionStorage.getItem(pendingKey(eventId)); const g = v ? JSON.parse(v) : null; return g && typeof g.name === 'string' ? g as StallGuest : null; } catch { return null; }
+}
+export function forgetBuyer(eventId: string) { try { sessionStorage.removeItem(pendingKey(eventId)); } catch { /* private mode */ } }
+/** E7 search: one row per ticket holder (owner + holder name), as the old stall, not one per order. */
+export function stallPeople(tickets: Ticket[], query: string) {
+  const match = ticketMatcher(query);
+  const people = new Map<string, Ticket[]>();
+  for (const t of tickets) {
+    if (t.status !== 'valid') continue;
+    const key = JSON.stringify([t.ownerUid, person(ticketName(t))]);
+    const g = people.get(key); if (g) g.push(t); else people.set(key, [t]);
+  }
+  return [...people.entries()].filter(([, g]) => g.some(match)).map(([key, g]) => ({ key, guest: ticketGuest(g[0]), tickets: g }));
+}
+/** E9 for managers: open amount, open accounts, sold today (lines added today). */
+export function stallSummary(tabs: Tab[], today: string) {
+  const open = tabs.filter((t) => t.status === 'open' && hasTabPurchases(t));
+  const soldToday = tabs.reduce((s, t) => s + t.items.filter((i) => dateKeyOf(new Date(i.at)) === today).reduce((x, i) => x + i.price * i.qty, 0), 0);
+  return { openTotal: Math.round(open.reduce((s, t) => s + t.total, 0) * 100) / 100, openCount: open.length, soldToday: Math.round(soldToday * 100) / 100 };
+}
+/** E1 "סריקות אחרונות": the latest entries from the tickets on this phone (works offline), newest first. */
+export function recentEntries(tickets: Ticket[], max = 6) {
+  return tickets.filter((t) => t.status === 'valid').flatMap((t) => (t.scans || []).map((s, i) => ({ t, s, n: i + 1 }))).sort((a, b) => b.s.at.localeCompare(a.s.at)).slice(0, max);
+}
+export { removeTabItem, setTabStatus };
 /** My sales today: one per "רישום לחשבון" (lines added together share the same second). */
 export function mySales(tabs: Tab[], uid: string, today: string) {
   const keys = new Set<string>();

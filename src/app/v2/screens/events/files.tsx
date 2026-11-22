@@ -3,14 +3,14 @@
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, useToast, useExternal } from '../../core';
-import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ConfirmSheet } from '../../kit';
+import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ConfirmSheet, ChoiceGroup } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storeFile, storePhoto } from '../../../upload';
 import { nowIso } from '../../../clock';
 import { ddmm, firstName } from '../../format';
 import { logActivity } from '../../../activity';
-import { useFiles, addFileV2, removeFileV2, type EventFileV2 } from '../../data/events';
+import { useFiles, addFileV2, removeFileV2, removeLegacyFile, type EventFileV2 } from '../../data/events';
 import { fileKindLabel, FILE_MAX_CHARS } from './logic';
 import { Loading, Missing, ButtonRow, backTo, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
@@ -34,14 +34,20 @@ function openStored(url: string, external: (u: string) => void) {
 }
 
 type Draft = { url: string; kind: 'doc' | 'image'; mime: string; size: number; name: string };
+/** A file row: the files subcollection, or (index >= 0) a link the old app kept in the event document. */
+type Shown = EventFileV2 & { legacy?: number };
+const httpsOk = (u: string) => /^https?:\/\/\S+$/.test(u.trim());
 
 function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const toast = useToast(); const run = useRun(); const external = useExternal();
   const files = useFiles(e.id, ctx.manager);
   const camRef = useRef<HTMLInputElement>(null); const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [opened, setOpened] = useState<EventFileV2 | null>(null);
+  const [opened, setOpened] = useState<Shown | null>(null);
   const [busy, setBusy] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<{ name: string; url: string; kind: 'doc' | 'image' } | null>(null);
+  const legacy: Shown[] = (e.files || []).map((f, i) => ({ ...f, id: `legacy-${i}`, legacy: i }));
+  const shown: Shown[] = [...files.items, ...legacy].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
 
   const pick = async (f: File | undefined, fromCamera: boolean) => {
     if (!f) return;
@@ -72,13 +78,23 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     setDraft(null);
     toast.show({ text: `${name} נשמר`, check: true });
   };
-  const [askDelete, setAskDelete] = useState<EventFileV2 | null>(null);
-  const remove = async (f: EventFileV2) => {
-    const ok = await run(async () => { await removeFileV2(e.id, f.id); return true; });
+  const saveLink = async () => {
+    if (!linkDraft || !linkDraft.name.trim() || !httpsOk(linkDraft.url)) return;
+    const name = linkDraft.name.trim();
+    const id = await run(() => addFileV2(e.id, { name, url: linkDraft.url.trim(), kind: linkDraft.kind, by: ctx.actor, at: nowIso() }));
+    if (!id) return;
+    logActivity(ctx.actor, 'event', e.id, 'edited', `${e.title}: נוסף קובץ "${name}"`, { eventId: e.id });
+    setLinkDraft(null);
+    toast.show({ text: `${name} נשמר`, check: true });
+  };
+  const [askDelete, setAskDelete] = useState<Shown | null>(null);
+  const remove = async (f: Shown) => {
+    const isLegacy = f.legacy !== undefined;
+    const ok = await run(async () => { if (isLegacy) await removeLegacyFile(e, f.legacy!); else await removeFileV2(e.id, f.id); return true; });
     if (!ok) return;
     setAskDelete(null);
     logActivity(ctx.actor, 'event', e.id, 'edited', `${e.title}: נמחק קובץ "${f.name}"`, { eventId: e.id });
-    const { id: _id, ...rest } = f;
+    const { id: _id, legacy: _l, ...rest } = f;
     toast.show({ text: `${f.name} נמחק`, check: true, actions: [{ label: 'ביטול', onClick: () => { addFileV2(e.id, rest); } }] });
   };
 
@@ -86,9 +102,9 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     <AppScreen variant="detail">
       <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} />
       <PageTitle>קבצים</PageTitle>
-      {files.items.length > 0 ? (
+      {shown.length > 0 ? (
         <ListCard>
-          {files.items.map((f) => (
+          {shown.map((f) => (
             <Row key={f.id} minHeight={58} leading={<IconTile icon={f.kind === 'image' ? 'camera' : /^https?:/.test(f.url) ? 'link' : 'file'} />}
               title={f.name} meta={`${fileKindLabel(f)} · ${firstName(f.by?.name || '')} · ${ddmm(f.at)}`} onClick={() => setOpened(f)} />
           ))}
@@ -97,6 +113,7 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
       <ButtonRow>
         <Button variant="outline" size="tall" icon="camera" disabled={busy} onClick={() => camRef.current?.click()}>צילום מסמך</Button>
         <Button variant="outline" size="tall" icon="file" disabled={busy} onClick={() => fileRef.current?.click()}>קובץ מהטלפון</Button>
+        <Button variant="outline" size="tall" icon="link" onClick={() => setLinkDraft({ name: '', url: '', kind: 'doc' })}>הוספת קישור</Button>
       </ButtonRow>
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => { pick(ev.target.files?.[0], true); ev.target.value = ''; }} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { pick(ev.target.files?.[0], false); ev.target.value = ''; }} />
@@ -108,6 +125,16 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
             {draft.kind === 'image' && <img src={draft.url} alt="" className="events-filepreview" />}
             <Field label="שם" value={draft.name} onChange={(ev) => setDraft({ ...draft, name: ev.target.value })} placeholder="אישור משטרה" autoFocus />
             <Button size="bar" block disabled={!draft.name.trim()} onClick={save}>שמירה</Button>
+          </div>
+        )}
+      </Sheet>
+      <Sheet open={!!linkDraft} onClose={() => setLinkDraft(null)} title="הוספת קישור">
+        {linkDraft && (
+          <div className="events-sheet">
+            <Field label="שם" value={linkDraft.name} onChange={(ev) => setLinkDraft({ ...linkDraft, name: ev.target.value })} placeholder="שם הקובץ (אישור משטרה, מפת הצבה…)" autoFocus />
+            <Field label="קישור" ltr inputMode="url" value={linkDraft.url} onChange={(ev) => setLinkDraft({ ...linkDraft, url: ev.target.value })} placeholder="https://drive.google.com/…" />
+            <ChoiceGroup label="סוג" value={linkDraft.kind} onChange={(k) => setLinkDraft({ ...linkDraft, kind: k })} options={[{ value: 'doc', label: 'מסמך' }, { value: 'image', label: 'תמונה' }]} />
+            <Button size="bar" block disabled={!linkDraft.name.trim() || !httpsOk(linkDraft.url)} onClick={saveLink}>הוספה</Button>
           </div>
         )}
       </Sheet>

@@ -28,7 +28,21 @@ export function donationTotals(ds: Donation[], today: string) {
     year: paid.filter((d) => onOrAfter(d.createdAt, y)).reduce((s, d) => s + d.amount, 0),
     toApprove: ds.filter((d) => d.paymentStatus === 'claimed').length,
     needReceipt: ds.filter((d) => d.paymentStatus !== 'cancelled' && needsReceipt(d)).length,
+    /** "ממתין": the amount marked as sent or not paid yet, waiting for a manager. */
+    pending: ds.filter(awaitsApproval).reduce((s, d) => s + d.amount, 0),
   };
+}
+/** N3 chips: this month (and anything still unpaid), waiting, needs a receipt, with a memorial, this year, all. */
+export type DonationFilter = 'month' | 'approve' | 'receipt' | 'memorial' | 'year' | 'all';
+export function donationsIn(ds: Donation[], f: DonationFilter, today: string) {
+  const m = monthStart(today), y = yearStart(today);
+  return ds.filter((d) =>
+    f === 'month' ? onOrAfter(d.createdAt, m) || awaitsApproval(d)
+    : f === 'approve' ? awaitsApproval(d)
+    : f === 'receipt' ? d.paymentStatus !== 'cancelled' && needsReceipt(d)
+    : f === 'memorial' ? !!d.memorial
+    : f === 'year' ? onOrAfter(d.createdAt, y)
+    : true);
 }
 
 /** Open money per person: valid tickets still pending/claimed, plus open or claimed stall tabs with something on them. */
@@ -68,10 +82,59 @@ export function buildReport(p: { activity: Activity[]; donations: Donation[]; ti
   };
 }
 
+// ---------- reports extras (the old M10 numbers) ----------
+/** Recurring tasks done in time: a template without an hour counts as in time; otherwise done (Israel time) by its hour. */
+export function recurringOnTime(tasks: { templateId?: string | null; doneAt?: string | null }[], templates: { id: string; time: string }[], hhmmOf: (iso: string) => string) {
+  const rec = tasks.filter((t) => t.templateId);
+  const onTime = rec.filter((t) => { const tpl = templates.find((x) => x.id === t.templateId); return !tpl?.time || (!!t.doneAt && hhmmOf(t.doneAt).padStart(5, '0') <= tpl.time.padStart(5, '0')); }).length;
+  return { total: rec.length, onTime, pct: rec.length ? Math.round((onTime / rec.length) * 100) : null };
+}
+/** The last 30 days of one recurring task (the old template "30 הימים האחרונים"): per day due / done / by whom, how many were
+ *  due (no days = every day, as store.materializeToday does), how many done, and who did them most. Tasks match by dateKey. */
+export function record30(days: number[], tasks: { dateKey?: string | null; done: boolean; doneBy?: { name: string } | null }[], today: string, first: (n: string) => string) {
+  const grid = Array.from({ length: 30 }, (_, i) => {
+    const k = addDaysKey(today, -29 + i);
+    const due = !days.length || days.includes(new Date(keyMs(k)).getUTCDay());
+    const t = tasks.find((x) => x.dateKey === k);
+    return { k, due, done: !!t?.done, by: t?.done ? t.doneBy?.name || '' : '' };
+  });
+  const keys = new Set(grid.map((g) => g.k));
+  const doneTasks = tasks.filter((t) => t.done && !!t.dateKey && keys.has(t.dateKey));
+  const m = new Map<string, number>();
+  for (const t of doneTasks) if (t.doneBy?.name) m.set(first(t.doneBy.name), (m.get(first(t.doneBy.name)) || 0) + 1);
+  const expected = grid.filter((g) => g.due).length;
+  return { grid, expected, done: Math.min(doneTasks.length, expected || doneTasks.length), who: [...m.entries()].sort((a, b) => b[1] - a[1]) };
+}
+/** People numbers of a period: new sign-ups, visits approved of requested, blocked (now). */
+export function peopleStats(people: Pick<Profile, 'createdAt' | 'status'>[], visits: Pick<Visit, 'createdAt' | 'status'>[], from: string) {
+  const reqV = visits.filter((v) => onOrAfter(v.createdAt, from));
+  return {
+    newPeople: people.filter((p) => onOrAfter(p.createdAt, from)).length,
+    visitsApproved: reqV.filter((v) => v.status === 'approved').length,
+    visitsRequested: reqV.length,
+    blocked: people.filter((p) => p.status === 'blocked').length,
+  };
+}
+/** "איך שמעו עלינו": answers to the `source` question, most first; no answer is "לא ענו". */
+export function heardFrom(people: Pick<Profile, 'fields'>[]) {
+  const m = new Map<string, number>();
+  for (const p of people) { const s = (p.fields?.source || '').trim() || 'לא ענו'; m.set(s, (m.get(s) || 0) + 1); }
+  return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+}
+
 // ---------- inbox (M2) ----------
 export type InboxGroup = 'payments' | 'visits' | 'contact' | 'other';
 export const inboxGroup = (n: Pick<AppNotification, 'type'>): InboxGroup =>
   n.type === 'donation' || n.type === 'claim' || n.type === 'tab' ? 'payments' : n.type === 'visit' ? 'visits' : n.type === 'contact' ? 'contact' : 'other';
+/** The inbox chips: the groups above plus the old app's own filters (receipts, stall accounts, orders). */
+export type InboxFilter = 'all' | Exclude<InboxGroup, 'other'> | 'receipts' | 'stall' | 'orders';
+export function inboxIn(n: Pick<AppNotification, 'type'>, f: InboxFilter) {
+  if (f === 'all') return true;
+  if (f === 'receipts') return n.type === 'receipt';
+  if (f === 'stall') return n.type === 'tab';
+  if (f === 'orders') return n.type === 'order' || n.type === 'claim' || n.type === 'join';
+  return inboxGroup(n) === f;
+}
 /** "2 תשלומים · ביקור · פנייה" (M1 hero line). One of a kind is the bare noun. */
 export function inboxSummary(list: Pick<AppNotification, 'type'>[], vendorRequests = 0) {
   const c = { payments: 0, visits: 0, contact: 0, other: 0 };
@@ -112,15 +175,19 @@ export function allowedRoles(me: { owner: boolean; uid: string }, target: Pick<P
 /** Blocking: never yourself; owners anyone; managers only guests (old screen and rules). */
 export const canBlock = (me: { owner: boolean; uid: string }, target: Pick<Profile, 'uid' | 'role'>) => me.uid !== target.uid && (me.owner || target.role === 'guest');
 /** N13: a manager may pre-assign only volunteers; owners also managers and owners (role_invites rule). */
-export const inviteRolesFor = (owner: boolean): ('staff' | 'manager' | 'owner')[] => (owner ? ['staff', 'manager', 'owner'] : ['staff']);
+/** "אורח" removes an address that was set up in advance (the person comes in as a guest), as the old invite page did. */
+export type InviteRole = 'guest' | 'staff' | 'manager' | 'owner';
+export const inviteRolesFor = (owner: boolean): InviteRole[] => (owner ? ['guest', 'staff', 'manager', 'owner'] : ['guest', 'staff']);
 export const emailOk = (e: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(e.trim());
 
 export const isTeam = (p: Pick<Profile, 'role' | 'status'>) => (p.role === 'staff' || p.role === 'manager' || p.role === 'owner') && p.status === 'active';
-export function personMatches(p: Pick<Profile, 'displayName' | 'email' | 'phone' | 'customerNumber'>, q: string) {
+export function personMatches(p: Pick<Profile, 'displayName' | 'email' | 'phone' | 'customerNumber'> & { fields?: Record<string, string> }, q: string) {
   const s = q.trim().toLowerCase();
   if (!s) return true;
   const digits = s.replace(/\D/g, '');
-  return p.displayName.toLowerCase().includes(s) || (p.email || '').toLowerCase().includes(s) || (!!digits && (p.phone || '').replace(/\D/g, '').includes(digits)) || String(p.customerNumber) === s.replace(/^#/, '');
+  return p.displayName.toLowerCase().includes(s) || (p.email || '').toLowerCase().includes(s) || (!!digits && (p.phone || '').replace(/\D/g, '').includes(digits)) || String(p.customerNumber) === s.replace(/^#/, '')
+    // the answers to the registration questions (town, how they heard of us…)
+    || Object.values(p.fields || {}).some((v) => String(v || '').toLowerCase().includes(s));
 }
 /** Alphabetical groups by first letter (Hebrew order). */
 export function letterGroups<T extends { displayName: string }>(people: T[]) {
@@ -131,13 +198,30 @@ export function letterGroups<T extends { displayName: string }>(people: T[]) {
 }
 
 // ---------- activity (N14) ----------
-export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events';
+export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings';
 export function activityGroup(kind: Activity['kind']): Exclude<ActivityFilter, 'all'> | 'other' {
   if (kind === 'ticket' || kind === 'tab' || kind === 'donation') return 'money';
   if (kind === 'user' || kind === 'visit') return 'people';
   if (kind === 'task' || kind === 'task_private' || kind === 'shopping' || kind === 'place') return 'tasks';
   if (kind === 'event') return 'events';
   return 'other';
+}
+/** Does an activity line belong under this chip? Shopping and settings have chips of their own (tasks ≠ shopping). */
+export function activityInFilter(kind: Activity['kind'], filter: ActivityFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'shopping') return kind === 'shopping';
+  if (filter === 'settings') return kind === 'settings';
+  if (filter === 'tasks' && kind === 'shopping') return false;
+  return activityGroup(kind) === filter;
+}
+/** The chips of one event's history (the old "היסטוריית האירוע"): orders, payments, stall, edits. */
+export type EventActivityFilter = 'all' | 'orders' | 'payments' | 'stall' | 'edits';
+export function eventActivityIn(a: Pick<Activity, 'kind' | 'action'>, filter: EventActivityFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'orders') return a.action === 'ordered' || a.action === 'cancelled';
+  if (filter === 'payments') return a.action === 'paid' || a.action === 'claimed';
+  if (filter === 'stall') return a.kind === 'tab';
+  return a.kind === 'event';
 }
 type Verb = { m: string; f: string; join: ':' | ' ' | '' };
 const VERBS: Record<string, Verb> = {

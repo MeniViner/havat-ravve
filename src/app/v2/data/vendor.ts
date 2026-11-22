@@ -328,11 +328,19 @@ export function inviteText(ctx: V2Ctx, v: VendorDoc, e: FarmEvent, code?: string
   const t = ctx.settings.templates.vendorInvite || 'שלום [שם], נשמח שתגיעו עם דוכן ל־[אירוע] ב־[תאריך] בחוות רווה. מתאים?';
   return `${fillTemplate(t, { 'שם': first(v.contact || v.name), 'אירוע': e.title, 'תאריך': dayShort(e.start) })}\n${inviteLink(e.id, code)}`;
 }
-/** N8 "תזכורת": stamps the reminder and returns the WhatsApp text. */
+/** N8 "תזכורת": stamps the reminder and returns the WhatsApp text: the saved "הזמנת בעל דוכן" message when the farm wrote one
+ *  (the old "הזמנה שוב" sent it), otherwise the short reminder. */
 export async function remindVendor(ctx: V2Ctx, v: VendorDoc, e: FarmEvent) {
   await write.update(`events/${e.id}/vendors`, v.id, { remindedAt: nowIso() }, { quiet: true });
   const code = owner(v)?.entered ? undefined : owner(v)?.code;
+  if (ctx.settings.templates.vendorInvite?.trim()) return inviteText(ctx, v, e, code);
   return `שלום ${first(v.contact || v.name)}, מזכירים: ${e.title} ב־${dayShort(e.start)}. מגיעים? אפשר לענות כאן: ${inviteLink(e.id, code)}`;
+}
+/** N8 "אישרו": a manager records the answer that came by phone or WhatsApp. */
+export async function confirmForVendor(ctx: V2Ctx, eventId: string, rec: EventVendorDoc) {
+  const at = nowIso();
+  await write.update(`events/${eventId}/vendors`, rec.id, { status: 'confirmed', confirmed: true, answeredAt: at, updatedAt: at });
+  logActivity(ctx.actor, 'event', eventId, 'edited', `${rec.name}: אישרו הגעה`, { eventId });
 }
 /** N8 "להזמין את מי שהיה ב...": invites in one batch everyone from a previous event who is not invited yet. */
 export async function inviteMany(ctx: V2Ctx, vendors: VendorDoc[], e: FarmEvent, info: VendorInfo | null) {

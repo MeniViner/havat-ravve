@@ -33,7 +33,8 @@ export function HistoryScreen({ ctx }: ScreenProps) {
   const p = PERIODS.find((x) => x.value === period)!;
   // the list always reaches back a week, further for "החודש" / "כולם"; the summary counts only the chosen period
   const listFrom = addDays(ctx.today, -Math.max(p.days, 7) + 1);
-  const r = useDoneBetween(ctx.manager, dayStartIso(listFrom), OPEN_END, period === 'all' ? 500 : 300);
+  const max = period === 'all' ? 500 : 300;
+  const r = useDoneBetween(ctx.manager, dayStartIso(listFrom), OPEN_END, max);
   const periodFrom = addDays(ctx.today, -p.days + 1);
   const rows = r.items.filter((t) => t.doneAt && dateKeyOf(new Date(t.doneAt)) >= listFrom);
   const inPeriod = rows.filter((t) => dateKeyOf(new Date(t.doneAt!)) >= periodFrom);
@@ -56,6 +57,8 @@ export function HistoryScreen({ ctx }: ScreenProps) {
           {counts.length > 0 && ' ' + counts.map((c) => `${firstName(c.name)} ${c.n}`).join(' · ')}
         </p>
       )}
+      {/* C7, the day's summary, opens from here */}
+      <div className="tasks-daylink"><TextLink {...to('/day')}>סיכום היום</TextLink></div>
       {groups.map((g) => {
         const all = searching || open[g.key];
         const shown = all ? g.rows : g.rows.slice(0, SHOWN);
@@ -67,6 +70,8 @@ export function HistoryScreen({ ctx }: ScreenProps) {
           </ListCard>
         );
       })}
+      {/* the query stops at `max` rows: say so, as the old history did */}
+      {r.items.length >= max && <p className="tasks-cap">מוצגות הרשומות האחרונות בלבד. לתקופה ארוכה יותר: דוחות, במסך הניהול.</p>}
       {!r.loading && groups.length === 0 && (
         <EmptyState variant="card" title={searching ? 'לא נמצא' : 'עוד אין משימות שבוצעו'} text={searching ? 'נסו מילה אחרת, או תקופה ארוכה יותר' : undefined} />
       )}

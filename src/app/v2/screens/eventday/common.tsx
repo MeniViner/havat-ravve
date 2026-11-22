@@ -18,17 +18,23 @@ export function useRouteEvent(ctx: V2Ctx, params: Record<string, string>) {
   return { id, event: r.item as EventV2 | null, loading: r.loading };
 }
 
-/** Loading and "no event" states shared by the event-day screens (not designed: follows the tone of E1). */
-export function NoEvent({ loading, closed, back = '/tasks', backLabel = 'משימות' }: { loading?: boolean; closed?: boolean; back?: string; backLabel?: string }) {
+/** Loading and "no event" states shared by the event-day screens (not designed: follows the tone of E1).
+ *  `off`: the event is on, only this module is switched off for it (the old app's messages). */
+export function NoEvent({ loading, closed, off, back = '/tasks', backLabel = 'משימות' }: { loading?: boolean; closed?: boolean; off?: 'entry' | 'stall'; back?: string; backLabel?: string }) {
+  const action = <Button variant="outline" {...to(back)}>{backLabel}</Button>;
   return (
     <AppScreen variant="root">
-      {loading ? null : (
+      {loading ? null : off && !closed ? (
+        <EmptyState icon={off === 'entry' ? 'qr' : 'cart'} title={off === 'entry' ? 'סריקת כניסה כבויה באירוע הזה' : 'דוכן המכירות כבוי באירוע הזה'} action={action} />
+      ) : (
         <EmptyState icon="calendar" title={closed ? 'האירוע נסגר' : 'אין אירוע היום'} text={closed ? 'הסריקה בשער והמכירה בדוכן נסגרו.' : 'ביום אירוע יופיעו כאן השער והדוכן.'}
-          action={<Button variant="outline" {...to(back)}>{backLabel}</Button>} />
+          action={action} />
       )}
     </AppScreen>
   );
 }
+/** Which module the screen needs, when the event exists and is open but that module is off. */
+export const moduleOff = (event: EventV2 | null, module: 'entry' | 'stall') => (event && !event.closed && event[module] === false ? module : undefined);
 
 /** Toasts (X1 and confirmations) on the full-bleed gate pages, which have no AppScreen bottom area. */
 export function GateToasts() {

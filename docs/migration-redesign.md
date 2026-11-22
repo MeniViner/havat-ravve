@@ -13,7 +13,8 @@ Almost nothing is renamed or removed. Old documents keep loading: every new fiel
 
 ## Order of steps
 
-1. **Indexes first.** Building them takes a few minutes, and queries that need them fail until they are ready.
+0. **Parity check (done 2026-11-22).** Every capability of the live app was checked and restored in v2: `docs/parity-audit-2026-11-22.md`.
+1. **Indexes first.** (Includes the new `tasks` index on `templateId` + `createdAt` for the recurring 30-day record.) Building them takes a few minutes, and queries that need them fail until they are ready.
    ```
    firebase deploy --only firestore:indexes --project havat-ravve
    ```

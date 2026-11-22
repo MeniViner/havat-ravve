@@ -2,15 +2,17 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, RootHead, go, useExternal, useRemove, useV2, waUrl, telUrl } from '../../core';
-import { Button, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Hero, HeroNumber, Icon, IconButton, PageTitle, TextLink, Tile, TileGrid, TopBar, type IconName } from '../../kit';
+import { Button, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Hero, HeroNumber, Icon, IconButton, ListCard, PageTitle, Row, TextLink, Tile, TileGrid, TopBar, type IconName } from '../../kit';
 import { agoLong, ago, dayName, ddmm, dayOverline, inDays, money, longDate, firstName } from '../../format';
 import { nowIso } from '../../../clock';
-import { useUpcomingEvents, contactPhoneOk } from '../../../data';
+import { useUpcomingEvents, contactPhoneOk, useCalendar } from '../../../data';
+import { useTemplates, usePlaces } from '../../../store';
+import { useVendorPool } from '../../data/vendor';
 import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } from '../../../types';
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
-  inboxGroup, inboxSummary, donationTotals, approvedSoon, isTeam, gw, timeFromNote, needsReceipt, fillTemplate,
-  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, deleteVendorRequest, type PayItem, type InboxGroup,
+  inboxIn, inboxSummary, donationTotals, approvedSoon, isTeam, gw, timeFromNote, needsReceipt, fillTemplate,
+  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, deleteVendorRequest, type PayItem, type InboxFilter,
 } from '../../data/manage';
 import { lnk, PlainLink } from './shared';
 
@@ -27,6 +29,10 @@ export function ManageRoot({ ctx }: ScreenProps) {
   const d = donationTotals(donations, ctx.today);
   const freshVisits = visits.filter((v) => v.status === 'new').length;
   const waiting = inbox.length + vreq.length;
+  const templates = useTemplates(true, true).items.filter((t) => t.active).length;
+  const vendors = useVendorPool(true).items.length;
+  const places = usePlaces(true).items.length;
+  const todayCal = useCalendar(true, ctx.today, ctx.today).items;
   return (
     <AppScreen variant="root">
       <RootHead overline={dayOverline(ctx.today)} title="ניהול" />
@@ -37,6 +43,14 @@ export function ManageRoot({ ctx }: ScreenProps) {
           <span className="k-hero__meta">{waiting ? inboxSummary(inbox, vreq.length) : 'מה שטופל נשמר ב"לטיפול"'}</span>
         </span>
       </Hero>
+      {inbox.length > 0 && (
+        <ListCard title="לטיפול" count={inbox.length} end={<TextLink {...lnk('/manage/inbox')}>הכל</TextLink>}>
+          {inbox.slice(0, 5).map((n) => (
+            <Row key={n.id} minHeight={54} {...lnk('/manage/inbox')} leading={<span className="manage-item__icon" aria-hidden="true"><Icon name={ICON[n.type] || 'bell'} size={20} /></span>}
+              title={n.title} meta={[n.text, agoLong(n.createdAt)].filter(Boolean).join(' · ')} />
+          ))}
+        </ListCard>
+      )}
       <TileGrid>
         <Tile icon="ticket" title="אירועים" meta={next ? `${next.title} ${inDays(next.start)}` : 'אין אירוע קרוב'} {...lnk('/manage/events')} />
         <Tile icon="people" title="אנשים" meta={`${people.length} רשומים · ${people.filter(isTeam).length} בצוות`} {...lnk('/manage/people')} />
@@ -45,15 +59,18 @@ export function ManageRoot({ ctx }: ScreenProps) {
         <Tile icon="chart" title="דוחות" meta="משימות, כסף, חובות" {...lnk('/manage/reports')} />
         <Tile icon="sliders" title="הגדרות" meta="תשלום, הודעות, מנהלים" {...lnk('/manage/settings')} />
       </TileGrid>
+      <PlainLink path="/farm/calendar" meta={todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן'}>יומן</PlainLink>
+      <PlainLink path="/manage/recurring" meta={`${templates} פעילות`}>משימות חוזרות</PlainLink>
+      <PlainLink path="/manage/vendors" meta={`${vendors} ברשימה`}>בעלי דוכנים</PlainLink>
       <PlainLink path="/manage/broadcasts">הודעות לצוות</PlainLink>
-      <PlainLink path="/places?from=manage">מקומות בחווה</PlainLink>
+      <PlainLink path="/places?from=manage" meta={places ? String(places) : undefined}>מקומות בחווה</PlainLink>
       <PlainLink path="/manage/activity">כל הפעילות בחווה</PlainLink>
     </AppScreen>
   );
 }
 
 // ---------- M2 ----------
-type Filter = 'all' | Exclude<InboxGroup, 'other'>;
+type Filter = InboxFilter;
 const ICON: Record<AppNotification['type'], IconName> = { contact: 'phone', visit: 'pin', donation: 'heart', claim: 'ticket', tab: 'cart', receipt: 'file', order: 'ticket', join: 'user' };
 const VREQ: Record<VendorRequest['kind'], string> = { power: 'חשמל', water: 'מים', help: 'עזרה', supply: 'נגמר לי משהו', other: 'משהו אחר' };
 
@@ -84,8 +101,8 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
   }, [visits, donations, tabs, tickets]);
   const [filter, setFilter] = useState<Filter>('all');
   const run = useRun();
-  const count = (g: InboxGroup) => open.filter((n) => inboxGroup(n) === g).length;
-  const list = handledView ? handled : open.filter((n) => filter === 'all' || inboxGroup(n) === filter);
+  const count = (f: Filter) => open.filter((n) => inboxIn(n, f)).length;
+  const list = handledView ? handled : open.filter((n) => inboxIn(n, filter));
   const total = open.length + vreq.length;
   const bulk = !handledView && filter === 'payments' ? list.map((n) => resolve(n, maps).pay).filter((p): p is PayItem => payOpen(p)) : [];
   const chip = (f: Filter, label: string, n: number) => <Chip key={f} selected={filter === f} onClick={() => setFilter(f)}>{n ? `${label} · ${n}` : label}</Chip>;
@@ -109,6 +126,9 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
         {chip('payments', 'תשלומים', count('payments'))}
         {chip('visits', 'ביקורים', count('visits'))}
         {chip('contact', 'פניות', count('contact'))}
+        {(count('receipts') > 0 || filter === 'receipts') && chip('receipts', 'קבלות', count('receipts'))}
+        {(count('stall') > 0 || filter === 'stall') && chip('stall', 'דוכן', count('stall'))}
+        {(count('orders') > 0 || filter === 'orders') && chip('orders', 'הזמנות', count('orders'))}
       </ChipRow>
       {bulk.length > 1 && (
         <Button variant="outline" block onClick={() => run(() => approveMany(ctx.actor, bulk, open), `אושרו ${bulk.length} תשלומים`)}>
@@ -191,7 +211,8 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
     const sender = peopleByUid.get(n.refId);
     const phone = sender?.phone || '';
     return (
-      <CardShell icon="phone" done={handled} over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title} meta={[sender?.displayName || 'פרטי השולח אינם זמינים', n.text].filter(Boolean).join(' · ')}>
+      <CardShell icon="phone" done={handled} over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
+        meta={<>{sender ? <a className="manage-inline-link" {...lnk(`/manage/people/${sender.uid}`)}>{sender.displayName}</a> : 'פרטי השולח אינם זמינים'}{n.text ? ` · ${n.text}` : ''}</>}>
         {handled ? back : <>
           {contactPhoneOk(phone) && <Button icon="message" onClick={() => ext(waUrl(phone, `שלום ${firstName(sender?.displayName || '')}, `))}>מענה בוואטסאפ</Button>}
           {contactPhoneOk(phone) && <Button variant="outline" onClick={() => ext(telUrl(phone))}>התקשרות</Button>}

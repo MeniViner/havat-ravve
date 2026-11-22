@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
 import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
-import { useAllEvents } from '../data';
+import { useAllEvents, useNotifications } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { todayKey, useClockVersion } from '../clock';
 import { sweepPrivateTaskActivity } from '../activity';
@@ -13,10 +13,13 @@ import type { Profile, Settings, Staffing } from '../types';
 import type { Session } from '../firebase';
 import type { TeamCtx } from '../ctx';
 import type { V2Ctx, V2Role } from './ctx';
-import { TEAM_ROUTES, VENDOR_ROUTES, resolve, redirectOf, type NavTab } from './routes';
+import { TEAM_ROUTES, VENDOR_ROUTES, VENDOR_LEGACY, resolve, redirectOf, type NavTab } from './routes';
 import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
-import { DemoSheet } from './screens/system';
+import { DemoSheet, useInstallBanner } from './screens/system';
+import { useRootTasks } from './data/tasks';
+import { useUrgentOpenCount } from './data/shopping';
+import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
 import { AppScreen as Frame2 } from './core';
@@ -49,9 +52,12 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
   // a write the server refused after the screen moved on (X1)
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
   const pending = demo.on && states.offline ? Math.max(3, sync.pending) : sync.pending;
-  const top = (demo.on || offline) ? <>
+  // the old shell's automatic install invitation (two weeks after "סגירה"; never on /install or in the demo)
+  const install = useInstallBanner();
+  const top = (demo.on || offline || install) ? <>
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate('/demo', true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
+    {install}
   </> : null;
   const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   const route = useRoute();
@@ -107,7 +113,13 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const allowed = !hit || ((!hit.route.manager || ctx.manager) && (!hit.route.owner || ctx.owner));
   useEffect(() => { if (hit && !allowed) navigate('/tasks', true); }, [hit, allowed]);
 
-  const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(crew ? [TEAM_NAV.event] : [])];
+  // nav badges (old shell): my open tasks, urgent shopping, and for managers what waits in "לטיפול" (the manage root's count)
+  const myOpen = useRootTasks(ctx).items.filter((t) => !t.done && t.assignee?.uid === user.uid).length;
+  const urgent = useUrgentOpenCount();
+  const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
+  const badges: Partial<Record<NavItem['key'], number>> = { tasks: myOpen, shopping: urgent, manage: ctx.manager ? inbox : 0 };
+  const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
+    .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
@@ -129,6 +141,7 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
   const nav = [TEAM_NAV.vendorEvents, TEAM_NAV.vendorStall];
   let screen: ReactNode = null;
   if (!redirect && hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
+  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings })}</AppScreen>;
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 

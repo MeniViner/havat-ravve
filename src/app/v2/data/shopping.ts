@@ -67,7 +67,9 @@ export const doneToday = (history: ShoppingItem[], c: ShoppingCategory, today: s
 /** Found this calendar month (S2 "נמצא החודש"). */
 export const doneThisMonth = (history: ShoppingItem[], c: ShoppingCategory, today: string) =>
   history.filter((i) => i.bought && i.category === c && keyOf(i.boughtAt).slice(0, 7) === today.slice(0, 7)).sort((a, b) => (b.boughtAt || '').localeCompare(a.boughtAt || ''));
-/** S1 dashed chips "קונים בדרך כלל": bought most often lately in this list and not open now; ties go to the most recent. */
+/** S1 dashed chips "קונים בדרך כלל": bought (or found) most often lately in this list and not open now; ties go to the most
+ *  recent. The screens ask for the old five (SUGGESTED). */
+export const SUGGESTED = 5;
 export function suggestions(history: ShoppingItem[], open: ShoppingItem[], c: ShoppingCategory, max = 3): { title: string; qty: string; note: string; link: string }[] {
   const onList = new Set(open.filter((i) => !i.bought && i.category === c).map((i) => norm(i.title)));
   const m = new Map<string, { title: string; qty: string; note: string; link: string; n: number; last: string }>();
@@ -122,14 +124,15 @@ export function weekStartKey(today: string): string {
   dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay());
   return dt.toISOString().slice(0, 10);
 }
-export type HistoryFilter = 'all' | 'super' | 'building' | 'online';
+export type HistoryFilter = 'all' | 'super' | 'building' | 'online' | 'giveaway';
 export type HistoryGroup = { key: 'today' | 'week' | 'earlier'; title: string; items: ShoppingItem[] };
-/** S8: bought items (not the מחפשים list), filtered by list and by a search over item and person, grouped today / this week / earlier. */
+/** S8: bought items, and found ones from the מחפשים list (as the old history), filtered by list and by a search over item and
+ *  person, grouped today / this week / earlier. */
 export function historyGroups(history: ShoppingItem[], filter: HistoryFilter, query: string, today: string): HistoryGroup[] {
   const q = norm(query);
   const week = weekStartKey(today);
   const rows = history
-    .filter((i) => i.bought && i.boughtAt && i.category !== 'giveaway' && (filter === 'all' || i.category === filter))
+    .filter((i) => i.bought && i.boughtAt && (filter === 'all' || i.category === filter))
     .filter((i) => !q || norm(i.title).includes(q) || norm(i.boughtBy?.name || '').includes(q) || norm(i.createdBy?.name || '').includes(q))
     .sort((a, b) => (b.boughtAt || '').localeCompare(a.boughtAt || ''));
   const groups: HistoryGroup[] = [
@@ -183,6 +186,13 @@ export function useShopping(enabled = true) {
   useHiddenVersion(); // an item deleted a moment ago is gone from the lists while its undo is still offered
   const shown = (l: ShoppingItem[]) => l.filter((i) => !isHidden(i.id));
   return { open: shown(open.items), history: shown(history.items), loading: open.loading || history.loading, error: open.error || history.error };
+}
+/** The bottom-nav badge (old shell): urgent items still open, on every list. The same query as the open list above. */
+export function useUrgentOpenCount(enabled = true) {
+  const demo = useDemo(); const states = useDemoStates();
+  const open = useList<ShoppingItem>('shopping', { where: [['bought', '==', false]], orderBy: [['createdAt', 'desc']] }, enabled && !(demo.on && states.empty));
+  useHiddenVersion();
+  return open.items.filter((i) => i.urgent && !i.bought && !isHidden(i.id)).length;
 }
 export const useShopItem = (id: string) => useDoc<ShoppingItem>('shopping/' + (id || '_'), !!id);
 export const useItemActivity = (id: string) => useActivityFor('shopping', id);

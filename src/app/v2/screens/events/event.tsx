@@ -8,16 +8,17 @@ import {
 } from '../../kit';
 import {
   useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
-  cancelOrder, markPaymentConfirmation, fillTemplate, downloadCsv, handleNotificationsFor,
+  cancelOrder, markPaymentConfirmation, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
 } from '../../../data';
-import { nowMs, useClockVersion } from '../../../clock';
+import { nowIso, nowMs, useClockVersion } from '../../../clock';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
 import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
   filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
-  isPaid, type EventTab, type GuestFilter, type Order,
+  isPaid, cancelledOrdersOf, scansFromTickets, summaryExtras, type EventTab, type GuestFilter, type Order,
 } from './logic';
+import { PayConfirm } from './payconfirm';
 import { useCounters, useScans, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
 import { DEFAULT_SETTINGS, PAYMENT_LABELS, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
@@ -57,7 +58,7 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const files = useFiles(e.id, ctx.manager);
   const st = staffingStats(stationsOf(e, staffing.items), [], []);
   const openTasks = tasks.items.filter((t) => !t.done).length;
-  const fileNames = files.items.map((f) => f.name);
+  const fileNames = [...files.items.map((f) => f.name), ...(e.files || []).map((f) => f.name)];
   const share = async () => {
     const url = `${location.origin}/app/events/${e.id}`;
     if (navigator.share) {
@@ -82,7 +83,7 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   return (
     <>
       <ListCard>
-        <Row minHeight={58} title="פרטי האירוע" tags={<Tag tone={e.published ? 'paid' : 'neutral'}>{e.published ? 'מפורסם' : 'טיוטה'}</Tag>} meta={detailsMeta(e)} {...link(`/manage/events/${e.id}/edit`)} />
+        <Row minHeight={58} title="פרטי האירוע" tags={<><Tag tone={e.published ? 'paid' : 'neutral'}>{e.published ? 'מפורסם' : 'טיוטה'}</Tag>{e.published && <Tag tone={e.open ? 'warm' : 'neutral'}>{e.open ? 'פתוח להרשמה' : 'ההרשמה סגורה'}</Tag>}</>} meta={detailsMeta(e)} {...link(`/manage/events/${e.id}/edit`)} />
         <Row minHeight={58} title="בעלי דוכנים" meta={vendors.items.length ? vendorsMeta(vendors.items as EventVendorV2[]) : 'עוד לא הוזמנו'} {...link(`/manage/events/${e.id}/vendors`)} />
         {e.stall !== false && <Row minHeight={58} title="מוצרי הדוכן" meta={productsMeta(products.items)} {...link(`/manage/events/${e.id}/products`)} />}
         <Row minHeight={58} title="משימות הכנה" meta={`${openTasks} פתוחות מתוך ${tasks.items.length}`} {...link(`/farm/events/${e.id}`)} />
@@ -106,6 +107,9 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const tickets = useEventTickets(e.id, ctx.manager);
   const notes = useNotifications(ctx.manager);
   const orders = useMemo(() => ordersOf(tickets.items), [tickets.items]);
+  const cancelled = useMemo(() => cancelledOrdersOf(tickets.items), [tickets.items]);
+  const allOrders = useMemo(() => [...orders, ...cancelled], [orders, cancelled]);
+  const arrivedN = orders.filter((o) => o.arrived > 0).length;
   const stats = guestStats(tickets.items);
   const claimed = orders.filter((o) => o.status === 'claimed');
   const [filter, setFilter] = useState<GuestFilter | null>(null);
@@ -114,7 +118,7 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const list = filterOrders(orders, f, q);
+  const list = filterOrders(allOrders, f, q);
   const chosen = f === 'claimed' ? list.filter((o) => !unselected.has(o.orderId)) : [];
   const toggle = (id: string, on: boolean) => setUnselected((s) => { const n = new Set(s); if (on) n.delete(id); else n.add(id); return n; });
 
@@ -127,7 +131,7 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const exportCsv = () => downloadCsv(`${e.title} - נרשמים.csv`, ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
     ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], ddmm(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]));
   const approveLabel = chosen.length === 2 ? 'אישור של שניהם' : chosen.length > 2 ? 'אישור של כולם' : 'אישור';
-  const opened = orders.find((o) => o.orderId === sheet) || null;
+  const opened = allOrders.find((o) => o.orderId === sheet) || null;
 
   return (
     <>
@@ -141,6 +145,8 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         <Chip selected={f === 'all'} onClick={() => setFilter('all')}>הכל · {orders.length}</Chip>
         <Chip selected={f === 'claimed'} onClick={() => setFilter('claimed')}>סימנו שהעבירו · {claimed.length}</Chip>
         <Chip selected={f === 'unpaid'} onClick={() => setFilter('unpaid')}>לא שילמו · {orders.filter((o) => o.status === 'pending').length}</Chip>
+        {(arrivedN > 0 || f === 'arrived') && <Chip selected={f === 'arrived'} onClick={() => setFilter('arrived')}>הגיעו · {arrivedN}</Chip>}
+        {(cancelled.length > 0 || f === 'cancelled') && <Chip selected={f === 'cancelled'} onClick={() => setFilter('cancelled')}>בוטלו · {cancelled.length}</Chip>}
       </ChipRow>
       {list.length > 0 ? (
         <section className="k-card k-card--list" aria-label="נרשמים">
@@ -152,7 +158,7 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           )}
           <ul className="k-list">
             {list.map((o) => {
-              const tag = STATUS_TAG[o.status];
+              const tag = o.cancelled ? { tone: 'neutral' as const, text: 'בוטל' } : STATUS_TAG[o.status];
               return (
                 <li key={o.orderId} className="events-guestrow">
                   {f === 'claimed' && <CheckButton className="events-guestrow__check" checked={!unselected.has(o.orderId)} onChange={(on) => toggle(o.orderId, on)} label={`בחירה: ${o.name}`} />}
@@ -169,7 +175,7 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           </ul>
         </section>
       ) : (
-        <EmptyState variant="card" title={q ? 'לא נמצא' : f === 'claimed' ? 'אין תשלומים לאישור' : f === 'unpaid' ? 'כולם שילמו' : 'עוד אין נרשמים'} />
+        <EmptyState variant="card" title={q ? 'לא נמצא' : f === 'claimed' ? 'אין תשלומים לאישור' : f === 'unpaid' ? 'כולם שילמו' : f === 'arrived' || f === 'cancelled' ? 'אין עדיין' : 'עוד אין נרשמים'} />
       )}
       <ButtonRow>
         <Button variant="outline" size="tall" icon="download" onClick={exportCsv}>אקסל</Button>
@@ -218,7 +224,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; 
     <Sheet open={!askDelete} onClose={() => { setCancelling(false); onClose(); }} title={order.name} aside={money(order.owed || order.total)}>
       <div className="events-sheet">
         <p className="events-sheet__meta">
-          {ticketsWord(order.count)} · {STATUS_TAG[order.status].text}{order.arrived ? ` · ${order.arrived} נכנסו` : ''}<br />
+          {ticketsWord(order.count)} · {order.cancelled ? 'בוטל' : STATUS_TAG[order.status].text}{order.arrived ? ` · ${order.arrived} נכנסו` : ''}<br />
           הוזמן {ddmm(order.createdAt)}{order.phone ? <> · <span dir="ltr">{order.phone}</span></> : null}
           {holders.length > 0 && <><br />{holders.join(' · ')}</>}
           {answers.length > 0 && <><br />{answers.join(' · ')}</>}
@@ -234,13 +240,17 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; 
           </>
         ) : (
           <div className="events-sheet__actions">
+            {!order.cancelled && order.total > 0 && (
+              <PayConfirm collection="tickets" ids={order.tickets.map((t) => t.id)} uid={order.ownerUid} name={order.name} phone={order.phone}
+                amount={order.total} purpose={`כרטיסים לאירוע ${e.title}`} event={e.title} paid={paidAll} confirmation={confirmation} emailJob={'order_' + order.orderId} />
+            )}
             {owing && <Button size="tall" block icon="check" onClick={() => onApprove(order)}>אישור תשלום</Button>}
             {owing && <Button variant="outline" size="tall" block onClick={markPaidNow}>שולם במקום</Button>}
             {owing && order.phone && <Button variant="outline" size="tall" block icon="message" onClick={remind}>תזכורת בוואטסאפ</Button>}
             {paidAll && order.total > 0 && order.phone && <Button variant="outline" size="tall" block icon="message" onClick={sendConfirmation}>{confirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום'}</Button>}
             {order.phone && <Button variant="outline" size="tall" block icon="phone" onClick={() => open(telUrl(order.phone))}>התקשרות</Button>}
             {order.ownerUid !== ctx.user.uid && <Button variant="quiet" size="tall" block onClick={() => { onClose(); go(`/manage/people/${order.ownerUid}`); }}>הכרטיס של {firstName(order.name)}</Button>}
-            <Button variant="danger" size="tall" block onClick={() => setCancelling(true)}>ביטול ההזמנה</Button>
+            {!order.cancelled && <Button variant="danger" size="tall" block onClick={() => setCancelling(true)}>ביטול ההזמנה</Button>}
             <Button variant="quiet" size="tall" block onClick={() => setAskDelete(true)}>מחיקת ההזמנה</Button>
           </div>
         )}
@@ -293,6 +303,8 @@ function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const live = liveOf(tickets.items, counters.item);
   const share = live.total ? live.entered / live.total : 0;
   const L = { ...live, ...dayTiles(counters.item, tickets.items, tabs.items) };
+  // events from before the scan log keep their entries on the tickets (ticket.scans[])
+  const recent = scans.items.length ? scans.items : scansFromTickets(tickets.items).slice(0, 3);
   return (
     <>
       <Hero className="events-livehero" aria-label="כניסה">
@@ -312,7 +324,7 @@ function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         <StatTile small value={money(L.stallSold)} label="נמכר בדוכן" />
       </StatRow>
       <ListCard title="סריקות אחרונות" end={<TextLink {...link(`/manage/events/${e.id}/live/scans`)}>הכל</TextLink>}>
-        {scans.items.map((s) => {
+        {recent.map((s) => {
           const part = scanPart(s, tickets.items.find((t) => t.id === s.ticketId));
           return (
             <li key={s.id} className="events-scanrow">
@@ -322,7 +334,7 @@ function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
             </li>
           );
         })}
-        {!scans.items.length && <li className="events-scanrow events-scanrow--empty">עוד אין סריקות</li>}
+        {!recent.length && <li className="events-scanrow events-scanrow--empty">עוד אין סריקות</li>}
       </ListCard>
       <ButtonRow>
         {e.entry !== false && <Button size="lg" icon="qr" onClick={() => go(`/event/gate?e=${e.id}`)}>שער</Button>}
@@ -344,7 +356,14 @@ function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const debts = debtsOf(e.id, tickets.items, tabs.items);
   const T = debtTotals(debts);
   const top = topSold(tabs.items);
-  const exportCsv = () => reportCsv(e, tickets.items, tabs.items, donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus)).reduce((s, d) => s + d.amount, 0));
+  const X = summaryExtras(tickets.items, tabs.items);
+  const pct = S.registered ? Math.round((S.arrived / S.registered) * 100) : X.pct;
+  const dayDon = donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus));
+  const donMoney = dayDon.reduce((s, d) => s + d.amount, 0);
+  const openSum = X.openTabsAmount + X.openOrdersAmount;
+  const nowS = nowIso();
+  const past = useAllEvents(ctx.manager).items.filter((x) => x.id !== e.id && x.end < nowS).slice(0, 4);
+  const exportCsv = () => reportCsv(e, tickets.items, tabs.items, donMoney);
   return (
     <>
       <StatRow grid>
@@ -353,6 +372,15 @@ function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         <StatTile value={money(S.ticketsIncome)} label="כרטיסים" />
         <StatTile value={money(S.stallIncome)} label="דוכן" />
       </StatRow>
+      <StatRow>
+        <StatTile value={`${pct}%`} label="הגעה" />
+        <StatTile value={num(X.returned)} label="יצאו וחזרו" />
+      </StatRow>
+      <ListCard title="כסף">
+        <Row minHeight={56} {...link('/manage/donations')} title="תרומות ביום האירוע" meta={`${dayDon.length} תורמים`} value={money(donMoney)} />
+        <Row minHeight={56} title="עדיין לא שולם" meta={`${X.openTabs} חשבונות דוכן · ${X.openOrders} הזמנות כרטיסים`} value={money(openSum)} />
+        {S.waived > 0 && <Row minHeight={56} title="נמחל" meta={`${X.waivedCount} חשבונות`} value={money(S.waived)} />}
+      </ListCard>
       {T.count > 0 && (
         <Card pad="md" as="section" className="events-debtcard" aria-label="חובות">
           <span className="events-debtcard__body">
@@ -368,12 +396,25 @@ function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           <BarList items={top} />
         </Card>
       )}
+      {past.length > 0 && (
+        <ListCard title="לעומת אירועים קודמים">
+          {past.map((x) => <CompareRow key={x.id} e={x} enabled={ctx.manager} />)}
+        </ListCard>
+      )}
       <ButtonRow>
         <Button variant="outline" size="tall" icon="download" onClick={exportCsv}>ייצוא לאקסל</Button>
         <Button variant="outline" size="tall" onClick={() => go(`/manage/activity?event=${e.id}`)}>היסטוריית האירוע</Button>
+        <Button variant="outline" size="tall" onClick={() => window.print()}>הדפסה</Button>
       </ButtonRow>
     </>
   );
+}
+/** A past event next to this one: tickets and how many came. */
+function CompareRow({ e, enabled }: { e: FarmEvent; enabled: boolean }) {
+  const t = useEventTickets(e.id, enabled).items;
+  const v = t.filter((x) => x.status === 'valid'); const a = v.filter((x) => x.entries > 0).length;
+  return <Row minHeight={56} {...link(`/manage/events/${e.id}?tab=summary`)} title={e.title} meta={`${ddmm(e.start)} · ${a} הגיעו מתוך ${v.length}`}
+    value={v.length ? `${Math.round((a / v.length) * 100)}%` : '—'} />;
 }
 
 function reportCsv(e: FarmEvent, tickets: Ticket[], tabs: Tab[], donMoney: number) {

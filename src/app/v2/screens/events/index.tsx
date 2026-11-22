@@ -8,6 +8,7 @@ export { EventScreen } from './event';
 export { EventForm } from './form';
 export { ProductsScreen, ProductForm } from './products';
 export { TabScreen } from './tab';
+export { TabsScreen } from './tabs';
 export { FilesScreen } from './files';
 export { StaffingScreen } from './staffing';
 export { DebtsScreen } from './debts';

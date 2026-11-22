@@ -102,6 +102,7 @@ console.log('staff · eventDay');
   await step('writes persist: my scans 46 after reload, Michal inside', async () => {
     await s.go('/event'); await s.reload();
     await s.see('46');
+    await s.see('סריקות אחרונות'); await s.see('אורח בדיקה · כרטיס 1/1'); // the old hub's last scans, for every staff member
     await s.go('/event/gate/search');
     await s.fill('שם או טלפון', 'נעמה');
     await s.see('כולם נכנסו').catch(async () => s.see('נכנס'));
@@ -136,6 +137,7 @@ console.log('staff · eventDay');
     await s.fill('חיפוש בשם או טלפון', 'אסתר');
     await s.tap('אסתר כהן');
     await s.see('חשבון חדש');
+    assert.match(s.page.url(), /\/event\/stall\/new/, 'picking a buyer opens no account; the first sale does');
   });
   await step('E9 tabs: chips and persisted walk-in account', async () => {
     await s.go('/event/stall/tabs'); await s.reload();
@@ -144,6 +146,36 @@ console.log('staff · eventDay');
     await s.see('46 ₪');
     await s.tap('נסגרו');
     await s.see('פתוחים · 5');
+  });
+  await step('E8 lines already on the account, with time and who; a line can be removed', async () => {
+    await s.go('/event/stall');
+    await s.fill('חיפוש בשם או טלפון', 'רוני');
+    await s.tap('רוני לוי');
+    await s.see('כבר בחשבון: 4 פריטים · 46 ₪'); await s.see('בחשבון'); await s.see('לימונדה ×2');
+    await s.page.getByRole('button', { name: 'הסרה' }).first().click();
+    await s.see('כבר בחשבון: 2 פריטים · 22 ₪');
+    await s.reload();
+    await s.see('כבר בחשבון: 2 פריטים · 22 ₪');
+  });
+  await step('E8 clear the cart, undo brings it back', async () => {
+    await s.tap('הוספת זיתים');
+    await s.tap('נקה הכל');
+    await s.see('העגלה נוקתה');
+    await s.page.getByRole('button', { name: 'ביטול' }).first().click();
+    await s.see('פריט אחד');
+  });
+  await step('E9 the crew marks an account paid on the spot', async () => {
+    await s.go('/event/stall/tabs');
+    await s.see('פתוחים · 5');
+    await s.page.getByRole('button', { name: 'שילם/ה במקום' }).first().click();
+    await s.see('שולם במקום'); await s.see('פתוחים · 4');
+    assert.equal(await s.page.getByText('נמכרו היום').count(), 0, 'the totals are for managers');
+  });
+  await step('module off: the old messages, not "no event today"', async () => {
+    await s.go('/event/gate?e=demo-e-tour');
+    await s.see('סריקת כניסה כבויה באירוע הזה');
+    await s.go('/event/stall?e=demo-e-tour');
+    await s.see('דוכן המכירות כבוי באירוע הזה');
   });
   await step('E2 exit returns to the event tab', async () => {
     await s.go('/event/gate');
@@ -220,6 +252,16 @@ console.log('manager · eventDay');
     await s.page.locator('.k-bottombar').getByText('דוכן').click();
     await s.see('מי קונה?'); await s.see('האירוע חי');
   });
+  await step('E2 for a manager: arrived of all tickets, and the quick link to the stall', async () => {
+    await s.go('/event/gate');
+    await s.see('נכנסו מתוך');
+    await s.tap('לדוכן');
+    await s.see('מי קונה?');
+  });
+  await step('E9 stall accounts: the totals for a manager', async () => {
+    await s.go('/event/stall/tabs');
+    await s.see('נמכרו היום'); await s.see('חשבונות פתוחים');
+  });
   await step('E9 as manager links to the manager tab screen', async () => {
     await s.go(`/manage/events/${FEST}/tabs`);
     await s.see('חשבונות הדוכן');
@@ -261,6 +303,38 @@ console.log('owner · afterEvent');
     await s.see('מה קורה כשסוגרים');
   });
   await step('no page errors (owner)', async () => { assert.deepEqual(s.errors, []); });
+  await s.ctx.close();
+}
+
+// ───────── the guest side pages this round restored ─────────
+console.log('guest side');
+{
+  const s = await session('anon', 'regular');
+  await step('signed out: /me/account links to the demo', async () => {
+    await s.go('/me/account');
+    await s.tap('לראות איך האפליקציה עובדת');
+    await s.page.waitForURL(/\/app\/demo/);
+  });
+  await s.ctx.close();
+}
+{
+  const s = await session('blocked', 'regular');
+  await step('a blocked guest gets the guest blocked page', async () => {
+    await s.go('/');
+    await s.see('החשבון הושעה'); await s.see('שלום יוסי'); await s.see('עדיין פתוחים לצפייה');
+    assert.equal(await s.page.getByText('לאפליקציית הצוות').count(), 0, 'not the team suspended screen');
+  });
+  await s.ctx.close();
+}
+{
+  const s = await session('staff', 'regular');
+  await step('a team member who orders tickets lands on their tickets, not the team profile', async () => {
+    await s.go('/events/demo-e-tour/order');
+    await s.page.getByRole('button', { name: 'הרשמה' }).click();
+    await s.page.waitForURL(/\/app\/me\/tickets/);
+    await s.see('הכרטיסים שלי');
+  });
+  await step('no page errors (guest side)', async () => { assert.deepEqual(s.errors, []); });
   await s.ctx.close();
 }
 

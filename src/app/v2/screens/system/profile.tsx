@@ -13,8 +13,9 @@ import { PushSettings } from '../broadcast';
 import type { V2Ctx } from '../../ctx';
 import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
-  receiptOf, saveProfile, parseBirth, birthText, type ProfileDraft,
+  receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, answerText, missingAnswers, type ProfileDraft,
 } from '../../data/system';
+import { RegistrationQuestions } from './fields';
 import './system.css';
 
 export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
@@ -38,6 +39,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const src = photoOf(p);
   const kinds = usePush(p).kinds;
   const role = ctx.viewAsStaff ? 'מתנדב' : roleWord(p, ctx.owner, ctx.manager);
+  const questions = registrationQuestions(ctx.settings.registrationFields);
   const sub = [role, lead && p.customerNumber ? `מספר ${p.customerNumber}` : '', sinceText(p.createdAt)].filter(Boolean).join(' · ');
   return (
     <AppScreen variant="root" gap={10}>
@@ -61,6 +63,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         <DetailRow term="טלפון"><span dir="ltr">{p.phone || '—'}</span></DetailRow>
         <DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow>
         {!vendor && <DetailRow term="בחווה" action={<TextLink onClick={() => go('/farm/presence')}>שינוי</TextLink>}>{presence}</DetailRow>}
+        {questions.map((f) => <DetailRow key={f.id} term={f.label}>{answerText(p.fields, f) || '—'}</DetailRow>)}
       </DetailList>
       <ListCard>
         <Row leading={<IconTile icon="bell-settings" />} title="התראות" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => setNotifs(true)} />
@@ -71,6 +74,8 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         {!lead && !ctx.viewAsStaff && !vendor && <Row leading={<IconTile icon="people" />} title="פנייה למנהלים" meta="שאלה, בקשה או בעיה" onClick={() => go('/contact?from=team')} />}
         <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />
         {!vendor && <Row leading={<IconTile icon="ticket" />} title="הכרטיסים שלי כאורח" meta="" onClick={() => go('/me/tickets')} />}
+        <Row leading={<IconTile icon="farm" />} title="האתר של החווה" meta="" href="/"
+          onClick={(e) => { e.preventDefault(); window.open('/', '_blank', 'noopener'); }} />
         {!demo.on && <Row leading={<IconTile icon="help" />} title="לראות איך האפליקציה עובדת" meta="הדגמה עם נתונים לא אמיתיים" onClick={() => go('/demo')} />}
       </ListCard>
       <div className="system-foot">
@@ -99,15 +104,17 @@ const PHOTO_META = { custom: 'תמונה משלי', google: 'מחשבון Google
 export function ProfileEdit({ ctx }: ScreenProps) {
   const p = ctx.profile;
   const toast = useToast();
-  const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || '', birthDate: birthText(p.birthDate), receipt: receiptOf(p) });
+  const questions = registrationQuestions(ctx.settings.registrationFields);
+  const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || '', birthDate: birthText(p.birthDate), receipt: receiptOf(p), answers: answersFor(p.fields, questions) });
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const src = photoOf(p);
   const nameErr = tried && !d.displayName.trim() ? 'צריך שם' : '';
   const birthErr = tried && parseBirth(d.birthDate) === null ? 'תאריך בצורה 14.03.1975' : '';
+  const missing = missingAnswers(d.answers, questions);
   const save = async () => {
     setTried(true);
-    if (!d.displayName.trim() || parseBirth(d.birthDate) === null || busy) return;
+    if (!d.displayName.trim() || parseBirth(d.birthDate) === null || missing.length || busy) return;
     setBusy(true);
     try { await saveProfile(p, d); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
     catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
@@ -126,6 +133,8 @@ export function ProfileEdit({ ctx }: ScreenProps) {
       <Field label="טלפון" ltr value={d.phone} onChange={set('phone')} maxLength={25} inputMode="tel" autoComplete="tel" />
       <Field label="יישוב" value={d.town} onChange={set('town')} maxLength={60} />
       <Field label="תאריך לידה" value={d.birthDate} onChange={set('birthDate')} placeholder="לא חובה" inputMode="numeric" error={birthErr} />
+      <RegistrationQuestions questions={questions} answers={d.answers || {}} missing={tried ? missing : []}
+        onChange={(id, v) => setD((s) => ({ ...s, answers: { ...s.answers, [id]: v } }))} />
       <DetailList className="system-dl"><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>
       <span className="system-note">המייל מגיע מחשבון Google, ולכן אי אפשר לשנות אותו כאן.</span>
       <ListCard>

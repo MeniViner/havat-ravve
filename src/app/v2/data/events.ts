@@ -132,6 +132,12 @@ export async function saveProductV2(eventId: string, data: { name: string; price
   return id;
 }
 export const setProductActive = (eventId: string, p: ProductV2, active: boolean) => write.update(`events/${eventId}/products`, p.id, { active });
+/** N9 ↑/↓: the new order written as sort 1..n (only the products whose place changed). */
+export async function reorderProducts(eventId: string, ordered: ProductV2[]) {
+  const ops = ordered.map((p, i) => ({ p, sort: i + 1 })).filter(({ p, sort }) => p.sort !== sort)
+    .map(({ p, sort }) => ({ op: 'update' as const, col: `events/${eventId}/products`, id: p.id, data: { sort } }));
+  if (ops.length) await write.batch(ops);
+}
 
 // ---------- files (V3) ----------
 export async function addFileV2(eventId: string, f: Omit<EventFileV2, 'id'>) {
@@ -143,6 +149,9 @@ export async function addFileV2(eventId: string, f: Omit<EventFileV2, 'id'>) {
   return id;
 }
 export const removeFileV2 = (eventId: string, id: string) => write.remove(`events/${eventId}/files`, id);
+/** Links saved by the old app live in the event document (`files`, up to 30): removing one rewrites that list. */
+export const removeLegacyFile = (e: FarmEvent, index: number) =>
+  write.update('events', e.id, { files: (e.files || []).filter((_, i) => i !== index), updatedAt: nowIso() });
 
 // ---------- staffing (V4) ----------
 type Person = Staffing['people'][number];

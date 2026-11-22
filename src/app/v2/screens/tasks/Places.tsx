@@ -1,5 +1,6 @@
 // L3 (places on the farm) and L4 (one place): saved points that tasks and recurring tasks hang on.
 import { useState } from 'react';
+import { ExcelButton } from '../manage/shared';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../core';
 import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, ConfirmSheet } from '../../kit';
@@ -44,6 +45,10 @@ export function PlacesScreen({ ctx }: ScreenProps) {
         </Card>
       ) : (
         <EmptyState variant="card" title="עוד אין מקומות שמורים" text="עמדו במקום ולחצו על הכפתור למעלה" />
+      )}
+      {ctx.manager && ctx.places.length > 0 && (
+        <ExcelButton filename="מקומות.csv" headers={['שם', 'lat', 'lng', 'נשמר']}
+          rows={() => ctx.places.map((place) => [place.name, place.lat, place.lng, (place.createdAt || '').slice(0, 10).split('-').reverse().join('.')])} />
       )}
     </AppScreen>
   );

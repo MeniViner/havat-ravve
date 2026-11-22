@@ -1,12 +1,12 @@
 // E1-Home: the temporary "אירוע" tab on event day. Live hero, big "שער" and "דוכן" entries, my scan and sale counts.
 // Opening it also brings the ticket list, products and tabs onto the phone, so the gate and the stall work without reception.
 import type { ReactNode } from 'react';
-import { Hero, Icon, StatRow, StatTile } from '../../kit';
+import { Hero, Icon, StatRow, StatTile, ListCard, Row, TextLink } from '../../kit';
 import { AppScreen, RootHead } from '../../core';
-import { dayOverline, hhmm } from '../../format';
+import { dayOverline, hhmm, firstName } from '../../format';
 import { now, nowMs } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
-import { useEventTickets, useEventTabs, useStallProducts, myScans, mySales, isEventClosed } from '../../data/eventday';
+import { useEventTickets, useEventTabs, useStallProducts, myScans, mySales, isEventClosed, recentEntries } from '../../data/eventday';
 import { useRouteEvent, NoEvent, to } from './common';
 
 export function EventHome({ ctx, params }: ScreenProps): ReactNode {
@@ -19,6 +19,7 @@ export function EventHome({ ctx, params }: ScreenProps): ReactNode {
   if (!event || isEventClosed(event)) return <NoEvent loading={loading} closed={isEventClosed(event)} />;
   const ready = !tickets.loading && !tabs.loading && !products.loading;
   const q = id === ctx.eventToday?.id ? '' : `?e=${id}`;
+  const recent = gate ? recentEntries(tickets.items) : [];
   return (
     <AppScreen variant="root">
       <RootHead overline={`${dayOverline()} · ${hhmm(now())}`} title="אירוע" />
@@ -49,6 +50,14 @@ export function EventHome({ ctx, params }: ScreenProps): ReactNode {
           {gate && <StatTile value={myScans(tickets.items, ctx.user.uid, ctx.today)} label="סריקות שלך היום" />}
           {stall && <StatTile value={mySales(tabs.items, ctx.user.uid, ctx.today)} label="מכירות שלך היום" />}
         </StatRow>
+      )}
+      {recent.length > 0 && (
+        <ListCard title="סריקות אחרונות" end={<TextLink {...to('/event/gate/search' + q)}>חיפוש אורח</TextLink>}>
+          {recent.map(({ t, s, n }) => (
+            <Row key={t.id + s.at} title={`${t.holderName || t.ownerName} · כרטיס ${t.index}/${t.total}`}
+              meta={`כניסה ${n}${n > 1 ? ', יצא וחזר' : ''} · ${hhmm(s.at)} · ${firstName(s.by?.name || '')}${t.paymentStatus === 'paid_onsite' ? ' · שולם במקום' : ''}`} />
+          ))}
+        </ListCard>
       )}
     </AppScreen>
   );

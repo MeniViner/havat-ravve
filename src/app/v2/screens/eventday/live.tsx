@@ -18,6 +18,11 @@ import {
   shortInitials, type ScanV2, type TicketV2, type Counters, type EventV2, type CashCount,
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, to } from './common';
+import { scansFromTickets, countersFromTickets } from '../events/logic';
+
+/** Events from before the scan log (the live app kept scans on the tickets): rebuild counters and scans from the tickets. */
+const countersOr = (c: Counters | null, loading: boolean, tickets: TicketV2[]): Counters | null => c || (loading ? null : countersFromTickets(tickets));
+const scansOr = (scans: ScanV2[], loading: boolean, tickets: TicketV2[]): ScanV2[] => (scans.length || loading ? scans : scansFromTickets(tickets));
 import { gw } from '../../gender';
 
 const HOURS = ['שתים עשרה', 'אחת', 'שתיים', 'שלוש', 'ארבע', 'חמש', 'שש', 'שבע', 'שמונה', 'תשע', 'עשר', 'אחת עשרה'];
@@ -87,7 +92,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   const rejected = useRejectedScans(id);
   const last = useScans(id, 1);
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
-  const c = counters.item;
+  const c = countersOr(counters.item, counters.loading, tickets.items);
   const n = liveNumbers(tickets.items, c);
   const nowHM = hhmm(now());
   const endM = minsOf(hhmm(event.end)), nowM = minsOf(nowHM), startM = minsOf(hhmm(event.start));
@@ -100,7 +105,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   const stallNames = onShift(station('stall') || station('דוכן'), nowHM).map((p) => firstName(p.name));
   const sold = tabs.items.filter(hasTabPurchases);
   const soldSum = sold.reduce((s, t) => s + t.total, 0);
-  const l = last.items[0];
+  const l = scansOr(last.items, last.loading, tickets.items)[0];
   const attention = (open.length ? 1 : 0) + unstaffed.length + (n.payLaterCount ? 1 : 0);
   const e = `?e=${id}&from=live`;
   return (
@@ -149,13 +154,15 @@ type ScanFilter = 'all' | 'gate' | 'later' | 'rejected';
 /** Y2: every scan, newest first. */
 export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const { id, event, loading } = useRouteEvent(ctx, params);
-  const scans = useScans(id, 300);
+  const scanLog = useScans(id, 300);
+  const tickets = useEventTickets(id);
+  const scans = { items: scansOr(scanLog.items, scanLog.loading || tickets.loading, tickets.items) };
   const rejected = useRejectedScans(id);
   const counters = useCounters(id);
   const [filter, setFilter] = useState<ScanFilter>((params.filter as ScanFilter) || 'all');
   const [query, setQuery] = useState('');
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
-  const c = counters.item;
+  const c = countersOr(counters.item, counters.loading || tickets.loading, tickets.items);
   const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all' || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : true));
   const text = query.trim().toLowerCase(), d = digits(query);
   const shown = text ? base.filter((s) => s.name.toLowerCase().includes(text) || (d.length >= 4 && digits(s.phone || '').includes(d))) : base;
@@ -328,7 +335,7 @@ export function CloseEvent({ ctx, params }: ScreenProps): ReactNode {
   const [edit, setEdit] = useState<'gate' | 'stall' | null>(null);
   const [busy, setBusy] = useState(false);
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
-  const n = liveNumbers(tickets.items, counters.item);
+  const n = liveNumbers(tickets.items, countersOr(counters.item, counters.loading || tickets.loading, tickets.items));
   const openTabs = tabs.items.filter((t) => t.status === 'open' && hasTabPurchases(t));
   const openSum = openTabs.reduce((s, t) => s + t.total, 0);
   const closed = event.closed;

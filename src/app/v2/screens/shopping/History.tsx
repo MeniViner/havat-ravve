@@ -11,6 +11,7 @@ import { againShopItem, first, historyGroups, listLabel, useShopping, type Histo
 
 const FILTERS: { value: HistoryFilter; label: string }[] = [
   { value: 'all', label: 'הכל' }, { value: 'super', label: 'סופר' }, { value: 'building', label: 'בניין' }, { value: 'online', label: 'אינטרנט' },
+  { value: 'giveaway', label: 'מחפשים' },
 ];
 const SHOWN = 3;
 
@@ -50,6 +51,8 @@ export function ShopHistoryScreen({ ctx }: ScreenProps) {
           </ListCard>
         );
       })}
+      {/* the list reads the latest 400 (useShopping): say so, as the old history did */}
+      {history.length >= 400 && <p className="shopping-cap">מוצגות הרשומות האחרונות בלבד. לתקופה ארוכה יותר: דוחות, במסך הניהול.</p>}
       {!loading && groups.length === 0 && <EmptyState icon="search" title={q ? 'לא נמצא כלום' : 'עוד לא נקנה כלום'} text={q ? 'אפשר לחפש בשם אחר או לבחור "הכל".' : 'מה שמסמנים כנקנה יופיע כאן.'} />}
     </AppScreen>
   );

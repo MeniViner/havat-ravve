@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useAuth, useProfile, isOwner, isTeam, useOnline } from './store';
+import { useAuth, useProfile, isOwner, isOwnerEmail, isTeam, useOnline } from './store';
 import { useSettings } from './data';
 import { useRoute, match } from './router';
 import { Icon, ToastProvider, A, Avatar, Empty, Top, useDesktop, usePageEnter } from './ui';
@@ -9,7 +9,7 @@ import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
 import { useDemo } from './demo/store';
 import { Guard } from './guard';
-import { GuestHome, EventPage, OrderPage, LoginPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage, ContactPage } from './screens/Guest';
+import { GuestHome, EventPage, OrderPage, LoginPage, MyTicketsPage, VisitPage, DonatePage, GuestAccountPage, TermsPage, ContactPage, BlockedPage } from './screens/Guest';
 import { InstallBanner } from './InstallBanner';
 import { DeleteAccountPage, DeletionScheduledPage, useDeletionRequest } from './screens/Account';
 import { V2Root } from './v2/App';
@@ -146,8 +146,12 @@ export default function App() {
     return <ToastProvider><V2DemoStrip /><FirstEntry key={user.uid} user={user} settings={settings} /></ToastProvider>;
   }
   if (user && profile && deletion.item) return <ToastProvider><V2DemoStrip /><DeletionScheduledPage profile={profile} request={deletion.item} /></ToastProvider>;
-  // X2: a suspended account (any role) sees the new suspended screen
-  if (user && profile && profile.status === 'blocked') return <ToastProvider><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></ToastProvider>;
+  // X2: a suspended team member or vendor sees the new suspended screen; a suspended guest keeps the guest page
+  // (a personal greeting, WhatsApp with the text filled in, and the line that the site stays open to view)
+  if (user && profile && profile.status === 'blocked') {
+    if (profile.role === 'guest' && !isOwnerEmail(user.email)) return <ToastProvider><V2DemoStrip /><BlockedPage profile={profile} contact={settings.contact} /></ToastProvider>;
+    return <ToastProvider><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></ToastProvider>;
+  }
   // staff, managers, owners and vendors: the redesigned app
   if (user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
   return <ToastProvider><GuestApp user={user} profile={profile} settings={settings} /></ToastProvider>;

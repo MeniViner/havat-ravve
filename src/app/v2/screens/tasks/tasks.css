@@ -98,3 +98,15 @@
 .tasks-qty .k-field { gap: 8px; }
 .tasks-hidden { display: none; }
 .tasks-delete { align-self: flex-start; margin-top: 8px; }
+
+/* "באיחור": the overdue group and its rows in the late tone (the old list's late section) */
+.v2 .tasks-late .k-cardhead__title { color: var(--red); }
+.v2 .tasks-row--late .k-row__meta { color: var(--red); }
+/* T3 header tags: דחוף · שגרה יומית · מנהלים בלבד */
+.tasks-headtags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: -4px; }
+/* T6: the day's summary (C7) from the history */
+.tasks-daylink { display: flex; justify-content: flex-end; margin-top: -6px; }
+.tasks-cap { margin: 0; font-size: 14px; color: var(--soft); }
+.tasks-usual { display: flex; gap: 8px; flex-wrap: wrap; }
+/* the old list's load error (missing index), in the body instead of the empty state */
+.v2 .tasks-loaderr { border-radius: 8px; }

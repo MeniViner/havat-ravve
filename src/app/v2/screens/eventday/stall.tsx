@@ -1,7 +1,7 @@
 // E7-StallWho, E8-StallSell, E9-Tabs. The stall sells to a guest's account (no money changes hands at the stall):
 // pick the buyer (scan the ticket, search, recent buyers, or a walk-in), tap products, "רישום לחשבון". Works offline.
-import { useMemo, useState, type ReactNode } from 'react';
-import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, TextLink, Chip, ChipRow, EmptyState, GateCamera } from '../../kit';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, IconButton, TextLink, Chip, ChipRow, EmptyState, GateCamera, StatRow, StatTile } from '../../kit';
 import { AppScreen, useToast } from '../../core';
 import { hhmm, money, firstName } from '../../format';
 import { useDemo } from '../../../demo/store';
@@ -10,10 +10,11 @@ import { parseQr, hasTabPurchases } from '../../../data';
 import type { Product, Tab } from '../../../types';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
-  useEventTickets, useEventTabs, useTab, useStallProducts, groupOrders, ticketMatcher, ticketGuest, tabFor, sellToTab, tabQty, tabLast, tabName,
-  isWalkInTab, itemsWord, shortInitials, isEventClosed, qrPayload, DEMO_QR, digits, type EventV2, type StallGuest,
+  useEventTickets, useEventTabs, useTab, useStallProducts, ticketGuest, tabFor, sellToTab, sellToGuest, tabQty, tabLast, tabName,
+  isWalkInTab, itemsWord, shortInitials, isEventClosed, qrPayload, DEMO_QR, digits, findOpenTab, stallPeople, stallSummary, ticketWord,
+  rememberBuyer, pendingBuyer, forgetBuyer, removeTabItem, setTabStatus, type EventV2, type StallGuest,
 } from '../../data/eventday';
-import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to } from './common';
+import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to, moduleOff } from './common';
 
 const q = (ctx: V2Ctx, id: string, from?: string) => (id === ctx.eventToday?.id && !from ? '' : `?e=${id}${from ? `&from=${from}` : ''}`);
 const stallOpen = (event: EventV2 | null) => !!event && !isEventClosed(event) && event.stall !== false;
@@ -32,20 +33,19 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
   const [query, setQuery] = useState('');
   const [scan, setScan] = useState(false);
   const [walk, setWalk] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const orders = useMemo(() => groupOrders(tickets.items).filter((o) => !o.cancelled), [tickets.items]);
+  const people = useMemo(() => (query.trim() ? stallPeople(tickets.items, query).slice(0, 8) : []), [tickets.items, query]);
   void products;
-  if (!stallOpen(event) || !event) return <NoEvent loading={loading} closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
+  if (!stallOpen(event) || !event) return <NoEvent loading={loading} closed={isEventClosed(event)} off={moduleOff(event, 'stall')} back="/event" backLabel="אירוע" />;
   const qs = q(ctx, id, params.from);
   const live = params.from === 'live';
   const openTabs = tabs.items.filter((t) => t.status === 'open' && hasTabPurchases(t));
   const recent = [...openTabs].sort((a, b) => tabLast(b).localeCompare(tabLast(a))).slice(0, 3);
-  const choose = async (g: StallGuest) => {
-    if (busy) return;
-    setBusy(true);
-    try { const tid = await tabFor(ctx.actor, event, tabs.items, g); navigate(`/event/stall/${tid}${qs}`); }
-    catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
-    finally { setBusy(false); }
+  // an existing open account opens as is; a new buyer gets an account only with the first "רישום לחשבון"
+  const choose = (g: StallGuest) => {
+    const tid = tabFor(tabs.items, g);
+    if (tid) { navigate(`/event/stall/${tid}${qs}`); return; }
+    rememberBuyer(id, g);
+    navigate(`/event/stall/new${qs}`);
   };
   const onCode = (code: string, tapped = false) => {
     if (!tapped && !fresh(code)) return;
@@ -53,7 +53,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
     const t = p && tickets.items.find((x) => x.id === p.id && x.secret === p.secret);
     if (!t || t.eventId !== id || t.status !== 'valid') { toast.show({ text: 'הכרטיס לא נמצא באירוע הזה. אפשר לחפש לפי שם.', tone: 'error', duration: 4000 }); return; }
     setScan(false);
-    void choose(ticketGuest(t));
+    choose(ticketGuest(t));
   };
   if (scan) {
     const sample = tickets.items.find((x) => x.id === DEMO_QR.ok);
@@ -68,9 +68,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
       </>
     );
   }
-  const match = ticketMatcher(query);
   const d = digits(query);
-  const people = query.trim() ? orders.filter((o) => o.tickets.some(match)).slice(0, 8) : [];
   const walkIns = query.trim() ? tabs.items.filter((t) => isWalkInTab(t) && t.status === 'open' && (t.guestName.toLowerCase().includes(query.trim().toLowerCase()) || (d.length >= 4 && digits(t.guestPhone).includes(d)))) : [];
   return (
     <AppScreen variant="detail">
@@ -82,12 +80,11 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
       {query.trim() ? (
         people.length + walkIns.length ? (
           <ListCard title={people.length + walkIns.length === 1 ? 'התאמה אחת' : `${people.length + walkIns.length} התאמות`}>
-            {people.map((o) => {
-              const t = o.valid.find(match) || o.valid[0];
-              const tab = tabs.items.find((x) => x.status === 'open' && x.guestUid === t.ownerUid && x.guestName === (t.holderName || t.ownerName));
-              return <Row key={o.id} minHeight={58} leading={<Avatar name={t.holderName || t.ownerName} />} title={t.holderName || t.ownerName}
-                meta={tab && hasTabPurchases(tab) ? `בחשבון: ${itemsWord(tabQty(tab))} · ${money(tab.total)}` : <span className="k-ltr">{t.ownerPhone}</span>}
-                onClick={() => void choose(ticketGuest(t))} />;
+            {people.map(({ key, guest, tickets: held }) => {
+              const tab = findOpenTab(tabs.items, guest);
+              return <Row key={key} minHeight={58} leading={<Avatar name={guest.name} />} title={guest.name}
+                meta={tab && hasTabPurchases(tab) ? `בחשבון: ${itemsWord(tabQty(tab))} · ${money(tab.total)}` : <><span className="k-ltr">{guest.phone}</span> · {ticketWord(held.length)}</>}
+                onClick={() => choose(guest)} />;
             })}
             {walkIns.map((t) => <Row key={t.id} minHeight={58} leading={<Avatar initials={avatarFor(t)} />} title={tabName(t)} meta={`${itemsWord(tabQty(t))} · ${money(t.total)}`} {...to(`/event/stall/${t.id}${qs}`)} />)}
           </ListCard>
@@ -99,7 +96,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
         </ListCard>
       )}
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} onClick={() => setWalk(true)}>לקוח בלי כרטיס</Button>
-      <WalkInTab open={walk} onClose={() => setWalk(false)} onDone={(g) => { setWalk(false); void choose(g); }} />
+      <WalkInTab open={walk} onClose={() => setWalk(false)} onDone={(g) => { setWalk(false); choose(g); }} />
     </AppScreen>
   );
 }
@@ -119,19 +116,25 @@ function WalkInTab({ open, onClose, onDone }: { open: boolean; onClose: () => vo
   );
 }
 
-/** E8: tap products onto the guest's account. */
+/** E8: tap products onto the guest's account. `/event/stall/new`: a buyer picked on E7 who has no account yet; the first
+ *  "רישום לחשבון" opens it (as in the old stall) and the page moves to the new account. */
 export function StallSell({ ctx, params }: ScreenProps): ReactNode {
-  const tabDoc = useTab(params.tabId);
+  const fresh = params.tabId === 'new';
+  const tabDoc = useTab(fresh ? '' : params.tabId);
   const tab = tabDoc.item as Tab | null;
   const { id, event, loading } = useRouteEvent(ctx, { ...params, e: params.e || tab?.eventId || '' });
+  const buyer = useMemo(() => (fresh && id ? pendingBuyer(id) : null), [fresh, id]);
+  const tabs = useEventTabs(id, fresh);
   const products = useStallProducts(id);
   const toast = useToast();
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const cartVersion = useRef(0);
   const qs = q(ctx, id, params.from);
-  if (!tab && tabDoc.loading) return <AppScreen variant="detail">{null}</AppScreen>;
-  if (!stallOpen(event) && !loading) return <NoEvent closed={isEventClosed(event)} back="/event" backLabel="אירוע" />;
-  if (!tab || tab.status !== 'open') {
+  if (!fresh && !tab && tabDoc.loading) return <AppScreen variant="detail">{null}</AppScreen>;
+  if (!stallOpen(event) && !loading) return <NoEvent closed={isEventClosed(event)} off={moduleOff(event, 'stall')} back="/event" backLabel="אירוע" />;
+  if (fresh ? !buyer : !tab || tab.status !== 'open') {
     return (
       <AppScreen variant="detail">
         <TopBar back={{ label: 'החלפת קונה', ...to('/event/stall' + qs) }} />
@@ -139,34 +142,60 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
       </AppScreen>
     );
   }
+  const walkIn = tab ? isWalkInTab(tab) : !buyer!.uid && !buyer!.ticketId;
+  const guestName = tab ? tab.guestName : buyer!.name;
+  const shown = walkIn ? `לקוח בלי כרטיס: ${guestName}` : guestName;
   const list = products.items;
   const lines = list.map((p) => ({ product: p, qty: cart[p.id] || 0 })).filter((l) => l.qty > 0);
   const count = lines.reduce((s, l) => s + l.qty, 0);
   const sum = lines.reduce((s, l) => s + l.qty * l.product.price, 0);
-  const set = (p: Product, n: number) => setCart((c) => ({ ...c, [p.id]: Math.max(0, n) }));
+  const set = (p: Product, n: number) => { if (!saving.current) setCart((c) => ({ ...c, [p.id]: Math.max(0, n) })); };
+  const resetCart = () => { cartVersion.current++; setCart({}); };
+  // "נקה הכל" with undo (old stall)
+  const clear = () => {
+    const before = cart;
+    resetCart();
+    const version = cartVersion.current;
+    toast.show({ text: 'העגלה נוקתה', duration: 5000, actions: [{ label: 'ביטול', onClick: () => {
+      if (version !== cartVersion.current || saving.current) return;
+      setCart((c) => { const back = { ...c }; for (const [pid, n] of Object.entries(before)) back[pid] = (back[pid] || 0) + n; return back; });
+    } }] });
+  };
   const save = async () => {
-    if (!count || busy || !event) return;
-    setBusy(true);
+    if (!count || saving.current || !event) return;
+    saving.current = true; setBusy(true);
     try {
-      const total = await sellToTab(ctx.actor, tab, lines);
-      setCart({});
-      toast.show({ text: `נרשם ${money(total)} לחשבון של ${firstName(tab.guestName)}`, check: true });
+      if (tab) {
+        const total = await sellToTab(ctx.actor, tab, lines);
+        resetCart();
+        toast.show({ text: `נרשם ${money(total)} לחשבון של ${firstName(tab.guestName)}`, check: true });
+      } else {
+        const r = await sellToGuest(ctx.actor, event, tabs.items, buyer!, lines);
+        resetCart();
+        toast.show({ text: `נרשם ${money(r.total)} לחשבון של ${firstName(guestName)}`, check: true });
+        if (r.tab) { forgetBuyer(id); navigate(`/event/stall/${r.tab.id}${qs}`, true); }
+      }
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
-    finally { setBusy(false); }
+    finally { saving.current = false; setBusy(false); }
+  };
+  const remove = (index: number) => {
+    if (!tab) return;
+    removeTabItem(ctx.actor, tab, index).catch((e) => toast.refused(`לא נשמר. ${(e as Error).message}`));
   };
   return (
     <AppScreen variant="detail" bar={
       <BottomBar>
         <span className="eventday-total"><b>{money(sum)}</b><span>{itemsWord(count)}</span></span>
+        {count > 0 && <Button variant="quiet" className="eventday-clear" disabled={busy} onClick={clear}>נקה הכל</Button>}
         <Button size="bar" grow disabled={!count || busy} onClick={() => void save()}>רישום לחשבון</Button>
       </BottomBar>
     }>
       <TopBar back={{ label: 'החלפת קונה', ...to('/event/stall' + qs) }} />
       <div className="eventday-who">
-        <Avatar size={44} tone="me" initials={avatarFor(tab)} />
+        <Avatar size={44} tone="me" initials={shortInitials(guestName, walkIn)} />
         <div className="eventday-who__body">
-          <b className="eventday-who__name">{isWalkInTab(tab) ? tabName(tab) : tab.guestName}</b>
-          <span className="eventday-who__meta">{hasTabPurchases(tab) ? `כבר בחשבון: ${itemsWord(tabQty(tab))} · ${money(tab.total)}` : 'חשבון חדש, עוד לא נרשם כלום'}</span>
+          <b className="eventday-who__name">{shown}</b>
+          <span className="eventday-who__meta">{tab && hasTabPurchases(tab) ? `כבר בחשבון: ${itemsWord(tabQty(tab))} · ${money(tab.total)}` : 'חשבון חדש, עוד לא נרשם כלום'}</span>
         </div>
       </div>
       {list.length === 0 && !products.loading ? <EmptyState variant="card" icon="cart" title="אין מוצרים בדוכן" text="מנהל מוסיף מוצרים במסך האירוע." /> : (
@@ -175,7 +204,9 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
             const n = cart[p.id] || 0;
             return (
               <div key={p.id} className={`eventday-tile${n ? ' eventday-tile--on' : ''}`}>
-                <button type="button" className="eventday-tile__head" onClick={() => set(p, n + 1)} aria-label={`${p.name}, ${money(p.price)}${n ? `, ${n} בעגלה` : ''}`}>
+                {/* long press takes one off (old stall) */}
+                <button type="button" className="eventday-tile__head" onClick={() => set(p, n + 1)} onContextMenu={(e) => { if (n) { e.preventDefault(); set(p, n - 1); } }}
+                  aria-label={`${p.name}, ${money(p.price)}${n ? `, ${n} בעגלה` : ''}`}>
                   <span className="eventday-tile__name">{p.name}</span>
                   <span className="eventday-tile__price">{money(p.price)}</span>
                 </button>
@@ -193,6 +224,14 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
           })}
         </div>
       )}
+      {tab && tab.items.length > 0 && (
+        <ListCard title="בחשבון" count={tab.items.length}>
+          {tab.items.map((item, index) => ({ item, index })).reverse().map(({ item, index }) => (
+            <Row key={`${item.at}-${index}`} title={`${item.name}${item.qty > 1 ? ` ×${item.qty}` : ''}`} meta={`${hhmm(item.at)} · ${firstName(item.by?.name || '')}`}
+              value={money(item.price * item.qty)} actions={<IconButton icon="close" label="הסרה" disabled={busy} onClick={() => remove(index)} />} />
+          ))}
+        </ListCard>
+      )}
     </AppScreen>
   );
 }
@@ -202,7 +241,9 @@ type TabFilter = 'open' | 'claimed' | 'closed';
 export function StallTabs({ ctx, params }: ScreenProps): ReactNode {
   const { id, event, loading } = useRouteEvent(ctx, params);
   const tabs = useEventTabs(id);
+  const toast = useToast();
   const [filter, setFilter] = useState<TabFilter>('open');
+  const [paying, setPaying] = useState('');
   const managed = !!params.id;
   if (!event) return <NoEvent loading={loading} back={managed ? '/manage/events' : '/event'} backLabel={managed ? 'אירועים' : 'אירוע'} />;
   const qs = q(ctx, id, params.from);
@@ -214,10 +255,27 @@ export function StallTabs({ ctx, params }: ScreenProps): ReactNode {
   // Guests with a ticket first, largest amount first (who to remind); walk-ins at the end.
   const shown = [...groups[filter]].sort((a, b) => Number(isWalkInTab(a)) - Number(isWalkInTab(b)) || b.total - a.total);
   const toTab = (t: Tab) => (ctx.manager ? `/manage/events/${id}/tabs/${t.id}` : `/event/stall/${t.id}${qs}`);
+  // the old stall: the crew marks an account paid on the spot (the rules allow it while the event is open)
+  const canMarkPaid = !managed && (ctx.manager || !isEventClosed(event));
+  const paid = async (t: Tab) => {
+    if (paying) return;
+    setPaying(t.id);
+    try { await setTabStatus(ctx.actor, t, 'paid'); toast.show({ text: `${firstName(t.guestName)} · שולם במקום`, check: true, duration: 2500 }); }
+    catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
+    finally { setPaying(''); }
+  };
+  const sum = ctx.manager ? stallSummary(tabs.items, ctx.today) : null;
   return (
     <AppScreen variant="detail">
       <TopBar back={managed ? { label: event.title, ...to(`/manage/events/${id}`) } : { label: 'דוכן', ...to('/event/stall' + qs) }} />
       <PageTitle>חשבונות הדוכן</PageTitle>
+      {sum && (
+        <StatRow>
+          <StatTile value={money(sum.openTotal)} label="פתוחים" small />
+          <StatTile value={sum.openCount} label="חשבונות פתוחים" small />
+          <StatTile value={money(sum.soldToday)} label="נמכרו היום" small />
+        </StatRow>
+      )}
       <ChipRow label="סינון חשבונות">
         <Chip selected={filter === 'open'} onClick={() => setFilter('open')}>פתוחים · {groups.open.length}</Chip>
         <Chip selected={filter === 'claimed'} onClick={() => setFilter('claimed')}>סימנו ששילמו{groups.claimed.length ? ` · ${groups.claimed.length}` : ''}</Chip>
@@ -230,7 +288,8 @@ export function StallTabs({ ctx, params }: ScreenProps): ReactNode {
             const when = times.size > 1 ? `אחרון ${hhmm(tabLast(t))}` : hhmm(tabLast(t));
             return <Row key={t.id} minHeight={58} leading={<Avatar initials={avatarFor(t)} />} title={tabName(t)}
               meta={<>{itemsWord(tabQty(t))} · {when}{isWalkInTab(t) && t.guestPhone ? <> · <span className="k-ltr">{t.guestPhone}</span></> : null}</>}
-              value={money(t.total)} {...to(toTab(t))} />;
+              value={money(t.total)} {...to(toTab(t))}
+              actions={canMarkPaid && t.status === 'open' ? <Button variant="outline" disabled={!!paying} onClick={() => void paid(t)}>שילם/ה במקום</Button> : undefined} />;
           })}
         </ListCard>
       ) : (

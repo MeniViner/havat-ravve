@@ -4,7 +4,7 @@ import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, mapsUrl, useExternal, useToast } from '../../core';
 import {
   TopBar, PageTitle, FormHeader, Button, DetailList, DetailRow, Card, SectionHeader, SectionTitle, Stack, History, BottomBar,
-  Avatar, IconTile, Icon, SearchField, RadioList, RadioRow, ListCard, Field, EmptyState,
+  Avatar, IconTile, Icon, SearchField, RadioList, RadioRow, ListCard, Field, EmptyState, Tag, Inline, TextAreaField,
 } from '../../kit';
 import { back, href as appHref } from '../../../router';
 import { useClockVersion, now } from '../../../clock';
@@ -15,8 +15,8 @@ import { isFemale } from '../../gender';
 import type { Actor, Task } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, useTasksAt, useRootTasks, usePresenceToday, timeline, dueLong, requesterOf, releaseTask, assignTask,
-  setTaskPhoto, doneWithPhoto, presenceOf, loadText, isForToday, setDone,
-  gwA,
+  setTaskPhoto, doneWithPhoto, presenceOf, loadText, isForToday, setDone, setDoneDetails, isRoutine, routineTime, canEditTask,
+  canAssignTo, canMoveOthers, gwA,
 } from '../../data/tasks';
 import { to, useFail, useTaskActions, usePhotoPicker } from './shared';
 import './tasks.css';
@@ -43,6 +43,9 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   const here = useTasksAt(t?.location?.placeId || '', ctx.manager);
   const a = useTaskActions(); const fail = useFail(); const toast = useToast(); const external = useExternal();
   const photo = usePhotoPicker((p) => { if (t) setTaskPhoto(ctx.actor, t, p).then(() => toast.show({ text: 'התמונה נוספה למשימה' })).catch(fail); });
+  // after done (old T3): add or replace the photo of what was done, add or edit the note
+  const donePhoto = usePhotoPicker((p) => { if (t) setDoneDetails(ctx.actor, t, { donePhoto: p }).then(() => toast.show({ text: 'התמונה נשמרה' })).catch(fail); });
+  const [note, setNote] = useState<string | null>(null);
   if (!t) return r.loading ? <Loading /> : <Missing backTo="/tasks" label="משימות" />;
 
   const uid = ctx.user.uid;
@@ -50,15 +53,27 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   const mine = t.assignee?.uid === uid;
   const req = requesterOf(t);
   const lines = timeline(t, acts.items, dayTime, (u) => ctx.team.find((p) => p.uid === u));
+  const routine = isRoutine(t);
+  const time = routineTime(t, ctx.templates);
+  const headTags = [t.urgent && <Tag key="u" tone="urgent">דחוף</Tag>, routine && <Tag key="r">שגרה יומית</Tag>, t.managersOnly && <Tag key="m" tone="warm">מנהלים בלבד</Tag>].filter(Boolean);
+  // a manager or the creator may put a free task on anyone (C4 offers only what the rules allow)
+  const moveBtn = <Button variant="outline" style={{ padding: '0 12px' }} {...to(`/tasks/${t.id}/assign`)}>להעביר</Button>;
+  const saveNote = async () => {
+    try { await setDoneDetails(ctx.actor, t, { doneNote: note || '' }); setNote(null); toast.show({ text: 'נשמר' }); } catch (e) { fail(e); }
+  };
   const navBtn = t.location ? <Button variant="outline" icon="nav" iconSize={16} style={{ padding: '0 12px' }} onClick={() => external(mapsUrl(t.location!.lat, t.location!.lng))}>ניווט</Button> : undefined;
 
   let who: ReactNode; let whoAction: ReactNode;
   if (t.done) who = t.assignee ? (mine ? 'עליך' : t.assignee.name) : 'פנויה';
   else if (mine) { who = 'עליך'; whoAction = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => releaseTask(ctx.actor, t, ctx.manager).catch(fail)}>לשחרר</Button>; }
-  else if (!t.assignee) { who = 'פנויה'; whoAction = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => a.take(t)}>לקחת</Button>; }
+  else if (!t.assignee) {
+    who = 'פנויה';
+    const takeBtn = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => a.take(t)}>לקחת</Button>;
+    whoAction = canMoveOthers(t, uid, ctx.manager) ? <Inline gap={6}>{takeBtn}{moveBtn}</Inline> : takeBtn;
+  }
   else {
     who = <a className="tasks-who" {...to(`/people/${t.assignee.uid}`)}><Avatar name={t.assignee.name} size={28} />{t.assignee.name}</a>;
-    whoAction = <Button variant="outline" {...to(`/tasks/${t.id}/assign`)}>להעביר</Button>;
+    whoAction = canMoveOthers(t, uid, ctx.manager) ? <Button variant="outline" {...to(`/tasks/${t.id}/assign`)}>להעביר</Button> : undefined;
   }
 
   const bar = t.done ? (
@@ -76,18 +91,34 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
     <AppScreen variant="detail" gap={linked ? 10 : 12} bar={bar}>
       {photo.input}
       <TopBar back={{ label: 'משימות', onClick: (e) => { e.preventDefault(); back('/tasks'); }, href: appHref('/tasks') }}
-        end={<Button variant="outline" icon="edit" iconSize={16} {...to(`/tasks/${t.id}/edit`)}>עריכה</Button>} />
+        end={canEditTask(t, uid, ctx.manager) ? <Button variant="outline" icon="edit" iconSize={16} {...to(`/tasks/${t.id}/edit`)}>עריכה</Button> : undefined} />
+      {headTags.length > 0 && <div className="tasks-headtags">{headTags}</div>}
       <PageTitle size="detail">{t.title}</PageTitle>
       <DetailList className={linked ? "tasks-dl-linked" : undefined}>
         <DetailRow term="על מי" action={whoAction}>{who}</DetailRow>
         {t.location && !linked && <DetailRow term="איפה" action={navBtn}>{t.location.placeName || 'נקודה על המפה'}</DetailRow>}
-        {t.dueDate && <DetailRow term="עד מתי">{dueLong(t.dueDate, ctx.today)}</DetailRow>}
-        {req.name && <DetailRow term={gwA(req, "ביקש", "ביקשה", (u) => ctx.team.find((p) => p.uid === u))}>{`${req.name} · ${askedWhen(t.createdAt)}`}</DetailRow>}
+        {t.dueDate && <DetailRow term="עד מתי">{routine && time ? `${dueLong(t.dueDate, ctx.today)}, עד ${time}` : dueLong(t.dueDate, ctx.today)}</DetailRow>}
+        {!routine && req.name && <DetailRow term={gwA(req, "ביקש", "ביקשה", (u) => ctx.team.find((p) => p.uid === u))}>{`${req.name} · ${askedWhen(t.createdAt)}`}</DetailRow>}
         {t.note && <DetailRow term="הערה" plain>{t.note}</DetailRow>}
         {t.done && <DetailRow term="בוצע">{[t.doneBy ? firstName(t.doneBy.name) : '', t.doneAt ? dayTime(t.doneAt) : ''].filter(Boolean).join(' · ')}</DetailRow>}
         {t.done && t.doneNote && <DetailRow term="נכתב" plain>{t.doneNote}</DetailRow>}
       </DetailList>
       {t.done && t.donePhoto && <img className="tasks-photo-thumb" src={t.donePhoto} alt={`תמונה מהביצוע: ${t.title}`} />}
+      {t.done && donePhoto.input}
+      {t.done && (note === null ? (
+        <Inline gap={8}>
+          <Button variant="outline" size="tall" grow icon="camera" iconSize={18} disabled={donePhoto.busy} onClick={() => donePhoto.pick(true)}>{t.donePhoto ? 'להחליף תמונה' : 'להוסיף תמונה'}</Button>
+          <Button variant="outline" size="tall" grow onClick={() => setNote(t.doneNote || '')}>{t.doneNote ? 'לערוך הערה' : 'להוסיף הערה'}</Button>
+        </Inline>
+      ) : (
+        <Stack gap={8}>
+          <TextAreaField label="הערה על מה שנעשה" autoFocus maxLength={2000} placeholder="איפה הנחתי, מה חסר, מה נשאר…" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Inline gap={8}>
+            <Button size="tall" grow onClick={saveNote}>שמירה</Button>
+            <Button variant="quiet" size="tall" onClick={() => setNote(null)}>ביטול</Button>
+          </Inline>
+        </Stack>
+      ))}
       {t.photo && <img className="tasks-photo-thumb" src={t.photo} alt={`תמונה למשימה: ${t.title}`} />}
 
       {linked && (
@@ -102,7 +133,7 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
       )}
       {linked && !t.done && <Button variant="dashed" size="tall" icon="plus" iconSize={18} {...to(`/new?kind=shopping&task=${t.id}`)}>צריך לקנות משהו בשביל זה</Button>}
       {!linked && !t.photo && !t.done && <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={photo.busy} onClick={() => photo.pick(true)}>הוספת תמונה למשימה</Button>}
-      {!linked && lines.length > 0 && (
+      {lines.length > 0 && (
         <Stack gap={4} as="section">
           <SectionTitle>מה קרה עד עכשיו</SectionTitle>
           <History items={lines} />
@@ -140,9 +171,10 @@ export function AssignScreen({ ctx, params }: ScreenProps) {
   const current = t.assignee?.uid || null;
   const sel = pick === undefined ? current : pick;
   const nowHHMM = hhmm(now());
-  // staff may put a task only on themselves or leave it free (the rules allow a non-creator to change only that)
-  const canOthers = ctx.manager || t.createdBy.uid === uid || t.assignee?.uid === uid;
-  const people = ctx.team.filter((p) => p.status === 'active' && (canOthers || p.uid === uid) && (!q.trim() || p.displayName.includes(q.trim())));
+  // only the choices the tasks rule allows this user (canAssignTo): a manager or the creator anyone; others take a free task
+  // for themselves, or hand on / release their own. The current person stays listed (no change).
+  const people = ctx.team.filter((p) => p.status === 'active' && canAssignTo(t, uid, ctx.manager, p.uid) && (!q.trim() || p.displayName.includes(q.trim())));
+  const canFree = canAssignTo(t, uid, ctx.manager, null);
   const rows = people.map((p) => {
     const st = presenceOf(presence.items.filter((c) => c.ownerUid === p.uid), nowHHMM, isFemale(p.displayName, p));
     const load = root.items.filter((x) => x.assignee?.uid === p.uid && isForToday(x, ctx.today)).length;
@@ -173,9 +205,11 @@ export function AssignScreen({ ctx, params }: ScreenProps) {
     <AppScreen variant="form" gap={10} bar={<BottomBar><Button size="bar" grow disabled={sel === current} onClick={save}>{label}</Button></BottomBar>}>
       <FormHeader title="על מי המשימה" onCancel={() => back(`/tasks/${t.id}`)} />
       <SearchField label="חיפוש בצוות" placeholder="חיפוש בצוות" value={q} onChange={(e) => setQ(e.target.value)} />
-      <RadioList label="על מי">
-        <RadioRow checked={sel === null} onSelect={() => setPick(null)} leading={<IconTile icon="people" />} title="פנויה" meta="מי שיכול לוקח" />
-      </RadioList>
+      {canFree && (
+        <RadioList label="על מי">
+          <RadioRow checked={sel === null} onSelect={() => setPick(null)} leading={<IconTile icon="people" />} title="פנויה" meta="מי שיכול לוקח" />
+        </RadioList>
+      )}
       {hereNow.length > 0 && <ListCard title="בחווה עכשיו" count={hereNow.length} aria-label="בחווה עכשיו"><RadioGroupRows>{hereNow.map(row)}</RadioGroupRows></ListCard>}
       {away.length > 0 && <ListCard title="לא כאן עכשיו" aria-label="לא כאן עכשיו"><RadioGroupRows>{away.map(row)}</RadioGroupRows></ListCard>}
     </AppScreen>

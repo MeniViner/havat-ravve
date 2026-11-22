@@ -162,5 +162,54 @@ t('file kinds', () => {
   assert.equal(L.FILE_MAX_CHARS < 1_000_000, true); // stays well under the 1 MiB document limit
 });
 
+// ---------- restored functions (multi-day, cancelled / arrived, ticket scans, report extras, product sales) ----------
+t('rangeFromForm with an end date, endDateOf', () => {
+  assert.deepEqual(L.rangeFromForm('2026-11-28', '16:00', '12:00', '2026-11-30'), { start: '2026-11-28T14:00:00.000Z', end: '2026-11-30T10:00:00.000Z' });
+  assert.deepEqual(L.rangeFromForm('2026-11-28', '16:00', '21:00', '2026-11-28'), { start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z' });
+  assert.deepEqual(L.rangeFromForm('2026-11-28', '20:00', '01:00', ''), { start: '2026-11-28T18:00:00.000Z', end: '2026-11-28T23:00:00.000Z' });
+  assert.equal(L.endDateOf('2026-11-28T14:00:00.000Z', '2026-11-30T10:00:00.000Z'), '2026-11-30');
+  assert.equal(L.endDateOf('2026-11-28T18:00:00.000Z', '2026-11-28T23:00:00.000Z'), ''); // into the night: one day
+  assert.equal(L.endDateOf('2026-11-28T14:00:00.000Z', '2026-11-28T19:00:00.000Z'), '');
+  assert.equal(L.endDateOf('2026-11-28T08:00:00.000Z', '2026-11-29T15:00:00.000Z'), '2026-11-29'); // the next day after the start hour
+});
+const tk = (id, orderId, o = {}) => ({ id, eventId: 'e1', orderId, index: 1, total: 1, ownerUid: 'u' + orderId, ownerName: 'אורח ' + orderId, ownerPhone: '', holderName: '', secret: 's', price: 50, paymentStatus: 'paid', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z', ...o });
+const by = { uid: 'g', name: 'נועה גבאי' };
+t('cancelled and arrived filters', () => {
+  const ts = [tk('a1', 'A', { entries: 1, scans: [{ at: '2026-11-28T14:10:00.000Z', by }] }), tk('b1', 'B', { status: 'cancelled', paymentStatus: 'pending' }), tk('c1', 'C', { paymentStatus: 'pending' })];
+  const all = [...L.ordersOf(ts), ...L.cancelledOrdersOf(ts)];
+  assert.deepEqual(L.filterOrders(all, 'arrived', '').map((o) => o.orderId), ['A']);
+  assert.deepEqual(L.filterOrders(all, 'cancelled', '').map((o) => o.orderId), ['B']);
+  assert.equal(L.filterOrders(all, 'cancelled', '')[0].owed, 0);
+  assert.deepEqual(L.filterOrders(all, 'all', '').map((o) => o.orderId).sort(), ['A', 'C']);
+  assert.deepEqual(L.filterOrders(all, 'unpaid', '').map((o) => o.orderId), ['C']);
+});
+t('scans and counters from the tickets (past events without a scan log)', () => {
+  const ts = [
+    tk('a1', 'A', { entries: 2, scans: [{ at: '2026-11-28T14:10:00.000Z', by }, { at: '2026-11-28T15:40:00.000Z', by }] }),
+    tk('b1', 'B', { index: 1, total: 2, entries: 1, paymentStatus: 'paid_onsite', holderName: 'דנה', scans: [{ at: '2026-11-28T14:20:00.000Z', by }] }),
+    tk('c1', 'C', { status: 'cancelled', entries: 1, scans: [{ at: '2026-11-28T14:00:00.000Z', by }] }),
+  ];
+  const sc = L.scansFromTickets(ts);
+  assert.deepEqual(sc.map((x) => x.id), ['a1-2', 'b1-1', 'a1-1']);
+  assert.equal(sc[0].meta, 'כרטיס אחד · כניסה 2, יצא וחזר');
+  assert.equal(sc[1].name, 'דנה');
+  assert.equal(sc[1].result, 'paidAtGate');
+  assert.equal(L.scanPart(sc[1]), '1/2');
+  const c = L.countersFromTickets(ts);
+  assert.equal(c.entered, 2);
+  assert.equal(c.scans, 3);
+  assert.equal(c.paidAtGate, 1);
+  assert.equal(c.returned, 1);
+  assert.deepEqual(c.perHalfHour, { '16:00': 2 }); // Israel time
+  assert.equal(L.exitedReturned(ts), 1);
+});
+t('summary extras and product sales', () => {
+  const ts = [tk('a1', 'A', { entries: 1 }), tk('b1', 'B', { paymentStatus: 'pending' }), tk('b2', 'B', { paymentStatus: 'pending' }), tk('c1', 'C', { entries: 3 })];
+  const tab = (id, status, items, total) => ({ id, eventId: 'e1', guestUid: '', guestName: 'x', guestPhone: '', items, total, status, createdAt: '', updatedAt: '' });
+  const tabs = [tab('t1', 'open', [{ productId: 'p1', name: 'לימונדה', price: 12, qty: 2 }], 24), tab('t2', 'waived', [{ productId: 'p1', name: 'לימונדה', price: 12, qty: 1 }], 12), tab('t3', 'paid', [{ productId: 'p2', name: 'עוגה', price: 15, qty: 1 }, { productId: 'p1', name: 'לימונדה', price: 12, qty: 1 }], 27)];
+  assert.deepEqual(L.summaryExtras(ts, tabs), { pct: 50, returned: 1, openTabs: 1, openTabsAmount: 24, openOrders: 1, openOrdersAmount: 100, waivedCount: 1 });
+  assert.deepEqual(L.productSales(tabs, { id: 'p1', name: 'לימונדה' }), { units: 3, revenue: 36 });
+});
+
 L.freezeClock(null);
 console.log(`v2 events: ${passed} checks passed`);

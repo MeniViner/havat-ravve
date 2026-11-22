@@ -8,7 +8,7 @@ import { Top, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chip,
 import { navigate, param } from '../router';
 import { useUpcomingEvents, useEvent, useMyTickets, orderTickets, qrPayload, claimOrderPaid, useMyVisits, createVisit, cancelVisit, useMyDonations, createDonation, claimDonationPaid, useMyTabs, claimTabPaid, waLink, telLink, contactPhoneOk, notify, receiptPreference, hasTabPurchases } from '../data';
 import { signIn, signOutUser, authErrorMessage, nowIso, type Session } from '../firebase';
-import { createProfile } from '../store';
+import { createProfile, isTeam } from '../store';
 import { useDemo, setDemo } from '../demo/store';
 import { demoPreviousGuestVisit } from '../demo/data';
 import { ProfileSection, NotificationsSection, InstallHint, SignOut, DemoSection } from './More';
@@ -17,6 +17,8 @@ import { DeleteAccountLink } from './Account';
 import { ReceiptChoice, ReceiptPreferenceSection, canChooseReceipt, saveReceiptPreference, useReceiptChoice } from './PaymentConfirmation';
 import { now as clockNow } from '../clock';
 
+/** An open stall account with nothing on it is not shown to the guest (no "0 ₪ · פתוח" with "העברתי"). */
+const shownTab = (t: Tab) => t.status !== 'open' || t.total > 0;
 const needLogin = (ctx: GuestCtx, next: string) => { if (ctx.profile) return false; navigate('/login?next=' + encodeURIComponent(next)); return true; };
 export const PaymentLine = ({ ctx }: { ctx: GuestCtx }) => { const p = ctx.settings.payment; return <>{[p.bit && `ביט ${p.bit}`, p.paybox && 'PayBox', p.cash && 'או מזומן בשער'].filter(Boolean).join(' · ')}{p.note ? <><br />{p.note}</> : null}</>; };
 
@@ -117,7 +119,8 @@ export function OrderPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
       if (e.price > 0) await saveReceiptPreference(ctx.profile!, choice.method);
       await orderTickets(ctx.profile!, e, count, [ctx.profile!.displayName, ...holders], answers);
       toast({ text: e.price ? `${count} כרטיסים נוצרו. נשאר לשלם ${money(total)}.` : 'נרשמתם! הכרטיסים בטלפון.' }, 4000);
-      navigate('/me', true);
+      // a team member's /me is the team profile: their tickets are at /me/tickets
+      navigate(isTeam(ctx.profile, ctx.user?.email) ? '/me/tickets' : '/me', true);
     }
     catch (err) { toast({ text: authErrorMessage(err), kind: 'error' }); } finally { setBusy(false); }
   };
@@ -234,7 +237,8 @@ export function MyTicketsPage({ ctx }: { ctx: GuestCtx }) {
   const tickets = useMyTickets(uid, !!uid);
   const visits = useMyVisits(uid, !!uid);
   const donations = useMyDonations(uid, !!uid);
-  const tabs = useMyTabs(uid, !!uid);
+  const allTabs = useMyTabs(uid, !!uid);
+  const tabs = { ...allTabs, items: allTabs.items.filter(shownTab) };
   const toast = useToast();
   const [idx, setIdx] = useState<Record<string, number>>({});
   const orders = useMemo(() => { const m = new Map<string, Ticket[]>(); for (const t of tickets.items) m.set(t.orderId, [...(m.get(t.orderId) || []), t]); return [...m.values()].map((o) => o.sort((a, b) => a.index - b.index)).sort((a, b) => a[0].eventId === b[0].eventId ? 0 : b[0].createdAt.localeCompare(a[0].createdAt)); }, [tickets.items]);
@@ -435,10 +439,18 @@ const MoreLinks = ({ signedIn }: { signedIn: boolean }) => (
     <DeleteAccountLink />
   </div>
 );
+/** Signed out: the way into the demo (/demo), where the old page had the demo switch. */
+const DemoLink = () => (
+  <>
+    <Sec title="מצב הדגמה" />
+    <div className="links"><A to="/demo"><Icon name="eye" />לראות איך האפליקציה עובדת<Icon name="chev" className="chev" size={18} /></A></div>
+  </>
+);
 export function GuestAccountPage({ ctx }: { ctx: GuestCtx }) {
   const uid = ctx.profile?.uid || '';
-  const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const tabs = useMyTabs(uid, !!uid);
-  if (!ctx.profile) return <div className="acct"><AccountSignIn /><div className="acct-group"><MoreLinks signedIn={false} /></div></div>;
+  const tickets = useMyTickets(uid, !!uid); const visits = useMyVisits(uid, !!uid); const donations = useMyDonations(uid, !!uid); const allTabs = useMyTabs(uid, !!uid);
+  const tabs = { ...allTabs, items: allTabs.items.filter(shownTab) };
+  if (!ctx.profile) return <div className="acct"><AccountSignIn /><div className="acct-group"><MoreLinks signedIn={false} /></div><div className="acct-group"><DemoLink /></div></div>;
   const p = ctx.profile;
   const missing = signupQuestions(ctx.settings.registrationFields).filter((f) => !answerOf(p.fields, f).trim());
   const orders = [...new Map(tickets.items.map((t) => [t.orderId, t])).values()];

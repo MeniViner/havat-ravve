@@ -11,6 +11,7 @@
 .farm-h1 { margin: 0; font-size: 28px; font-weight: 700; }
 .farm-h1--day { font-size: 26px; }
 .farm-arrows { display: flex; gap: 6px; flex: none; }
+.farm-todaybtn { padding: 0 12px; }
 .farm-addbtn { gap: 6px; }
 .farm-link { font-size: 15px; font-weight: 600; color: var(--action); text-decoration: none; padding: 10px 0; background: transparent; border: 0; font-family: inherit; }
 .farm-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
@@ -32,14 +33,15 @@ button.farm-item, a.farm-item { cursor: pointer; }
 .farm-empty--flat { border-top: 0; padding-top: 0; }
 
 /* day picker (F4, C11) */
-.farm-days { display: flex; gap: 4px; }
+.farm-days { display: flex; flex-wrap: wrap; gap: 4px; }
 .farm-day {
-  flex: 1; height: 56px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+  flex: 0 0 calc((100% - 24px) / 7); height: 56px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; min-width: 0;
 }
 .farm-day[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; }
 .farm-day__name { font-size: 13px; }
 .farm-day__num { font-size: 16px; font-weight: 700; }
+.farm-otherdate { align-self: flex-start; padding: 4px 0; }
 
 /* ---------- F1 ---------- */
 .farm-here { padding: 14px 16px 8px; gap: 4px; }
@@ -131,6 +133,10 @@ button.farm-item, a.farm-item { cursor: pointer; }
   font-size: 12px; font-weight: 600; display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums;
 }
 .farm-axis__bar--me { background: var(--action); color: #FFFFFF; }
+/* volunteers outlined, owners and managers filled (the old calendar's legend) */
+.farm-axis__bar--staff:not(.farm-axis__bar--me) { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--farm-mark); }
+.farm-legend__swatch { width: 14px; height: 10px; border-radius: 3px; background: var(--warm-1); }
+.farm-legend__swatch--staff { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--farm-mark); }
 
 /* week view (not designed: built from the F2 day summary rows) */
 .farm-weekday { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 4px 14px; border-top: 1px solid var(--line); width: 100%; background: transparent; border-inline: 0; border-bottom: 0; font: inherit; color: var(--ink); text-align: start; }

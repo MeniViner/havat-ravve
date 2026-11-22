@@ -158,6 +158,49 @@ assert.equal(after.photoSource, 'custom'); assert.equal(after.photo, 'data:image
 await sys.markWelcomed('demo-u-yoav', { displayName: 'יואב פרץ', phone: '052-1234567' });
 assert.ok(m.demoDoc('users/demo-u-yoav').welcomedAt, 'C9 marks the first entry');
 
+// ---------- registration questions (settings.registrationFields): the same rules as the old RegistrationFields.tsx ----------
+const QS = [
+  { id: 'receiptPreference', label: 'אישורים', type: 'choice', options: ['whatsapp', 'email'], required: false },
+  { id: 'shirt', label: 'מידת חולצה', type: 'choice', options: ['S', 'M', 'L'], required: true },
+  { id: 'empty', label: 'בלי אפשרויות', type: 'choice', options: [], required: true },
+  { id: 'nolabel', label: '  ', type: 'text', options: [], required: true },
+  { id: 'since', label: 'מתנדב מאז', type: 'date', options: [], required: false },
+  { id: 'how', label: 'איך שמעת עלינו', type: 'text', options: [], required: true },
+];
+const qs = sys.registrationQuestions(QS);
+assert.deepEqual(qs.map((f) => f.id), ['shirt', 'since', 'how'], 'no receipt question, no empty label, no choice without options');
+assert.deepEqual(sys.registrationQuestions(undefined), [], 'old settings without questions');
+assert.equal(sys.answerOf({ shirt: 'XL' }, qs[0]), '', 'a choice that is no longer an option is no answer');
+assert.equal(sys.answerOf({ shirt: 'M' }, qs[0]), 'M');
+assert.deepEqual(sys.missingAnswers({ shirt: 'M', how: '  ' }, qs), ['how'], 'only required, blank counts as missing');
+assert.deepEqual(sys.missingAnswers({ shirt: 'M', how: 'חבר' }, qs), []);
+assert.equal(sys.answerText({ since: '2024-05-01' }, qs[1]), '01.05.2024', 'a date answer reads as on the profile');
+assert.deepEqual(sys.answersFor({ shirt: 'M', receiptPreference: 'email', other: 'x' }, qs), { shirt: 'M' }, 'the form starts from the questions only');
+await sys.saveProfile(m.demoDoc('users/demo-u-yoav'), { displayName: 'יואב פרץ', phone: '052-1234567', town: '', birthDate: '', receipt: 'whatsapp', answers: { shirt: 'L', how: ' חבר ' } });
+after = m.demoDoc('users/demo-u-yoav');
+assert.deepEqual({ shirt: after.fields.shirt, how: after.fields.how, receipt: after.fields.receiptPreference }, { shirt: 'L', how: 'חבר', receipt: 'whatsapp' }, 'C13 saves the answers trimmed, with the receipt');
+await sys.saveProfile(m.demoDoc('users/demo-u-yoav'), { displayName: 'יואב פרץ', phone: '052-1234567', town: '', birthDate: '', receipt: 'whatsapp' });
+assert.equal(m.demoDoc('users/demo-u-yoav').fields.shirt, 'L', 'a draft without answers keeps the stored ones');
+await sys.markWelcomed('demo-u-yoav', { displayName: 'יואב פרץ', phone: '052-1234567', fields: { ...m.demoDoc('users/demo-u-yoav').fields, how: 'אתר ' } });
+assert.deepEqual({ shirt: m.demoDoc('users/demo-u-yoav').fields.shirt, how: m.demoDoc('users/demo-u-yoav').fields.how }, { shirt: 'L', how: 'אתר' }, 'C9 /welcome writes the answers');
+
+// ---------- install banner (the old shell's rules) ----------
+const base = { installed: false, seenBefore: true, depth: 0, dismissedUntil: 0, now: 1000, prompt: true, ios: false, route: '/tasks' };
+assert.equal(sys.installBannerShown(base), true);
+assert.equal(sys.installBannerShown({ ...base, installed: true }), false, 'not once installed');
+assert.equal(sys.installBannerShown({ ...base, route: '/install' }), false, 'not on /install');
+assert.equal(sys.installBannerShown({ ...base, seenBefore: false }), false, 'not on the first screen of a first visit');
+assert.equal(sys.installBannerShown({ ...base, seenBefore: false, depth: 1 }), true, 'after moving on in a first visit');
+assert.equal(sys.installBannerShown({ ...base, dismissedUntil: 2000 }), false, 'not while dismissed');
+assert.equal(sys.installBannerShown({ ...base, prompt: false }), false, 'nothing to offer on a browser without a prompt');
+assert.equal(sys.installBannerShown({ ...base, prompt: false, ios: true }), true, 'iPhone gets the Safari steps');
+const until = sys.snoozeInstall(1000);
+assert.equal(until, 1000 + 14 * 86400_000, 'two weeks');
+assert.equal(localStorage.getItem('farm-app-install-dismissed-until'), String(until), 'the old banner key');
+assert.equal(sys.installDismissedUntil(), until);
+sys.markInstallSeen();
+assert.equal(localStorage.getItem('farm-app-install-seen'), 'yes');
+
 // ---------- seed slice ----------
 const tasks = m.demoItems('tasks');
 assert.equal(tasks.find((t) => t.id === 'demo-t-call-ester')?.managersOnly, true);

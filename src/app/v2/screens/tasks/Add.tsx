@@ -4,31 +4,39 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import {
-  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState, ConfirmSheet,
+  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState, ConfirmSheet, AddChip,
 } from '../../kit';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
+import { useAllEvents } from '../../../data';
+import { nowIso } from '../../../clock';
+import { dayName, ddmm } from '../../format';
 import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
-  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, deleteTaskV2, type TaskInput,
+  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, canEditTask, deleteTaskV2, type TaskInput,
 } from '../../data/tasks';
-import { catOfKey } from '../../data/shopping';
+import { catOfKey, suggestions, useShopping, SUGGESTED } from '../../data/shopping';
 import { useFail, usePhotoPicker, takeStashedPhoto, dictate } from './shared';
 import './tasks.css';
 
 type Kind = 'task' | 'shopping';
 type Where = '' | 'sug' | 'here' | 'other';
 type Who = 'free' | 'me' | 'other';
-type When = 'today' | 'tomorrow' | 'week' | 'none';
+type When = 'today' | 'tomorrow' | 'week' | 'none' | 'date';
 const WHEN: { value: When; label: string }[] = [{ value: 'today', label: 'היום' }, { value: 'tomorrow', label: 'מחר' }, { value: 'week', label: 'השבוע' }, { value: 'none', label: 'בלי תאריך' }];
+const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 
 export function AddScreen(p: ScreenProps) {
   const shopEdit = typeof location !== 'undefined' && /\/shopping\/[^/]+\/edit/.test(location.pathname);
   const taskEdit = !shopEdit && !!p.params.id;
   const task = useTaskV2(taskEdit ? p.params.id : '', p.ctx);
   const item = useShoppingDoc(shopEdit ? p.params.id : '');
+  // editing is for a manager or the creator of a task that is not a routine instance (old T3): others go back to the task
+  const refused = !!task.item && !canEditTask(task.item, p.ctx.user.uid, p.ctx.manager);
+  useEffect(() => { if (refused) go(`/tasks/${p.params.id}`, true); }, [refused]); // eslint-disable-line react-hooks/exhaustive-deps
   if (taskEdit && !task.item) return task.loading ? <AppScreen variant="form"><div /></AppScreen> : <NotFound />;
+  if (refused) return <AppScreen variant="form"><div /></AppScreen>;
   if (shopEdit && !item.item) return item.loading ? <AppScreen variant="form"><div /></AppScreen> : <NotFound />;
   return <AddForm {...p} task={taskEdit ? task.item : null} item={shopEdit ? (item.item as ShoppingItem) : null} />;
 }
@@ -61,10 +69,20 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   const [herePos, setHerePos] = useState<TaskLocation | null>(null);
   const [who, setWho] = useState<Who>(!task?.assignee ? 'free' : task.assignee.uid === ctx.user.uid ? 'me' : 'other');
   const [otherWho, setOtherWho] = useState(task?.assignee && task.assignee.uid !== ctx.user.uid ? task.assignee.uid : '');
+  // an edit keeps the stored date as it is (an overdue one too) unless the user picks another
   const [when, setWhen] = useState<When>(() => {
     const d = task?.dueDate || '';
-    return !d ? 'none' : d === ctx.today ? 'today' : d === addDays(ctx.today, 1) ? 'tomorrow' : 'week';
+    return !d ? 'none' : d === ctx.today ? 'today' : d === addDays(ctx.today, 1) ? 'tomorrow' : d === endOfWeek(ctx.today) && d > addDays(ctx.today, 1) ? 'week' : 'date';
   });
+  const [date, setDate] = useState(() => task?.dueDate && isDay(task.dueDate) ? task.dueDate : addDays(ctx.today, 2));
+  // "לאיזה אירוע" (old T5): prefilled from ?event=; upcoming and running events, soonest first; a past event stays listed only
+  // when the task is already linked to it
+  const [eventId, setEventId] = useState(task ? task.eventId || '' : param('event'));
+  const allEvents = useAllEvents(!item);
+  const eventOptions = useMemo(() => {
+    const now = nowIso();
+    return allEvents.items.filter((e) => (e.end || e.start) >= now || e.id === eventId).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+  }, [allEvents.items, eventId]);
   const [managersOnly, setManagersOnly] = useState(!!task?.managersOnly);
 
   // ---- shopping fields (derived from the text until touched)
@@ -74,6 +92,9 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   const [link, setLink] = useState(item?.link ?? '');
   const [showLink, setShowLink] = useState(!!item?.link);
   const listNow: ShoppingCategory = list ?? parsed.category ?? 'super';
+  // "קונים בדרך כלל" in the add form too (old S5): the list's usual items, a tap fills the text
+  const shop = useShopping(kind === 'shopping' && !item);
+  const usual = useMemo(() => (kind === 'shopping' && !item ? suggestions(shop.history, shop.open, listNow, SUGGESTED) : []), [kind, item, shop.history, shop.open, listNow]);
   const qtyNow = qty ?? parsed.qty;
   const urgentNow = urgent ?? (kind === 'shopping' ? parsed.urgent : parseTaskText(text).urgent);
 
@@ -118,8 +139,9 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
     if (who === 'other') { const x = ctx.team.find((y) => y.uid === otherWho); return x ? { uid: x.uid, name: x.displayName } : null; }
     return null;
   };
-  const dueNow = () => (when === 'today' ? ctx.today : when === 'tomorrow' ? addDays(ctx.today, 1) : when === 'week' ? (task?.dueDate && task.dueDate > addDays(ctx.today, 1) ? task.dueDate : endOfWeek(ctx.today)) : '');
+  const dueNow = () => (when === 'today' ? ctx.today : when === 'tomorrow' ? addDays(ctx.today, 1) : when === 'week' ? (task?.dueDate && task.dueDate > addDays(ctx.today, 1) ? task.dueDate : endOfWeek(ctx.today)) : when === 'date' ? date : '');
 
+  // the event stays: several tasks for one event are added in a row (old form)
   const reset = () => { setText(''); setPhoto(''); setNote(''); setShowNote(false); setUrgent(null); setQty(null); setList(null); setLink(''); setShowLink(false); setWhere(''); setWho('free'); setWhen('none'); };
   const submit = async (more: boolean) => {
     if (!text.trim() || busy) return;
@@ -128,7 +150,9 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
     try {
       if (kind === 'task') {
         const { title } = parseTaskText(text);
-        const data: TaskInput = { title, note: note.trim(), photo, location: locationNow(), dueDate: dueNow(), managersOnly: ctx.manager && managersOnly, assignee: assigneeNow(), urgent: urgentNow };
+        const data: TaskInput = { title, note: note.trim(), photo, location: locationNow(), dueDate: dueNow(), managersOnly: ctx.manager && managersOnly, assignee: assigneeNow(), urgent: urgentNow,
+          // sent only when it changes: an older task has no eventId at all (as the old form)
+          ...(eventId !== (task?.eventId || '') ? { eventId } : {}) };
         if (task) { await updateTask(ctx.actor, task, data); toast.show({ text: 'נשמר' }); back(`/tasks/${task.id}`); return; }
         await createTask(ctx.actor, data);
         toast.show({ text: `נוספה משימה: ${title}` });
@@ -175,7 +199,18 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
           )}
           <ChoiceGroup label="על מי" value={who} onChange={setWho} options={[{ value: 'free', label: 'פנויה' }, { value: 'me', label: 'עליי' }, { value: 'other', label: 'מישהו אחר' }]} />
           {who === 'other' && <ChoiceGroup label="מי" value={otherWho} onChange={setOtherWho} options={people.map((x) => ({ value: x.uid, label: x.displayName }))} />}
-          <ChoiceGroup label="מתי" value={when} onChange={setWhen} options={WHEN} />
+          <ChoiceGroup label="מתי" value={when} onChange={setWhen}
+            options={[...WHEN, { value: 'date', label: when === 'date' && isDay(date) ? `${dayName(date)} ${ddmm(date)}` : 'תאריך' }]} />
+          {when === 'date' && (
+            <Field label="באיזה תאריך?" type="date" ltr min={date < ctx.today ? undefined : ctx.today} value={date}
+              onChange={(e) => { if (isDay(e.target.value)) setDate(e.target.value); }} />
+          )}
+          {(eventOptions.length > 0 || eventId) && (
+            <ChoiceGroup label="לאיזה אירוע?" value={eventId} onChange={setEventId}
+              options={[{ value: '', label: 'לא קשור לאירוע' },
+                ...eventOptions.map((e) => ({ value: e.id, label: e.start ? `${e.title} · ${dayName(e.start)} ${ddmm(e.start)}` : e.title })),
+                ...(eventId && !eventOptions.some((e) => e.id === eventId) ? [{ value: eventId, label: allEvents.loading ? 'טוען…' : 'אירוע שנמחק' }] : [])]} />
+          )}
           <Inline gap={8}>
             <Button variant="neutral" size="tall" grow icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>
             <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
@@ -195,6 +230,12 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
       ) : (
         <>
           <ChoiceGroup label="לאיזו רשימה" value={listNow} onChange={setList} options={SHOP_LISTS.map((l) => ({ value: l.id, label: l.label }))} />
+          {!text.trim() && usual.length > 0 && (
+            <div className="k-group">
+              <span className="k-group__label">קונים בדרך כלל</span>
+              <div className="tasks-usual">{usual.map((c) => <AddChip key={c.title} onClick={() => setText(c.title)}>{c.title}</AddChip>)}</div>
+            </div>
+          )}
           <div className="tasks-qty">
             <Field label="כמות" size="sm" value={qtyNow} onChange={(e) => setQty(e.target.value)} />
             <ChoiceGroup label="דחיפות" value={urgentNow ? 'u' : 'n'} onChange={(v) => setUrgent(v === 'u')} options={[{ value: 'n', label: 'רגיל' }, { value: 'u', label: 'דחוף' }]} />

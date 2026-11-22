@@ -5,8 +5,8 @@ import { back } from '../../../router';
 import { BottomBar, Button, ChoiceChip, ConfirmSheet, EmptyState, Field, FormHeader, ListCard, Row, Toggle } from '../../kit';
 import type { ScreenProps } from '../../ctx';
 import { deleteCalItem, saveCalItem, useCalItem, type FarmCalItem } from '../../data/farm';
-import { addDays, firstOf, hoursOf, hoursValid, isPresence, nextDays, normTime } from './logic';
-import { DayPicker } from './parts';
+import { TEAM_KINDS, firstOf, hoursOf, hoursValid, isPresence, normTime, pickerDays, pickerStart, teamKindOf, type TeamKind } from './logic';
+import { DayPicker, OtherDate } from './parts';
 
 const validDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '');
 
@@ -42,7 +42,8 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
   const [audience, setAudience] = useState<'all' | 'managers'>(existing?.audience === 'managers' ? 'managers' : 'all');
   const [participants, setParticipants] = useState<string[]>(existing?.participants || []);
   const [reminder, setReminder] = useState(existing ? !!existing.reminder : true);
-  const start = date < today || date > addDays(today, 6) ? date : today;
+  const [kind, setKind] = useState<TeamKind>(existing ? teamKindOf(existing.kind) : 'manual');
+  const start = pickerStart(date, today);
   const rank = (r: string) => (r === 'owner' ? 0 : r === 'manager' ? 1 : 2);
   // the design's order: the people already taking part first (in the order they were added), then owners, managers,
   // volunteers. Re-sorted only when the form opens or "מי רואה" changes, so chips never jump under a finger.
@@ -60,7 +61,7 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
   async function save() {
     if (!ok) return;
     try {
-      await saveCalItem(ctx.actor, { title, date, from: normTime(from), to: normTime(to), audience, participants, reminder }, existing);
+      await saveCalItem(ctx.actor, { title, date, from: normTime(from), to: normTime(to), audience, participants, reminder, kind }, existing);
       toast.show({ text: existing ? 'נשמר ביומן' : 'נוסף ליומן' });
       back(`/farm/calendar?view=day&date=${date}`);
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
@@ -77,9 +78,16 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
     <AppScreen variant="form" bar={bar}>
       <FormHeader title="פריט ביומן" onCancel={() => back('/farm/calendar')} />
       <Field label="מה קורה" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+      <div className="farm-group">
+        <span className="farm-group__label">סוג פריט</span>
+        <div className="k-chips k-chips--wrap">
+          {TEAM_KINDS.map((k) => <ChoiceChip key={k.value} selected={kind === k.value} onClick={() => setKind(k.value)}>{k.label}</ChoiceChip>)}
+        </div>
+      </div>
       <div className="farm-group" style={{ gap: 6 }}>
         <span className="farm-group__label">מתי</span>
-        <DayPicker days={nextDays(start)} selected={[date]} onToggle={setDate} />
+        <DayPicker days={pickerDays(start, [date])} selected={[date]} onToggle={setDate} />
+        <OtherDate onPick={setDate} />
       </div>
       <div className="k-fieldrow" style={{ gap: 12 }}>
         <Field grow label="משעה" ltr inputMode="numeric" value={from} error={fromBad ? 'למשל 10:30' : undefined} onChange={(e) => setFrom(e.target.value)} onBlur={() => setFrom((v) => normTime(v) || v)} />

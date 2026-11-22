@@ -51,6 +51,8 @@ export function DemoSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const switchTo = (persona: Persona) => { setDemo({ persona }); onClose(); navigate('/', true); };
   const exit = () => { onClose(); setDemo({ on: false }); navigate('/demo', true); };
   const reset = () => { resetDemoData(); setOfflineSince(''); toast.show({ text: 'נתוני הדוגמה אופסו', duration: 2500 }); };
+  // the old profile's "קישור להדגמה": a link that opens the demo as the owner
+  const copyLink = () => { void navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast.show({ text: 'הקישור הועתק: /app?demo=owner', duration: 3000 })).catch(() => {}); };
   const offline = (on: boolean) => { setOfflineSince(on ? nowIso() : ''); setDemoStates({ offline: on }); };
   return (
     <Sheet className="system-scr" open={open} onClose={onClose} title="הדגמה" aside="נתונים לא אמיתיים">
@@ -64,6 +66,7 @@ export function DemoSheet({ open, onClose }: { open: boolean; onClose: () => voi
         <Button variant="secondary" size="lg" grow icon="exit" style={{ fontWeight: 600 }} onClick={exit}>יציאה מההדגמה</Button>
         <Button variant="outline" size="lg" onClick={reset}>איפוס הנתונים</Button>
       </Inline>
+      <Button variant="quiet" icon="link" iconSize={16} onClick={copyLink}>קישור להדגמה</Button>
       <details className="system-states">
         <summary>מצבים להדגמה<Icon name="chevron-down" size={16} /></summary>
         <ListCard>

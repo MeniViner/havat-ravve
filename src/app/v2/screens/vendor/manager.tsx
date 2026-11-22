@@ -11,12 +11,13 @@ import { isConflict } from '../../../db';
 import { ddmm, hhmm, ago } from '../../format';
 import {
   useVendorDoc, useVendorPool, useEventDoc, useEventVendorList, useEventRequests, useVendorInvites, useVendorInfo, useVendorBundles, useEvents,
-  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, inviteMany, savePoolVendor, addPerson, removeAccess, deleteVendorV2, removeFromEvent, closeRequest, helperText, inviteLink,
+  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, confirmForVendor, inviteMany, savePoolVendor, addPerson, removeAccess, deleteVendorV2, removeFromEvent, closeRequest, helperText, inviteLink,
   needsText, requestLabel, phaseOf, femName, first, g, andList, NEED_ORDER, type VendorDoc, type EventVendorDoc, type PoolForm, type VendorPerson,
 } from '../../data/vendor';
 import { NEED_LABELS, type FarmEvent, type VendorNeed } from '../../../types';
 import { Sees } from './stall';
 import { Quiet } from './parts';
+import { ExcelButton } from '../manage/shared';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 
 const errText = (e: unknown) => (isConflict(e) ? (e as Error).message : `לא נשמר. ${(e as Error).message}`);
@@ -53,6 +54,12 @@ export function VendorPool({ ctx }: ScreenProps) {
           ))}
         </ListCard>
       )}
+      {pool.items.length > 0 && (
+        <div>
+          <ExcelButton filename="בעלי דוכנים.csv" headers={['שם', 'איש קשר', 'טלפון', 'מה מוכרים', 'חיצוני', 'אירועים']}
+            rows={() => pool.items.map((v) => [v.name, v.contact || '', v.phone || '', v.sells || v.product || '', v.external === false ? 'לא' : 'כן', (v.events || []).length])} />
+        </div>
+      )}
     </AppScreen>
   );
 }
@@ -60,6 +67,11 @@ export function VendorPool({ ctx }: ScreenProps) {
 /** New vendor (V1 "חדש") and edit (V2 "עריכה"). Not in the designs: built from N11's form pattern. */
 function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorDoc | null; notes?: string }) {
   const toast = useToast();
+  // "בעל דוכן חדש" from an event's vendors (?event=): after saving, invite to that event and go back there.
+  const eventParam = useParam('event');
+  const fromEvent = existing ? '' : eventParam || '';
+  const ev = useEventDoc(fromEvent); const evInfo = useVendorInfo(fromEvent);
+  const open = useExternal();
   const [f, setF] = useState<PoolForm>({
     name: existing?.name || '', contact: existing?.contact || '', phone: existing?.phone || '', sells: existing?.sells || existing?.product || '',
     needs: existing?.needs || [], notes, external: existing?.external !== false, fem: !!existing?.fem,
@@ -70,14 +82,25 @@ function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorD
   const invites = useVendorInvites(existing?.id || '', !!existing);
   const remove = useRemove();
   const toggle = (n: VendorNeed) => setF((s) => ({ ...s, needs: s.needs.includes(n) ? s.needs.filter((x) => x !== n) : [...s.needs, n] }));
-  const cancel = () => (existing ? navigate(`/manage/vendors/${existing.id}`, true) : navigate('/manage/vendors', true));
+  const cancel = () => (existing ? navigate(`/manage/vendors/${existing.id}`, true) : fromEvent ? back(`/manage/events/${fromEvent}/vendors`) : navigate('/manage/vendors', true));
   const save = async () => {
     const e: typeof errs = {};
     if (!f.name.trim()) e.name = 'צריך שם לדוכן';
     if (f.phone.trim() && !phoneOk(f.phone)) e.phone = 'מספר טלפון לא תקין';
     setErrs(e); if (Object.keys(e).length) return;
     setBusy(true);
-    try { const id = await savePoolVendor(ctx, f, existing); toast.show({ text: existing ? 'נשמר' : `${f.name.trim()} נוסף למאגר`, check: true }); navigate(`/manage/vendors/${id}`, true); }
+    try {
+      const id = await savePoolVendor(ctx, f, existing);
+      if (!existing && fromEvent && ev.item) {
+        const v = { id, name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, external: f.external, fem: f.fem, events: [], people: [] } as unknown as VendorDoc;
+        const r = await inviteToEvent(ctx, v, ev.item, evInfo.item, null);
+        if (v.phone) open(waUrl(v.phone, r.text));
+        toast.show({ text: `${v.name} ${g(f.fem, 'הוזמן', 'הוזמנה')}`, check: true });
+        navigate(`/manage/events/${fromEvent}/vendors`, true);
+        return;
+      }
+      toast.show({ text: existing ? 'נשמר' : `${f.name.trim()} נוסף למאגר`, check: true }); navigate(`/manage/vendors/${id}`, true);
+    }
     catch (x) { toast.refused(errText(x)); } finally { setBusy(false); }
   };
   return (
@@ -314,6 +337,10 @@ export function EventVendors({ ctx, params }: ScreenProps) {
     try { const text = await remindVendor(ctx, v, ev); if (v.phone) open(waUrl(v.phone, text)); }
     catch (x) { toast.refused(errText(x)); }
   };
+  const confirm = async (r: EventVendorDoc, f: boolean) => {
+    try { await confirmForVendor(ctx, eid, r); toast.show({ text: `${r.name}: ${g(f, 'אישר', 'אישרה')}`, check: true }); }
+    catch (x) { toast.refused(errText(x)); }
+  };
   return (
     <AppScreen variant="detail" gap={12}>
       <TopBar back={{ label: ev.title, onClick: () => back(`/manage/events/${eid}`) }} />
@@ -335,6 +362,7 @@ export function EventVendors({ ctx, params }: ScreenProps) {
               meta={[who, sellsShort(r) || sellsShort(v)].filter(Boolean).join(' · ')}
               onClick={() => navigate(`/manage/vendors/${r.vendorId || r.id}`)} chevron={false}
               actions={<>
+                {st === 'invited' && <Button variant="quiet" onClick={() => confirm(r, f)}>אישרו</Button>}
                 {!phone || !v ? null : st === 'invited'
                   ? <Button variant="outline" icon="message" iconSize={16} onClick={() => remind(v)}>תזכורת</Button>
                   : <IconButton icon="message" variant="outline" label={`וואטסאפ ל${first(who || v.name)}`} onClick={() => open(waUrl(phone))} />}
@@ -343,12 +371,13 @@ export function EventVendors({ ctx, params }: ScreenProps) {
           })}
         </ListCard>
       ) : <EmptyState variant="card" icon="stall" title="עוד לא הזמנו דוכנים" text="מזמינים מהמאגר, וכל אחד מקבל קישור בוואטסאפ." />}
-      <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => setPick(true)} disabled={!rest.length}>{rest.length ? `הזמנה מהמאגר · עוד ${rest.length}` : 'כל המאגר הוזמן'}</Button>
+      <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => setPick(true)}>{rest.length ? `הזמנה מהמאגר · עוד ${rest.length}` : 'כל המאגר הוזמן'}</Button>
       {prev && fromPrev.length > 0 && <Button variant="dashed" size="tall" block onClick={inviteAll} disabled={busy}>{`להזמין את מי שהיה ב${prev.title}`}</Button>}
       <Sheet open={pick} onClose={() => setPick(false)} title="הזמנה מהמאגר" aside={`${rest.length} לא הוזמנו`}>
         <ul className="k-card k-card--list k-list k-list--flush" style={{ margin: 0, padding: 0 }}>
           {rest.map((v) => <Row key={v.id} title={v.name} meta={[v.contact, sellsShort(v)].filter(Boolean).join(' · ')} onClick={() => invite(v)} />)}
         </ul>
+        <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => { setPick(false); navigate(`/manage/vendors?new=1&event=${eid}`); }}>בעל דוכן חדש</Button>
         <Button variant="secondary" size="lg" block onClick={() => setPick(false)}>סגירה</Button>
       </Sheet>
       <ConfirmSheet open={!!askRemove} onClose={() => setAskRemove(null)} title="להסיר מהאירוע?"

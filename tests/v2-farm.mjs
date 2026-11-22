@@ -233,4 +233,46 @@ test('presencePlan updates my entry on a day I am registered, adds one elsewhere
   assert.deepEqual(Object.keys(plan[2].data).filter((x) => !allowed.has(x)), []);
 });
 
+test('day picker: any date beyond the week shows next to it; "היום" shows only away from today', () => {
+  assert.deepEqual(L.pickerDays('2026-11-19', ['2026-11-19']), L.nextDays('2026-11-19'));
+  const far = L.pickerDays('2026-11-19', ['2026-11-20', '2026-12-24']);
+  assert.equal(far.length, 8); assert.equal(far[7], '2026-12-24');
+  assert.deepEqual(L.pickerDays('2026-11-19', ['2026-11-19', '2026-11-19', '']), L.nextDays('2026-11-19'));
+  assert.equal(L.pickerStart('2026-11-21', '2026-11-19'), '2026-11-19');
+  assert.equal(L.pickerStart('2026-11-26', '2026-11-19'), '2026-11-26');
+  assert.equal(L.pickerStart('2026-11-10', '2026-11-19'), '2026-11-10');
+  assert.equal(L.holdsToday('day', '2026-11-19', '2026-11-19'), true);
+  assert.equal(L.holdsToday('day', '2026-11-20', '2026-11-19'), false);
+  assert.equal(L.holdsToday('week', '2026-11-21', '2026-11-19'), true); // Sun 15 to Sat 21
+  assert.equal(L.holdsToday('week', '2026-11-22', '2026-11-19'), false);
+  assert.equal(L.holdsToday('month', '2026-11-02', '2026-11-19'), true);
+  assert.equal(L.holdsToday('month', '2026-12-19', '2026-11-19'), false);
+});
+
+test('item kinds: meeting / planning / other as the old calendar; old items keep their kind unless changed', () => {
+  assert.deepEqual(L.TEAM_KINDS.map((k) => k.label), ['פגישת צוות', 'הכנות לפסטיבל', 'פריט אחר']);
+  assert.equal(L.teamKindOf('meeting'), 'meeting'); assert.equal(L.teamKindOf('manual'), 'manual'); assert.equal(L.teamKindOf('presence'), 'manual');
+  assert.equal(L.teamKindLabel('planning'), 'הכנות לפסטיבל'); assert.equal(L.teamKindLabel('manual'), ''); assert.equal(L.teamKindLabel('event'), '');
+  // new: the chosen kind, 'manual' by default
+  assert.equal(L.kindToSave(undefined), 'manual'); assert.equal(L.kindToSave('meeting'), 'meeting');
+  // edit: written only when it changed
+  assert.equal(L.kindToSave('manual', 'manual'), undefined);
+  assert.equal(L.kindToSave('meeting', 'meeting'), undefined);
+  assert.equal(L.kindToSave('planning', 'manual'), 'planning');
+  assert.equal(L.kindToSave(undefined, 'meeting'), undefined);
+});
+
+test('presence for someone else: me first, then the active team by name; volunteers drawn outlined', () => {
+  const me = { uid: 'beni', displayName: 'בני', role: 'owner', status: 'active' };
+  const team = [
+    me, { uid: 'yoav', displayName: 'יואב', role: 'staff', status: 'active' }, { uid: 'dana', displayName: 'דנה', role: 'manager', status: 'active' },
+    { uid: 'gone', displayName: 'אבי', role: 'staff', status: 'blocked' }, { uid: 'v', displayName: 'גלית', role: 'vendor', status: 'active' },
+  ];
+  assert.deepEqual(L.presencePeople(team, me).map((p) => p.uid), ['beni', 'dana', 'yoav']);
+  assert.equal(L.isVolunteer('staff'), true); assert.equal(L.isVolunteer('manager'), false); assert.equal(L.isVolunteer('owner'), false); assert.equal(L.isVolunteer(undefined), false);
+  // a manager's entry for a teammate is that teammate's entry
+  const plan = L.presencePlan(['2026-11-24'], [], by('yoav', 'יואב לוי'), { from: '', to: '' }, '', () => 'n1', '2026-11-19T08:30:00.000Z');
+  assert.equal(plan[0].data.ownerUid, 'yoav'); assert.equal(plan[0].data.title, 'יואב בחווה'); assert.equal(plan[0].data.time, '');
+});
+
 console.log(`\n${n} farm helper tests passed`);

@@ -1,11 +1,11 @@
 // Shared bits of the farm screens: the clock in minutes, names and gender of people, the day picker, and calendar item wording.
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { now, nowMs, useClockVersion } from '../../../clock';
 import { DAY_LETTERS, hhmm } from '../../format';
-import { BackLink, Button, IconButton } from '../../kit';
+import { BackLink, Button, Field, IconButton } from '../../kit';
 import type { Profile } from '../../../types';
 import type { V2Ctx } from '../../ctx';
-import { dayNum, firstOf, hoursOf, isFemale, weekdayOf, type CalItem } from './logic';
+import { dayNum, firstOf, hoursOf, isFemale, teamKindLabel, weekdayOf, type CalItem } from './logic';
 import './farm.css';
 
 /** Minutes since midnight in Israel, now (re-renders with the demo clock). */
@@ -28,11 +28,17 @@ export function TopRow({ back = 'החווה', onBack, end, flat }: { back?: stri
   return <div className={flat ? 'farm-toprow farm-toprow--flat' : 'farm-toprow'}><BackLink label={back} onClick={onBack} />{end}</div>;
 }
 export const AddPresenceButton = ({ onClick }: { onClick: () => void }) => <Button icon="plus" iconSize={18} className="farm-addbtn" onClick={onClick}>נוכחות</Button>;
-export function Arrows({ prev, next, prevLabel, nextLabel }: { prev: () => void; next: () => void; prevLabel: string; nextLabel: string }) {
-  return <div className="farm-arrows"><IconButton variant="bordered" icon="back" label={prevLabel} onClick={prev} /><IconButton variant="bordered" icon="chevron" label={nextLabel} onClick={next} /></div>;
+/** Previous / next, and "היום" (back to today, as the old calendar) when the period on screen does not hold today. */
+export function Arrows({ prev, next, prevLabel, nextLabel, onToday }: { prev: () => void; next: () => void; prevLabel: string; nextLabel: string; onToday?: () => void }) {
+  return (
+    <div className="farm-arrows">
+      {onToday && <Button variant="outline" className="farm-todaybtn" onClick={onToday}>היום</Button>}
+      <IconButton variant="bordered" icon="back" label={prevLabel} onClick={prev} /><IconButton variant="bordered" icon="chevron" label={nextLabel} onClick={next} />
+    </div>
+  );
 }
 
-/** Seven day buttons "ה׳ 19" (F4 multi-select, C11 single). */
+/** Day buttons "ה׳ 19", seven to a line (F4 multi-select, C11 single). A chosen day outside the week wraps to the next line. */
 export function DayPicker({ days, selected, onToggle }: { days: string[]; selected: string[]; onToggle: (d: string) => void }) {
   return (
     <div className="farm-days">
@@ -45,12 +51,25 @@ export function DayPicker({ days, selected, onToggle }: { days: string[]; select
   );
 }
 
+/** "תאריך אחר": any date, beyond the seven-day picker (as the old calendar's date field). `min` keeps past days out where they make no sense. */
+export function OtherDate({ onPick, min }: { onPick: (d: string) => void; min?: string }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  if (!open) return <button type="button" className="farm-link farm-otherdate" onClick={() => setOpen(true)}>תאריך אחר</button>;
+  return (
+    <Field label="תאריך" type="date" ltr min={min} value={value} autoFocus
+      onChange={(e) => { const d = e.target.value; setValue(d); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!min || d >= min)) onPick(d); }} />
+  );
+}
+
 /** The soft line under a calendar item: its note, else "מנהלים" for managers-only items, else who takes part. */
 export function itemMeta(ctx: V2Ctx, it: CalItem): string {
   if (it.note) return it.note;
   if (it.audience === 'managers') return 'מנהלים';
   const names = (it.participants || []).map((u) => firstOf(personName(ctx, u))).filter(Boolean);
   if (names.length) return names.join(', ');
+  const kind = teamKindLabel(it.kind);
+  if (kind) return kind;
   if (it.kind === 'event') return 'אירוע';
   if (it.kind === 'visit') return 'ביקור';
   return '';

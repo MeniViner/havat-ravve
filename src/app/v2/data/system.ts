@@ -10,7 +10,7 @@ import { useActivityBy } from '../../activity';
 import { getDemo } from '../../demo/store';
 import { readyAuth } from '../../firebase';
 import { storePhoto } from '../../upload';
-import type { Activity, CalendarItem, FarmEvent, Place, Profile, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
+import type { Activity, CalendarItem, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
 import type { V2Ctx } from '../ctx';
 import { gw } from '../gender';
@@ -105,8 +105,31 @@ export function useGooglePhotoSync(profile: Profile) {
   }, [profile.uid, profile.googlePhoto]);
 }
 
+// ---------- registration questions (settings.registrationFields; the same rules as the old RegistrationFields.tsx) ----------
+/** The questions a person answers: a label, and options for a choice; the receipt preference has its own toggle. */
+export const registrationQuestions = (fields: RegistrationField[] | undefined) => (fields || []).filter((f) => (
+  f.id !== RECEIPT_PREFERENCE_FIELD && (f.label || '').trim() && (f.type !== 'choice' || (f.options || []).length)
+));
+/** The stored answer, or '' (a choice answer that is no longer one of the options counts as none). */
+export function answerOf(answers: Record<string, string> | undefined, field: RegistrationField) {
+  const value = answers?.[field.id];
+  return typeof value === 'string' && (field.type !== 'choice' || (field.options || []).includes(value)) ? value : '';
+}
+/** The stored answers of these questions only (the draft a form starts from); other keys of `fields` are left alone. */
+export const answersFor = (answers: Record<string, string> | undefined, questions: RegistrationField[]) =>
+  Object.fromEntries(questions.filter((f) => typeof answers?.[f.id] === 'string').map((f) => [f.id, answers![f.id]]));
+/** The ids of required questions still without an answer. */
+export const missingAnswers = (answers: Record<string, string> | undefined, questions: RegistrationField[]) =>
+  questions.filter((f) => f.required && !answerOf(answers, f).trim()).map((f) => f.id);
+/** What the profile shows for an answer: a date question "1975-03-14" as "14.03.1975". */
+export const answerText = (answers: Record<string, string> | undefined, field: RegistrationField) => {
+  const a = answerOf(answers, field);
+  return field.type === 'date' ? birthText(a) : a;
+};
+
 // ---------- profile ----------
-export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate: string; receipt: 'whatsapp' | 'email' };
+/** `answers`: the registration questions (optional; kept as they are when left out). */
+export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate: string; receipt: 'whatsapp' | 'email'; answers?: Record<string, string> };
 export const receiptOf = (p: Profile): 'whatsapp' | 'email' => (p.fields?.[RECEIPT_PREFERENCE_FIELD] === 'email' ? 'email' : 'whatsapp');
 /** "14.3.1975" / "14/03/1975" / "1975-03-14" -> "1975-03-14"; '' stays ''; null when it is not a date. */
 export function parseBirth(s: string): string | null {
@@ -124,11 +147,12 @@ export function parseBirth(s: string): string | null {
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : iso || ''; };
+const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
 export function saveProfile(p: Profile, d: ProfileDraft) {
   return write.update('users', p.uid, {
     displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), birthDate: parseBirth(d.birthDate) || '',
-    fields: { ...(p.fields || {}), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
+    fields: { ...(p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
 }
 
@@ -169,8 +193,9 @@ export function useInviteFor(email: string) {
 }
 export const INVITE_ROLE_WORD: Record<RoleInvite['role'], string> = { staff: 'כמתנדב', manager: 'כמנהל', owner: 'כבעלים' };
 export const firstName = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
-export const markWelcomed = (uid: string, d: { displayName: string; phone: string }) =>
-  write.update('users', uid, { displayName: d.displayName.trim(), phone: d.phone.trim(), welcomedAt: nowIso(), updatedAt: nowIso() });
+/** `fields`: the whole answers map to store (the profile's fields with the new answers); left out, fields stay untouched. */
+export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string> }) =>
+  write.update('users', uid, { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
 
 // ---------- install (C10) ----------
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
@@ -178,7 +203,7 @@ let installPrompt: InstallPrompt | null = null;
 const installListeners = new Set<() => void>();
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e as InstallPrompt; installListeners.forEach((l) => l()); });
-  window.addEventListener('appinstalled', () => { installPrompt = null; installListeners.forEach((l) => l()); });
+  window.addEventListener('appinstalled', () => { writeFlag(INSTALLED_KEY, 'yes'); installPrompt = null; installListeners.forEach((l) => l()); });
 }
 export const useInstallPrompt = () => useSyncExternalStore((l) => { installListeners.add(l); return () => installListeners.delete(l); }, () => installPrompt);
 export async function promptInstall() {
@@ -188,6 +213,31 @@ export async function promptInstall() {
 }
 export const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const isStandalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone);
+
+// ---------- the install banner (the old team shell's, src/app/InstallBanner.tsx: same keys, so a dismissal carries over) ----------
+const INSTALL_SEEN_KEY = 'farm-app-install-seen';
+const INSTALL_DISMISSED_KEY = 'farm-app-install-dismissed-until';
+const INSTALLED_KEY = 'farm-app-installed';
+/** "סגירה" hides the banner for two weeks. */
+export const INSTALL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+function readFlag(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
+function writeFlag(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* installing still works for this visit */ } }
+/** Read once when the app loads: the very first visit, straight in, gets no banner. */
+const seenOnArrival = typeof window !== 'undefined' && readFlag(INSTALL_SEEN_KEY) === 'yes';
+export const installSeenOnArrival = () => seenOnArrival;
+export const markInstallSeen = () => writeFlag(INSTALL_SEEN_KEY, 'yes');
+export const isInstalledApp = () => isStandalone() || readFlag(INSTALLED_KEY) === 'yes';
+export const installDismissedUntil = () => Number(readFlag(INSTALL_DISMISSED_KEY)) || 0;
+/** Real time (Date.now), not the demo clock: the key is shared with the old banner and outlives a demo. */
+export function snoozeInstall(now = Date.now()) { const until = now + INSTALL_SNOOZE_MS; writeFlag(INSTALL_DISMISSED_KEY, String(until)); return until; }
+/** As the old banner: not when installed, not on the first screen of a first visit, not while dismissed, and only where the
+ *  browser can install (a prompt) or on iPhone (the Safari steps). Never on /install, which already explains it. */
+export function installBannerShown(o: { installed: boolean; seenBefore: boolean; depth: number; dismissedUntil: number; now: number; prompt: boolean; ios: boolean; route: string }) {
+  if (o.installed || o.route === '/install') return false;
+  if (!o.seenBefore && o.depth === 0) return false;
+  if (o.dismissedUntil > o.now) return false;
+  return o.prompt || o.ios;
+}
 
 // ---------- offline queue (C8) ----------
 // db.ts counts pending writes but does not describe them. The queue view lists my own activity entries written since the

@@ -9,7 +9,7 @@ import { storePhoto } from '../../../upload';
 import { back } from '../../../router';
 import { nowMs } from '../../../clock';
 import { saveEventV2, deleteEventV2 } from '../../data/events';
-import { dateFieldText, localOf, normTime, rangeFromForm } from './logic';
+import { dateFieldText, endDateOf, localOf, normTime, rangeFromForm } from './logic';
 import { Loading, Missing, useRun } from './shared';
 import type { EventQuestion, FarmEvent } from '../../../types';
 
@@ -30,6 +30,8 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   const [date, setDate] = useState(s0.date);
   const [from, setFrom] = useState(s0.time || '');
   const [to, setTo] = useState(e0.time || '');
+  // A multi-day event keeps its last day; the form still shows one date unless an end day is set (under "more").
+  const [endDate, setEndDate] = useState(endDateOf(existing?.start || '', existing?.end || ''));
   const [price, setPrice] = useState(String(existing?.price ?? ''));
   const [maxPerOrder, setMax] = useState(existing?.maxPerOrder ?? 5);
   const [published, setPublished] = useState(existing?.published ?? false);
@@ -47,7 +49,7 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   const [tried, setTried] = useState(false);
   const dateId = useId(); const fileRef = useRef<HTMLInputElement>(null); const dateRef = useRef<HTMLInputElement>(null);
 
-  const range = rangeFromForm(date, from, to);
+  const range = rangeFromForm(date, from, to, endDate);
   const priceN = Math.max(0, Math.round(Number(price.replace(/[^\d.]/g, '')) || 0));
   const ok = title.trim().length > 0 && !!range;
   const parent = existing ? `/manage/events/${existing.id}` : '/manage/events';
@@ -89,6 +91,7 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           {tried && !date && <span className="k-field__error" role="alert">בחרו תאריך</span>}
         </div>
       </div>
+      {endDate && !more && <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)} />}
       <FieldRow>
         <Field grow label="משעה" ltr inputMode="numeric" value={from} onChange={(ev) => setFrom(ev.target.value)} onBlur={() => setFrom((v) => normTime(v) || v)}
           error={tried && !normTime(from) ? 'שעה כמו 16:00' : undefined} />
@@ -121,6 +124,8 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           </div>
           <TextAreaField label="תיאור לאורחים" value={description} onChange={(ev) => setDescription(ev.target.value)} placeholder="מה יהיה, למי זה מתאים, מה להביא" height={110} />
           <Field label="מקום" value={location} onChange={(ev) => setLocation(ev.target.value)} />
+          <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)}
+            hint={endDate && endDate > date ? dateFieldText(endDate) : undefined} />
           <Field label="מקומות (0 = בלי הגבלה)" ltr inputMode="numeric" value={capacity} onChange={(ev) => setCapacity(ev.target.value.replace(/\D/g, ''))} />
           <div className="events-questions">
             <span className="k-field__label">שאלות נוספות בהרשמה</span>

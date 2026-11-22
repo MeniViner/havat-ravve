@@ -2,7 +2,10 @@
 
 /* S1: "אני בסופר, מתחילים" (48 high, 16/600, icon gap 8) and the dashed suggestions row */
 .v2 .shopping-tripbtn { font-size: 16px; gap: 8px; }
-.shopping-chips { display: flex; gap: 8px; overflow: hidden; }
+.shopping-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+/* "היסטוריה" when there is no done card to carry it */
+.shopping-histlink { display: flex; justify-content: flex-end; }
+.shopping-cap { margin: 0; font-size: 14px; color: var(--soft); }
 
 /* a ticked row folds away before it moves to "נקנה היום" */
 @media (prefers-reduced-motion: no-preference) {

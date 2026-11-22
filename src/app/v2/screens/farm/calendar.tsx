@@ -9,7 +9,7 @@ import type { ScreenProps, V2Ctx } from '../../ctx';
 import type { Task } from '../../../types';
 import { useCalendarRange, useRoutines } from '../../data/farm';
 import {
-  addDays, axisPct, barLabel, barSpan, barWidth, countsByDay, dayEntries, dayNum, dayPeople, firstOf, isPresence, monthEnd, monthGrid, monthStart, shiftMonth,
+  addDays, axisPct, barLabel, barSpan, barWidth, countsByDay, dayEntries, dayNum, dayPeople, firstOf, holdsToday, isPresence, isVolunteer, monthEnd, monthGrid, monthStart, shiftMonth,
   weekDays, type CalItem, type Entry,
 } from './logic';
 import { AddPresenceButton, Arrows, TopRow, byStart, femaleOf, itemMeta, itemTime, useNowMin } from './parts';
@@ -45,7 +45,7 @@ export function CalendarScreen({ ctx, params }: ScreenProps) {
   const view: View = qView === 'day' || qView === 'week' ? qView : 'month';
   const date = validDate(qDate) || ctx.today;
   const set = (v: View, d: string) => navigate(`/farm/calendar?view=${v}&date=${d}`, true, true);
-  const header = <TopRow onBack={() => go('/farm')} end={<AddPresenceButton onClick={() => go('/farm/presence')} />} />;
+  const header = <TopRow onBack={() => go('/farm')} end={<AddPresenceButton onClick={() => go(`/farm/presence${date >= ctx.today ? `?date=${date}` : ''}`)} />} />;
   const seg = <Segmented className="farm-seg" label="תצוגה" value={view} onChange={(v) => set(v, date)} options={VIEWS} />;
   if (view === 'day') return <DayView ctx={ctx} date={date} set={set} header={header} seg={seg} />;
   if (view === 'week') return <WeekView ctx={ctx} date={date} set={set} header={header} seg={seg} />;
@@ -71,7 +71,8 @@ function MonthView({ ctx, date, set, header, seg }: ViewProps) {
       {header}
       <div className="farm-titlerow">
         <h1 className="farm-h1">{MONTHS[month - 1]} {date.slice(0, 4)}</h1>
-        <Arrows prevLabel="החודש הקודם" nextLabel="החודש הבא" prev={() => set('month', shiftMonth(date, -1))} next={() => set('month', shiftMonth(date, 1))} />
+        <Arrows prevLabel="החודש הקודם" nextLabel="החודש הבא" prev={() => set('month', shiftMonth(date, -1))} next={() => set('month', shiftMonth(date, 1))}
+          onToday={holdsToday('month', date, ctx.today) ? undefined : () => set('month', ctx.today)} />
       </div>
       {seg}
       <section className="farm-card farm-month">
@@ -133,7 +134,8 @@ function WeekView({ ctx, date, set, header, seg }: ViewProps) {
       {header}
       <div className="farm-titlerow">
         <h1 className="farm-h1">{ddmm(days[0])} – {ddmm(days[6])}</h1>
-        <Arrows prevLabel="השבוע הקודם" nextLabel="השבוע הבא" prev={() => set('week', addDays(date, -7))} next={() => set('week', addDays(date, 7))} />
+        <Arrows prevLabel="השבוע הקודם" nextLabel="השבוע הבא" prev={() => set('week', addDays(date, -7))} next={() => set('week', addDays(date, 7))}
+          onToday={holdsToday('week', date, ctx.today) ? undefined : () => set('week', ctx.today)} />
       </div>
       {seg}
       <section className="farm-card" style={{ overflow: 'hidden' }}>
@@ -171,7 +173,8 @@ function DayView({ ctx, date, set, header, seg }: ViewProps) {
       {header}
       <div className="farm-titlerow">
         <div className="farm-titlerow__titles"><span className="farm-overline">{rel}</span><h1 className="farm-h1 farm-h1--day">{dayName(date)}, {longDate(date)}</h1></div>
-        <Arrows prevLabel="היום הקודם" nextLabel="היום הבא" prev={() => set('day', addDays(date, -1))} next={() => set('day', addDays(date, 1))} />
+        <Arrows prevLabel="היום הקודם" nextLabel="היום הבא" prev={() => set('day', addDays(date, -1))} next={() => set('day', addDays(date, 1))}
+          onToday={holdsToday('day', date, ctx.today) ? undefined : () => set('day', ctx.today)} />
       </div>
       {seg}
       <section className="farm-card farm-axiscard">
@@ -183,6 +186,12 @@ function DayView({ ctx, date, set, header, seg }: ViewProps) {
               {isToday && nowPct > 0 && nowPct < 100 && <span className="farm-axis__now" style={{ insetInlineStart: `${nowPct}%` }} />}
             </div>
             <div className="farm-axis__rows">{people.map((e) => <AxisRow key={e.uid} ctx={ctx} e={e} />)}</div>
+          </div>
+        ) : null}
+        {people.length ? (
+          <div className="farm-legend" role="group" aria-label="מקרא נוכחות">
+            <span><span className="farm-legend__swatch" aria-hidden="true" />בעלים ומנהלים</span>
+            <span><span className="farm-legend__swatch farm-legend__swatch--staff" aria-hidden="true" />מתנדבים</span>
           </div>
         ) : <p className="farm-empty farm-empty--flat" style={{ padding: 0 }}>אף אחד לא רשם נוכחות ביום הזה.</p>}
       </section>
@@ -197,11 +206,12 @@ function DayView({ ctx, date, set, header, seg }: ViewProps) {
 function AxisRow({ ctx, e }: { ctx: V2Ctx; e: Entry }) {
   const mine = e.uid === ctx.user.uid;
   const span = barSpan(e.hours);
+  const staff = isVolunteer(ctx.peopleByUid.get(e.uid)?.role);
   return (
     <button type="button" className="farm-axis__row" onClick={() => go(`/people/${e.uid}`)}>
       <span className={mine ? 'farm-axis__name farm-axis__name--me' : 'farm-axis__name'}>{firstOf(e.name)}</span>
       <span className="farm-axis__track">
-        <span className={mine ? 'farm-axis__bar farm-axis__bar--me' : 'farm-axis__bar'} style={{ insetInlineStart: `${span.start}%`, width: `${span.width}%` }}>{barLabel(e.hours, mine && e.status === 'now')}</span>
+        <span className={['farm-axis__bar', mine && 'farm-axis__bar--me', staff && 'farm-axis__bar--staff'].filter(Boolean).join(' ')} style={{ insetInlineStart: `${span.start}%`, width: `${span.width}%` }}>{barLabel(e.hours, mine && e.status === 'now')}</span>
       </span>
     </button>
   );

@@ -72,6 +72,27 @@ export function withTemplateDefaults(t: Task, templates: Template[], places: Pla
 export const requesterOf = (t: Task): Actor => t.requestedBy || t.createdBy;
 export const isMine = (t: Task, uid: string) => t.assignee?.uid === uid;
 export const isFree = (t: Task) => !t.assignee;
+/** A dated instance of a recurring task (the old app's isRoutine). */
+export const isRoutine = (t: Pick<Task, 'templateId' | 'dateKey'>) => !!t.templateId && !!t.dateKey;
+/** Yesterday's unticked routine instance is not today's work: it leaves the root (as the old shell did). */
+export const isStaleRoutine = (t: Task, today: string) => !t.done && isRoutine(t) && (t.dateKey || '') < today;
+/** Open and past its date: "באיחור". */
+export const isOverdue = (t: Task, today: string) => !t.done && !!t.dueDate && t.dueDate < today;
+/** The template's "HH:MM" of a routine instance ("עד 07:00"), '' otherwise. */
+export const routineTime = (t: Task, templates: Pick<Template, 'id' | 'time'>[]) => (isRoutine(t) ? templates.find((x) => x.id === t.templateId)?.time || '' : '');
+/** Who may edit a task (old screen): a manager, or the creator of a task that is not a routine instance. */
+export const canEditTask = (t: Task, uid: string, manager: boolean) => manager || (!isRoutine(t) && t.createdBy?.uid === uid);
+/** C4: may this user put the task on `to` (null = free)? Mirrors the tasks update rule: a manager or the creator may change
+ *  anything; anyone else may take a free open task (only to themselves), and hand on or release only their own task. */
+export function canAssignTo(t: Task, uid: string, manager: boolean, to: string | null) {
+  const cur = t.assignee?.uid || null;
+  if (to === cur) return true;
+  if (manager || t.createdBy?.uid === uid) return true;
+  if (cur === null) return !t.done && to === uid;
+  return cur === uid;
+}
+/** "להעביר" on a task that is on someone else: only a manager or the creator may move it. */
+export const canMoveOthers = (t: Task, uid: string, manager: boolean) => manager || t.createdBy?.uid === uid;
 /** Open and due today, overdue or undated: what "today" means on the root. */
 export const isForToday = (t: Task, today: string) => !t.done && (!t.dueDate || t.dueDate <= today);
 /** On the root: open tasks, and done tasks for 24 hours. */
@@ -126,31 +147,35 @@ export function dueLong(due: string, today: string) {
   return s === 'היום' || s === 'מחר' || s === 'אתמול' ? s : `${dayName(due)}, ${ddmm(due)}`;
 }
 
-export type RowView = 'place' | 'time' | 'later' | 'mine' | 'placeList';
-/** The soft line under a task row. Copy follows T1, T2, T4, P6, L4. */
-export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string; now: number; profileOf?: ProfileOf }) {
+export type RowView = 'place' | 'time' | 'later' | 'mine' | 'placeList' | 'late';
+/** The soft line under a task row. Copy follows T1, T2, T4, P6, L4. A routine instance shows the template's "עד HH:MM"
+ *  (o.time) in place of a date and never "ביקש" (as the old rows); 'late' rows (the "באיחור" group) lead with the date. */
+export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string; now: number; profileOf?: ProfileOf; time?: string }) {
   if (t.done) {
     const at = t.doneAt ? (o.now - Date.parse(t.doneAt) < 120_000 ? 'עכשיו' : daysAgo(t.doneAt, o.today) === 0 ? hhmm(t.doneAt) : ddmm(t.doneAt)) : '';
     return [`בוצע ${at}`.trim(), t.templateId ? 'שגרה' : t.doneBy ? firstName(t.doneBy.name) : ''].filter(Boolean).join(' · ');
   }
+  const routine = isRoutine(t);
   const req = requesterOf(t);
-  const asked = req.uid && req.uid !== o.uid && req.name ? `${firstName(req.name)} ${gwA(req, 'ביקש', 'ביקשה', o.profileOf)}` : '';
-  const due = dueText(t.dueDate, o.today);
+  const asked = !routine && req.uid && req.uid !== o.uid && req.name ? `${firstName(req.name)} ${gwA(req, 'ביקש', 'ביקשה', o.profileOf)}` : '';
+  const due = routine ? '' : dueText(t.dueDate, o.today);
+  const until = routine && o.time ? `עד ${o.time}` : '';
   let who: string;
-  if (!t.assignee) who = 'פנויה';
-  else if (t.assignee.uid === o.uid) who = asked || (due ? `עליך · ${due}` : 'עליך');
+  if (!t.assignee) who = ['פנויה', until].filter(Boolean).join(' · ');
+  else if (t.assignee.uid === o.uid) who = asked || ['עליך', due || until].filter(Boolean).join(' · ');
   else {
     const fresh = t.takenAt && o.now - Date.parse(t.takenAt) < 10 * 60_000 ? 'לפני רגע' : '';
     const askedOther = req.uid !== t.assignee.uid ? asked : '';
-    who = [firstName(t.assignee.name), fresh || (o.view === 'later' ? askedOther : askedOther || due)].filter(Boolean).join(' · ');
+    who = [firstName(t.assignee.name), fresh || (o.view === 'later' ? askedOther || until : askedOther || due || until)].filter(Boolean).join(' · ');
   }
   const place = t.location?.placeName || '';
   switch (o.view) {
     case 'place': return [who, t.photo && !t.assignee ? 'עם תמונה' : ''].filter(Boolean).join(' · ');
     case 'time': return [place, who].filter(Boolean).join(' · ');
     case 'later': return [due, who].filter(Boolean).join(' · ');
-    case 'mine': return t.assignee?.uid === o.uid ? [place || 'בלי מקום', !due ? '' : due === 'היום' ? 'היום' : `עד ${due}`].filter(Boolean).join(' · ') : who;
-    case 'placeList': return [t.assignee ? firstName(t.assignee.name) : 'פנויה', due].filter(Boolean).join(' · ');
+    case 'mine': return t.assignee?.uid === o.uid ? [place || 'בלי מקום', !due ? until : due === 'היום' ? 'היום' : `עד ${due}`].filter(Boolean).join(' · ') : who;
+    case 'placeList': return [t.assignee ? firstName(t.assignee.name) : 'פנויה', due || until].filter(Boolean).join(' · ');
+    case 'late': return [due, place, !t.assignee ? 'פנויה' : t.assignee.uid === o.uid ? 'עליך' : firstName(t.assignee.name)].filter(Boolean).join(' · ');
   }
 }
 const daysAgo = (iso: string, today: string) => Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(dateKeyOf(new Date(iso)) + 'T12:00:00Z')) / DAY);
@@ -186,21 +211,27 @@ export function groupByPlace(tasks: Task[], uid: string, today: string, nameOf: 
     .sort((a, b) => Number(a.key === '_none') - Number(b.key === '_none') || Number(b.urgent) - Number(a.urgent) || a.oldest.localeCompare(b.oldest))
     .map(({ key, title, placeId, rows, open }) => ({ key, title, placeId, open, rows: [...rows].sort((x, y) => byPriority(uid, today)(asOpen(x), asOpen(y))) }));
 }
-/** T2 "לפי זמן" (open tasks only): להיום (incl. overdue) · השבוע (next 6 days) · בהמשך · בלי תאריך. */
-export function groupByTime(tasks: Task[], uid: string, today: string): Group[] {
+/** T2 "לפי זמן" (open tasks only): להיום (incl. overdue) · השבוע (next 6 days) · בהמשך · בלי תאריך.
+ *  With `late`, overdue tasks get their own first group "באיחור" (as the old list). */
+export function groupByTime(tasks: Task[], uid: string, today: string, late = false): Group[] {
   const week = addDays(today, 6);
-  const buckets: Record<string, Task[]> = { today: [], week: [], later: [], none: [] };
+  const buckets: Record<string, Task[]> = { late: [], today: [], week: [], later: [], none: [] };
   for (const t of tasks) {
     if (t.done) continue;
     const d = t.dueDate;
-    buckets[!d ? 'none' : d <= today ? 'today' : d <= week ? 'week' : 'later'].push(t);
+    buckets[!d ? 'none' : late && d < today ? 'late' : d <= today ? 'today' : d <= week ? 'week' : 'later'].push(t);
   }
-  const titles: Record<string, string> = { today: 'להיום', week: 'השבוע', later: 'בהמשך', none: 'בלי תאריך' };
+  const titles: Record<string, string> = { late: 'באיחור', today: 'להיום', week: 'השבוע', later: 'בהמשך', none: 'בלי תאריך' };
   return Object.entries(buckets).filter(([, rows]) => rows.length).map(([key, rows]) => ({
     key, title: titles[key],
     // by time, what is on me comes first (T2), then the usual priority
-    rows: key === 'today' || key === 'none' ? ordered(rows, uid, today).sort((a, b) => Number(!isMine(a, uid)) - Number(!isMine(b, uid))) :[...rows].sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.createdAt.localeCompare(b.createdAt)),
+    rows: key === 'today' || key === 'none' || key === 'late' ? ordered(rows, uid, today).sort((a, b) => Number(!isMine(a, uid)) - Number(!isMine(b, uid))) :[...rows].sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.createdAt.localeCompare(b.createdAt)),
   }));
+}
+/** The "באיחור" group apart from the rest (place and mine views): [overdue open tasks by priority, everything else]. */
+export function splitOverdue(tasks: Task[], uid: string, today: string): [Task[], Task[]] {
+  const late = tasks.filter((t) => isOverdue(t, today));
+  return [ordered(late, uid, today), tasks.filter((t) => !isOverdue(t, today))];
 }
 
 export const addDays = (key: string, n: number) => new Date(Date.parse(key + 'T12:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -372,7 +403,7 @@ export function historyMeta(t: Task) {
 export function matchesSearch(t: Task, q: string) {
   const s = q.trim();
   if (!s) return true;
-  return [t.title, t.location?.placeName, t.doneBy?.name, t.assignee?.name].some((v) => v && v.includes(s));
+  return [t.title, t.location?.placeName, t.doneBy?.name, t.assignee?.name, t.doneNote].some((v) => v && v.includes(s));
 }
 /** C7: what I closed today, the team bars and what waits for me tomorrow. */
 export function dayEnd(doneTodayTasks: Task[], open: Task[], uid: string, today: string) {
@@ -417,21 +448,23 @@ export function timeline(t: Task, activity: Pick<Activity, 'action' | 'text' | '
 }
 
 // ======================= hooks =======================
-type Ctxish = { manager: boolean; templates: Template[]; places: Place[] };
+type Ctxish = { manager: boolean; templates: Template[]; places: Place[]; today?: string };
 const staffOnly = (manager: boolean): [string, '==', unknown][] => (manager ? [] : [['managersOnly', '==', false]]);
 const norm = (rows: Task[]) => rows.map((r) => normalizeTask(r as Task & { id: string }));
 
-/** The root list: open tasks plus tasks done in the last 24 hours, normalised and with template defaults. */
+/** The root list: open tasks plus tasks done in the last 24 hours, normalised and with template defaults.
+ *  Yesterday's unticked routine instances stay out (isStaleRoutine), as in the old shell. */
 export function useRootTasks(ctx: Ctxish) {
+  const today = ctx.today || todayKey();
   const open = useList<Task>('tasks', { where: [...staffOnly(ctx.manager), ['done', '==', false]], orderBy: [['createdAt', 'desc']] });
   // the cutoff moves in 10-minute steps so the listener is not re-created on every render
   const cutoff = new Date(Math.floor((nowMs() - DONE_VISIBLE_MS) / 600_000) * 600_000).toISOString();
   const done = useList<Task>('tasks', { where: [...staffOnly(ctx.manager), ['doneAt', '>=', cutoff]], orderBy: [['doneAt', 'desc']] });
   const items = useMemo(() => {
     const seen = new Set<string>(); const out: Task[] = [];
-    for (const t of [...norm(open.items), ...norm(done.items)]) { if (seen.has(t.id)) continue; seen.add(t.id); out.push(withTemplateDefaults(t, ctx.templates, ctx.places)); }
+    for (const t of [...norm(open.items), ...norm(done.items)]) { if (seen.has(t.id) || isStaleRoutine(t, today)) continue; seen.add(t.id); out.push(withTemplateDefaults(t, ctx.templates, ctx.places)); }
     return out;
-  }, [open.items, done.items, ctx.templates, ctx.places]);
+  }, [open.items, done.items, ctx.templates, ctx.places, today]);
   return { items, loading: open.loading || done.loading, error: open.error || done.error };
 }
 export function useTaskV2(id: string, ctx: Ctxish) {
@@ -473,6 +506,14 @@ export async function doneWithPhoto(actor: Actor, t: Task, photo: string, note: 
   if (!t.done) logActivity(actor, taskKind(t), t.id, 'done', short(t.title), { subjectUid: t.assignee?.uid || actor.uid });
   if (photo) logActivity(actor, taskKind(t), t.id, 'photo', `${short(t.title)}${note.trim() ? ': ' + note.trim() : ''}`);
 }
+/** After done (old T3): add or replace the done photo, add or edit the done note. The done stamp itself stays. */
+export async function setDoneDetails(actor: Actor, t: Task, data: { donePhoto?: string; doneNote?: string }) {
+  const patch: Record<string, unknown> = { updatedAt: nowIso() };
+  if (data.donePhoto !== undefined) patch.donePhoto = data.donePhoto;
+  if (data.doneNote !== undefined) patch.doneNote = data.doneNote.trim().slice(0, 2000);
+  await write.update('tasks', t.id, patch);
+  logActivity(actor, taskKind(t), t.id, data.donePhoto !== undefined ? 'photo' : 'note', `${short(t.title)}${patch.doneNote ? ': ' + patch.doneNote : ''}`);
+}
 export async function setTaskPhoto(actor: Actor, t: Task, photo: string) {
   await write.update('tasks', t.id, { photo, updatedAt: nowIso() });
   logActivity(actor, taskKind(t), t.id, 'photo', short(t.title));
@@ -492,8 +533,9 @@ export async function takeTask(actor: Actor, t: Task) {
       tx.update('tasks', t.id, { assignee: actor, takenAt: now, updatedAt: now });
     });
   } catch (e) {
-    // two people at the same moment: the slower commit comes back as a plain refusal. Read who has it now, so X1 names them.
-    if (isConflict(e) && !(e as { by?: Actor }).by) {
+    // two people at the same moment: the slower commit comes back as a plain refusal (a conflict, or the rules' refusal).
+    // Read who has it now, so X1 names them.
+    if (!(e as { by?: Actor }).by) {
       const cur = await transact((tx) => tx.get<Task>('tasks', t.id)).catch(() => null);
       if (cur?.assignee && cur.assignee.uid !== actor.uid) throw takenBy(cur.assignee);
     }

@@ -77,14 +77,25 @@ export function normTime(s: string): string {
   if (h > 23 || mi > 59) return '';
   return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
 }
-/** Start and end from the form: an end not after the start rolls to the next day (an evening into the night). */
-export function rangeFromForm(dateKey: string, from: string, to: string): { start: string; end: string } | null {
+/** Start and end from the form: an end not after the start rolls to the next day (an evening into the night).
+ *  An end date after the start date (a multi-day event) ends on that day at the end hour. */
+export function rangeFromForm(dateKey: string, from: string, to: string, endKey = ''): { start: string; end: string } | null {
   const a = normTime(from), b = normTime(to);
   if (!dateKey || !a || !b) return null;
   const start = isoFromLocal(dateKey, a);
-  let end = isoFromLocal(dateKey, b);
-  if (Date.parse(end) <= Date.parse(start)) end = new Date(Date.parse(end) + 86400_000).toISOString();
+  let end = isoFromLocal(endKey && endKey > dateKey ? endKey : dateKey, b);
+  if (Date.parse(end) <= Date.parse(start)) end = new Date(Date.parse(isoFromLocal(dateKey, b)) + 86400_000).toISOString();
   return { start, end };
+}
+/** The end date the form shows: only when the event ends on a later day than the next morning (an evening into the night is one day). */
+export function endDateOf(start: string, end: string): string {
+  if (!start || !end) return '';
+  const s = keyOf(start), e = keyOf(end);
+  if (e <= s) return '';
+  const next = keyOf(new Date(Date.parse(isoFromLocal(s, '12:00')) + 86400_000).toISOString());
+  // ends the next day before the start hour: an evening into the night, no separate end date
+  if (e === next && hhmm(end).padStart(5, '0') <= hhmm(start).padStart(5, '0')) return '';
+  return e;
 }
 
 // ---------- tickets and orders ----------
@@ -96,22 +107,32 @@ export type Order = {
   owed: number; total: number; status: 'claimed' | 'pending' | 'paid' | 'free'; arrived: number; createdAt: string;
   /** Latest change on any of its tickets (when a "transferred" mark arrived). */
   changedAt: string;
+  /** Every ticket of the order was cancelled (the "בוטלו" chip); ordersOf never returns these. */
+  cancelled?: boolean;
 };
+function orderOf(list: Ticket[], cancelled: boolean): Order {
+  const t = list[0];
+  const owing = cancelled ? [] : list.filter((x) => isOwing(x.paymentStatus));
+  const status: Order['status'] = list.some((x) => x.paymentStatus === 'claimed') ? 'claimed' : list.some((x) => x.paymentStatus === 'pending') ? 'pending' : list.every((x) => x.paymentStatus === 'free') ? 'free' : 'paid';
+  return {
+    orderId: t.orderId, tickets: list, name: t.ownerName, phone: t.ownerPhone, ownerUid: t.ownerUid, count: list.length,
+    owed: owing.reduce((s, x) => s + x.price, 0), total: list.reduce((s, x) => s + x.price, 0), status,
+    arrived: list.filter((x) => x.entries > 0).length, createdAt: list.reduce((m, x) => (x.createdAt > m ? x.createdAt : m), t.createdAt),
+    changedAt: list.reduce((m, x) => ((x.updatedAt || '') > m ? x.updatedAt : m), t.updatedAt || t.createdAt),
+    ...(cancelled ? { cancelled: true } : {}),
+  };
+}
 /** Valid tickets grouped by order, newest first. */
 export function ordersOf(tickets: Ticket[]): Order[] {
   const by = new Map<string, Ticket[]>();
   for (const t of tickets) if (t.status === 'valid') { const l = by.get(t.orderId) || []; l.push(t); by.set(t.orderId, l); }
-  return [...by.values()].map((list) => {
-    const t = list[0];
-    const owing = list.filter((x) => isOwing(x.paymentStatus));
-    const status: Order['status'] = list.some((x) => x.paymentStatus === 'claimed') ? 'claimed' : list.some((x) => x.paymentStatus === 'pending') ? 'pending' : list.every((x) => x.paymentStatus === 'free') ? 'free' : 'paid';
-    return {
-      orderId: t.orderId, tickets: list, name: t.ownerName, phone: t.ownerPhone, ownerUid: t.ownerUid, count: list.length,
-      owed: owing.reduce((s, x) => s + x.price, 0), total: list.reduce((s, x) => s + x.price, 0), status,
-      arrived: list.filter((x) => x.entries > 0).length, createdAt: list.reduce((m, x) => (x.createdAt > m ? x.createdAt : m), t.createdAt),
-      changedAt: list.reduce((m, x) => ((x.updatedAt || '') > m ? x.updatedAt : m), t.updatedAt || t.createdAt),
-    };
-  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...by.values()].map((list) => orderOf(list, false)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+/** Orders with no valid ticket left (cancelled by the guest or a manager), newest first. */
+export function cancelledOrdersOf(tickets: Ticket[]): Order[] {
+  const by = new Map<string, Ticket[]>();
+  for (const t of tickets) { const l = by.get(t.orderId) || []; l.push(t); by.set(t.orderId, l); }
+  return [...by.values()].filter((list) => !list.some((t) => t.status === 'valid')).map((list) => orderOf(list, true)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 /** M5 stat tiles: valid tickets, paid tickets, money still waiting. */
 export function guestStats(tickets: Ticket[]) {
@@ -124,13 +145,14 @@ export function guestStats(tickets: Ticket[]) {
     arrived: valid.filter((t) => t.entries > 0).length,
   };
 }
-export type GuestFilter = 'all' | 'claimed' | 'unpaid';
+export type GuestFilter = 'all' | 'claimed' | 'unpaid' | 'arrived' | 'cancelled';
 const digits = (s: string) => s.replace(/\D/g, '');
 /** The "marked as transferred" filter lists the longest-waiting mark first. */
 export function filterOrders(orders: Order[], filter: GuestFilter, q: string): Order[] {
   const s = q.trim().toLowerCase(), d = digits(q);
   const list = filter === 'claimed' ? [...orders].sort((a, b) => a.changedAt.localeCompare(b.changedAt)) : orders;
-  return list.filter((o) => (filter === 'all' ? true : filter === 'claimed' ? o.status === 'claimed' : o.status === 'pending'))
+  return list.filter((o) => (filter === 'cancelled' ? !!o.cancelled : !o.cancelled))
+    .filter((o) => (filter === 'all' || filter === 'cancelled' ? true : filter === 'arrived' ? o.arrived > 0 : filter === 'claimed' ? o.status === 'claimed' : o.status === 'pending'))
     .filter((o) => !s || o.name.toLowerCase().includes(s) || (d.length >= 3 && digits(o.phone).includes(d)) || o.tickets.some((t) => t.holderName?.toLowerCase().includes(s)));
 }
 export const ticketsWord = (n: number) => (n === 1 ? 'כרטיס אחד' : `${n} כרטיסים`);
@@ -174,6 +196,28 @@ export function eventSummary(tickets: Ticket[], tabs: Tab[]) {
     waived: tabs.filter((t) => t.status === 'waived').reduce((s, t) => s + t.total, 0),
     orders: ordersOf(tickets).length,
   };
+}
+/** M7 extras (the old event report): arrival %, waived count, what is still open by type. */
+export function summaryExtras(tickets: Ticket[], tabs: Tab[]) {
+  const valid = tickets.filter((t) => t.status === 'valid');
+  const arrived = valid.filter((t) => t.entries > 0).length;
+  const openTabs = tabs.filter((t) => t.status === 'open' || t.status === 'claimed');
+  const unpaid = valid.filter((t) => isOwing(t.paymentStatus));
+  return {
+    pct: valid.length ? Math.round((arrived / valid.length) * 100) : 0,
+    returned: exitedReturned(valid),
+    openTabs: openTabs.length,
+    openTabsAmount: openTabs.reduce((s, t) => s + t.total, 0),
+    openOrders: new Set(unpaid.map((t) => t.orderId)).size,
+    openOrdersAmount: unpaid.reduce((s, t) => s + t.price, 0),
+    waivedCount: tabs.filter((t) => t.status === 'waived').length,
+  };
+}
+/** Units and revenue of one product in these tabs (N10 editor). */
+export function productSales(tabs: Tab[], product: { id?: string; name: string }) {
+  let units = 0, revenue = 0;
+  for (const t of tabs) if (t.status !== 'waived') for (const i of t.items) if ((product.id && i.productId === product.id) || i.name === product.name) { units += i.qty; revenue += i.qty * i.price; }
+  return { units, revenue };
 }
 /** Units sold per product (by name), most first. */
 export function topSold(tabs: Tab[], limit = 4): { label: string; value: number }[] {
@@ -295,6 +339,48 @@ export function staffingMeta(st: { assigned: number; missing: number; missingNam
 }
 /** Hours "15:30-18:30" -> "15:30–18:30". */
 export const hoursText = (h: string) => h.replace(/\s*-\s*/, '–');
+
+// ---------- scans kept on the tickets (events before the scan log, and offline fallbacks) ----------
+/** One scan line per entry recorded on a ticket (ticket.scans[]), newest first: the shape of the scan log (events/{id}/scans).
+ *  Events from before the scan log only have these. */
+export function scansFromTickets(tickets: Ticket[]): GateScan[] {
+  const out: GateScan[] = [];
+  for (const t of tickets) {
+    if (t.status !== 'valid') continue;
+    (t.scans || []).forEach((sc, i) => {
+      const n = i + 1;
+      const part = t.total > 1 ? `כרטיס ${t.index} מתוך ${t.total}` : 'כרטיס אחד';
+      out.push({
+        id: `${t.id}-${n}`, eventId: t.eventId, ticketId: t.id, orderId: t.orderId, name: t.holderName || t.ownerName,
+        meta: `${part} · כניסה ${n}${n > 1 ? ', יצא וחזר' : ''}`, result: t.paymentStatus === 'paid_onsite' && n === 1 ? 'paidAtGate' : 'ok',
+        by: sc.by, at: sc.at,
+      });
+    });
+  }
+  return out.sort((a, b) => b.at.localeCompare(a.at));
+}
+/** Live counters rebuilt from the tickets (no counters/live document): entered, scans, paid at the gate, per half hour (Israel time). */
+export function countersFromTickets(tickets: Ticket[]) {
+  const valid = tickets.filter((t) => t.status === 'valid');
+  const perHalfHour: Record<string, number> = {};
+  for (const t of valid) {
+    const first = (t.scans || [])[0];
+    if (!first) continue;
+    const [h, m] = hhmm(first.at).split(':');
+    const k = `${h.padStart(2, '0')}:${Number(m) < 30 ? '00' : '30'}`;
+    perHalfHour[k] = (perHalfHour[k] || 0) + 1;
+  }
+  return {
+    entered: valid.filter((t) => t.entries > 0).length,
+    scans: valid.reduce((s, t) => s + Math.max(t.entries || 0, (t.scans || []).length), 0),
+    paidAtGate: valid.filter((t) => t.paymentStatus === 'paid_onsite').length,
+    payLater: 0, payLaterAmount: 0, rejected: 0,
+    returned: exitedReturned(valid),
+    perHalfHour,
+  };
+}
+/** "יצאו וחזרו": valid tickets scanned in more than once. */
+export const exitedReturned = (tickets: Ticket[]) => tickets.filter((t) => t.status === 'valid' && (t.entries || 0) > 1).length;
 
 // ---------- live (M6) ----------
 // Entered / total / waiting come from the event-day data (data/eventday.ts liveNumbers over counters/live).

@@ -125,6 +125,16 @@ export const dayNum = (key: string) => Number(key.slice(8, 10));
 export const weekDays = (key: string) => { const s = addDays(key, -weekdayOf(key)); return Array.from({ length: 7 }, (_, i) => addDays(s, i)); };
 /** `n` days starting at `key` (F4 and C11 day pickers). */
 export const nextDays = (key: string, n = 7) => Array.from({ length: n }, (_, i) => addDays(key, i));
+/** The day picker's buttons: the week from `start`, plus any chosen day outside it (picked with "תאריך אחר"), in date order. */
+export const pickerDays = (start: string, selected: string[], n = 7) => [...new Set([...nextDays(start, n), ...selected.filter(Boolean)])].sort();
+/** Where the picker's week starts for a chosen date: today while the date is within the coming week, else the date itself. */
+export const pickerStart = (date: string, today: string) => (date < today || date > addDays(today, 6) ? date : today);
+/** Does the month / week / day on screen hold today? (the "היום" jump shows only when it does not). */
+export function holdsToday(view: 'month' | 'week' | 'day', date: string, today: string) {
+  if (view === 'day') return date === today;
+  if (view === 'week') return weekDays(date).includes(today);
+  return date.slice(0, 7) === today.slice(0, 7);
+}
 export const monthStart = (key: string) => `${key.slice(0, 7)}-01`;
 export const monthEnd = (key: string) => { const d = utc(monthStart(key)); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return keyOfUtc(d); };
 export const shiftMonth = (key: string, n: number) => { const d = utc(monthStart(key)); d.setUTCMonth(d.getUTCMonth() + n); return keyOfUtc(d); };
@@ -258,6 +268,29 @@ export function feedSentence(l: FeedLine, female: boolean): string {
   if (l.kind === 'added') return `${who} ${g(female, 'הוסיף', 'הוסיפה')} משימה: ${l.titles[0]}`;
   if (l.kind === 'addedShop') return `${who} ${g(female, 'הוסיף', 'הוסיפה')} לקניות: ${l.titles[0]}`;
   return `${who} ${g(female, 'קנה', 'קנתה')} ${joinHe(l.titles)}`;
+}
+
+// ---------- C11 item kinds (as the old calendar) ----------
+export type TeamKind = 'meeting' | 'planning' | 'manual';
+export const TEAM_KINDS: { value: TeamKind; label: string }[] = [{ value: 'meeting', label: 'פגישת צוות' }, { value: 'planning', label: 'הכנות לפסטיבל' }, { value: 'manual', label: 'פריט אחר' }];
+/** The kind a manager can choose for an existing item ('manual' for anything else). */
+export const teamKindOf = (kind: string): TeamKind => (kind === 'meeting' || kind === 'planning' ? kind : 'manual');
+/** The label of a chosen kind, shown on the row when nothing else is ('' for "פריט אחר"). */
+export const teamKindLabel = (kind: string) => (kind === 'meeting' || kind === 'planning' ? TEAM_KINDS.find((k) => k.value === kind)!.label : '');
+/** `kind` goes into the write on a new item, and on an edit only when it changed (an old item keeps its exact shape). */
+export function kindToSave(chosen: TeamKind | undefined, existingKind?: string): TeamKind | undefined {
+  if (existingKind === undefined) return chosen || 'manual';
+  return chosen && chosen !== teamKindOf(existingKind) ? chosen : undefined;
+}
+
+// ---------- presence legend (owners and managers vs volunteers) ----------
+/** Volunteers' presence is drawn outlined, owners' and managers' filled (as the old calendar). Unknown people are drawn filled. */
+export const isVolunteer = (role?: string) => role === 'staff';
+/** F4 for managers: whose presence the form registers. Me first, then the active team (owners, managers, volunteers) by name. */
+export function presencePeople<P extends { uid: string; displayName: string; status?: string; role?: string }>(team: P[], me: P): P[] {
+  const others = team.filter((p) => p.uid !== me.uid && (p.status === undefined || p.status === 'active') && (p.role === undefined || ['owner', 'manager', 'staff'].includes(p.role)))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'he'));
+  return [me, ...others];
 }
 
 // ---------- F4 save plan ----------

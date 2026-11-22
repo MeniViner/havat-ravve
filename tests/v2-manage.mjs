@@ -27,7 +27,53 @@ const ds = [
   don('f', 999, iso('2025-12-31')),
   don('g', 50, iso('2026-11-10'), { paymentStatus: 'cancelled', receiptWanted: true }),
 ];
-assert.deepEqual(c.donationTotals(ds, today), { month: 878, year: 4478, toApprove: 1, needReceipt: 2 });
+assert.deepEqual(c.donationTotals(ds, today), { month: 878, year: 4478, toApprove: 1, needReceipt: 2, pending: 180 });
+// N3 chips
+assert.deepEqual(c.donationsIn(ds, 'month', today).map((d) => d.id), ['a', 'b', 'c', 'd', 'g']);
+assert.deepEqual(c.donationsIn(ds, 'approve', today).map((d) => d.id), ['a']);
+assert.deepEqual(c.donationsIn(ds, 'receipt', today).map((d) => d.id), ['a', 'c']);
+assert.deepEqual(c.donationsIn([...ds, don('m', 100, iso('2025-05-01'), { memorial: 'סבא' })], 'memorial', today).map((d) => d.id), ['m']);
+assert.deepEqual(c.donationsIn(ds, 'year', today).map((d) => d.id), ['a', 'b', 'c', 'd', 'e', 'g']);
+assert.equal(c.donationsIn(ds, 'all', today).length, 7);
+// an old unpaid donation still shows under "this month"
+assert.deepEqual(c.donationsIn([don('o', 70, iso('2026-02-01'), { paymentStatus: 'pending' })], 'month', today).map((d) => d.id), ['o']);
+
+// ---- reports extras ----
+const hh = (s) => s.slice(11, 16);
+assert.deepEqual(c.recurringOnTime([{ templateId: 't1', doneAt: '2026-11-19T07:30:00.000Z' }, { templateId: 't1', doneAt: '2026-11-19T09:30:00.000Z' }, { templateId: 't2', doneAt: '2026-11-19T20:00:00.000Z' }, { doneAt: 'x' }],
+  [{ id: 't1', time: '08:00' }, { id: 't2', time: '' }], hh), { total: 3, onTime: 2, pct: 67 });
+assert.deepEqual(c.recurringOnTime([], [], hh), { total: 0, onTime: 0, pct: null });
+{ // record30: the last 30 days of a recurring task (2026-11-22 is a Sunday)
+  const fn = (n) => n.split(' ')[0];
+  const tasks = [
+    { dateKey: '2026-11-22', done: true, doneBy: { name: 'דנה כהן' } },
+    { dateKey: '2026-11-21', done: true, doneBy: { name: 'יוסי לוי' } },
+    { dateKey: '2026-11-15', done: true, doneBy: { name: 'דנה כהן' } },
+    { dateKey: '2026-11-20', done: false, doneBy: null },
+    { dateKey: '2026-10-01', done: true, doneBy: { name: 'ישן' } }, // outside the 30 days
+  ];
+  const every = c.record30([], tasks, '2026-11-22', fn);
+  assert.equal(every.grid.length, 30);
+  assert.equal(every.grid[0].k, '2026-10-24');
+  assert.equal(every.grid[29].k, '2026-11-22');
+  assert.equal(every.expected, 30, 'no days = every day, Saturday included (store.materializeToday)');
+  assert.equal(every.done, 3);
+  assert.deepEqual(every.who, [['דנה', 2], ['יוסי', 1]]);
+  assert.deepEqual(every.grid[29], { k: '2026-11-22', due: true, done: true, by: 'דנה כהן' });
+  assert.deepEqual(every.grid[27], { k: '2026-11-20', due: true, done: false, by: '' });
+  const sundays = c.record30([0], tasks, '2026-11-22', fn);
+  assert.equal(sundays.expected, 5);
+  assert.equal(sundays.grid.find((g) => g.k === '2026-11-21').due, false);
+  assert.equal(sundays.done, 3, 'a done task on a day that is no longer due still counts, capped at the due days');
+  assert.equal(c.record30([6], [], '2026-11-22', fn).expected, 5);
+  assert.equal(c.record30([1], tasks, '2026-11-22', fn).done, 3);
+  assert.deepEqual(c.record30([], [], '2026-11-22', fn).who, []);
+}
+assert.deepEqual(c.peopleStats([{ createdAt: iso('2026-11-02'), status: 'active' }, { createdAt: iso('2026-01-02'), status: 'blocked' }],
+  [{ createdAt: iso('2026-11-03'), status: 'approved' }, { createdAt: iso('2026-11-04'), status: 'new' }, { createdAt: iso('2026-02-04'), status: 'approved' }], '2026-11-01'),
+  { newPeople: 1, visitsApproved: 1, visitsRequested: 2, blocked: 1 });
+assert.deepEqual(c.heardFrom([{ fields: { source: 'חברים' } }, { fields: { source: 'חברים' } }, {}, { fields: { source: 'פייסבוק' } }]),
+  [{ label: 'חברים', value: 2 }, { label: 'לא ענו', value: 1 }, { label: 'פייסבוק', value: 1 }]);
 
 // ---- debts (M10, M8 "עם חוב") ----
 const t = (ownerUid, price, paymentStatus, status = 'valid') => ({ ownerUid, price, paymentStatus, status });
@@ -81,8 +127,8 @@ assert.deepEqual(c.allowedRoles(owner, { uid: 'v', role: 'vendor' }), []);
 assert.equal(c.canBlock(manager, { uid: 'g', role: 'guest' }), true);
 assert.equal(c.canBlock(manager, { uid: 's', role: 'staff' }), false);
 assert.equal(c.canBlock(owner, { uid: 'o', role: 'owner' }), false);
-assert.deepEqual(c.inviteRolesFor(false), ['staff']);
-assert.deepEqual(c.inviteRolesFor(true), ['staff', 'manager', 'owner']);
+assert.deepEqual(c.inviteRolesFor(false), ['guest', 'staff']);
+assert.deepEqual(c.inviteRolesFor(true), ['guest', 'staff', 'manager', 'owner']);
 assert.equal(c.emailOk('name@gmail.com'), true);
 assert.equal(c.emailOk('name@gmail'), false);
 assert.equal(c.isFemale('מיכל ברק'), true);
@@ -91,6 +137,9 @@ assert.equal(c.isFemale('יהודה לוי'), false);
 assert.equal(c.gw('נועה שחר', 'שינה', 'שינתה'), 'שינתה');
 assert.deepEqual(c.letterGroups([{ displayName: 'בני' }, { displayName: 'אורלי' }, { displayName: 'אליה' }]).map(([l, xs]) => [l, xs.length]), [['א', 2], ['ב', 1]]);
 assert.equal(c.personMatches({ displayName: 'דוד כהן', email: 'd@x.com', phone: '052-000-0130', customerNumber: 130 }, '0130'), true);
+// registration answers are searched too
+assert.equal(c.personMatches({ displayName: 'דוד כהן', email: 'd@x.com', phone: '', customerNumber: 130, fields: { city: 'רחובות' } }, 'רחוב'), true);
+assert.equal(c.personMatches({ displayName: 'דוד כהן', email: 'd@x.com', phone: '', customerNumber: 130, fields: { city: 'רחובות' } }, 'חיפה'), false);
 
 // ---- activity lines (N14) ----
 const team = new Set(['demo-u-beni', 'demo-u-noa', 'demo-u-dana']);
@@ -117,6 +166,26 @@ for (const a of ['assigned', 'released', 'deleted', 'unbought', 'found', 'unavai
 assert.equal(c.activityGroup('donation'), 'money');
 assert.equal(c.activityGroup('visit'), 'people');
 assert.equal(c.activityGroup('shopping'), 'tasks');
+// own chips for shopping and settings; tasks no longer shows shopping
+assert.equal(c.inboxIn({ type: 'receipt' }, 'receipts'), true);
+assert.equal(c.inboxIn({ type: 'tab' }, 'stall'), true);
+assert.equal(c.inboxIn({ type: 'tab' }, 'payments'), true);
+assert.equal(c.inboxIn({ type: 'order' }, 'orders'), true);
+assert.equal(c.inboxIn({ type: 'claim' }, 'orders'), true);
+assert.equal(c.inboxIn({ type: 'visit' }, 'orders'), false);
+assert.equal(c.activityInFilter('shopping', 'shopping'), true);
+assert.equal(c.activityInFilter('shopping', 'tasks'), false);
+assert.equal(c.activityInFilter('task', 'tasks'), true);
+assert.equal(c.activityInFilter('settings', 'settings'), true);
+assert.equal(c.activityInFilter('settings', 'all'), true);
+assert.equal(c.activityInFilter('donation', 'money'), true);
+// one event's history chips
+assert.equal(c.eventActivityIn({ kind: 'ticket', action: 'ordered' }, 'orders'), true);
+assert.equal(c.eventActivityIn({ kind: 'ticket', action: 'cancelled' }, 'orders'), true);
+assert.equal(c.eventActivityIn({ kind: 'ticket', action: 'claimed' }, 'payments'), true);
+assert.equal(c.eventActivityIn({ kind: 'tab', action: 'paid' }, 'stall'), true);
+assert.equal(c.eventActivityIn({ kind: 'event', action: 'updated' }, 'edits'), true);
+assert.equal(c.eventActivityIn({ kind: 'ticket', action: 'ordered' }, 'edits'), false);
 
 // ---- settings (N6, N7, G1-G5): stays compatible with what the guest flow reads ----
 const pf = c.paymentForm({ bit: '', paybox: 'payboxapp.page.link/ravve', cash: true, note: '', bitNumber: '050-000-0000' });

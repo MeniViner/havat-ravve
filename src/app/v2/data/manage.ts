@@ -39,6 +39,7 @@ export const contactMoreOf = (s: ManageSettings) => ({ email: '', address: '', i
 
 // ---------- reads ----------
 export const useActivityAll = (enabled = true, max = 400) => useActivityByKind('all', enabled, max);
+export { useActivityByKind };
 /** Tickets created since a date (reports). */
 export const useTicketsSince = (fromKey: string, enabled = true) =>
   useList<Ticket>('tickets', { where: [['createdAt', '>=', fromKey + 'T00:00:00.000Z']], orderBy: [['createdAt', 'desc']], limit: 3000 }, enabled);
@@ -120,7 +121,7 @@ export async function changeRole(actor: Actor, p: Profile, role: Role) {
   }
 }
 export const toggleBlock = (actor: Actor, p: Profile) => setUserRole(actor, p, p.role, p.status === 'blocked' ? 'active' : 'blocked');
-export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role']) => inviteByEmail(actor, email, role);
+export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role'] | 'guest') => inviteByEmail(actor, email, role);
 export const cancelInvite = (email: string) => removeRoleInvite(email);
 
 // ---------- deletes (each behind the ConfirmSheet) ----------

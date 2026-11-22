@@ -4,9 +4,11 @@ import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
 import {
   Avatar, BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, PageTitle, Row, SearchField,
-  Segmented, Tag, TopBar, ConfirmSheet,
+  Segmented, Tag, TopBar, ConfirmSheet, TextAreaField,
 } from '../../kit';
-import { MONTHS, money, relDay, dayName, ddmm, keyOf } from '../../format';
+import { MONTHS, money, relDay, dayName, ddmm, keyOf, dayTime, firstName } from '../../format';
+import { setUserNotes } from '../../../store';
+import { useActivityForUser, ACTION_LABELS } from '../../../activity';
 import { nowMs } from '../../../clock';
 import { contactPhoneOk } from '../../../data';
 import { ROLE_LABELS } from '../../../types';
@@ -14,22 +16,24 @@ import type { Profile, Role, Ticket } from '../../../types';
 import {
   usePeople, usePerson, useRoleInvites, useOpenTickets, useOpenTabs, useMyTickets, useMyVisits, useMyDonations, useMyTabs,
   debtsByPerson, letterGroups, personMatches, isTeam, isFemale, gw, roleWord, allowedRoles, canBlock, inviteRolesFor, emailOk,
-  changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson,
+  changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson, type InviteRole,
 } from '../../data/manage';
 import { lnk, ExcelButton, Loading, NotFound } from './shared';
 
 // ---------- M8 ----------
-type PFilter = 'all' | 'team' | 'guests' | 'debt';
+type PFilter = 'all' | 'team' | 'guests' | 'debt' | 'blocked';
 export function PeopleScreen({ ctx, params }: ScreenProps) {
   const all = usePeople(true);
   const people = useMemo(() => all.items.filter((p) => p.role !== 'vendor'), [all.items]);
   const debts = debtsByPerson(useOpenTickets(true).items, useOpenTabs(true).items);
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt'] as string[]).includes(params.filter) ? (params.filter as PFilter) : 'all');
+  const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt', 'blocked'] as string[]).includes(params.filter) ? (params.filter as PFilter) : 'all');
+  const invites = useRoleInvites(true).items;
   const team = people.filter(isTeam);
   const withDebt = people.filter((p) => debts.has(p.uid));
+  const blockedN = people.filter((p) => p.status === 'blocked').length;
   const list = people
-    .filter((p) => (filter === 'team' ? isTeam(p) : filter === 'guests' ? p.role === 'guest' : filter === 'debt' ? debts.has(p.uid) : true))
+    .filter((p) => (filter === 'team' ? isTeam(p) : filter === 'guests' ? p.role === 'guest' : filter === 'debt' ? debts.has(p.uid) : filter === 'blocked' ? p.status === 'blocked' : true))
     .filter((p) => personMatches(p, q));
   const groups = letterGroups(list);
   const fields = ctx.settings.registrationFields;
@@ -55,7 +59,11 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
         <Chip selected={filter === 'team'} onClick={() => setFilter('team')}>צוות · {team.length}</Chip>
         <Chip selected={filter === 'guests'} onClick={() => setFilter('guests')}>אורחים</Chip>
         <Chip selected={filter === 'debt'} onClick={() => setFilter('debt')}>{withDebt.length ? `עם חוב · ${withDebt.length}` : 'עם חוב'}</Chip>
+        {(blockedN > 0 || filter === 'blocked') && <Chip selected={filter === 'blocked'} onClick={() => setFilter('blocked')}>{blockedN ? `חסומים · ${blockedN}` : 'חסומים'}</Chip>}
       </ChipRow>
+      {invites.length > 0 && !q && filter === 'all' && (
+        <ListCard aria-label="הוגדרו ועוד לא נכנסו"><Row minHeight={50} {...lnk('/manage/people/invite')} title={<span style={{ fontWeight: 500 }}>{invites.length} כתובות הוגדרו ועוד לא נכנסו</span>} /></ListCard>
+      )}
       {groups.length ? (
         <ListCard aria-label="אנשים">
           {groups.flatMap(([letter, ps]) => [
@@ -83,6 +91,8 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
   const run = useRun();
   const ext = useExternal();
   const [askDelete, setAskDelete] = useState(false);
+  const [notes, setNotes] = useState<string | null>(null);
+  const log = useActivityForUser(uid, true).items;
   const remove = useRemove();
   if (loading) return <Loading back={{ label: 'אנשים', path: '/manage/people' }} />;
   if (!p) return <NotFound back={{ label: 'אנשים', path: '/manage/people' }} title="האדם לא נמצא" />;
@@ -150,6 +160,14 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
         {rows.length ? rows.map((r) => <Row key={r.key} {...lnk(r.path)} title={r.title} tags={r.tag} meta={r.meta} />)
           : <Row title={<span className="k-soft" style={{ fontWeight: 400 }}>עוד לא היה כלום</span>} />}
       </ListCard>
+      <TextAreaField label="הערות מנהלים" hint="רק מנהלים רואים" placeholder="מה כדאי לזכור על האדם הזה" height={80} maxLength={2000}
+        value={notes ?? p.notes ?? ''} onChange={(e) => setNotes(e.target.value)}
+        onBlur={() => { if (notes !== null && notes !== (p.notes || '')) run(() => setUserNotes(p, notes), 'נשמר').then((ok) => { if (ok) setNotes(null); }); }} />
+      <ListCard title="היסטוריה" count={log.length || undefined}>
+        {log.map((a) => <Row key={a.id} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action}: {a.text}</span>} meta={`${dayTime(a.at)}${a.by.uid !== p.uid ? ` · ${firstName(a.by.name)}` : ''}`} />)}
+        {(p.log || []).slice().reverse().map((l, i) => <Row key={'l' + i} title={<span style={{ fontWeight: 500 }}>{l.text}</span>} meta={`${dayTime(l.at)} · ${firstName(l.by.name)}`} />)}
+        <Row title={<span style={{ fontWeight: 500 }}>{gw(p.displayName, 'נרשם', 'נרשמה')}</span>} meta={`${ddmm(p.createdAt)}.${keyOf(p.createdAt).slice(0, 4)}`} />
+      </ListCard>
       {canDeletePerson(me, p) && <div><Button variant="danger" onClick={() => setAskDelete(true)}>{`מחיקת ${p.displayName}`}</Button></div>}
       <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title={`למחוק את ${p.displayName}?`}
         text={`${gw(p.displayName, 'הוא יימחק', 'היא תימחק')} מהאפליקציה. הכרטיסים, התרומות והביקורים נשארים. ${gw(p.displayName, 'אם ייכנס', 'אם תיכנס')} שוב עם אותו חשבון גוגל, ${gw(p.displayName, 'יתחיל', 'תתחיל')} מההתחלה כמו ${gw(p.displayName, 'חדש', 'חדשה')}.`}
@@ -168,7 +186,7 @@ export function InviteScreen({ ctx }: ScreenProps) {
   const people = usePeople(true).items;
   const allowed = inviteRolesFor(ctx.owner);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'staff' | 'manager' | 'owner'>('staff');
+  const [role, setRole] = useState<InviteRole>('staff');
   const [error, setError] = useState('');
   const run = useRun();
   const existing = people.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase());
@@ -176,7 +194,8 @@ export function InviteScreen({ ctx }: ScreenProps) {
     const e = email.trim().toLowerCase();
     if (!emailOk(e)) { setError('כתובת מייל לא תקינה'); return; }
     if (existing) { setError(''); go(`/manage/people/${existing.uid}`); return; }
-    if (await run(() => inviteRole(ctx.actor, e, role), `${e} ${role === 'owner' ? 'יקבל תפקיד בעלים' : `יקבל תפקיד ${roleWord(role, false)}`} בכניסה הראשונה`)) { setEmail(''); setError(''); }
+    const ok = role === 'guest' ? 'הוסר. יהיה אורח כשייכנס.' : `${e} ${role === 'owner' ? 'יקבל תפקיד בעלים' : `יקבל תפקיד ${roleWord(role, false)}`} בכניסה הראשונה`;
+    if (await run(() => inviteRole(ctx.actor, e, role), ok)) { setEmail(''); setError(''); }
   };
   return (
     <AppScreen variant="form" gap={16} bar={<BottomBar><Button size="bar" grow onClick={save}>{existing ? 'פתיחת הכרטיס שלו' : 'שמירת התפקיד'}</Button></BottomBar>}>
@@ -187,7 +206,7 @@ export function InviteScreen({ ctx }: ScreenProps) {
       <div className="manage-group">
         <span className="manage-group__label">איזה תפקיד</span>
         <Segmented className="manage-seg manage-seg44" label="תפקיד" value={role} onChange={setRole}
-          options={(['staff', 'manager', 'owner'] as const).map((r) => ({ value: r, label: roleWord(r, false), disabled: !allowed.includes(r) }))} />
+          options={(['guest', 'staff', 'manager', 'owner'] as const).map((r) => ({ value: r, label: roleWord(r, false), disabled: !allowed.includes(r) }))} />
       </div>
       {!ctx.owner && <span className="manage-hint">רק בעלים יכולים למנות מנהלים ובעלים.</span>}
       {invites.length > 0 && (

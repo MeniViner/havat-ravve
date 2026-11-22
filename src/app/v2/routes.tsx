@@ -85,7 +85,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/events/:id/products/:pid', events.ProductForm, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/products', events.ProductsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/tabs/:tid', events.TabScreen, 'manage', 'page', { manager: true }),
-  R('/manage/events/:id/tabs', eventday.StallTabs, 'manage', 'page', { manager: true }),
+  R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/debts', events.DebtsScreen, 'manage', 'tab', { manager: true }),
@@ -110,8 +110,8 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/settings/messages', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/questions', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/managers', manage.SettingsPage, 'manage', 'tab', { manager: true, owner: true }),
-  R('/manage/settings/payments', manage.SettingsPage, 'manage', 'page', { manager: true, owner: true }),
-  R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true, owner: true }),
+  R('/manage/settings/payments', manage.SettingsPage, 'manage', 'page', { manager: true }),
+  R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/:page', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/activity', manage.ActivityScreen, 'manage', 'tab', { manager: true }),
   R('/manage/recurring', tasks.RecurringList, 'tasks', 'tab', { manager: true }),
@@ -139,16 +139,21 @@ export const VENDOR_ROUTES: Route[] = [
   R('/install', system.InstallScreen, null, 'page'),
 ];
 
+/** Guest pages a vendor may open (rendered by legacy.teamFallback). */
+export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact'];
+
 /** Old paths (bookmarks, notification links stored in Firestore, the Worker) -> new paths. */
 export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['role']): string | null {
   let m: Record<string, string> | null;
   // the guest account page is for guests only: signing in from it (or a bookmark) lands the team and vendors on their profile
   if (route === '/me/account') return '/me';
-  if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/notifications', '/install'].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
+  // vendors: their own world, plus the terms, account deletion and contact pages their profile links to (legacy fallback)
+  if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/notifications', '/install', ...VENDOR_LEGACY].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
   if (route === '/') return '/tasks';
   if (route === '/more') return '/me';
-  if (route === '/tasks/new') return '/new';
-  if (route === '/shopping/new') return '/new?kind=shopping';
+  // the query comes along: ?event=<id> (an event's preparations) and the old ?c=<category> (giveaway is the v2 list "wish")
+  if (route === '/tasks/new') return search.get('event') ? `/new?event=${encodeURIComponent(search.get('event')!)}` : '/new';
+  if (route === '/shopping/new') { const c = search.get('c') || ''; const list = c === 'giveaway' ? 'wish' : ['super', 'building', 'online'].includes(c) ? c : ''; return list ? `/new?kind=shopping&list=${list}` : '/new?kind=shopping'; }
   if (route === '/history' || route === '/history/tasks') return '/tasks/history';
   if (route === '/history/shopping') return '/shopping/history';
   if (route === '/calendar' || route === '/manage/calendar') return '/farm/calendar';
@@ -171,8 +176,7 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
   if ((m = match(route, '/manage/events/:id/entry'))) return `/manage/events/${m.id}?tab=day`;
   if ((m = match(route, '/manage/events/:id/report'))) return `/manage/events/${m.id}?tab=summary`;
   if ((m = match(route, '/manage/events/:id/activity'))) return `/manage/activity?event=${m.id}`;
-  if (route === '/manage/vendors/new') return '/manage/vendors?new=1';
-  void search;
+  if (route === '/manage/vendors/new') return '/manage/vendors?new=1' + (search.get('event') ? `&event=${encodeURIComponent(search.get('event')!)}` : '');
   return null;
 }
 

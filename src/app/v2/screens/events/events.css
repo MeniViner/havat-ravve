@@ -117,3 +117,14 @@
 @media (min-width: 720px) {
   .events-sheet { max-width: 560px; }
 }
+
+/* payment confirmation (orders, donations, stall accounts) */
+.events-payconfirm { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.events-payconfirm__line { font-size: 14px; color: var(--soft); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; overflow-wrap: anywhere; }
+/* N9 order arrows and units sold */
+.events-prodrow__move { display: flex; flex-direction: column; margin-inline-start: -10px; flex: none; }
+.events-prodrow__move .k-iconbtn { width: 32px; height: 26px; }
+.events-up svg { transform: rotate(180deg); }
+.events-prodrow__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.events-itemrow__name { display: flex; flex-direction: column; }
+.events-itemrow__meta { font-size: 13px; color: var(--soft); }

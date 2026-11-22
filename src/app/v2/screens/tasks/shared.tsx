@@ -9,7 +9,7 @@ import { compressPhoto } from '../../../store';
 import { storePhoto, type FileKind } from '../../../upload';
 import type { Actor, Task } from '../../../types';
 import { useDemo } from '../../../demo/store';
-import { rowMeta, stripPlace, setDone, takeTask, takenText, playTakenInDemo, type RowView, type ProfileOf } from '../../data/tasks';
+import { rowMeta, stripPlace, setDone, takeTask, releaseTask, takenText, playTakenInDemo, isOverdue, routineTime, type RowView, type ProfileOf } from '../../data/tasks';
 
 /** Props for an in-app link: a real href (long-press, new tab) that navigates inside the SPA. */
 export const to = (path: string) => ({
@@ -62,7 +62,10 @@ export function useTaskActions() {
     } catch (e) { fail(e); }
   };
   const undo = (t: Task) => setDone(ctx.actor, t, false).catch(fail);
-  const take = (t: Task) => takeTask(ctx.actor, t).catch(async (e: unknown) => {
+  // the old take toast: "עליך: …" with ביטול (back to free)
+  const take = (t: Task) => takeTask(ctx.actor, t).then(() => {
+    toast.show({ text: `עליך: ${t.title}`, actions: [{ label: 'ביטול', onClick: () => { releaseTask(ctx.actor, { ...t, assignee: ctx.actor }, ctx.manager).catch(fail); } }] });
+  }, async (e: unknown) => {
     let by = (e as { by?: Actor }).by;
     // demo refuseNext refuses before anyone is known: play out a teammate (Noa) taking it first, as X1 shows
     if (!by && demo.on && isConflict(e)) {
@@ -84,14 +87,14 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   const tags = <>
     {t.urgent && !t.done && <Tag tone="urgent">דחוף</Tag>}
     {mine && view !== 'mine' && <Tag tone="outline">שלך</Tag>}
-    {t.managersOnly && view === 'mine' && <Tag tone="warm">מנהלים</Tag>}
+    {t.managersOnly && <Tag tone="warm">מנהלים</Tag>}
     {extraTags}
   </>;
   return (
-    <Row
+    <Row className={isOverdue(t, ctx.today) ? 'tasks-row--late' : undefined}
       check={<CheckButton checked={t.done} onChange={(v) => (v ? a.done(t, placeName) : a.undo(t))} label={`סימון בוצע: ${title}`} />}
       title={title} tags={tags} done={t.done}
-      meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs(), profileOf })}
+      meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs(), profileOf, time: routineTime(t, ctx.templates) })}
       {...to(`/tasks/${t.id}`)} chevron={false}
       actions={!t.done && !t.assignee ? <Button variant="outline" onClick={() => a.take(t)}>לקחת</Button> : undefined}
     />

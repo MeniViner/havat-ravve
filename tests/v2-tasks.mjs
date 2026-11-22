@@ -434,4 +434,76 @@ await test('places: accuracy and photo only when they change', async () => {
   assert.deepEqual(calls[0][3], { name: 'b', lat: 2, lng: 2 });
 });
 
+await test('restored: stale routine, overdue group, routine "עד HH:MM", no "ביקש" on routine rows', () => {
+  const stale = task({ id: 'tpl_2026-11-18', templateId: 'tpl', dateKey: '2026-11-18', dueDate: '2026-11-18' });
+  const todayInst = task({ id: 'tpl_2026-11-19', templateId: 'tpl', dateKey: TODAY, dueDate: TODAY });
+  assert.equal(T.isStaleRoutine(stale, TODAY), true);
+  assert.equal(T.isStaleRoutine(todayInst, TODAY), false);
+  assert.equal(T.isStaleRoutine({ ...stale, done: true }, TODAY), false, 'a done one is history, not clutter');
+  assert.equal(T.isStaleRoutine(task({ dueDate: '2026-11-10' }), TODAY), false, 'an ordinary overdue task stays');
+  assert.equal(T.isOverdue(task({ dueDate: '2026-11-18' }), TODAY), true);
+  assert.equal(T.isOverdue(task({ dueDate: TODAY }), TODAY), false);
+  assert.equal(T.isOverdue(task({ dueDate: '2026-11-18', done: true }), TODAY), false);
+  assert.equal(T.routineTime(todayInst, [{ id: 'tpl', time: '07:00' }]), '07:00');
+  assert.equal(T.routineTime(task({}), [{ id: 'tpl', time: '07:00' }]), '');
+  const o = (view, time) => ({ uid: yoav.uid, view, today: TODAY, now: NOW, time });
+  // routine: the template's hour instead of a date, never "ביקש"
+  assert.equal(T.rowMeta(todayInst, o('place', '07:00')), 'פנויה · עד 07:00');
+  assert.equal(T.rowMeta({ ...todayInst, assignee: yoav }, o('mine', '07:00')), 'בלי מקום · עד 07:00');
+  assert.equal(T.rowMeta({ ...todayInst, assignee: yoav }, o('place', '07:00')), 'עליך · עד 07:00');
+  assert.equal(T.rowMeta({ ...todayInst, assignee: noa }, o('place', '07:00')), 'נועה · עד 07:00');
+  assert.equal(T.rowMeta({ ...todayInst, assignee: noa }, o('place')), 'נועה');
+  // late rows lead with the date
+  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', location: loc(green) }), o('late')), 'אתמול · חממה · פנויה');
+  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', assignee: yoav }), o('late')), 'אתמול · עליך');
+  // groupByTime with late: "באיחור" first, today without the overdue ones
+  const ts = [task({ id: 'od', dueDate: '2026-11-17' }), task({ id: 'td', dueDate: TODAY }), task({ id: 'none' })];
+  const g = T.groupByTime(ts, yoav.uid, TODAY, true);
+  assert.deepEqual(g.map((x) => x.title), ['באיחור', 'להיום', 'בלי תאריך']);
+  assert.deepEqual(g[0].rows.map((t) => t.id), ['od']);
+  assert.deepEqual(T.groupByTime(ts, yoav.uid, TODAY).map((x) => x.title), ['להיום', 'בלי תאריך'], 'default keeps the T2 grouping');
+  const [late, rest] = T.splitOverdue(ts, yoav.uid, TODAY);
+  assert.deepEqual(late.map((t) => t.id), ['od']); assert.deepEqual(rest.map((t) => t.id).sort(), ['none', 'td']);
+});
+
+await test('restored: edit and assign permissions follow the rules', () => {
+  const mineCreated = task({ createdBy: yoav });
+  const routine = task({ createdBy: yoav, templateId: 'tpl', dateKey: TODAY });
+  assert.equal(T.canEditTask(mineCreated, yoav.uid, false), true);
+  assert.equal(T.canEditTask(routine, yoav.uid, false), false, 'a routine instance is the manager\'s');
+  assert.equal(T.canEditTask(task({}), yoav.uid, false), false);
+  assert.equal(T.canEditTask(routine, beni.uid, true), true);
+  // a volunteer who did not create it
+  const free = task({});
+  assert.equal(T.canAssignTo(free, yoav.uid, false, yoav.uid), true);
+  assert.equal(T.canAssignTo(free, yoav.uid, false, noa.uid), false);
+  assert.equal(T.canAssignTo({ ...free, done: true }, yoav.uid, false, yoav.uid), false);
+  const onMe = task({ assignee: yoav });
+  assert.equal(T.canAssignTo(onMe, yoav.uid, false, noa.uid), true);
+  assert.equal(T.canAssignTo(onMe, yoav.uid, false, null), true);
+  const onNoa = task({ assignee: noa });
+  assert.equal(T.canAssignTo(onNoa, yoav.uid, false, yoav.uid), false);
+  assert.equal(T.canAssignTo(onNoa, yoav.uid, false, null), false);
+  assert.equal(T.canAssignTo(onNoa, yoav.uid, false, noa.uid), true, 'no change is always fine');
+  // manager or creator: anyone
+  assert.equal(T.canAssignTo(onNoa, beni.uid, true, yoav.uid), true);
+  assert.equal(T.canAssignTo(task({ assignee: noa, createdBy: yoav }), yoav.uid, false, null), true);
+  assert.equal(T.canMoveOthers(onNoa, yoav.uid, false), false);
+  assert.equal(T.canMoveOthers(onNoa, beni.uid, true), true);
+});
+
+await test('restored: history search reads the done note; done details write only what changed', async () => {
+  const t = task({ id: 'dn', done: true, doneBy: yoav, doneAt: ago(1), doneNote: 'חסר מברג פיליפס' });
+  assert.equal(T.matchesSearch(t, 'מברג'), true);
+  calls.length = 0;
+  await T.setDoneDetails(yoav, t, { doneNote: '  הכל במקום  ' });
+  assert.equal(calls[0][0], 'update'); assert.deepEqual(Object.keys(calls[0][3]).sort(), ['doneNote', 'updatedAt']);
+  assert.equal(calls[0][3].doneNote, 'הכל במקום');
+  assert.equal(calls[1][3], 'note');
+  calls.length = 0;
+  await T.setDoneDetails(yoav, t, { donePhoto: 'https://x/p.jpg' });
+  assert.deepEqual(Object.keys(calls[0][3]).sort(), ['donePhoto', 'updatedAt']);
+  assert.equal(calls[1][3], 'photo');
+});
+
 console.log(`\n${n} tests passed`);

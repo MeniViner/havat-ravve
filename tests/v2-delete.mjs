@@ -184,9 +184,10 @@ await step('manager', async () => {
 // ---------- staff: no delete on manager items ----------
 await step('staff', async () => {
   const s = await session('staff');
-  await s.go('/tasks/demo-t-paint/edit'); log(await s.page.getByLabel('מה צריך לעשות').inputValue() === 'לצבוע את דלת המחסן' && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no delete on a task someone else created');
+  // as in the live app, only a manager or the creator edits a task: staff opening someone else's edit link land back on the task
+  await s.go('/tasks/demo-t-paint/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByLabel('מה צריך לעשות').count()) && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no edit or delete on a task someone else created');
   await s.go('/places/demo-p-pots'); log(!(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'staff: no place delete');
-  if (today) { await s.go(`/tasks/demo-tpl-goats_${today}/edit`); log(await s.page.getByLabel('מה צריך לעשות').inputValue() !== '' && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no delete on a recurring day'); }
+  if (today) { await s.go(`/tasks/demo-tpl-goats_${today}/edit`); await s.page.waitForTimeout(300); log(!(await s.page.getByLabel('מה צריך לעשות').count()) && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no edit or delete on a recurring day'); }
   for (const p of ['/manage/visits/demo-vi-photo', '/manage/people/demo-u-david', '/manage/vendors/demo-v-honey?edit=1', '/manage/donations/demo-d-h-jun']) {
     await s.go(p); log(!(await s.page.getByRole('button', { name: /^מחיקה$|^מחיקת / }).count()), `staff: no delete on ${p}`);
   }

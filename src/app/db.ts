@@ -196,11 +196,22 @@ export type Tx = {
   set(col: string, id: string, data: Record<string, unknown>): void;
   update(col: string, id: string, patch: Record<string, unknown>): void;
 };
+export type TransactOpts = {
+  /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
+   *  this phone as an ordinary queued write, as when offline, instead of failing. A server that answers still refuses a second entry. */
+  queue?: boolean;
+};
+/** How long a queued-on-failure transaction waits for the server before it saves on the phone (tests shorten it). */
+export const txTiming = { waitMs: 4000 };
+const unreachable = (e: unknown) => ['unavailable', 'deadline-exceeded'].includes((e as { code?: string })?.code || '');
+/** The transaction gave up waiting and the phone saved the write itself: the late attempt must not commit too. */
+class Abandoned extends Error {}
 /** Reads and writes that must see the server's current copy: "take only if still free".
- *  Throw ConflictError inside `fn` when the precondition fails.
+ *  Throw ConflictError inside `fn` when the precondition fails. A refusal by the rules is reported as such ("אין הרשאה"), not as X1.
  *  Demo: runs on the local copy (Z3 "refused write" makes the next one fail). Offline: a transaction cannot reach the server,
- *  so it runs on the cached copy as an ordinary write; the rules refuse a late conflicting write and the shell shows X1. */
-export async function transact<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+ *  so it runs on the cached copy as an ordinary write; the rules refuse a late conflicting write and the shell shows X1.
+ *  `queue`: the same when the server cannot be reached in time (TransactOpts). */
+export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = {}): Promise<T> {
   if (demoOnly()) {
     if (takeRefusal()) throw new ConflictError();
     const ops: (() => void)[] = [];
@@ -212,34 +223,53 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     ops.forEach((o) => o());
     return out;
   }
-  if (!navigator.onLine || getDemoStates().offline) {
-    const ops: { op: 'set' | 'update'; col: string; id: string; data: Record<string, unknown> }[] = [];
-    const cache = new Map<string, unknown>();
-    const out = await fn({
-      get: async (col, id) => { const k = `${col}/${id}`; if (!cache.has(k)) cache.set(k, await readCached(col, id)); return cache.get(k) as never; },
-      set: (col, id, data) => ops.push({ op: 'set', col, id, data }),
-      update: (col, id, patch) => ops.push({ op: 'update', col, id, data: patch }),
-    });
-    await write.batch(ops);
-    return out;
-  }
+  if (!navigator.onLine || getDemoStates().offline) return queued(fn);
   setSync({ pending: sync.pending + 1 });
-  try {
-    return await runTransaction(db, async (t) => {
-      const ops: ((t: import('firebase/firestore').Transaction) => void)[] = [];
-      const out = await fn({
-        get: async (col, id) => { const snap = await t.get(real(col, id)); return snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as never) : null; },
-        set: (col, id, data) => ops.push((tt) => tt.set(real(col, id), toFirestore(data))),
-        update: (col, id, patch) => ops.push((tt) => tt.update(real(col, id), toFirestore(patch))),
-      });
-      ops.forEach((o) => o(t));
-      return out;
+  let abandoned = false, committing = false;
+  const attempt = runTransaction(db, async (t) => {
+    const ops: ((t: import('firebase/firestore').Transaction) => void)[] = [];
+    const out = await fn({
+      get: async (col, id) => { const snap = await t.get(real(col, id)); return snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as never) : null; },
+      set: (col, id, data) => ops.push((tt) => tt.set(real(col, id), toFirestore(data))),
+      update: (col, id, patch) => ops.push((tt) => tt.update(real(col, id), toFirestore(patch))),
     });
+    if (abandoned) throw new Abandoned();
+    committing = true; // from here the attempt may still land after the phone gave up waiting
+    ops.forEach((o) => o(t));
+    return out;
+  });
+  try {
+    if (!o.queue) return await attempt;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), txTiming.waitMs); });
+    const first = await Promise.race([attempt.then((v) => ({ v })), late]).finally(() => clearTimeout(timer));
+    if (first !== 'late') return first.v;
+    abandoned = true;
+    return await queued(fn, committing ? attempt : undefined);
   } catch (e) {
     if (isConflict(e)) throw e;
-    if ((e as { code?: string })?.code === 'permission-denied') throw new ConflictError();
+    if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn); }
     throw new Error(readError(e));
   } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
+}
+/** `fn` on the cached copy, its writes as one queued batch (Firestore sends it when the network is back).
+ *  `attempt`: the transaction this replaces, when its commit was already on the way. If it still landed, the batch repeats it
+ *  and the rules refuse the repeat (the scan id is fixed per entry), so that refusal is not a failure the shell should show. */
+async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>): Promise<T> {
+  const ops: { op: 'set' | 'update'; col: string; id: string; data: Record<string, unknown> }[] = [];
+  const cache = new Map<string, unknown>();
+  const out = await fn({
+    get: async (col, id) => { const k = `${col}/${id}`; if (!cache.has(k)) cache.set(k, await readCached(col, id)); return cache.get(k) as never; },
+    set: (col, id, data) => ops.push({ op: 'set', col, id, data }),
+    update: (col, id, patch) => ops.push({ op: 'update', col, id, data: patch }),
+  });
+  if (!ops.length) return out;
+  const refs = ops.map((x) => real(x.col, x.id));
+  const b = writeBatch(db);
+  ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], toFirestore(x.data)) : b.update(refs[i], toFirestore(x.data)); });
+  const commit = b.commit();
+  await settle(attempt ? commit.catch(async (e) => { if (await attempt.then(() => true, () => false)) return; throw e; }) : commit);
+  return out;
 }
 async function readCached(col: string, id: string): Promise<Row | null> {
   const { getDocFromCache } = await import('firebase/firestore');

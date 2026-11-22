@@ -113,6 +113,9 @@ assert.deepEqual(S.suggestions(hist, [], 'super').map((s) => s.title), ['לחם'
 assert.deepEqual(S.suggestions(hist, [item({ title: ' לחם ' })], 'super').map((s) => s.title), ['ביצים', 'מזון לעיזים', 'חלב 3%'], 'an open item is not suggested (spaces ignored)');
 assert.equal(S.suggestions(hist, [], 'super').find((s) => s.title === 'ביצים').qty, '2 תבניות', 'the latest qty comes along');
 assert.deepEqual(S.suggestions(hist, [], 'building').map((s) => s.title), ['מלט']);
+assert.equal(S.SUGGESTED, 5);
+assert.deepEqual(S.suggestions(hist, [], 'super', S.SUGGESTED).map((s) => s.title), ['לחם', 'ביצים', 'מזון לעיזים', 'חלב 3%'], 'up to five');
+assert.deepEqual(S.suggestions(hist, [], 'giveaway', S.SUGGESTED).map((s) => s.title), ['עגלת יד', 'שולחן'], 'the מחפשים list has its usual items too');
 
 // ---- trips
 const H = 3600_000;
@@ -164,7 +167,8 @@ assert.equal(S.weekStartKey('2026-11-15'), '2026-11-15', 'Sunday is its own week
 assert.equal(S.weekStartKey('2026-11-01'), '2026-11-01');
 assert.equal(S.weekStartKey('2026-03-03'), '2026-03-01');
 const groups = S.historyGroups(hist, 'all', '', today);
-assert.deepEqual(groups.map((g) => [g.title, g.items.length]), [['היום', 2], ['השבוע', 4], ['קודם', 2]], 'giveaway is not in the history');
+assert.deepEqual(groups.map((g) => [g.title, g.items.length]), [['היום', 2], ['השבוע', 4], ['קודם', 4]], 'found (giveaway) items are in the history');
+assert.deepEqual(S.historyGroups(hist, 'giveaway', '', today).flatMap((g) => g.items.map((i) => i.title)), ['עגלת יד', 'שולחן'], 'the מחפשים filter');
 assert.deepEqual(S.historyGroups(hist, 'building', '', today).map((g) => g.items.map((i) => i.title)), [['מלט']]);
 assert.deepEqual(S.historyGroups(hist, 'all', 'דנה', today).flatMap((g) => g.items.map((i) => i.title)), ['מלט'], 'search by who bought');
 assert.deepEqual(S.historyGroups(hist, 'all', 'לחם', today).flatMap((g) => g.items.length), [1, 1, 1]);

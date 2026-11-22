@@ -2,10 +2,12 @@
 import { useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
-import { TopBar, Hero, ListCard, SectionHeader, Tag, Button, BottomBar, Sheet, Field, ConfirmSheet } from '../../kit';
+import { TopBar, Hero, ListCard, SectionHeader, Tag, Button, BottomBar, Sheet, Field, ConfirmSheet, Row } from '../../kit';
 import { useEvent, useTab, useNotifications, setTabStatus, removeTabItem } from '../../../data';
 import { useClockVersion } from '../../../clock';
-import { money, ddmm, ago } from '../../format';
+import { money, ddmm, ago, hhmm, firstName, dayTime } from '../../format';
+import { useActivityForEvent, ACTION_LABELS } from '../../../activity';
+import { PayConfirm } from './payconfirm';
 import { approveTab, stampReminder, tabClaimedAt, deleteTab } from '../../data/events';
 import { tabLines, tabUnits, itemsWord, recordedLine, fillDebtTemplate } from './logic';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, useRun } from './shared';
@@ -29,6 +31,9 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
   const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   const lines = tabLines(t.items);
+  const history = useActivityForEvent(t.eventId, ctx.manager).items.filter((a) => a.refId === t.id);
+  /** "17:05 · נועה, 17:40 · אורי": when and by whom each unit of a line was recorded. */
+  const whoWhen = (key: string) => [...new Set(t.items.filter((i) => (i.productId || i.name) === key).map((i) => `${hhmm(i.at)} · ${firstName(i.by?.name || '')}`))].join(', ');
   const owing = t.status === 'open' || t.status === 'claimed';
   const undo = (prev: TabStatus) => [{ label: 'ביטול', onClick: () => { setTabStatus(ctx.actor, t, prev); } }];
 
@@ -80,12 +85,12 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
           <li key={l.key} className="events-itemrow">
             {owing ? (
               <button type="button" className="events-itemrow__hit" onClick={() => setLine(l.index)}>
-                <span className="events-itemrow__name">{l.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                <span className="events-itemrow__name">{l.name}{l.qty > 1 ? ` ×${l.qty}` : ''}<span className="events-itemrow__meta">{whoWhen(l.key)}</span></span>
                 <b className="events-value">{money(l.amount)}</b>
               </button>
             ) : (
               <>
-                <span className="events-itemrow__name">{l.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                <span className="events-itemrow__name">{l.name}{l.qty > 1 ? ` ×${l.qty}` : ''}<span className="events-itemrow__meta">{whoWhen(l.key)}</span></span>
                 <b className="events-value">{money(l.amount)}</b>
               </>
             )}
@@ -100,6 +105,15 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
           <Button variant="outline" size="tall" icon="phone" onClick={() => open(telUrl(t.guestPhone))}>התקשרות</Button>
         </ButtonRow>
       )}
+      {t.guestUid && <div><Button variant="quiet" onClick={() => go(`/manage/people/${t.guestUid}`)}>התיק של {firstName(t.guestName)}</Button></div>}
+      {t.total > 0 && t.status !== 'waived' && (
+        <PayConfirm collection="tabs" ids={[t.id]} uid={t.guestUid} name={t.guestName} phone={t.guestPhone} amount={t.total} event={t.eventTitle}
+          purpose={`חשבון הדוכן באירוע ${t.eventTitle}`} paid={t.status === 'paid'} confirmation={t.paymentConfirmation} emailJob={'tab_' + t.id} />
+      )}
+      <ListCard title="תשלום והיסטוריה">
+        {history.map((a) => <Row key={a.id} minHeight={50} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={`${a.text} · ${dayTime(a.at)}`} />)}
+        {!history.length && <Row minHeight={50} title={<span className="k-soft" style={{ fontWeight: 400 }}>נפתח {dayTime(t.createdAt)}</span>} />}
+      </ListCard>
       <Sheet open={waiving} onClose={() => setWaiving(false)} title={`מחילה · ${money(t.total)}`}>
         <div className="events-sheet">
           <Field label="למה? (תירשם בהיסטוריה)" value={reason} onChange={(ev) => setReason(ev.target.value)} />

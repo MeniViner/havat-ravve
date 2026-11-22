@@ -9,7 +9,7 @@ import type { ScreenProps } from '../../ctx';
 import type { ShoppingCategory, ShoppingItem } from '../../../types';
 import {
   LISTS, addPlaceholder, addShopItem, catOfKey, doneThisMonth, doneToday, doneWord, first, g, listLabel, openOf, openOverline,
-  openToBuy, startTrip, suggestions, useShopping, useTrips, type ListKey,
+  openToBuy, startTrip, suggestions, useShopping, useTrips, SUGGESTED, type ListKey,
 } from '../../data/shopping';
 import { agoLong, link, useMarkBought } from './common';
 
@@ -45,8 +45,10 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
   const counts = useMemo(() => Object.fromEntries(LISTS.map((l) => [l.key, openOf(open, l.cat).length])) as Record<ListKey, number>, [open]);
   const rows = useMemo(() => openOf(open, cat), [open, cat]);
   const done = useMemo(() => (cat === 'giveaway' ? doneThisMonth(history, cat, today) : doneToday(history, cat, today)), [history, cat, today]);
-  const chips = useMemo(() => (cat === 'giveaway' ? [] : suggestions(history, open, cat)), [history, open, cat]);
+  // "קונים בדרך כלל": the old five per list, the מחפשים list included
+  const chips = useMemo(() => suggestions(history, open, cat, SUGGESTED), [history, open, cat]);
   const anyHistory = history.some((i) => i.category === cat);
+  const doneCard = done.length > 0 || (rows.length > 0 && anyHistory);
 
   const toAdd = (extra = '') => go(`/new?kind=shopping&list=${key}${extra}`);
   const begin = async () => {
@@ -88,7 +90,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
           })}
         </ListCard>
       )}
-      {(done.length > 0 || (rows.length > 0 && anyHistory)) && (
+      {doneCard && (
         <ListCard title={DONE[cat]} count={done.length} tone="quiet" end={<TextLink {...link('/shopping/history')}>היסטוריה</TextLink>}>
           {done.map((i) => (
             <Row key={i.id} done
@@ -101,6 +103,8 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
         </ListCard>
       )}
       {rows.length === 0 && done.length === 0 && <EmptyState icon="cart" title={EMPTY[cat].title} text={EMPTY[cat].text} />}
+      {/* the history is always one tap away (the old header link), also when nothing was bought today */}
+      {!doneCard && <div className="shopping-histlink"><TextLink {...link('/shopping/history')}>היסטוריה</TextLink></div>}
     </AppScreen>
   );
 }

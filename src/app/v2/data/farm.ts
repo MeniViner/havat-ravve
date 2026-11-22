@@ -8,7 +8,7 @@ import { logActivity, taskKind } from '../../activity';
 import { setTaskDone } from '../../store';
 import { getDemo } from '../../demo/store';
 import type { Actor, CalendarItem, FarmEvent, Profile, Project, ProjectStep, ShoppingItem, Staffing, Task } from '../../types';
-import { israelIso, presencePlan, remindAt, timeText, type Act, type CalItem, type Hours } from '../screens/farm/logic';
+import { israelIso, kindToSave, presencePlan, remindAt, timeText, type Act, type CalItem, type Hours, type TeamKind } from '../screens/farm/logic';
 
 /** CalendarItem with the reminder stamp the Worker uses (local until types.ts gains it; see the data doc). */
 export type FarmCalItem = CalendarItem & { remindAt?: string; reminderSentAt?: string | null; updatedAt?: string };
@@ -57,7 +57,7 @@ export const useStepsOn = (projectId: string, uid: string, enabled: boolean) =>
   useList<ProjectStep>(`projects/${projectId}/steps`, { where: [['assignee.uid', '==', uid], ['done', '==', false]] }, enabled && !!projectId && !!uid);
 
 // ---------- writes ----------
-/** F4: one entry per chosen day for the signed-in person, as one batch (works offline). */
+/** F4: one entry per chosen day for `who` (the signed-in person, or the person a manager picked), as one batch (works offline). */
 export async function savePresence(who: Actor, days: string[], items: CalItem[], hours: Hours, note: string) {
   const ops = presencePlan(days, items, who, hours, note, () => newId('calendar'), nowIso());
   await write.batch(ops.map((o) => ({ op: o.op, col: 'calendar', id: o.id, data: o.data })));
@@ -65,18 +65,20 @@ export async function savePresence(who: Actor, days: string[], items: CalItem[],
 }
 export const removePresence = (id: string) => write.remove('calendar', id);
 
-export type CalDraft = { title: string; date: string; from: string; to: string; audience: 'all' | 'managers'; participants: string[]; reminder: boolean };
-/** C11: add or edit a calendar item (managers). The old `time` text is kept next to from/to for old screens and the Worker. */
+export type CalDraft = { title: string; date: string; from: string; to: string; audience: 'all' | 'managers'; participants: string[]; reminder: boolean; kind?: TeamKind };
+/** C11: add or edit a calendar item (managers). The old `time` text is kept next to from/to for old screens and the Worker.
+ *  `kind` (meeting / planning / other, as the old calendar) is written on a new item, and on an edit only when it changed. */
 export async function saveCalItem(actor: Actor, d: CalDraft, existing?: FarmCalItem | null) {
   const hours = { from: d.from, to: d.to };
   const at = d.reminder ? remindAt(d.date, d.from) : '';
-  const fields = {
+  const fields: Record<string, unknown> = {
     title: d.title.trim().slice(0, 200), date: d.date, time: timeText(hours), from: d.from, to: d.to,
     audience: d.audience, participants: d.participants, reminder: d.reminder ? '60' : '', remindAt: at, reminderSentAt: null,
   };
-  if (existing) { await write.update('calendar', existing.id, fields); return existing.id; }
+  const kind = kindToSave(d.kind, existing ? existing.kind : undefined);
+  if (existing) { await write.update('calendar', existing.id, kind ? { ...fields, kind } : fields); return existing.id; }
   const id = newId('calendar');
-  await write.set('calendar', id, { ...fields, kind: 'manual', ownerUid: actor.uid, ownerName: actor.name, refId: '', createdAt: nowIso() });
+  await write.set('calendar', id, { ...fields, kind: kind || 'manual', ownerUid: actor.uid, ownerName: actor.name, refId: '', createdAt: nowIso() });
   return id;
 }
 export const deleteCalItem = (id: string) => write.remove('calendar', id);

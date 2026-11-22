@@ -18,6 +18,8 @@ export { PhotoSource, PhotoCrop } from './photo';
 export { SearchScreen } from './search';
 /** C9-Welcome (/welcome), C10-Install, C8-Offline (queue view; OfflineQueue is the card for T1) */
 export { WelcomeScreen, InstallScreen, OfflineScreen, OfflineQueue } from './misc';
+/** The automatic install invitation (old InstallBanner), for the shell's top chrome: <InstallBanner /> */
+export { InstallBanner, useInstallBanner } from './misc';
 /** Z1-DemoStart, Z3-DemoSwitch (DemoSheet({open,onClose})) */
 export { DemoStart, DemoSheet } from './demo';
 
@@ -32,7 +34,7 @@ export function FirstEntry(p: { user: Session; settings: Settings }): ReactNode 
   const demo = useDemo();
   const { invite, loading } = useInviteFor(p.user.email);
   if (loading) return null;
-  if (invite || (demo.on && demo.persona === 'new')) return <ToastProvider><WelcomeForm user={p.user} profile={null} invite={invite} /></ToastProvider>;
+  if (invite || (demo.on && demo.persona === 'new')) return <ToastProvider><WelcomeForm user={p.user} profile={null} invite={invite} fields={p.settings.registrationFields} /></ToastProvider>;
   return <LegacyOnboarding user={p.user} fields={p.settings.registrationFields} />;
 }
 export type { V2Ctx };
