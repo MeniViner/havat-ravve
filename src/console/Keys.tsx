@@ -13,6 +13,8 @@ const STATUS: Record<KeyView['status'], { l: string; tone: 'paid' | 'urgent' | '
 type Expiry = 'none' | '30' | '90' | '365';
 const EXPIRY: { value: Expiry; label: string }[] = [{ value: 'none', label: 'בלי תאריך' }, { value: '30', label: '30 יום' }, { value: '90', label: '90 יום' }, { value: '365', label: 'שנה' }];
 const inDays = (d: Expiry) => (d === 'none' ? null : new Date(Date.now() + Number(d) * 86400_000).toISOString());
+/** "בשימוש לפני 3 דקות", "בשימוש ב־21.11", "לא היה בשימוש" */
+const usedText = (at: string | null | undefined) => { if (!at) return 'לא היה בשימוש'; const t = ago(at); return `בשימוש ${/^\d/.test(t) ? 'ב־' + t : t}`; };
 type Grace = '0' | '24' | '72';
 const GRACE: { value: Grace; label: string }[] = [{ value: '24', label: 'יום' }, { value: '72', label: '3 ימים' }, { value: '0', label: 'מיד' }];
 
@@ -36,7 +38,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
   const row = (k: KeyView) => (
     <Row key={k.id} leading={<IconTile icon="key" tone={k.status === 'active' ? 'pine' : 'ink'} />} title={k.label || k.id}
       tags={<>{k.status !== 'active' && <Tag tone={STATUS[k.status].tone}>{STATUS[k.status].l}</Tag>}{k.rotating && <Tag tone="warm">בהחלפה</Tag>}</>}
-      meta={<>{who(k)}{used.data && <> · {used.data[k.id] ? `בשימוש ${ago(used.data[k.id])}` : 'עוד לא היה בשימוש'}</>}</>}
+      meta={<>{who(k).split(' · ')[0]}{used.data && <> · {usedText(used.data[k.id])}</>}</>}
       chevron onClick={() => setOpenId(k.id)} muted={k.status !== 'active'} />
   );
   return (
@@ -105,7 +107,8 @@ function RevealSheet({ shown, onClose }: { shown: { title: string; key: string }
   const copy = async () => { try { await navigator.clipboard.writeText(shown!.key); setCopied(true); } catch { setCopied(false); } };
   const close = () => { setCopied(false); onClose(); };
   return (
-    <Sheet open={!!shown} onClose={close} title={shown?.title || ''}>
+    // a tap outside does not close it: the key would be gone for good; only "סיימתי" does
+    <Sheet open={!!shown} onClose={() => {}} title={shown?.title || ''}>
       {shown && (
         <div className="c-form">
           <p className="c-warn">זו הפעם היחידה שהמפתח מוצג. מעתיקים אותו עכשיו ושומרים בכספת של האינסטינקט, לא בצ'אט ולא במייל.</p>
@@ -130,7 +133,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
     try {
       const r = await source.changeKey(k.id, action, body);
       setMode('view');
-      notify(done);
+      if (!r.key) notify(done); // a new key opens its own sheet, which says it
       onChanged(r.key);
     } catch (e) { notify(errorText(e), 'alert'); }
     finally { setBusy(false); }
@@ -147,14 +150,14 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
             <DetailRow term="נוצר">{k.createdAt ? `${ddmm(k.createdAt)}${k.createdBy ? ` · ${k.createdBy}` : ''}` : 'הוגדר בשרת לפני הקונסולה'}</DetailRow>
             <DetailRow term="מזהה"><span className="k-ltr" dir="ltr">{k.id}</span></DetailRow>
           </DetailList>
-          {k.rotating && k.previousUntil && <p className="c-note">המפתח הקודם עדיין עובד {until(k.previousUntil)}, כדי שהאינסטינקט יספיק לעבור לחדש.</p>}
+          {k.rotating && k.previousUntil && <p className="c-note">המפתח הקודם ממשיך לעבוד {until(k.previousUntil)}, כדי שהאינסטינקט יספיק לעבור לחדש.</p>}
           <div className="c-grid2">
             <Button variant="neutral" icon="edit" onClick={() => { setLabel(k.label); setMode('rename'); }}>שינוי שם</Button>
             <Button variant="neutral" icon="key" onClick={() => setMode('rotate')}>החלפת המפתח</Button>
             <Button variant="neutral" icon="calendar" onClick={() => setMode('expire')}>תוקף</Button>
             {k.status === 'revoked'
               ? <Button variant="outline" onClick={() => run('restore', {}, 'המפתח הוחזר לעבודה')} disabled={busy}>החזרת המפתח</Button>
-              : <Button variant="danger" icon="blocked" onClick={() => setMode('revoke')}>ביטול המפתח</Button>}
+              : <Button variant="danger" className="c-danger" icon="blocked" onClick={() => setMode('revoke')}>ביטול המפתח</Button>}
           </div>
         </div>
       )}

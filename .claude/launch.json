@@ -28,6 +28,16 @@
         "scripts/dev.mjs"
       ],
       "port": 5183
+    },
+    {
+      "name": "console-dev",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=5193",
+        "node",
+        "scripts/dev.mjs"
+      ],
+      "port": 5193
     }
   ]
 }

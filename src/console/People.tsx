@@ -96,7 +96,7 @@ function PersonSheet({ p, me, onClose, onChanged, notify }: { p: Person; me: Me;
             <DetailRow term="טלפון"><span className="k-ltr" dir="ltr">{p.phone || '—'}</span></DetailRow>
             <DetailRow term="מצב">{blocked ? 'חסום' : p.status === 'pending' ? 'ממתין לאישור' : 'פעיל'}</DetailRow>
             <DetailRow term="מספר לקוח"><span className="k-num">{p.customerNumber ?? '—'}</span></DetailRow>
-            <DetailRow term="הצטרף">{p.createdAt ? ddmm(p.createdAt) : '—'}</DetailRow>
+            <DetailRow term="הצטרף">{p.createdAt ? `${ddmm(p.createdAt)}.${new Date(p.createdAt).getFullYear()}` : '—'}</DetailRow>
             {p.notes && <DetailRow term="הערות">{p.notes}</DetailRow>}
           </DetailList>
           {self && <p className="c-note">את החשבון שלך אי אפשר לשנות מכאן.</p>}
@@ -105,7 +105,7 @@ function PersonSheet({ p, me, onClose, onChanged, notify }: { p: Person; me: Me;
               <Button variant="neutral" icon="people" onClick={() => setMode('role')}>שינוי תפקיד</Button>
               <Button variant="neutral" icon="edit" onClick={() => { setNotes(p.notes || ''); setMode('notes'); }}>הערות</Button>
               <Button variant={blocked ? 'outline' : 'neutral'} icon="blocked" onClick={() => setMode('block')}>{blocked ? 'שחרור החסימה' : 'חסימה'}</Button>
-              {!farmOwner && <Button variant="danger" onClick={() => setMode('delete')}>מחיקה</Button>}
+              {!farmOwner && <Button variant="danger" className="c-danger" onClick={() => setMode('delete')}>מחיקה</Button>}
             </div>
           )}
         </div>

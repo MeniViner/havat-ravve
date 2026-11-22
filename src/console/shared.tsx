@@ -56,14 +56,14 @@ export function ago(iso: string | null | undefined): string {
   if (d === -1) return `אתמול ${hhmm(iso)}`;
   return ddmm(iso);
 }
-/** "בעוד 18 שעות", "עד 12.2" */
+/** "עוד 18 שעות", "עד 12.2" */
 export function until(iso: string): string {
   const ms = Date.parse(iso) - Date.now();
   if (ms <= 0) return ago(iso);
   const h = Math.round(ms / 3600_000);
-  if (h < 1) return 'בעוד פחות משעה';
-  if (h === 1) return 'בעוד שעה';
-  if (h < 48) return `בעוד ${h} שעות`;
+  if (h < 1) return 'עוד פחות משעה';
+  if (h === 1) return 'עוד שעה';
+  if (h < 48) return `עוד ${h} שעות`;
   return `עד ${ddmm(iso)}`;
 }
 export const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('he-IL'));

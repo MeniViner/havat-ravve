@@ -102,7 +102,7 @@ function Shell({ me }: { me: Me }) {
         <Tabs label="קונסולה" options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={go} />
       </div>
       <main className="c-main">
-        {tab === 'overview' && <OverviewScreen onKeys={() => go('keys')} />}
+        {tab === 'overview' && <OverviewScreen />}
         {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
         {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
       </main>

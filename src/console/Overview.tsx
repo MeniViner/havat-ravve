@@ -6,7 +6,7 @@ import { source } from './source';
 
 const PUSH: Record<string, string> = { webpush: 'פועלות (Web Push)', fcm: 'פועלות (Firebase)', off: 'כבויות' };
 
-export function OverviewScreen({ onKeys }: { onKeys: () => void }) {
+export function OverviewScreen() {
   const ov = useLoad(() => source.overview());
   const recent = useLoad(() => source.recent(8));
   const o = ov.data;
@@ -18,7 +18,7 @@ export function OverviewScreen({ onKeys }: { onKeys: () => void }) {
           <h1 className="c-h1">מצב השרת</h1>
           <p className="c-sub">השרת של החווה ב־Cloudflare, המסלול החינמי.</p>
         </div>
-        <Button variant="neutral" icon="download" onClick={() => { ov.reload(); recent.reload(); }} disabled={ov.loading}>רענון</Button>
+        <Button variant="neutral" onClick={() => { ov.reload(); recent.reload(); }} disabled={ov.loading}>רענון</Button>
       </div>
       {ov.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא את מצב השרת. {ov.error}</Card>}
       {o && (
@@ -84,7 +84,6 @@ export function OverviewScreen({ onKeys }: { onKeys: () => void }) {
             ))}
           </ListCard>
         )}
-        <div className="c-actions"><Button variant="link" icon="key" onClick={onKeys}>למפתחות</Button></div>
       </Section>
     </>
   );
