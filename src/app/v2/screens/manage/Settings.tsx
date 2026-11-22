@@ -31,7 +31,7 @@ export function SettingsScreen({ ctx }: ScreenProps) {
   const owners = people.filter((p) => p.role === 'owner' && p.status === 'active').length + invites.filter((i) => i.role === 'owner').length;
   const managers = people.filter((p) => p.role === 'manager' && p.status === 'active').length + invites.filter((i) => i.role === 'manager').length;
   const l = settingsLines(s, owners, managers);
-  const site = () => { if (getDemo().on) toast.show({ text: 'עריכת האתר זמינה בחשבון האמיתי', duration: 3000 }); else window.open('/admin', '_blank', 'noopener'); };
+  const site = () => { if (getDemo().on) toast.show({ text: 'עריכת האתר זמינה בחשבון האמיתי', duration: 3000 }); else window.open('/edit', '_blank', 'noopener'); };
   return (
     <AppScreen variant="detail">
       <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} />

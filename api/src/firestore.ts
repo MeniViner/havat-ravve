@@ -27,6 +27,8 @@ export type Env = {
   EMAIL_ENABLED?: string;
   /** JSON {"<credential id>": "<name shown in the owners' assistant log>"}, e.g. {"cred-assistant": "האינסטינקט של מני"}. */
   KEY_LABELS?: string;
+  /** Workers version metadata binding (wrangler.toml [version_metadata]): the deployed version, for the console. */
+  CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
   /** "once": the next cron run sends one sample confirmation to BREVO_SENDER_EMAIL itself (guarded in TOKEN_KV). */
