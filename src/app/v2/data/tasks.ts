@@ -4,6 +4,7 @@
 // transact(); a ConflictError is shown by the screen as X1.
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
+import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
 import { logActivity, taskKind } from '../../activity';
 import { addTask, editTask, editShopping, type NewTask } from '../../store';
@@ -460,11 +461,13 @@ export function useRootTasks(ctx: Ctxish) {
   // the cutoff moves in 10-minute steps so the listener is not re-created on every render
   const cutoff = new Date(Math.floor((nowMs() - DONE_VISIBLE_MS) / 600_000) * 600_000).toISOString();
   const done = useList<Task>('tasks', { where: [...staffOnly(ctx.manager), ['doneAt', '>=', cutoff]], orderBy: [['doneAt', 'desc']] });
+  // a task swiped away a moment ago is gone from the lists while its undo is still offered
+  const hiddenV = useHiddenVersion();
   const items = useMemo(() => {
     const seen = new Set<string>(); const out: Task[] = [];
-    for (const t of [...norm(open.items), ...norm(done.items)]) { if (seen.has(t.id) || isStaleRoutine(t, today)) continue; seen.add(t.id); out.push(withTemplateDefaults(t, ctx.templates, ctx.places)); }
+    for (const t of [...norm(open.items), ...norm(done.items)]) { if (seen.has(t.id) || isStaleRoutine(t, today) || isHidden(t.id)) continue; seen.add(t.id); out.push(withTemplateDefaults(t, ctx.templates, ctx.places)); }
     return out;
-  }, [open.items, done.items, ctx.templates, ctx.places, today]);
+  }, [open.items, done.items, ctx.templates, ctx.places, today, hiddenV]);
   return { items, loading: open.loading || done.loading, error: open.error || done.error };
 }
 export function useTaskV2(id: string, ctx: Ctxish) {
@@ -601,6 +604,12 @@ export async function deleteTaskV2(actor: Actor, t: Task, templates: Template[])
     await write.batch([{ op: 'remove', col: 'tasks', id: t.id }, { op: 'update', col: 'task_templates', id: tpl.id, data: { skip, updatedAt: nowIso() } }]);
   } else await write.remove('tasks', t.id);
   logActivity(actor, taskKind(t), t.id, 'deleted', t.title.length > 60 ? t.title.slice(0, 60) + '…' : t.title);
+}
+
+/** The swipe's "מחיקה": the task leaves the lists at once and is deleted when the undo window closes, so "ביטול" never
+ *  has to re-create it. Returns the undo. */
+export function deleteTaskLater(actor: Actor, t: Task, templates: Template[], ms = 6000): () => void {
+  return deferDelete(t.id, () => { deleteTaskV2(actor, t, templates).catch(() => {}); }, ms);
 }
 
 export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };

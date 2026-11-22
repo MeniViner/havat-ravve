@@ -16,7 +16,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { Icon, type IconName } from './icons';
-import { useSwipe, type SwipeActions } from './swipe';
+import { useSwipe, swipeList, type SwipeActions } from './swipe';
 
 export const cx = (...parts: unknown[]) => parts.filter(Boolean).join(' ');
 
@@ -563,17 +563,21 @@ export function Row({
   );
   if (sw && swipe) {
     const side = sw.offset > 0 ? 'right' : sw.offset < 0 ? 'left' : null;
-    const a = side ? swipe[side] : undefined;
+    const list = side ? swipeList(swipe[side]) : [];
     const open = Math.abs(sw.offset) >= sw.width - 1 && !sw.dragging;
+    // laid out left to right: on the left edge (dragging right) the first button is outermost; on the right edge, reversed
+    const shown = side === 'left' ? [...list].reverse() : list;
     return (
       <li className={cx('k-swipe', sw.dragging && 'k-swipe--drag', className)} style={style}>
-        {a && (
-          <div className={cx('k-swipe__under', `k-swipe__under--${side}`, `k-swipe__under--${a.tone}`)}>
-            <button type="button" className="k-swipe__btn" style={{ width: Math.max(sw.width, Math.abs(sw.offset)) }} tabIndex={open ? 0 : -1} aria-hidden={!open}
-              onClick={() => sw.run(a)}>
-              {a.icon && <Icon name={a.icon} size={22} />}
-              <span>{a.label}</span>
-            </button>
+        {shown.length > 0 && (
+          <div className={cx('k-swipe__under', `k-swipe__under--${side}`)} style={{ width: Math.max(sw.width, Math.abs(sw.offset)) }}>
+            {shown.map((a) => (
+              <button key={a.label} type="button" className={cx('k-swipe__btn', `k-swipe__btn--${a.tone}`)} tabIndex={open ? 0 : -1} aria-hidden={!open}
+                onClick={() => sw.run(a)}>
+                {a.icon && <Icon name={a.icon} size={22} />}
+                <span>{a.label}</span>
+              </button>
+            ))}
           </div>
         )}
         <div ref={sw.front} className={cx(rowCls, 'k-swipe__front')} style={{ minHeight: mh, transform: sw.offset ? `translateX(${sw.offset}px)` : undefined }} {...sw.handlers}>
