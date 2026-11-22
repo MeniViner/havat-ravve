@@ -137,7 +137,9 @@ export type ShoppingTrip = {
 
 export type RoleInvite = { id: string; email: string; role: 'staff' | 'manager' | 'owner'; createdBy: Actor; createdAt: string };
 export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings' | 'project';
-export type Activity = { id: string; kind: ActivityKind; refId: string; action: string; text: string; by: Actor; at: string; subjectUid: string; eventId: string };
+export type Activity = { id: string; kind: ActivityKind; refId: string; action: string; text: string; by: Actor; at: string; subjectUid: string; eventId: string;
+  /** Written through the API: the key that did it (its name in the owners' assistant log). */
+  via?: { credential: string; label: string } };
 export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט' };
 export type Invite = { code: string; role: 'staff'; active: boolean; createdBy: Actor; createdAt: string; usedBy: string[] };
 

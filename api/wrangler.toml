@@ -15,6 +15,8 @@ preview_urls = false
 # Stage B runs against the production project: Meni approved access and writes on 2026-11-12, while the
 # app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
 FIRESTORE_PROJECT_ID = "havat-ravve"
+# The name each API key has in the owners' assistant log (api_log, "יומן אינסטינקט"), by credential id.
+KEY_LABELS = '{"cred-assistant": "האינסטינקט של מני", "cred-stageb": "בדיקות אוטומטיות"}'
 PRODUCTION_APPROVED = "havat-ravve"
 # Automatic payment-confirmation email through Brevo (src/email.ts). Off unless "true"; with it off, or with
 # BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.

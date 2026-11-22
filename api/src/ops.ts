@@ -234,7 +234,7 @@ async function resolveAssignee(fs: Firestore, uid: string, tx: string): Promise<
 }
 
 function activity(fs: Firestore, caller: Caller, refId: string, action: string, text: string, subjectUid = '', kind: 'task' | 'task_private' | 'shopping' = 'task'): Write {
-  return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '' });
+  return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by: caller.actor.person, at: nowIso(), subjectUid, eventId: '', ...(fs.via ? { via: fs.via } : {}) });
 }
 
 /**

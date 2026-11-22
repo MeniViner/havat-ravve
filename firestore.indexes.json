@@ -841,6 +841,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "api_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "credential",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

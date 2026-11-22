@@ -75,7 +75,7 @@ async function waitUp(base) {
 const PORT = 19000;
 const BASE = `http://127.0.0.1:${PORT}`;
 if (await listening(PORT)) { console.error(`port ${PORT} is busy`); process.exit(1); }
-const worker = startWorker(PORT, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' });
+const worker = startWorker(PORT, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false', KEY_LABELS: JSON.stringify({ 'cred-v2-users': 'האינסטינקט של הבדיקה' }) });
 async function api(method, path, { key, body, idem, headers = {} } = {}) {
   const r = await fetch(BASE + path, { method, headers: { ...(key ? { authorization: 'Bearer ' + key } : {}), ...(idem ? { 'idempotency-key': idem } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, json: await r.json().catch(() => null) };
@@ -402,6 +402,50 @@ try {
     check(st.registrationFields.map((f) => f.id).join() === q2.json.data.fieldId && st.payment.bitNumber === '050-1234567', 'one question left; the rest of the settings untouched');
     check((await where('activity', 'refId', 'app')).some((a) => a.text === 'סדר שאלות ההרשמה שונה'), 'activity for the question order');
     check((await w(STAFF, 'settings.saveQuestion', { label: 'x' })).status === 403, 'staff cannot change questions');
+  }
+
+  section('assistant log (api_log, owners only)');
+  {
+    const logOf = async (rid) => { for (let i = 0; i < 30; i++) { const d = await docOf('api_log/' + rid); if (d) return d; await new Promise((res) => setTimeout(res, 100)); } return null; };
+    const made = await w(MGR, 'calendar.create', { title: 'יומן בדיקה ללוג', date: addDays(todayIL, 5), kind: 'manual' });
+    ok(made, 'a write to log');
+    const L = await logOf(made.json.meta.requestId);
+    check(L && L.keyLabel === 'האינסטינקט של הבדיקה' && L.credential === 'cred-v2-users' && L.actor.uid === 'syn-mgr' && L.actor.role === 'manager', 'the entry names the key (KEY_LABELS) and the person it acts as', L);
+    check(L && L.kind === 'write' && L.op === 'calendar.create' && L.verb === 'יצר' && L.opHe && L.ok === true && L.status === made.status, 'operation, verb and outcome', L);
+    check(L && JSON.parse(L.body).title === 'יומן בדיקה ללוג' && L.result.includes(made.json.data.itemId || made.json.data.refs?.[0]?.id) && L.refs.length > 0 && L.idempotencyKey, 'what was sent, what came back and the records touched', L);
+    const pl = await w(MGR, 'places.add', { name: 'מקום ללוג', lat: 31.5, lng: 34.6 });
+    const act = (await where('activity', 'refId', pl.json.data.placeId || pl.json.data.refs?.[0]?.id || pl.json.data.record?.id))[0];
+    check(act && act.via && act.via.label === 'האינסטינקט של הבדיקה' && act.via.credential === 'cred-v2-users', 'the app\'s activity line says which key did it', act);
+    const rd = await r(MGR, '/v1/calendar?limit=5');
+    const LR = await logOf(rd.json.meta.requestId);
+    check(LR && LR.kind === 'read' && LR.verb === 'קרא' && LR.op === 'calendar.list' && typeof LR.count === 'number' && LR.body === '' && LR.result === '' && LR.query === 'limit=5' && LR.ok, 'a read is logged with its parameters and a count, not its data', LR);
+    const no = await w(STAFF, 'broadcasts.send', { text: 'לא אמור לעבור', audience: 'all' });
+    const LF = await logOf(no.json.meta.requestId);
+    check(no.status === 403 && LF && LF.ok === false && LF.code === 'FORBIDDEN' && LF.status === 403 && LF.message && LF.result === '' && LF.verb === 'שלח', 'a refused action is logged as failed, with the reason', LF);
+    const own = await r(OWNER, '/v1/overview');
+    const LO = await logOf(own.json.meta.requestId);
+    check(LO && LO.keyLabel === 'אינסטינקט של בעלים', 'a key without a name is "אינסטינקט של <first name>"', LO?.keyLabel);
+    const bad = await api('GET', '/v1/overview', { key: 'hr_' + 'x'.repeat(40) });
+    await new Promise((res) => setTimeout(res, 600));
+    check(bad.status === 401 && !(await docOf('api_log/' + bad.json.meta.requestId)), 'an unknown key is nobody\'s action: not logged');
+    const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
+    const { doc: d2, getDoc } = require('firebase/firestore');
+    const env2 = await initializeTestEnvironment({ projectId: PROJECT + '-log', firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') } });
+    try {
+      await env2.withSecurityRulesDisabled(async (c) => {
+        const db = c.firestore();
+        await db.doc('users/o1').set({ uid: 'o1', role: 'owner', status: 'active', displayName: 'בעלים', email: 'o1@synthetic.invalid' });
+        await db.doc('users/m1').set({ uid: 'm1', role: 'manager', status: 'active', displayName: 'מנהל', email: 'm1@synthetic.invalid' });
+        await db.doc('api_log/x').set({ id: 'x', keyLabel: 'k' });
+      });
+      const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
+      const as2 = (uid) => env2.authenticatedContext(uid, claims(uid + '@synthetic.invalid')).firestore();
+      let ownerReads = true, mgrBlocked = true, ownerCantWrite = true;
+      try { await assertSucceeds(getDoc(d2(as2('o1'), 'api_log', 'x'))); } catch { ownerReads = false; }
+      try { await assertFails(getDoc(d2(as2('m1'), 'api_log', 'x'))); } catch { mgrBlocked = false; }
+      try { await assertFails(require('firebase/firestore').setDoc(d2(as2('o1'), 'api_log', 'y'), { id: 'y' })); } catch { ownerCantWrite = false; }
+      check(ownerReads && mgrBlocked && ownerCantWrite, 'Rules: only owners read the log, and nobody writes it from the app', { ownerReads, mgrBlocked, ownerCantWrite });
+    } finally { await env2.cleanup(); }
   }
 
   section('the app\'s Rules accept what the API wrote');

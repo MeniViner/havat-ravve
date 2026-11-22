@@ -709,8 +709,10 @@ try {
     check(passed === paths.length, `the app's Rules accept every document the API wrote (${passed}/${paths.length} collections)`);
     const myActs = (await where('activity', 'by', { uid: 'syn-dani-l', name: 'דני לוי' }));
     let actOk = 0;
-    for (const a of myActs.slice(0, 40)) { const { id, ...data } = a; try { await assertSucceeds(setDoc(fdoc(dani, 'activity', 'copy-' + id), data)); actOk++; } catch (e) { console.error('  Rules rejected activity', a.action, String(e).slice(0, 160)); } }
+    // "via" (which API key did it) is written by the Worker only; the rest is the app's own activity shape
+    for (const a of myActs.slice(0, 40)) { const { id, via: _via, ...data } = a; try { await assertSucceeds(setDoc(fdoc(dani, 'activity', 'copy-' + id), data)); actOk++; } catch (e) { console.error('  Rules rejected activity', a.action, String(e).slice(0, 160)); } }
     check(myActs.length >= 10 && actOk === Math.min(40, myActs.length), `and every activity record shape (${actOk} checked)`);
+    check(myActs.every((a) => a.via && a.via.credential === 'cred-test-users' && typeof a.via.label === 'string' && a.via.label), 'every activity line the API wrote names the key (via)', myActs.find((a) => !a.via));
   }
 
   const ok2 = (res, label) => check(res.status >= 200 && res.status < 300 && (res.json?.data?.verified ?? true) !== false, label, res.json?.error || res.json?.data);
@@ -809,7 +811,8 @@ try {
   {
     const tokenLogs = logs.filter((l) => l.token === 'fresh' || l.token === 'cache');
     check(tokenHits.total >= 1 && tokenHits.valid === tokenHits.total, 'every signed JWT verified against the public key', tokenHits);
-    check(tokenHits.total === 1 && tokenLogs.filter((l) => l.token === 'fresh').length === 1 && tokenLogs.filter((l) => l.token === 'cache').length > 10, 'one exchange, then the in-memory cache', { hits: tokenHits.total, fresh: tokenLogs.filter((l) => l.token === 'fresh').length });
+    // the one exchange may belong to a request or to the assistant-log write after it (audit.ts), which logs no token line
+    check(tokenHits.total === 1 && tokenLogs.filter((l) => l.token === 'fresh').length <= 1 && tokenLogs.filter((l) => l.token === 'cache').length > 10, 'one exchange, then the in-memory cache', { hits: tokenHits.total, fresh: tokenLogs.filter((l) => l.token === 'fresh').length });
     const raw = logs.map((l) => JSON.stringify(l)).join('\n');
     check(!raw.includes('synthetic-token') && !Object.values(KEYS).some((k) => raw.includes(k)) && !raw.includes('PRIVATE KEY'), 'request logs contain no keys, tokens or private key');
   }

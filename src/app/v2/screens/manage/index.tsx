@@ -7,5 +7,6 @@ export { ReportsScreen, DonationsScreen, DonationScreen } from './Money';
 export { VisitsScreen, VisitScreen } from './Visits';
 export { SettingsScreen, SettingsPage } from './Settings';
 export { ActivityScreen } from './Activity';
+export { InstinctLogScreen } from './InstinctLog';
 
 export type { V2Ctx };

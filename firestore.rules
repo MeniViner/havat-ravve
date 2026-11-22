@@ -160,6 +160,11 @@ service cloud.firestore {
    allow update: if isStaff() && tripShape() && resource.data.by.uid == uid() && incoming().by == resource.data.by && incoming().startedAt == resource.data.startedAt && incoming().list == resource.data.list;
    allow delete: if isManager();
   }
+  // The assistant log ("יומן אינסטינקט"): one entry per API request, written only by the API Worker (service account). Owners only.
+  match /api_log/{id} {
+   allow read: if isOwner();
+   allow write: if false;
+  }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
    function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}

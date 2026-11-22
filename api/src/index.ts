@@ -15,6 +15,7 @@ import { runAccountDeletions } from './accounts';
 import { runEmail } from './email';
 import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
+import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
 
 const MAX_BODY = 16 * 1024;
 
@@ -38,7 +39,7 @@ function faultsOf(req: Request, env: Env): Set<string> {
   return new Set((req.headers.get('x-test-fault') || '').split(',').map((s) => s.trim()).filter(Boolean));
 }
 
-async function route(req: Request, env: Env, url: URL, log: Record<string, unknown>): Promise<{ status?: number; data: unknown }> {
+async function route(req: Request, env: Env, url: URL, log: Record<string, unknown>, audit: Audit): Promise<{ status?: number; data: unknown }> {
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const m = req.method;
 
@@ -61,6 +62,10 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     }
     log.actor = caller.actor.id;
     log.credential = caller.credentialId;
+    audit.credential = caller.credentialId;
+    audit.actor = { id: caller.actor.id, role: caller.actor.role, uid: caller.actor.person.uid, name: caller.actor.person.name };
+    // the app's activity lines written through the API say which key did it
+    fs.via = { credential: caller.credentialId, label: keyLabel(env, caller.credentialId, caller.actor.person.name) };
     if (caller.keyVersion === 'previous') log.keyVersion = 'previous'; // shows when a client still uses a rotated key
     // one key in a loop (a confused assistant) must not burn the farm's daily Firestore quota
     if (env.RATE_LIMITER && !(await env.RATE_LIMITER.limit({ key: 'cred:' + caller.credentialId })).success) {
@@ -87,6 +92,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
       const key = req.headers.get('idempotency-key');
       const body = await readBody(req);
       log.op = action[1];
+      audit.op = action[1]; audit.body = body; audit.idempotencyKey = key;
       let r: Awaited<ReturnType<typeof createTask>>;
       if (Object.hasOwn(WRITES, action[1])) r = await WRITES[action[1]](fs, caller, body, key);
       else {
@@ -96,6 +102,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
         r = await d.run(fs, caller, validate(d.op.body!, body), key);
       }
       log.replayed = r.replayed;
+      audit.replayed = r.replayed; audit.result = r.data;
       return { status: r.status, data: { ...r.data, replayed: r.replayed } };
     }
     throw new ApiError('NOT_FOUND', `no route for ${m} ${path}`);
@@ -111,15 +118,19 @@ export default {
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
     const log: Record<string, unknown> = { requestId: meta.requestId, method: req.method, path: url.pathname };
+    const audit: Audit = {};
     let res: Response;
+    let error: ApiError | undefined;
     try {
-      const r = await route(req, env, url, log);
+      const r = await route(req, env, url, log, audit);
+      if (req.method === 'GET') audit.result = r.data;
       if (log.credential) meta.keyVersion = log.keyVersion === 'previous' ? 'previous' : 'current';
       res = ok(meta, r.data, r.status ?? 200);
     } catch (e) {
       const err = toApiError(e);
       if (!(e instanceof ApiError)) log.internal = e instanceof Error ? e.message.slice(0, 600) : String(e);
       log.code = err.code;
+      error = err;
       res = fail(meta, err);
     }
     // one structured line per request, for `wrangler tail`; never contains keys, tokens or bodies
@@ -127,6 +138,12 @@ export default {
     log.wallMs = Date.now() - meta.started;
     console.log(JSON.stringify(log));
     // failures worth an alert are kept in Firestore (best effort, after the response) for system.failures
+    // the owners' assistant log: every request of a recognised key, its body and answer (best effort, after the response)
+    const doc = auditDoc(env, audit, { requestId: meta.requestId, method: req.method, path: url.pathname, query: url.search.slice(1), status: res.status, ms: Date.now() - meta.started, error });
+    if (doc && log.code !== 'QUOTA_EXCEEDED') {
+      const p = writeAudit(env, doc).catch((e) => console.log(JSON.stringify({ requestId: meta.requestId, auditFailed: String(e).slice(0, 200) })));
+      if (ctx) ctx.waitUntil(p); else await p;
+    }
     if (res.status >= 500 || log.code === 'RATE_LIMITED' || log.code === 'QUOTA_EXCEEDED') {
       const p = recordFailure(env, log).catch(() => {});
       if (ctx) ctx.waitUntil(p); else await p;

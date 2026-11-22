@@ -516,7 +516,7 @@ try {
     const n = (await listCol('users/syn-staff/notifications')).find((x) => x.refId === eventId);
     await tryIt('a station notification (a manager sends it)', setDoc(doc(mgr, 'users', 'syn-staff2', 'notifications', 'copyn'), { ...n, id: 'copyn' }));
     const myActs = (await where('activity', 'by', MGR_ACTOR)).slice(0, 40);
-    for (const a of myActs) { const { id, ...data } = a; await tryIt('activity ' + a.action, setDoc(doc(mgr, 'activity', 'copy-' + id), data)); }
+    for (const a of myActs) { const { id, via: _via, ...data } = a; await tryIt('activity ' + a.action, setDoc(doc(mgr, 'activity', 'copy-' + id), data)); }
     check(tries.every(Boolean) && tries.length >= 30, `the app's Rules accept every shape (${tries.filter(Boolean).length}/${tries.length})`);
   }
 

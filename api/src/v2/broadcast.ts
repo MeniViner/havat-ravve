@@ -132,7 +132,7 @@ def('me.notifications.markRead', 'me:write', 'סימון ההתראות האיש
 // notify(): a direct message to chosen people, for the assistant (kind "system", in the app's bell and as a phone push)
 def('notifications.send', 'notify:write', 'שליחת התראה אישית לאנשים מסוימים (בפעמון באפליקציה ובטלפון)', {
   uids: { type: 'stringList', maxItems: 200, maxLength: 128, required: true, he: 'uid של הנמענים (people.search / profiles.list)' },
-  title: str(120, 'כותרת', true, 1), sub: str(240, 'טקסט'), link: str(200, 'נתיב באפליקציה שההתראה פותחת, למשל /tasks/abc או /farm', true, 1),
+  title: str(120, 'כותרת', true, 1), sub: str(240, 'טקסט'), link: str(200, 'נתיב באפליקציה שמתחיל ב־/ (לא קישור https), למשל /tasks/abc או /farm', true, 1),
   push: bool('גם התראה בטלפון', true), urgent: bool('דחוף (בטלפון: נשאר על המסך)', false),
 }, async (c) => {
   const i = c.input;
@@ -148,4 +148,4 @@ def('notifications.send', 'notify:write', 'שליחת התראה אישית לא
   if (!writes.length) throw invalid('uids', 'nobody to notify (you do not notify yourself)');
   const to = uids.filter((u) => u !== c.me.uid);
   return { status: 201, writes, refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { title: i.title.slice(0, 120) } })), data: { notificationId: id, notified: to.length } };
-}, ['Confirm the text and the people with the user first. The person sees it in the app\'s notifications (and on the phone when push is on and they allow it).']);
+}, ['Confirm the text and the people with the user first. The person sees it in the app\'s notifications (and on the phone when push is on and they allow it).', 'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.']);

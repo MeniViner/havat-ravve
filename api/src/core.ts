@@ -75,7 +75,7 @@ export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'tic
 export const paidStamp = (status: unknown): string[] => (status === 'paid' || status === 'paid_onsite' ? ['paidAt'] : []);
 export const taskKind = (t: { managersOnly?: unknown }): ActivityKind => (t.managersOnly ? 'task_private' : 'task');
 export function activity(fs: Firestore, by: Person, kind: ActivityKind, refId: string, action: string, text: string, extra: { subjectUid?: string; eventId?: string } = {}): Write {
-  return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' });
+  return fs.create('activity', autoId(), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '', ...(fs.via ? { via: fs.via } : {}) });
 }
 
 /** An active team member (owner, manager or staff), as the {uid, name} the app stores. */

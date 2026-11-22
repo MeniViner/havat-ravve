@@ -88,6 +88,7 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
                 <span className="manage-feed__body">
                   <span className="manage-feed__title">{line.title}</span>
                   {line.meta && <span className="manage-feed__meta">{line.meta}</span>}
+                  {a.via && <span className="manage-feed__meta">{`דרך ${a.via.label}`}</span>}
                 </span>
               </li>
             ))}

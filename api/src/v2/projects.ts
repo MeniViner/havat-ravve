@@ -116,6 +116,7 @@ async function projectFor(c: Ctx, pid: string) { return mustGet(c.fs, P, pid, c.
 async function stepFor(c: Ctx, pid: string, sid: string) { return mustGet(c.fs, stepsCol(pid), sid, c.tx, 'step'); }
 const conflict = (message: string, details: Record<string, unknown> = {}) => new ApiError('STALE_WRITE', message, details);
 const MGR_NOTE = 'Managers and owners only, like the app (staff cannot see projects). Projects log no activity, as in the app.';
+const STEPS_NOTE = 'steps is a string that holds a JSON array (send the array serialized, not as an array): [{"id":"<existing id>","title":"...","assignee":"<uid>"|null}]. No id = a new step; assignee null = free; no assignee key = unchanged.';
 
 // createProject()
 def('projects.create', 'projects:write', 'יצירת פרויקט עם צעדים (מי שמקבל צעד מקבל התראה)', {
@@ -136,7 +137,7 @@ def('projects.create', 'projects:write', 'יצירת פרויקט עם צעדי�
   const writes: Write[] = [c.fs.create(P, pid, doc), ...created.map((s) => c.fs.create(col, s.id, newStep(pid, s.id, s.n, s.title, s.assignee, me, at)))];
   for (const s of created) if (s.assignee) writes.push(...notifyAssigned(c.fs, me, doc as Record<string, unknown> & { id: string }, s.id, s.title, s.n, created.length, s.assignee.uid));
   return { status: 201, writes, refs: [{ col: P, id: pid, expected: { title: doc.title, status: 'active' } }], data: { projectId: pid, stepIds: created.map((s) => s.id) } };
-}, [MGR_NOTE]);
+}, [MGR_NOTE, STEPS_NOTE]);
 
 // saveProject()
 def('projects.update', 'projects:write', 'עריכת פרויקט: שם, יעד, והצעדים (הוספה, שינוי, מחיקה של צעד פתוח שהוסר)', {
