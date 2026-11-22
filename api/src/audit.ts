@@ -74,6 +74,9 @@ function refsOf(result: unknown): { col: string; id: string }[] {
   const out: { col: string; id: string }[] = [];
   if (Array.isArray(r.refs)) for (const x of r.refs) if (x && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string') out.push({ col: String((x as { col?: unknown }).col || ''), id: String((x as { id: string }).id) });
   for (const [k, v] of Object.entries(r)) if (/Id$/.test(k) && typeof v === 'string' && !out.some((o) => o.id === v)) out.push({ col: k.slice(0, -2), id: v });
+  // a delete answers with the record as it was
+  const gone = r.deleted as { id?: unknown } | undefined;
+  if (gone && typeof gone.id === 'string' && !out.some((o) => o.id === gone.id)) out.push({ col: 'deleted', id: gone.id });
   return out.slice(0, 20);
 }
 
