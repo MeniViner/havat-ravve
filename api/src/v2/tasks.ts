@@ -57,7 +57,7 @@ def('tasks.release', 'tasks:complete', 'לשחרר משימה שלי (חוזרת
 }, ['Staff release only their own task; a manager may release anyone\'s (tasks.assign with release=true does the same and logs the person it was on).']);
 
 const PHOTO_HE = 'רק קישור לתמונה שהאפליקציה כבר שמרה (https://havat-ravve-api.meniviner.workers.dev/v1/files/...). ריק מסיר';
-const PHOTO_NOTE = 'The API cannot upload photo bytes (requests are limited to 16 KB and uploads need the app\'s sign-in): only a link to a photo the app already stored is accepted.';
+const PHOTO_NOTE = 'The API cannot upload photo bytes (requests are limited to 16 KB and uploads need the app\'s sign-in): only a link to a photo the app already stored is accepted, exactly https://havat-ravve-api.meniviner.workers.dev/v1/files/<kind>/<owner>/<32-character id>.jpg|webp|png (kind: task, shopping, place, event, eventfile, stall, avatar). Any other link is 400; in practice the assistant can only reuse a link it read from another record, or clear the photo with "".';
 
 // setTaskPhoto()
 def('tasks.setPhoto', 'tasks:complete', 'תמונה למשימה (מה צריך לעשות)', { ifUpdatedAt: IF_UPDATED_AT as Param, taskId: req(), photo: str(300, PHOTO_HE, true) }, async (c) => {
@@ -120,7 +120,7 @@ def('shopping.setMissing', 'shopping:write', 'סימון פריט "אין" (לא
   const writes: Write[] = [c.fs.patch('shopping', it.id, patch, it.updateTime)];
   if (missing) writes.push(activity(c.fs, c.me, 'shopping', it.id, 'unavailable', `${it.data.title}${qtyPart(it.data.qty)}`));
   return { writes, refs: [{ col: 'shopping', id: it.id, expected: { notAvailable: missing } }] };
-}, ['It stays on the open list ("לא היה, נשאר ברשימה").']);
+}, ['It stays on the open list ("לא היה, נשאר ברשימה").', 'Marking it missing needs tripId of a shopping trip (shoppingTrips.list); without one it is 400.']);
 
 /** A trip left open longer than this is over (TRIP_MAX_HOURS in data/shopping.ts). */
 const TRIP_MAX_MS = 8 * 3600_000;

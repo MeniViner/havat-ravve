@@ -25,6 +25,8 @@ export type Env = {
   PRODUCTION_APPROVED?: string;
   /** Automatic payment-confirmation email (email.ts). Off unless "true" and both Brevo secrets are set. */
   EMAIL_ENABLED?: string;
+  /** JSON {"<credential id>": "<name shown in the owners' assistant log>"}, e.g. {"cred-assistant": "האינסטינקט של מני"}. */
+  KEY_LABELS?: string;
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
   /** "once": the next cron run sends one sample confirmation to BREVO_SENDER_EMAIL itself (guarded in TOKEN_KV). */
@@ -184,6 +186,8 @@ export class Firestore {
   private base: string;
   /** How the Google token for this request was obtained, for the request log. */
   tokenSource: TokenSource | null = null;
+  /** The API key behind this request, stamped on the activity lines it writes ("via" in the app's activity log). */
+  via: { credential: string; label: string } | null = null;
   private testMode: boolean;
 
   constructor(private env: Env, private faults: ReadonlySet<string> = new Set()) {

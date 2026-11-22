@@ -114,6 +114,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/:page', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/activity', manage.ActivityScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/instinct', manage.InstinctLogScreen, 'manage', 'tab', { manager: true, owner: true }),
   R('/manage/recurring', tasks.RecurringList, 'tasks', 'tab', { manager: true }),
   R('/manage/recurring/new', tasks.RecurringForm, 'tasks', 'page', { manager: true }),
   R('/manage/recurring/:id', tasks.RecurringForm, 'tasks', 'page', { manager: true }),

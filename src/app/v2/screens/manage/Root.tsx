@@ -65,6 +65,7 @@ export function ManageRoot({ ctx }: ScreenProps) {
       <PlainLink path="/manage/broadcasts">הודעות לצוות</PlainLink>
       <PlainLink path="/places?from=manage" meta={places ? String(places) : undefined}>מקומות בחווה</PlainLink>
       <PlainLink path="/manage/activity">כל הפעילות בחווה</PlainLink>
+      {ctx.role === 'owner' && <PlainLink path="/manage/instinct" meta="כל מה שאינסטינקט עשה, לפי מפתח">יומן אינסטינקט</PlainLink>}
     </AppScreen>
   );
 }

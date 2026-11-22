@@ -105,5 +105,23 @@ const slice: Slice = (seed) => {
     }
   }
   put(seed, 'activity', extra);
+
+  // ---- owners' assistant log (/manage/instinct): a morning of the owner's assistant key ----
+  const KEY = { credential: 'cred-assistant', keyLabel: 'האינסטינקט של בני' };
+  const actor = { id: 'user:demo-u-beni', role: 'owner', uid: 'demo-u-beni', name: A.beni.name };
+  const log = (n: number, hhmm: string, op: string, opHe: string, verb: string, kind: 'read' | 'write', extra: Row = {}): Row => ({
+    id: `demo-log-${n}`, at: at(0, hhmm), ...KEY, actor, kind, op, opHe, verb, method: kind === 'read' ? 'GET' : 'POST',
+    path: kind === 'read' ? '/v1/overview' : `/v1/actions/${op}`, query: '', body: '', result: '', count: null, refs: [],
+    status: 200, ok: true, code: '', message: '', replayed: false, idempotencyKey: '', ms: 180, ...extra,
+  });
+  put(seed, 'api_log', [
+    log(1, '07:02', 'farm.overview', 'תמונת מצב של החווה', 'קרא', 'read', { count: null }),
+    log(2, '07:03', 'tasks.create', 'יצירת משימה', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'להחליף מים לסוסים', assignee: 'demo-u-yoav', dueDate: key(0) }), result: JSON.stringify({ taskId: 'demo-t-1', verified: true }), refs: [{ col: 'tasks', id: 'demo-t-1' }] }),
+    log(3, '07:05', 'shopping.add', 'הוספת פריט לרשימת הקניות', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'שק תירס', category: 'super' }), result: JSON.stringify({ itemId: 'demo-s-9' }), refs: [{ col: 'shopping', id: 'demo-s-9' }] }),
+    log(4, '07:40', 'broadcasts.send', 'הודעה לצוות', 'שלח', 'write', { body: JSON.stringify({ text: 'מחר בבוקר אין מים בלול, נא לא לפתוח את הברז', audience: 'all' }) }),
+    log(5, '08:10', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { status: 409, ok: false, code: 'STALE_WRITE', message: 'הרשומה השתנתה מאז שנקראה: the record changed since it was read', body: JSON.stringify({ taskId: 'demo-t-1', title: 'להחליף מים לסוסים ולעיזים' }) }),
+    log(6, '08:12', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { body: JSON.stringify({ taskId: 'demo-t-1', title: 'להחליף מים לסוסים ולעיזים' }), refs: [{ col: 'tasks', id: 'demo-t-1' }] }),
+    log(7, '09:15', 'shopping.delete', 'מחיקת פריט מרשימת הקניות', 'מחק', 'write', { body: JSON.stringify({ itemId: 'demo-s-4' }), result: JSON.stringify({ deleted: { id: 'demo-s-4', title: 'חבל כביסה' } }), refs: [{ col: 'shopping', id: 'demo-s-4' }] }),
+  ]);
 };
 export default slice;

@@ -193,7 +193,7 @@ try {
     check(t.assignee.uid === 'syn-ronit' && t.note === 'עם חוט' && !('takenAt' in t) && sameKeys(t, TASK_KEYS), 'assignee stored as {uid,name}, no takenAt (editTask writes none)', t);
     const a = await acts(id);
     const asg = a.find((x) => x.action === 'assigned');
-    check(a.map((x) => x.action).sort().join() === 'assigned,created,edited' && asg.text === 'לתקן את הגדר ← רונית' && asg.subjectUid === 'syn-ronit' && a.every((x) => sameKeys(x, ACT_KEYS)), 'activity edited + assigned, as editTask logs them', a);
+    check(a.map((x) => x.action).sort().join() === 'assigned,created,edited' && asg.text === 'לתקן את הגדר ← רונית' && asg.subjectUid === 'syn-ronit' && a.every(({ via, ...x }) => sameKeys(x, ACT_KEYS) && via?.credential), 'activity edited + assigned, as editTask logs them', a);
     const n = (await notesOf('syn-ronit')).filter((x) => x.refId === id);
     check(n.length === 1 && n[0].title === 'משימה חדשה: לתקן את הגדר', 'the new person is notified', n);
     await w(MGR, 'tasks.edit', { taskId: id, assignee: 'syn-ronit', title: 'לתקן את הגדר מחר' });

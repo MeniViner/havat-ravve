@@ -288,7 +288,7 @@ def('tickets.stampReminder', 'tickets:write', 'רישום שנשלחה תזכו�
   if (!owing.length) throw invalid('orderId', 'nothing of this order is waiting for payment');
   const at = nowIso();
   return { writes: owing.map((t) => c.fs.patch('tickets', t.id, { reminderSentAt: at }, t.updateTime)), refs: owing.map((t) => ({ col: 'tickets', id: t.id, expected: { reminderSentAt: at } })) };
-}, ['Only records that a reminder went out (reminderSentAt); it sends nothing. Send the WhatsApp text yourself (settings templates.debtReminder) first.']);
+}, ['Only records that a reminder went out (reminderSentAt); it sends nothing. Send the WhatsApp text yourself (settings templates.debtReminder) first.', 'An order with nothing waiting for payment (all paid, free or cancelled) is refused with 400.']);
 // stampReminder('tab')
 def('tabs.stampReminder', 'tabs:settle', 'רישום שנשלחה תזכורת תשלום על חשבון דוכן', { tabId: req() }, async (c) => {
   const tab = await mustGet(c.fs, 'tabs', c.input.tabId, c.tx, 'tab');

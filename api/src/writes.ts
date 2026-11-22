@@ -802,4 +802,6 @@ def('settings.update', 'settings:write', 'עדכון הגדרות: פרטי תש
   'Send only what changes: each page\'s section is saved as the app saves it (payment, templates, donationPresets+donationOptions, visitTypes, contact+contactMore) and the rest of the settings stay as they are.',
   'Payment details and donation amounts: owner only. Message templates use [שם], [תאריך], [שעה], [אירוע], [סכום] as placeholders.',
   'Registration questions: settings.saveQuestion / settings.removeQuestion / settings.reorderQuestions.',
+  'donationPresets replaces the whole list; each entry is "amount|label" (e.g. "180|עשר פעמים חי"). An entry without "|label" saves an empty label, so to restore, send every amount with its label as settings.get returned them.',
+  'Saving the payment section always writes bitNumber and payboxLink (empty when off), as the app does.',
 ]);
