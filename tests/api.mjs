@@ -167,11 +167,11 @@ try {
   section('health and catalog');
   {
     const h = await api('GET', '/v1/health', { label: 'health' });
-    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '2.0.0', 'GET /v1/health → 200 with catalog version');
+    check(h.status === 200 && h.json.ok && h.json.data.catalogVersion === '3.0.0', 'GET /v1/health → 200 with catalog version');
     const c = await api('GET', '/v1/catalog', { label: 'catalog' });
     const ops = c.json?.data?.operations || [];
     const valid = ops.length >= 5 && ops.every((o) => typeof o.name === 'string' && ['read', 'write'].includes(o.kind) && ['GET', 'POST'].includes(o.method) && o.path.startsWith('/v1/') && /^[a-z]+:[a-z]+$/.test(o.requiredScope) && typeof o.he === 'string' && (o.kind === 'read' || o.idempotency === 'required'));
-    check(c.status === 200 && c.json.data.version === '2.0.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
+    check(c.status === 200 && c.json.data.version === '3.0.0' && valid, 'GET /v1/catalog → valid versioned catalog', ops.map((o) => o.name));
     check(['people.search', 'tasks.list', 'tasks.get', 'tasks.create', 'tasks.assign', 'tasks.complete', 'tasks.reopen', 'shopping.list', 'shopping.add', 'shopping.setBought'].every((n) => ops.some((o) => o.name === n)), 'catalog has all ten operations');
   }
 
@@ -419,7 +419,7 @@ try {
     const appKeys = ['title', 'note', 'link', 'category', 'createdBy', 'createdAt', 'bought', 'boughtBy', 'boughtAt', 'expireAt', 'updatedAt', 'qty', 'urgent'];
     check(JSON.stringify(Object.keys(stored).filter((k) => k !== 'id').sort()) === JSON.stringify([...appKeys].sort()), 'stored item has exactly the fields the app writes');
     const added = await where('activity', 'refId', shopId);
-    check(added.length === 1 && added[0].kind === 'shopping' && added[0].action === 'added' && added[0].text === 'מלט · 3 שקים (חומרי בניין)', 'activity "added" with the app\'s text', added);
+    check(added.length === 1 && added[0].kind === 'shopping' && added[0].action === 'added' && added[0].text === 'מלט · 3 שקים (בניין)', 'activity "added" with the app\'s text', added);
     const open = await api('GET', '/v1/shopping', { ...as('syn-ronit'), label: 'shopping.list' });
     check(open.status === 200 && open.json.data.items.some((i) => i.id === shopId), 'shopping.list shows the open item');
     const onlyBuilding = await api('GET', '/v1/shopping?category=building', as('syn-ronit'));
@@ -485,13 +485,17 @@ try {
     const s0 = await r(STAFF, '/v1/settings');
     check(s0.status === 200 && s0.json.data.settings.visitTypes.length === 4 && s0.json.data.settings.templates.visitApproved.includes('[שם]'), 'settings.get falls back to the app\'s defaults');
     check((await w(STAFF, 'settings.update', { guestIntro: 'x' })).status === 403, 'staff cannot change settings');
-    ok(await w(MGR, 'settings.update', { visitTypes: ['סיור', 'סדנה'], paymentBit: '050-1234567', msgVisitApproved: 'אושר [שם]' }), 'settings.update');
+    // payment details are the owner's (firestore.rules settings); a manager changes the rest
+    check((await w(MGR, 'settings.update', { paymentBit: '050-1234567' })).status === 403, 'a manager cannot change payment details (owner only)');
+    ok(await w(MGR, 'settings.update', { visitTypes: ['סיור', 'סדנה'], msgVisitApproved: 'אושר [שם]' }), 'settings.update');
+    ok(await w(OWNER, 'settings.update', { paymentBit: '050-1234567' }), 'settings.update payment (owner)');
     const st = await docOf('settings/app');
-    check(st.visitTypes.join() === 'סיור,סדנה' && st.payment.bit === '050-1234567' && st.payment.cash === true && st.templates.visitApproved === 'אושר [שם]' && st.templates.donationThanks.includes('תודה') && st.guestIntro.includes('ברוכים'), 'settings are stored whole, merged over the defaults, as saveSettings() does');
-    check((await actsOf('app')) === 'saved', 'settings activity "saved"');
+    check(st.visitTypes.join() === 'סיור,סדנה' && st.payment.bit === '050-1234567' && st.payment.cash === true && st.templates.visitApproved === 'אושר [שם]' && st.templates.donationThanks.includes('תודה') && !('guestIntro' in st), 'settings are merged section by section over the defaults, as saveSettingsPart() does');
+    check((await actsOf('app')) === 'saved,saved', 'settings activity "saved" (one per save)');
 
     // places
-    check((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status === 403, 'staff cannot add places');
+    // as in the app (firestore.rules): the team adds and edits places; only managers delete them
+    check([200, 201].includes((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status), 'staff can add places, as in the app');
     const pl = await w(MGR, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
     ok(pl, 'places.add'); const placeId = pl.json.data.placeId;
     ok(await w(MGR, 'places.update', { placeId, name: 'דיר' }), 'places.update');
@@ -721,13 +725,13 @@ try {
 
     // staff: every manager-only read and write is refused, and refusals write nothing
     const before = await actCount();
-    const reads = ['/v1/people?q=דני', '/v1/profiles', '/v1/profiles/syn-ronit', '/v1/role-invites', '/v1/join-codes', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/calendar', '/v1/system/failures', '/v1/activity?kind=visit', '/v1/activity?kind=donation', '/v1/activity?kind=user', '/v1/activity?kind=settings'];
+    const reads = ['/v1/people?q=דני', '/v1/profiles', '/v1/profiles/syn-ronit', '/v1/role-invites', '/v1/join-codes', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/system/failures', '/v1/activity?kind=visit', '/v1/activity?kind=donation', '/v1/activity?kind=user', '/v1/activity?kind=settings'];
     const readCodes = await Promise.all(reads.map((p) => r(STAFF, p).then((x) => x.status)));
     check(readCodes.every((c) => c === 403), `staff: all ${reads.length} manager-only reads → 403`, reads.filter((_, i) => readCodes[i] !== 403));
     const writes = [
       ['people.setRole', { uid: 'syn-dani-c', role: 'manager' }], ['people.setStatus', { uid: 'syn-dani-c', status: 'blocked' }], ['people.setNotes', { uid: 'syn-dani-c', notes: 'x' }],
       ['invites.setRole', { email: 'a@b.co', role: 'staff' }], ['tasks.assign', { taskId: 'syn-managers-only', assignee: 'syn-ronit' }], ['templates.create', { title: 'x' }],
-      ['places.add', { name: 'x', lat: 1, lng: 1 }], ['events.create', { title: 'x', start: '2026-12-01T10:00', end: '2026-12-01T11:00' }], ['tickets.setPayment', { ticketId: 'x', paymentStatus: 'paid' }],
+      ['events.create', { title: 'x', start: '2026-12-01T10:00', end: '2026-12-01T11:00' }], ['tickets.setPayment', { ticketId: 'x', paymentStatus: 'paid' }],
       ['tickets.cancelOrder', { orderId: 'x' }], ['tabs.setStatus', { tabId: 'x', status: 'paid' }], ['visits.setStatus', { visitId: 'syn-visit', status: 'approved' }],
       ['donations.setPayment', { donationId: 'syn-donation', paymentStatus: 'paid' }], ['vendors.create', { name: 'x' }], ['calendar.create', { title: 'x', date: '2026-12-01' }],
       ['notifications.setHandled', { notificationId: 'syn-n-other' }], ['settings.update', { guestIntro: 'x' }],
@@ -1074,6 +1078,12 @@ section('account deletion (cron, 30 days after the request)');
 // every message (RFC 8291) and verifies its VAPID JWT, and to a mock FCM. Synthetic people and keys only.
 section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
 {
+  // earlier sections' actions now notify people as the app does, which queues push jobs: mark them sent, so this
+  // section's drain (10 oldest unsent per run) sees only its own jobs
+  {
+    const q = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'push_jobs' }] } }) }).then((x) => x.json());
+    for (const x of q.filter((y) => y.document)) await fetch(`http://${EMU}/v1/${x.document.name}?updateMask.fieldPaths=sentAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { sentAt: { stringValue: '2026-01-01T00:00:00.000Z' } } }) });
+  }
   const { createECDH, createPublicKey, verify: cverify, hkdfSync, createDecipheriv, generateKeyPairSync: genPair } = await import('node:crypto');
   const b64u = (b) => Buffer.from(b).toString('base64url');
   // the farm's VAPID keys (synthetic): public = uncompressed point, private = d

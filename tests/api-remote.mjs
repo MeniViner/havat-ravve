@@ -55,7 +55,8 @@ async function queryEq(col, field, value) {
 // the real owner, to assign to (read directly, never printed)
 const owners = (await fsReq('POST', ':runQuery', { structuredQuery: { from: [{ collectionId: 'users' }], where: { fieldFilter: { field: { fieldPath: 'role' }, op: 'EQUAL', value: { stringValue: 'owner' } } } } }))
   .filter((r) => r.document).map((r) => ({ uid: r.document.name.split('/').pop(), ...fields(r.document) }));
-const owner = owners.find((o) => o.status === 'active');
+// several owners can exist: when MENI_ACTOR is set, the checks below act as that person
+const owner = owners.find((o) => o.status === 'active' && (!MENI_ACTOR || `user:${o.uid}` === MENI_ACTOR)) || owners.find((o) => o.status === 'active');
 if (!owner) { console.error('no active owner in users'); process.exit(2); }
 
 try {
@@ -162,7 +163,7 @@ try {
     const R = (who, path, label) => api('GET', path, { ...who, label });
     const good = (r, label) => check(r.status >= 200 && r.status < 300 && (r.j?.data?.verified ?? true) !== false, label, r.j?.error);
     const cat = await R(me, '/v1/catalog');
-    check(cat.j.data.version === '2.0.0' && cat.j.data.operations.length >= 80, `live catalog 2.0.0 with ${cat.j.data.operations.length} operations`);
+    check(cat.j.data.version === '3.0.0' && cat.j.data.operations.length >= 180, `live catalog 3.0.0 with ${cat.j.data.operations.length} operations`);
     const ov = await R(me, '/v1/overview', 'farm.overview');
     good(ov, 'farm.overview (manager) against production');
     check('payments' in (ov.j.data || {}) && 'notifications' in (ov.j.data || {}), 'manager overview has payments and notifications');
@@ -173,9 +174,11 @@ try {
       const r = await R(me, p, 'resource reads');
       check(r.status === 200, `GET ${p} → 200`, r.j?.error);
     }
-    const reads = ['/v1/profiles', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/calendar', '/v1/system/failures', '/v1/activity?kind=user'];
+    const reads = ['/v1/profiles', '/v1/visits', '/v1/donations', '/v1/notifications', '/v1/system/failures', '/v1/activity?kind=user'];
     const codes = await Promise.all(reads.map((p) => R(staff, p).then((x) => x.status)));
     check(codes.every((c) => c === 403), 'staff: manager-only reads → 403 in production', codes);
+    // as in the app, the team reads the farm calendar (managers-only items stay hidden)
+    check((await R(staff, '/v1/calendar')).status === 200, 'staff reads the calendar, as in the app');
 
     const pl = await W(me, 'places.add', { name: `${TAG} מקום`, lat: 31.4, lng: 34.6 }); good(pl, 'places.add');
     const tk = await W(me, 'tasks.create', { title: `${TAG} עריכה`, placeId: pl.j.data.placeId, note: 'פירוט' });

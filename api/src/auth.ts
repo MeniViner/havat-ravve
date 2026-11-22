@@ -6,11 +6,13 @@ import { sameHex, sha256hex } from './util';
 
 export type Scope =
   | 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'tasks:edit' | 'templates:read' | 'templates:write'
+  | 'projects:read' | 'projects:write'
   | 'people:read' | 'people:write' | 'shopping:read' | 'shopping:write' | 'places:read' | 'places:write'
   | 'events:read' | 'events:write' | 'tickets:read' | 'tickets:write' | 'tabs:read' | 'tabs:write' | 'tabs:settle'
   | 'vendors:read' | 'vendors:write' | 'visits:read' | 'visits:write' | 'donations:read' | 'donations:write'
   | 'notifications:read' | 'notifications:write' | 'calendar:read' | 'calendar:write' | 'activity:read'
-  | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read';
+  | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read'
+  | 'presence:write' | 'broadcasts:read' | 'broadcasts:write' | 'me:read' | 'me:write' | 'notify:write';
 export type ActorRole = 'owner' | 'manager' | 'staff';
 
 export type ActorDef = {
@@ -25,12 +27,16 @@ export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySe
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
   'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'templates:read', 'shopping:read', 'shopping:write', 'places:read',
+  // places: anyone on the team saves and names a place (rules: create/update isStaff); delete stays manager-only in the operation
+  'places:write',
   'events:read', 'tickets:read', 'tabs:read', 'tabs:write', 'vendors:read', 'activity:read', 'settings:read', 'overview:read',
+  // the farm calendar and their own presence (firestore.rules calendar: read isStaff, presence own), broadcasts sent to them, their own notifications
+  'calendar:read', 'presence:write', 'broadcasts:read', 'me:read', 'me:write',
 ];
 const MANAGER: Scope[] = [
-  ...STAFF, 'tasks:assign', 'templates:write', 'people:read', 'people:write', 'places:write', 'events:write', 'tickets:write', 'tabs:settle',
+  ...STAFF, 'tasks:assign', 'templates:write', 'projects:read', 'projects:write', 'people:read', 'people:write', 'events:write', 'tickets:write', 'tabs:settle',
   'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'notifications:read', 'notifications:write',
-  'calendar:read', 'calendar:write', 'settings:write', 'system:read',
+  'calendar:write', 'settings:write', 'system:read', 'broadcasts:write', 'notify:write',
 ];
 const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
 
