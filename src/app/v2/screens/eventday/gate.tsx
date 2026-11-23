@@ -1,13 +1,16 @@
 // E2-Scan, E3-Ok, E4-Pay, E5-Bad (one route, full-bleed, no AppScreen) and E6-Search.
 // A valid ticket is let in at once (optimistic; the transaction refuses a second gate's copy -> X1). Unpaid shows E4,
-// cancelled or unknown shows E5 and is logged as a rejected scan. Works offline: the ticket list is on the phone.
+// cancelled or unknown shows E5 and is logged as a rejected scan. Works offline: the ticket list is on the phone. A scan saved on
+// the phone (no reception, or weak reception: db.ts transact `queue`) shows as the "previous" line with "נשמר בטלפון, יישלח כשתהיה
+// קליטה" until it is sent; the offline queue (C8) lists it too (admit logs the activity).
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { GateCamera, GateResult, GateButton, TopBar, PageTitle, SearchField, SectionTitle, ListCard, Row, Tag, Button, Sheet, Field, Stepper, BottomBar } from '../../kit';
 import { AppScreen, useToast, useV2 } from '../../core';
 import { hhmm, money } from '../../format';
-import { isConflict } from '../../../db';
+import { isConflict, txTiming, useSync } from '../../../db';
 import { nowIso } from '../../../clock';
-import { useDemo } from '../../../demo/store';
+import { useDemo, getDemo, getDemoStates, useDemoStates } from '../../../demo/store';
+import { useOnline } from '../../../store';
 import { navigate } from '../../../router';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
@@ -17,20 +20,29 @@ import {
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to, moduleOff } from './common';
 
 type View = { tone: 'ok'; name: string; detail: string } | { tone: 'pay' | 'bad'; v: Verdict };
+/** No reception right now (or the demo's "offline" state): a write is saved on the phone. */
+const offlineNow = () => !navigator.onLine || (getDemo().on && getDemoStates().offline);
+const SAVED_ON_PHONE = 'נשמר בטלפון, יישלח כשתהיה קליטה';
 const RESULT_WORD: Record<ScanV2['result'], string> = { ok: 'מאושר', paidAtGate: 'שולם בשער', payLater: 'ישלמו אחר כך', rejected: 'נדחה' };
 
 /** The gate's decisions, shared by the camera (E2) and the name search (E6). */
 function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
   const toast = useToast();
   const [view, setView] = useState<View | null>(null);
-  const [mine, setMine] = useState<{ name: string; result: ScanV2['result']; at: string } | null>(null);
-  const note = (name: string, result: ScanV2['result']) => setMine({ name, result, at: nowIso() });
+  const [mine, setMine] = useState<{ name: string; result: ScanV2['result']; at: string; saved?: boolean } | null>(null);
+  /** The scan as this phone made it. `write`: its save; one that had to wait for the server was saved on the phone instead. */
+  const note = (name: string, result: ScanV2['result'], write?: Promise<unknown>) => {
+    const at = nowIso(); const t0 = performance.now();
+    setMine({ name, result, at, saved: offlineNow() });
+    write?.then(() => { if (performance.now() - t0 >= txTiming.waitMs - 50) setMine((m) => (m && m.at === at ? { ...m, saved: true } : m)); }, () => {});
+  };
   const okDetail = (t: TicketV2) => `${t.total === 1 ? 'כרטיס אחד' : `כרטיס ${t.index} מתוך ${t.total}`} · ${(t.entries || 0) === 0 ? 'כניסה ראשונה' : `כניסה ${(t.entries || 0) + 1}, יצא וחזר`}`;
   const letIn = (t: TicketV2, order: TicketV2[], pay: 'none' | 'gate' | 'later') => {
     if (!event) return;
     setView({ tone: 'ok', name: t.holderName || t.ownerName, detail: okDetail(t) });
-    note(t.holderName || t.ownerName, pay === 'gate' && order.some(isUnpaid) ? 'paidAtGate' : pay === 'later' && order.some(isUnpaid) ? 'payLater' : 'ok');
-    admit(ctx.actor, event, t, order, pay).catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
+    const write = admit(ctx.actor, event, t, order, pay);
+    note(t.holderName || t.ownerName, pay === 'gate' && order.some(isUnpaid) ? 'paidAtGate' : pay === 'later' && order.some(isUnpaid) ? 'payLater' : 'ok', write);
+    write.catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
   };
   const show = (v: Verdict) => {
     if (!event) return;
@@ -53,8 +65,9 @@ function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
     walkIn: (g: { name: string; phone: string; count: number }, pay: 'gate' | 'later') => {
       if (!event) return;
       setView({ tone: 'ok', name: g.name, detail: `${ticketWord(g.count)} · כניסה ראשונה` });
-      note(g.name, (event.price || 0) ? (pay === 'gate' ? 'paidAtGate' : 'payLater') : 'ok');
-      admitWalkIn(ctx.actor, event, g, pay).catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
+      const write = admitWalkIn(ctx.actor, event, g, pay);
+      note(g.name, (event.price || 0) ? (pay === 'gate' ? 'paidAtGate' : 'payLater') : 'ok', write);
+      write.catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
     },
   };
 }
@@ -107,6 +120,7 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   const last = useScans(id, 1);
   const counters = useCounters(id);
   const demo = useDemo().on;
+  const demoStates = useDemoStates(); const online = useOnline(); const sync = useSync();
   const gate = useGate(ctx, event, tickets.items);
   const cam = useCamera(demo);
   const fresh = useDebounce();
@@ -126,12 +140,14 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   }
   const q0 = last.items[0];
   const l = gate.mine && (!q0 || gate.mine.at >= q0.at) ? gate.mine : q0;
+  // my last scan, still on this phone: it waits for reception (sync.pending), or there is none at all right now
+  const waiting = !!l && l === gate.mine && !!gate.mine.saved && (sync.pending > 0 || !online || (demo && demoStates.offline));
   const demoCode = (tid: string) => { const t = tickets.items.find((x) => x.id === tid); return t ? qrPayload(t) : `HR1|${tid}|00`; };
   return (
     <>
       <GateCamera place={header} onExit={() => navigate(params.from === 'live' || ctx.eventToday?.id !== id ? `/manage/events/${id}/live` : '/event')}
         hint={cam.error || undefined} showHint={demo || !!cam.error}
-        lastScan={l ? { text: `הקודם: ${l.name} · ${RESULT_WORD[l.result]}`, time: hhmm(l.at), tone: l.result === 'rejected' ? 'bad' : l.result === 'payLater' ? 'pay' : 'ok' } : undefined}
+        lastScan={l ? { text: `הקודם: ${l.name} · ${waiting ? SAVED_ON_PHONE : RESULT_WORD[l.result]}`, time: hhmm(l.at), tone: l.result === 'rejected' ? 'bad' : l.result === 'payLater' ? 'pay' : 'ok' } : undefined}
         onSearch={() => navigate('/event/gate/search' + q)}>
         {cam.render(onCode)}
         {demo && (

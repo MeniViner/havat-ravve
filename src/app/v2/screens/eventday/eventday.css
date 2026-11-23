@@ -113,5 +113,10 @@
   font-size: 15px; font-weight: 600; white-space: nowrap;
 }
 
-/* ── E8 cart: clear all, lines already on the account ── */
-.eventday-clear { flex: none; }
+/* Q28 "כבר בחשבון" link, Q29 account sheet */
+.eventday-who__link { align-self: flex-start; min-height: 28px; }
+.eventday-accountline { margin: 0; font-size: 15px; color: var(--soft); }
+.eventday-accounttotal { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; font-size: 16px; }
+.eventday-accounttotal b { color: var(--ink); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.eventday-accountcart { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 4px; font-size: 14px; color: var(--soft); }
+.eventday-accountbar { display: flex; gap: 8px; padding-bottom: 8px; }

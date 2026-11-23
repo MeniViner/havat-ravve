@@ -3,13 +3,14 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, IconButton, Tag, Chip, ChipRow, Hero, HeroNumber, Bar, LiveStatus, Dot, IconTile,
-  StatRow, StatTile, DetailList, DetailRow, Quote, BottomBar, FormHeader, TextLink, Sheet, Field, EmptyState, Card, Icon, Overline,
+  StatRow, StatTile, DetailList, DetailRow, Quote, BottomBar, FormHeader, TextLink, Sheet, Field, EmptyState, Card, Icon, Overline, MoreMenu,
 } from '../../kit';
+import { useTableView } from '../../patterns';
 import { AppScreen, useToast, useExternal, waUrl, telUrl } from '../../core';
 import { hhmm, ddmm, dayName, money, firstName } from '../../format';
 import { now, nowMs, nowIso } from '../../../clock';
 import { navigate } from '../../../router';
-import { downloadCsv, fillTemplate, hasTabPurchases } from '../../../data';
+import { fillTemplate, hasTabPurchases } from '../../../data';
 import { isConflict } from '../../../db';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
@@ -151,6 +152,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
 }
 
 type ScanFilter = 'all' | 'gate' | 'later' | 'rejected';
+const SCAN_WORD: Record<ScanV2['result'], string> = { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' };
 /** Y2: every scan, newest first. */
 export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const { id, event, loading } = useRouteEvent(ctx, params);
@@ -161,16 +163,20 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const counters = useCounters(id);
   const [filter, setFilter] = useState<ScanFilter>((params.filter as ScanFilter) || 'all');
   const [query, setQuery] = useState('');
+  // Q9 / rule 5: the table view and the CSV are ⋯ items, not a top-bar "אקסל"
+  const table = useTableView({
+    title: 'סריקות', filter: event?.title, filename: `סריקות-${event?.title || ''}.csv`, headers: ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
+    rows: () => scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', SCAN_WORD[s.result], s.meta, s.amount || '', s.by?.name || '']),
+  });
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
+  if (table.active) return table.screen;
   const c = countersOr(counters.item, counters.loading || tickets.loading, tickets.items);
   const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all' || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : true));
   const text = query.trim().toLowerCase(), d = digits(query);
   const shown = text ? base.filter((s) => s.name.toLowerCase().includes(text) || (d.length >= 4 && digits(s.phone || '').includes(d))) : base;
-  const excel = () => downloadCsv(`סריקות-${event.title}.csv`, ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
-    scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' }[s.result], s.meta, s.amount || '', s.by?.name || '']));
   return (
     <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} end={<Button variant="outline" icon="download" iconSize={18} onClick={excel}>אקסל</Button>} />
+      <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} end={<MoreMenu title="סריקות" items={table.items} />} />
       <PageTitle>סריקות · {c?.scans ?? scans.items.length}</PageTitle>
       <SearchField label="שם או טלפון" value={query} active={!!query} onChange={(ev) => setQuery(ev.target.value)} />
       <ChipRow label="סינון סריקות">
