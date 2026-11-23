@@ -249,10 +249,17 @@ test('day picker: any date beyond the week shows next to it; "היום" shows on
   assert.equal(L.holdsToday('month', '2026-12-19', '2026-11-19'), false);
 });
 
-test('item kinds: meeting / planning / other as the old calendar; old items keep their kind unless changed', () => {
-  assert.deepEqual(L.TEAM_KINDS.map((k) => k.label), ['פגישת צוות', 'הכנות לפסטיבל', 'פריט אחר']);
+test("item kinds: Q31's 'סוג' chips (meeting / visit / event prep / other); old items keep their kind unless changed", () => {
+  assert.deepEqual(L.TEAM_KINDS.map((k) => k.label), ['פגישה', 'ביקור', 'הכנות לאירוע', 'אחר']);
   assert.equal(L.teamKindOf('meeting'), 'meeting'); assert.equal(L.teamKindOf('manual'), 'manual'); assert.equal(L.teamKindOf('presence'), 'manual');
-  assert.equal(L.teamKindLabel('planning'), 'הכנות לפסטיבל'); assert.equal(L.teamKindLabel('manual'), ''); assert.equal(L.teamKindLabel('event'), '');
+  assert.equal(L.teamKindOf('visit'), 'visit');
+  assert.equal(L.teamKindLabel('planning'), 'הכנות לאירוע'); assert.equal(L.teamKindLabel('visit'), 'ביקור'); assert.equal(L.teamKindLabel('manual'), ''); assert.equal(L.teamKindLabel('event'), '');
+  // a visit noted by hand is a team item (the form edits it); a visit request's own entry (with refId) and events are not
+  assert.equal(L.isTeamItem({ kind: 'visit', refId: '', title: 'ביקור גן', ownerName: 'בני' }), true);
+  assert.equal(L.isTeamItem({ kind: 'visit', refId: 'v1', title: 'ביקור: גן', ownerName: 'בני' }), false);
+  assert.equal(L.isTeamItem({ kind: 'event', refId: 'e1', title: 'פסטיבל', ownerName: 'בני' }), false);
+  assert.equal(L.isTeamItem({ kind: 'manual', title: 'בני בחווה', ownerName: 'בני גולן' }), false);
+  assert.equal(L.kindToSave('visit', 'manual'), 'visit');
   // new: the chosen kind, 'manual' by default
   assert.equal(L.kindToSave(undefined), 'manual'); assert.equal(L.kindToSave('meeting'), 'meeting');
   // edit: written only when it changed

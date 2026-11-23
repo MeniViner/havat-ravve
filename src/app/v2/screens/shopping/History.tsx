@@ -1,4 +1,6 @@
-// S8-History: what was bought. Search, list filter, groups (today / this week / earlier) and "שוב" to put it back on the list.
+// S8-History: what was bought (found and ordered too). Search, list filter, groups (today / this week / earlier) and "שוב" to
+// add it again. What was bought today is folded into one row on the shopping root (Q22) and lands here: swipe a row of today
+// right to put it back on the list (the root's old "נקנה היום" card did that).
 import { useMemo, useState } from 'react';
 import { AppScreen, useToast } from '../../core';
 import { BackLink, Button, Chip, ChipRow, EmptyState, ListCard, PageTitle, Row, SearchField, TextLink } from '../../kit';
@@ -8,6 +10,7 @@ import { todayKey } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem } from '../../../types';
 import { againShopItem, first, historyGroups, listLabel, useShopping, type HistoryFilter, type HistoryGroup } from '../../data/shopping';
+import { useMarkBought } from './common';
 
 const FILTERS: { value: HistoryFilter; label: string }[] = [
   { value: 'all', label: 'הכל' }, { value: 'super', label: 'סופר' }, { value: 'building', label: 'בניין' }, { value: 'online', label: 'אינטרנט' },
@@ -22,6 +25,7 @@ export function ShopHistoryScreen({ ctx }: ScreenProps) {
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [more, setMore] = useState<Set<string>>(new Set());
   const today = todayKey();
+  const { unmark } = useMarkBought(ctx.actor);
   const groups = useMemo(() => historyGroups(history, filter, q, today), [history, filter, q, today]);
   const when = (g: HistoryGroup, i: ShoppingItem) => (g.key === 'today' ? hhmm(i.boughtAt!) : g.key === 'week' ? dayName(i.boughtAt!) : ddmm(i.boughtAt!));
   const again = (i: ShoppingItem) => {
@@ -46,7 +50,8 @@ export function ShopHistoryScreen({ ctx }: ScreenProps) {
             {rows.map((i) => (
               <Row key={i.id} title={i.title}
                 meta={[i.qty, first(i.boughtBy?.name || ''), when(g, i), filter === 'all' && i.category !== 'super' ? listLabel(i.category) : ''].filter(Boolean).join(' · ')}
-                actions={<Button variant="outline" icon="plus" iconSize={16} className="shopping-again" onClick={() => again(i)}>שוב</Button>} />
+                actions={<Button variant="outline" icon="plus" iconSize={16} className="shopping-again" onClick={() => again(i)}>שוב</Button>}
+                swipe={g.key === 'today' ? { right: { label: 'להחזיר', icon: 'back', tone: 'done', onAction: () => unmark(i) } } : undefined} />
             ))}
           </ListCard>
         );
