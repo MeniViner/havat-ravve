@@ -235,6 +235,8 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-row--muted { opacity: .65; }
 .k-row__meta { font-size: 14px; color: var(--soft); }
 .k-row__trail { flex: none; display: flex; align-items: center; gap: 8px; }
+/* a tappable row (padding 0, the link carries it) keeps its one control 14px off the card edge, as in Q10 */
+.k-row--hit:not(.k-row--check) > .k-row__trail { padding-inline-end: 14px; }
 .k-row__value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .k-row__chev { display: flex; color: var(--soft); }
 .k-row__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
