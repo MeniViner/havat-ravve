@@ -468,9 +468,9 @@ function SummaryPart({ ctx, e, part }: { ctx: V2Ctx; e: FarmEvent; part: Part })
       )}
       {part === 'compare' && (
         <>
+          {/* "יצאו וחזרו" moved to the scans log (Y2), needs-design decision 7. */}
           <StatRow>
             <StatTile value={`${pct}%`} label="הגעה" />
-            <StatTile value={num(X.returned)} label="יצאו וחזרו" />
           </StatRow>
           {past.length > 0 ? (
             <ListCard>

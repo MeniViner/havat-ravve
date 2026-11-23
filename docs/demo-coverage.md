@@ -179,3 +179,6 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | U13-GuestRegister | new | regular | /welcome |  |
 | W1-InboxMessage | manager | regular | /manage/inbox/demo-n-contact |  |
 | W2-InboxStallRequest | manager | eventDay | /manage/inbox/stall/demo-e-festival/demo-vr-raz-power |  |
+| Q4-DonationsTwo | manager | afterEvent | /manage/donations |  |
+| Q14-ReportsTasks | manager | regular | /manage/reports/tasks |  |
+| Y2-ScansReturned | manager | eventDay | /manage/events/demo-e-festival/live/scans | click:יצאו וחזרו |

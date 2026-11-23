@@ -16,7 +16,7 @@ const MONTH_START = '2026-11-01';
 const DONE_TARGET: Record<string, number> = { 'demo-u-yoav': 28, 'demo-u-noa': 18, 'demo-u-dana': 6, 'demo-u-eliya': 1 };
 const TASK_NAMES = ['האכלת העיזים', 'השקיית העציצים', 'ניקוי הלול', 'פתיחת השער ובדיקת הברזים', 'החלפת מים לסוסים', 'איסוף ביצים', 'סידור המחסן', 'גיזום בפינת החי'];
 
-const slice: Slice = (seed) => {
+const slice: Slice = (seed, scenario) => {
   // ---- N1/N2 visits: approved list as designed; the new request keeps its place ----
   patch(seed, 'visits', 'demo-vi-cohen', { managerNote: 'נפגשים בשער ב־10:00' });
   patch(seed, 'visits', 'demo-vi-kindergarten', { name: 'בית ספר אורנים', people: 30, date: key(5), type: 'מפגש קבוצתי', managerNote: '09:30 · להכין את פינת החי', note: 'שכבת ד׳, 30 ילדים ו־3 מורות.' });
@@ -42,6 +42,12 @@ const slice: Slice = (seed) => {
   const hist = (id: string, uid: string, name: string, amount: number, label: string, d: number): Row => ({
     id, uid, name, phone: '', amount, label, note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt: at(d), updatedAt: at(d),
   });
+  // Q4 chip, both forms (needs-design decision 5): one waiting on a regular day ("לאישור · 180 ₪"); after the festival Ester
+  // marked a second donation as sent, so the chip reads "לאישור · 2 · 360 ₪".
+  if (scenario === 'afterEvent') put(seed, 'donations', [{
+    id: 'demo-d-ester-fest', uid: 'demo-u-ester', name: 'אסתר כהן', phone: '050-000-0310', amount: 180, label: 'עשר פעמים חי', note: '', memorial: '',
+    receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'claimed', createdAt: at(9, '20:40'), updatedAt: at(9, '20:40'),
+  }]);
   put(seed, 'donations', [
     hist('demo-d-h-mar', 'demo-u-roni', 'רוני לוי', 3600, 'סכום חופשי', -250),
     hist('demo-d-h-jun', 'demo-u-noam', 'נועם אדרי', 1800, 'סכום חופשי', -160),
