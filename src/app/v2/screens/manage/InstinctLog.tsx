@@ -35,7 +35,8 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     return items
-      .filter((e) => (show === 'actions' ? e.kind === 'write' && e.ok : show === 'reads' ? e.kind === 'read' && e.ok : show === 'failed' ? !e.ok : true))
+      // Q20: "שינויים" lists every change, a failed one too with its Hebrew reason; its count is the changes that went through
+      .filter((e) => (show === 'actions' ? e.kind === 'write' : show === 'reads' ? e.kind === 'read' : show === 'failed' ? !e.ok : true))
       .filter((e) => !key || e.credential === key)
       .filter((e) => { if (!t) return true; const l = lines.get(e.id)!; return `${e.keyLabel} ${e.actor.name} ${l.title} ${l.meta} ${e.opHe}`.toLowerCase().includes(t); });
   }, [items, show, key, q, lines]);
