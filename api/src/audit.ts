@@ -9,6 +9,7 @@ import { ALL_OPERATIONS } from './catalog';
 import { type Env, Firestore } from './firestore';
 import { HE, type ApiError } from './http';
 import { nowIso } from './core';
+import { consoleOp } from './console';
 
 export const LOG = 'api_log';
 
@@ -17,6 +18,10 @@ export type Audit = {
   credential?: string;
   actor?: { id: string; role: string; uid?: string; name?: string };
   op?: string;
+  /** The key's name from the console's key record, when it has one. */
+  label?: string;
+  /** The API path the request ran (a console call /v1/console/api/x runs /v1/x). */
+  path?: string;
   body?: Record<string, unknown>;
   idempotencyKey?: string | null;
   result?: unknown;
@@ -25,7 +30,9 @@ export type Audit = {
 
 const firstName = (s: string) => s.trim().split(/\s+/)[0] || s;
 
-export function keyLabel(env: Env, credential: string, actorName?: string): string {
+export function keyLabel(env: Env, credential: string, actorName?: string, stored?: string): string {
+  if (credential === 'console') return `קונסולה · ${firstName(actorName || 'בעלים')}`;
+  if (stored) return stored.slice(0, 60);
   try {
     const map = JSON.parse(env.KEY_LABELS || '{}') as Record<string, unknown>;
     if (typeof map[credential] === 'string' && map[credential]) return String(map[credential]).slice(0, 60);
@@ -83,14 +90,14 @@ function refsOf(result: unknown): { col: string; id: string }[] {
 /** The log document for one request (null when no key was recognised: an unknown key is not anyone's action). */
 export function auditDoc(env: Env, a: Audit, req: { requestId: string; method: string; path: string; query: string; status: number; ms: number; error?: ApiError }) {
   if (!a.credential || !a.actor) return null;
-  const op = opFor(req.method, req.path, a.op);
+  const op = a.op?.startsWith('console.') ? consoleOp(a.op) : opFor(req.method, req.path, a.op);
   const kind: 'read' | 'write' = op?.kind || (req.method === 'GET' ? 'read' : 'write');
   const name = op?.name || a.op || `${req.method} ${req.path}`;
   const ok = req.status < 400;
   const items = a.result && typeof a.result === 'object' && Array.isArray((a.result as { items?: unknown }).items) ? (a.result as { items: unknown[] }).items.length : null;
   return {
     id: req.requestId, at: nowIso(),
-    credential: a.credential, keyLabel: keyLabel(env, a.credential, a.actor.name),
+    credential: a.credential, keyLabel: keyLabel(env, a.credential, a.actor.name, a.label),
     actor: { id: a.actor.id, role: a.actor.role, uid: a.actor.uid || '', name: a.actor.name || '' },
     kind, op: name, opHe: op?.he || '', verb: verbOf(name, kind),
     method: req.method, path: req.path, query: cap(req.query, 500),
