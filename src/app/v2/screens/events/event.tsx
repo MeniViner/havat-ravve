@@ -1,49 +1,79 @@
 // M4-M7: one event, four stages chosen by ?tab (הכנה / נרשמים / יום האירוע / סיכום). Opens on the stage that fits the time.
-import { useMemo, useState } from 'react';
+// The top bar holds ⋯ (Q15, rule 5): edit, the stage's table view / export / print / history, and delete (rule 6).
+// The summary (Q15) shows its headline numbers and three drill-ins (?tab=summary&part=sold|money|compare, rule 10).
+import { useMemo, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
 import {
   TopBar, Segmented, ListCard, Row, Tag, Button, StatRow, StatTile, SearchField, ChipRow, Chip, CheckButton, Hero, HeroNumber, Bar,
-  TextLink, Card, SectionHeader, BarList, Sheet, Field, Stepper, Toggle, EmptyState, ConfirmSheet,
+  TextLink, Card, BarList, Sheet, Field, Stepper, Toggle, EmptyState, MoreMenu, ActionSheet, type ActionItem,
 } from '../../kit';
 import {
   useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
-  cancelOrder, markPaymentConfirmation, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
+  cancelOrder, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
 } from '../../../data';
 import { nowIso, nowMs, useClockVersion } from '../../../clock';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
-import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
+import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder, deleteEventV2 } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
   filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
   isPaid, cancelledOrdersOf, scansFromTickets, summaryExtras, type EventTab, type GuestFilter, type Order,
 } from './logic';
-import { PayConfirm } from './payconfirm';
-import { useCounters, useScans, liveNumbers as liveOf } from '../../data/eventday';
+import { PayConfirmStatus } from './payconfirm';
+import { usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
+import { useCounters, useScans, useCash, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
-import { DEFAULT_SETTINGS, PAYMENT_LABELS, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
+import { DEFAULT_SETTINGS, PAYMENT_LABELS, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
 
 export function EventScreen({ ctx, params }: ScreenProps) {
   useClockVersion();
   const { item: e, loading } = useEvent(params.id, ctx.manager);
   if (loading && !e) return <Loading backLabel="אירועים" parent="/manage/events" />;
   if (!e) return <Missing backLabel="אירועים" parent="/manage/events" />;
-  return <EventBody ctx={ctx} e={e} tabParam={params.tab} />;
+  return <EventBody ctx={ctx} e={e} tabParam={params.tab} part={params.part} />;
 }
 
-function EventBody({ ctx, e, tabParam }: { ctx: V2Ctx; e: FarmEvent; tabParam?: string }) {
+type Part = 'sold' | 'money' | 'compare';
+const PARTS: Part[] = ['sold', 'money', 'compare'];
+
+function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabParam?: string; part?: string }) {
   const now = nowMs();
+  const remove = useRemove();
   const tab = (EVENT_TABS.some((t) => t.value === tabParam) ? tabParam : defaultTab(e, now, ctx.today)) as EventTab;
+  const tickets = useEventTickets(e.id, ctx.manager);
+  const tabs = useEventTabs(e.id, ctx.manager && tab === 'summary');
+  const donations = useDonations(ctx.manager && tab === 'summary');
+  // Q9: the registrants as a table (…/table?tab=guests) and the CSV, from the guests stage's ⋯
+  const table = useTableView({
+    title: 'נרשמים', filename: `${e.title} - נרשמים.csv`, headers: ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
+    rows: () => ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], ddmm(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]),
+  });
+  if (table.active) return table.screen;
+  if (tab === 'summary' && PARTS.includes(part as Part)) return <SummaryPart ctx={ctx} e={e} part={part as Part} />;
+  const dayDonations = () => donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus)).reduce((s, d) => s + d.amount, 0);
+  const items: ActionItem[] = [
+    { label: 'עריכת האירוע', icon: 'edit', onSelect: () => go(`/manage/events/${e.id}/edit`) },
+    ...(tab === 'guests' ? table.items : []),
+    ...(tab === 'summary' ? [
+      { label: 'ייצוא לאקסל', icon: 'download', onSelect: () => reportCsv(e, tickets.items, tabs.items, dayDonations()) },
+      { label: 'הדפסה', icon: 'print', onSelect: () => window.print() },
+      { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go(`/manage/activity?event=${e.id}`) },
+    ] as ActionItem[] : []),
+    { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+      title: 'למחוק את האירוע?', text: `"${e.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`,
+      onConfirm: () => remove(() => deleteEventV2(ctx.actor, e), { text: 'האירוע נמחק. הכרטיסים נשמרו.', after: () => go('/manage/events', true) }),
+    } },
+  ];
   return (
     <AppScreen variant="detail" gap={tab === 'prep' ? 12 : 10}>
-      <TopBar back={backTo('אירועים', '/manage/events')}
-        end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/manage/events/${e.id}/edit`)}>עריכה</Button>} />
+      <TopBar back={backTo('אירועים', '/manage/events')} end={<MoreMenu title={e.title} items={items} />} />
       <TitleBlock over={eventSubtitle(e, now)} title={e.title} />
       <Segmented mode="tabs" className="events-tabs" label="שלבי האירוע" options={EVENT_TABS} value={tab} onChange={(v) => go(`/manage/events/${e.id}?tab=${v}`, true)} />
       {tab === 'prep' && <Prep ctx={ctx} e={e} />}
-      {tab === 'guests' && <Guests ctx={ctx} e={e} />}
+      {tab === 'guests' && <Guests ctx={ctx} e={e} tickets={tickets.items} />}
       {tab === 'day' && <Day ctx={ctx} e={e} />}
-      {tab === 'summary' && <Summary ctx={ctx} e={e} />}
+      {tab === 'summary' && <Summary ctx={ctx} e={e} tickets={tickets.items} tabs={tabs.items} donMoney={dayDonations()} />}
     </AppScreen>
   );
 }
@@ -80,10 +110,12 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     const t = fillTemplate(ctx.settings.templates.ticketReminder || DEFAULT_SETTINGS.templates.ticketReminder, { 'שם': '', 'אירוע': e.title, 'תאריך': `${dayName(e.start)} ${ddmm(e.start)}`, 'שעה': hhmm(e.start) });
     open(`https://wa.me/?text=${encodeURIComponent(t.replace(/^שלום\s*,\s*/, 'שלום, '))}`);
   };
+  // rule 4: one status tag; a published event whose registration is closed says so instead of "מפורסם"
+  const status = !e.published ? <Tag tone="neutral">טיוטה</Tag> : e.open ? <Tag tone="paid">מפורסם</Tag> : <Tag tone="neutral">ההרשמה סגורה</Tag>;
   return (
     <>
       <ListCard>
-        <Row minHeight={58} title="פרטי האירוע" tags={<><Tag tone={e.published ? 'paid' : 'neutral'}>{e.published ? 'מפורסם' : 'טיוטה'}</Tag>{e.published && <Tag tone={e.open ? 'warm' : 'neutral'}>{e.open ? 'פתוח להרשמה' : 'ההרשמה סגורה'}</Tag>}</>} meta={detailsMeta(e)} {...link(`/manage/events/${e.id}/edit`)} />
+        <Row minHeight={58} title="פרטי האירוע" tags={status} meta={detailsMeta(e)} {...link(`/manage/events/${e.id}/edit`)} />
         <Row minHeight={58} title="בעלי דוכנים" meta={vendors.items.length ? vendorsMeta(vendors.items as EventVendorV2[]) : 'עוד לא הוזמנו'} {...link(`/manage/events/${e.id}/vendors`)} />
         {e.stall !== false && <Row minHeight={58} title="מוצרי הדוכן" meta={productsMeta(products.items)} {...link(`/manage/events/${e.id}/products`)} />}
         <Row minHeight={58} title="משימות הכנה" meta={`${openTasks} פתוחות מתוך ${tasks.items.length}`} {...link(`/farm/events/${e.id}`)} />
@@ -102,15 +134,18 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
 const STATUS_TAG: Record<Order['status'], { tone: 'waiting' | 'neutral' | 'paid'; text: string }> = {
   claimed: { tone: 'waiting', text: 'סימן שהעביר' }, pending: { tone: 'neutral', text: PAYMENT_LABELS.pending }, paid: { tone: 'paid', text: PAYMENT_LABELS.paid }, free: { tone: 'neutral', text: PAYMENT_LABELS.free },
 };
-function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
+const payTarget = (e: FarmEvent, o: Order): PayConfirmTarget => ({
+  collection: 'tickets', ids: o.tickets.map((t) => t.id), uid: o.ownerUid, name: o.name, phone: o.phone, amount: o.total, purpose: `כרטיסים לאירוע ${e.title}`, event: e.title,
+});
+function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket[] }) {
   const toast = useToast(); const run = useRun();
-  const tickets = useEventTickets(e.id, ctx.manager);
+  const pay = usePayConfirm();
   const notes = useNotifications(ctx.manager);
-  const orders = useMemo(() => ordersOf(tickets.items), [tickets.items]);
-  const cancelled = useMemo(() => cancelledOrdersOf(tickets.items), [tickets.items]);
+  const orders = useMemo(() => ordersOf(tickets), [tickets]);
+  const cancelled = useMemo(() => cancelledOrdersOf(tickets), [tickets]);
   const allOrders = useMemo(() => [...orders, ...cancelled], [orders, cancelled]);
   const arrivedN = orders.filter((o) => o.arrived > 0).length;
-  const stats = guestStats(tickets.items);
+  const stats = guestStats(tickets);
   const claimed = orders.filter((o) => o.status === 'claimed');
   const [filter, setFilter] = useState<GuestFilter | null>(null);
   const f: GuestFilter = filter ?? (claimed.length ? 'claimed' : 'all');
@@ -118,6 +153,7 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [cancelling, setCancelling] = useState<Order | null>(null);
   const list = filterOrders(allOrders, f, q);
   const chosen = f === 'claimed' ? list.filter((o) => !unselected.has(o.orderId)) : [];
   const toggle = (id: string, on: boolean) => setUnselected((s) => { const n = new Set(s); if (on) n.delete(id); else n.add(id); return n; });
@@ -127,9 +163,9 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     if (!before) return;
     toast.show({ text: sel.length === 1 ? `${sel[0].name} · ${PAYMENT_LABELS.paid}` : `${sel.length} הזמנות · ${PAYMENT_LABELS.paid}`, check: true,
       actions: [{ label: 'ביטול', onClick: () => { before.forEach((b) => restoreOrder(ctx.actor, b)); } }] });
+    // Q7: one approved order asks how to tell the guest; several at once are confirmed from each order's sheet
+    if (sel.length === 1 && sel[0].total > 0) pay.ask(payTarget(e, sel[0]));
   };
-  const exportCsv = () => downloadCsv(`${e.title} - נרשמים.csv`, ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
-    ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], ddmm(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]));
   const approveLabel = chosen.length === 2 ? 'אישור של שניהם' : chosen.length > 2 ? 'אישור של כולם' : 'אישור';
   const opened = allOrders.find((o) => o.orderId === sheet) || null;
 
@@ -178,88 +214,90 @@ function Guests({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
         <EmptyState variant="card" title={q ? 'לא נמצא' : f === 'claimed' ? 'אין תשלומים לאישור' : f === 'unpaid' ? 'כולם שילמו' : f === 'arrived' || f === 'cancelled' ? 'אין עדיין' : 'עוד אין נרשמים'} />
       )}
       <ButtonRow>
-        <Button variant="outline" size="tall" icon="download" onClick={exportCsv}>אקסל</Button>
         <Button variant="outline" size="tall" icon="plus" onClick={() => setAdding(true)}>הוספת נרשם</Button>
       </ButtonRow>
-      <OrderSheet ctx={ctx} e={e} order={opened} onClose={() => setSheet(null)} onApprove={(o) => { setSheet(null); approve([o]); }} notes={notes.items} />
+      <OrderSheet ctx={ctx} e={e} order={opened} onClose={() => setSheet(null)} onApprove={(o) => approve([o])} onConfirm={(o) => pay.ask(payTarget(e, o))}
+        onCancel={setCancelling} notes={notes.items} />
+      <CancelSheet ctx={ctx} order={cancelling} onClose={() => setCancelling(null)} />
       <AddGuestSheet ctx={ctx} e={e} open={adding} onClose={() => setAdding(false)} />
+      {pay.sheet}
     </>
   );
 }
 
-function OrderSheet({ ctx, e, order, onClose, onApprove, notes }: { ctx: V2Ctx; e: FarmEvent; order: Order | null; onClose: () => void; onApprove: (o: Order) => void; notes: import('../../../types').AppNotification[] }) {
+/** The order's row sheet (Q11): what it is, then its actions; cancel and delete in red at the bottom (rule 6). */
+function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, notes }: {
+  ctx: V2Ctx; e: FarmEvent; order: Order | null; onClose: () => void; onApprove: (o: Order) => void; onConfirm: (o: Order) => void; onCancel: (o: Order) => void; notes: AppNotification[];
+}) {
   const open = useExternal(); const toast = useToast(); const run = useRun();
-  const [cancelling, setCancelling] = useState(false); const [reason, setReason] = useState('');
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
-  if (!order) return null;
-  const t0 = order.tickets[0];
-  const owing = order.owed > 0;
-  const paidAll = order.tickets.every((t) => isPaid(t.paymentStatus));
-  const confirmation = order.tickets.find((t) => t.paymentConfirmation)?.paymentConfirmation;
+  // the sheet stays mounted after it closes, so the delete confirmation it opens can still run
+  const last = useRef<Order | null>(null);
+  if (order) last.current = order;
+  const o = order || last.current;
+  if (!o) return null;
+  const t0 = o.tickets[0];
+  const owing = o.owed > 0;
+  const paidAll = o.tickets.every((t) => isPaid(t.paymentStatus));
+  const confirmation = o.tickets.find((t) => t.paymentConfirmation)?.paymentConfirmation;
   const remind = async () => {
-    const text = fillDebtTemplate(ctx.settings.templates.debtReminder, { name: order.name, event: e.title, amount: order.owed, bit: ctx.settings.payment.bit });
-    open(waUrl(order.phone, text));
-    await run(() => stampReminder('tickets', order.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
-  };
-  const sendConfirmation = async () => {
-    const body = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, { 'שם': order.name, 'סכום': money(order.total), 'עבור': `כרטיסים לאירוע ${e.title}`, 'אירוע': e.title });
-    open(waUrl(order.phone, body));
-    await run(() => markPaymentConfirmation(ctx.actor, 'tickets', order.tickets.map((t) => t.id)));
+    const text = fillDebtTemplate(ctx.settings.templates.debtReminder, { name: o.name, event: e.title, amount: o.owed, bit: ctx.settings.payment.bit });
+    open(waUrl(o.phone, text));
+    await run(() => stampReminder('tickets', o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
   };
   const markPaidNow = async () => {
-    const before = order.tickets.map((t) => ({ ...t }));
-    const ok = await run(async () => { await setOrderPayment(ctx.actor, order.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'), 'paid_onsite'); await handleNotificationsFor(notes, order.orderId, ctx.actor); return true; });
-    if (ok) { onClose(); toast.show({ text: `${order.name} · ${PAYMENT_LABELS.paid_onsite}`, check: true, actions: [{ label: 'ביטול', onClick: () => { restoreOrder(ctx.actor, before); } }] }); }
+    const before = o.tickets.map((t) => ({ ...t }));
+    const ok = await run(async () => { await setOrderPayment(ctx.actor, o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'), 'paid_onsite'); await handleNotificationsFor(notes, o.orderId, ctx.actor); return true; });
+    if (ok) toast.show({ text: `${o.name} · ${PAYMENT_LABELS.paid_onsite}`, check: true, actions: [{ label: 'ביטול', onClick: () => { restoreOrder(ctx.actor, before); } }] });
   };
+  const holders = o.tickets.filter((t) => t.holderName).map((t) => `כרטיס ${t.index}: ${t.holderName}`);
+  const answers = Object.entries(t0.answers || {}).map(([k, v]) => `${e.questions.find((x) => x.id === k)?.label || k} ${v}`);
+  const sub = (
+    <span className="events-sheet__meta">
+      {ticketsWord(o.count)} · {o.cancelled ? 'בוטל' : STATUS_TAG[o.status].text}{o.arrived ? ` · ${o.arrived} נכנסו` : ''} · {money(o.owed || o.total)}<br />
+      הוזמן {ddmm(o.createdAt)}{o.phone ? <> · <span dir="ltr">{o.phone}</span></> : null}
+      {holders.length > 0 && <><br />{holders.join(' · ')}</>}
+      {answers.length > 0 && <><br />{answers.join(' · ')}</>}
+      {!o.cancelled && o.total > 0 && <PayConfirmStatus paid={paidAll} confirmation={confirmation} emailJob={'order_' + o.orderId} />}
+    </span>
+  );
+  const items: ActionItem[] = [
+    { label: 'אישור תשלום', icon: 'check', hidden: !owing, onSelect: () => onApprove(o) },
+    { label: 'שולם במקום', icon: 'check', hidden: !owing, onSelect: markPaidNow },
+    { label: 'תזכורת בוואטסאפ', icon: 'message', hidden: !owing || !o.phone, onSelect: remind },
+    { label: confirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום', icon: 'mail', hidden: o.cancelled || !paidAll || o.total <= 0, onSelect: () => onConfirm(o) },
+    { label: 'התקשרות', icon: 'phone', hidden: !o.phone, onSelect: () => open(telUrl(o.phone)) },
+    { label: `הכרטיס של ${firstName(o.name)}`, icon: 'people', hidden: o.ownerUid === ctx.user.uid, onSelect: () => go(`/manage/people/${o.ownerUid}`) },
+    { label: 'ביטול ההזמנה', icon: 'close', tone: 'danger', hidden: o.cancelled, onSelect: () => onCancel(o) },
+    { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+      title: 'למחוק את ההזמנה?', text: `ההזמנה של ${o.name} (${ticketsWord(o.tickets.length)}) תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.`,
+      onConfirm: () => remove(() => deleteOrder(ctx.actor, o.tickets, notes), { text: 'ההזמנה נמחקה' }),
+    } },
+  ];
+  return <ActionSheet open={!!order} onClose={onClose} title={o.name} sub={sub} items={items} />;
+}
+
+/** "ביטול ההזמנה": the reason goes to the history; undo from the toast. */
+function CancelSheet({ ctx, order, onClose }: { ctx: V2Ctx; order: Order | null; onClose: () => void }) {
+  const toast = useToast(); const run = useRun();
+  const [reason, setReason] = useState('');
+  const close = () => { setReason(''); onClose(); };
   const doCancel = async () => {
+    if (!order) return;
     const before = order.tickets.map((t) => ({ ...t }));
     const ok = await run(async () => { await cancelOrder(ctx.actor, order.tickets, reason.trim()); return true; });
-    if (ok) { setCancelling(false); setReason(''); onClose(); toast.show({ text: 'ההזמנה בוטלה', check: true, actions: [{ label: 'ביטול', onClick: () => { restoreOrder(ctx.actor, before); } }] }); }
+    if (ok) { close(); toast.show({ text: 'ההזמנה בוטלה', check: true, actions: [{ label: 'ביטול', onClick: () => { restoreOrder(ctx.actor, before); } }] }); }
   };
-  const holders = order.tickets.filter((t) => t.holderName).map((t) => `כרטיס ${t.index}: ${t.holderName}`);
-  const answers = Object.entries(t0.answers || {}).map(([k, v]) => `${e.questions.find((x) => x.id === k)?.label || k} ${v}`);
   return (
-    <>
-    <Sheet open={!askDelete} onClose={() => { setCancelling(false); onClose(); }} title={order.name} aside={money(order.owed || order.total)}>
+    <Sheet open={!!order} onClose={close} title="ביטול ההזמנה" sub={order ? `${order.name} · ${ticketsWord(order.count)}` : undefined}>
       <div className="events-sheet">
-        <p className="events-sheet__meta">
-          {ticketsWord(order.count)} · {order.cancelled ? 'בוטל' : STATUS_TAG[order.status].text}{order.arrived ? ` · ${order.arrived} נכנסו` : ''}<br />
-          הוזמן {ddmm(order.createdAt)}{order.phone ? <> · <span dir="ltr">{order.phone}</span></> : null}
-          {holders.length > 0 && <><br />{holders.join(' · ')}</>}
-          {answers.length > 0 && <><br />{answers.join(' · ')}</>}
-          {confirmation && <><br />אישור התשלום נשלח {ddmm(confirmation.at)}</>}
-        </p>
-        {cancelling ? (
-          <>
-            <Field label="סיבת הביטול (תירשם בהיסטוריה)" value={reason} onChange={(ev) => setReason(ev.target.value)} />
-            <ButtonRow className="events-btnrow--fill">
-              <Button variant="danger" size="tall" onClick={doCancel}>לבטל את ההזמנה</Button>
-              <Button variant="neutral" size="tall" onClick={() => setCancelling(false)}>חזרה</Button>
-            </ButtonRow>
-          </>
-        ) : (
-          <div className="events-sheet__actions">
-            {!order.cancelled && order.total > 0 && (
-              <PayConfirm collection="tickets" ids={order.tickets.map((t) => t.id)} uid={order.ownerUid} name={order.name} phone={order.phone}
-                amount={order.total} purpose={`כרטיסים לאירוע ${e.title}`} event={e.title} paid={paidAll} confirmation={confirmation} emailJob={'order_' + order.orderId} />
-            )}
-            {owing && <Button size="tall" block icon="check" onClick={() => onApprove(order)}>אישור תשלום</Button>}
-            {owing && <Button variant="outline" size="tall" block onClick={markPaidNow}>שולם במקום</Button>}
-            {owing && order.phone && <Button variant="outline" size="tall" block icon="message" onClick={remind}>תזכורת בוואטסאפ</Button>}
-            {paidAll && order.total > 0 && order.phone && <Button variant="outline" size="tall" block icon="message" onClick={sendConfirmation}>{confirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום'}</Button>}
-            {order.phone && <Button variant="outline" size="tall" block icon="phone" onClick={() => open(telUrl(order.phone))}>התקשרות</Button>}
-            {order.ownerUid !== ctx.user.uid && <Button variant="quiet" size="tall" block onClick={() => { onClose(); go(`/manage/people/${order.ownerUid}`); }}>הכרטיס של {firstName(order.name)}</Button>}
-            {!order.cancelled && <Button variant="danger" size="tall" block onClick={() => setCancelling(true)}>ביטול ההזמנה</Button>}
-            <Button variant="quiet" size="tall" block onClick={() => setAskDelete(true)}>מחיקת ההזמנה</Button>
-          </div>
-        )}
+        <Field label="סיבת הביטול (תירשם בהיסטוריה)" value={reason} onChange={(ev) => setReason(ev.target.value)} />
+        <ButtonRow className="events-btnrow--fill">
+          <Button variant="danger" size="tall" onClick={doCancel}>לבטל את ההזמנה</Button>
+          <Button variant="neutral" size="tall" onClick={close}>חזרה</Button>
+        </ButtonRow>
       </div>
     </Sheet>
-    <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את ההזמנה?"
-      text={`ההזמנה של ${order.name} (${ticketsWord(order.tickets.length)}) תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.`} confirmLabel="מחיקה"
-      onConfirm={() => remove(() => deleteOrder(ctx.actor, order.tickets, notes), { text: 'ההזמנה נמחקה', after: () => { setAskDelete(false); onClose(); } })} />
-    </>
   );
 }
 
@@ -345,42 +383,37 @@ function Day({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   );
 }
 
-// ---------- M7 סיכום ----------
-function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
-  const tickets = useEventTickets(e.id, ctx.manager);
-  const tabs = useEventTabs(e.id, ctx.manager);
-  const donations = useDonations(ctx.manager);
+// ---------- M7 / Q15 סיכום ----------
+/** Arrivals: counters/live from the gate (event-day data) when the event used it, the tickets otherwise. */
+function useSummary(ctx: V2Ctx, e: FarmEvent, tickets: Ticket[], tabs: Tab[]) {
   const counters = useCounters(e.id, ctx.manager);
-  // arrivals: counters/live from the gate (event-day data) when the event used it, the tickets otherwise
-  const S = { ...eventSummary(tickets.items, tabs.items), arrived: liveOf(tickets.items, counters.item).entered };
-  const debts = debtsOf(e.id, tickets.items, tabs.items);
-  const T = debtTotals(debts);
-  const top = topSold(tabs.items);
-  const X = summaryExtras(tickets.items, tabs.items);
+  const S = { ...eventSummary(tickets, tabs), arrived: liveOf(tickets, counters.item).entered };
+  const X = summaryExtras(tickets, tabs);
   const pct = S.registered ? Math.round((S.arrived / S.registered) * 100) : X.pct;
-  const dayDon = donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus));
-  const donMoney = dayDon.reduce((s, d) => s + d.amount, 0);
-  const openSum = X.openTabsAmount + X.openOrdersAmount;
+  return { S, X, pct };
+}
+function usePast(ctx: V2Ctx, e: FarmEvent) {
   const nowS = nowIso();
-  const past = useAllEvents(ctx.manager).items.filter((x) => x.id !== e.id && x.end < nowS).slice(0, 4);
-  const exportCsv = () => reportCsv(e, tickets.items, tabs.items, donMoney);
+  return useAllEvents(ctx.manager).items.filter((x) => x.id !== e.id && x.end < nowS).slice(0, 4);
+}
+
+function Summary({ ctx, e, tickets, tabs, donMoney }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket[]; tabs: Tab[]; donMoney: number }) {
+  const { S, pct } = useSummary(ctx, e, tickets, tabs);
+  const cash = useCash(e.id).item;
+  const debts = debtsOf(e.id, tickets, tabs);
+  const T = debtTotals(debts);
+  const top = topSold(tabs, 3);
+  const past = usePast(ctx, e);
+  const cashSum = (cash?.gate?.amount || 0) + (cash?.stall?.amount || 0);
+  const part = (p: Part) => link(`/manage/events/${e.id}?tab=summary&part=${p}`);
   return (
     <>
       <StatRow grid>
         <StatTile value={num(S.registered)} label="נרשמו" />
-        <StatTile value={num(S.arrived)} label="הגיעו" />
+        <StatTile value={num(S.arrived)} label={`הגיעו · ${pct}%`} />
         <StatTile value={money(S.ticketsIncome)} label="כרטיסים" />
         <StatTile value={money(S.stallIncome)} label="דוכן" />
       </StatRow>
-      <StatRow>
-        <StatTile value={`${pct}%`} label="הגעה" />
-        <StatTile value={num(X.returned)} label="יצאו וחזרו" />
-      </StatRow>
-      <ListCard title="כסף">
-        <Row minHeight={56} {...link('/manage/donations')} title="תרומות ביום האירוע" meta={`${dayDon.length} תורמים`} value={money(donMoney)} />
-        <Row minHeight={56} title="עדיין לא שולם" meta={`${X.openTabs} חשבונות דוכן · ${X.openOrders} הזמנות כרטיסים`} value={money(openSum)} />
-        {S.waived > 0 && <Row minHeight={56} title="נמחל" meta={`${X.waivedCount} חשבונות`} value={money(S.waived)} />}
-      </ListCard>
       {T.count > 0 && (
         <Card pad="md" as="section" className="events-debtcard" aria-label="חובות">
           <span className="events-debtcard__body">
@@ -390,27 +423,68 @@ function Summary({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           <Button icon="message" iconSize={18} onClick={() => go(`/manage/events/${e.id}/debts`)}>תזכורות</Button>
         </Card>
       )}
-      {top.length > 0 && (
-        <Card as="section" className="events-soldcard">
-          <SectionHeader title="מה נמכר בדוכן" />
-          <BarList items={top} />
-        </Card>
-      )}
-      {past.length > 0 && (
-        <ListCard title="לעומת אירועים קודמים">
-          {past.map((x) => <CompareRow key={x.id} e={x} enabled={ctx.manager} />)}
-        </ListCard>
-      )}
-      <ButtonRow>
-        <Button variant="outline" size="tall" icon="download" onClick={exportCsv}>ייצוא לאקסל</Button>
-        <Button variant="outline" size="tall" onClick={() => go(`/manage/activity?event=${e.id}`)}>היסטוריית האירוע</Button>
-        <Button variant="outline" size="tall" onClick={() => window.print()}>הדפסה</Button>
-      </ButtonRow>
+      <ListCard aria-label="פירוט">
+        {top.length > 0 && <Row minHeight={54} title="מה נמכר בדוכן" meta={top.map((x) => `${x.label} ${x.value}`).join(' · ')} {...part('sold')} />}
+        <Row minHeight={54} title="כסף" meta={`תרומות ביום האירוע ${money(donMoney)}${cashSum ? ` · מזומן ${money(cashSum)}` : ''}`} {...part('money')} />
+        {past.length > 0 && <CompareRow ctx={ctx} e={past[0]} href={part('compare')} />}
+      </ListCard>
     </>
   );
 }
+/** "לעומת אירועים קודמים" with the latest past event as its meta ("סיור ראש השנה: 100% הגיעו"). */
+function CompareRow({ ctx, e, href }: { ctx: V2Ctx; e: FarmEvent; href: ReturnType<typeof link> }) {
+  const t = useEventTickets(e.id, ctx.manager).items;
+  const v = t.filter((x) => x.status === 'valid'); const a = v.filter((x) => x.entries > 0).length;
+  return <Row minHeight={54} title="לעומת אירועים קודמים" meta={v.length ? `${e.title}: ${Math.round((a / v.length) * 100)}% הגיעו` : e.title} {...href} />;
+}
+
+const PART_TITLE: Record<Part, string> = { sold: 'מה נמכר בדוכן', money: 'כסף', compare: 'לעומת אירועים קודמים' };
+/** Q15 drill-ins: what used to sit under the summary (rule 10). */
+function SummaryPart({ ctx, e, part }: { ctx: V2Ctx; e: FarmEvent; part: Part }) {
+  const tickets = useEventTickets(e.id, ctx.manager).items;
+  const tabs = useEventTabs(e.id, ctx.manager).items;
+  const donations = useDonations(ctx.manager && part === 'money');
+  const cash = useCash(e.id).item;
+  const { S, X, pct } = useSummary(ctx, e, tickets, tabs);
+  const past = usePast(ctx, e);
+  const dayDon = donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus));
+  const donMoney = dayDon.reduce((s, d) => s + d.amount, 0);
+  const openSum = X.openTabsAmount + X.openOrdersAmount;
+  const top = topSold(tabs, 50);
+  return (
+    <AppScreen variant="detail" gap={10}>
+      <TopBar back={backTo('סיכום', `/manage/events/${e.id}?tab=summary`)} />
+      <TitleBlock over={e.title} title={PART_TITLE[part]} />
+      {part === 'sold' && (top.length ? (
+        <Card as="section" className="events-soldcard"><BarList items={top} /></Card>
+      ) : <EmptyState variant="card" icon="cart" title="עוד לא נמכר כלום" />)}
+      {part === 'money' && (
+        <ListCard>
+          <Row minHeight={56} {...link('/manage/donations')} title="תרומות ביום האירוע" meta={`${dayDon.length} תורמים`} value={money(donMoney)} />
+          <Row minHeight={56} title="עדיין לא שולם" meta={`${X.openTabs} חשבונות דוכן · ${X.openOrders} הזמנות כרטיסים`} value={money(openSum)} />
+          {S.waived > 0 && <Row minHeight={56} title="נמחל" meta={`${X.waivedCount} חשבונות`} value={money(S.waived)} />}
+          {cash?.gate && <Row minHeight={56} title="מזומן בשער" meta={cash.gate.by} value={money(cash.gate.amount)} />}
+          {cash?.stall && <Row minHeight={56} title="מזומן בדוכן" meta={cash.stall.by} value={money(cash.stall.amount)} />}
+        </ListCard>
+      )}
+      {part === 'compare' && (
+        <>
+          <StatRow>
+            <StatTile value={`${pct}%`} label="הגעה" />
+            <StatTile value={num(X.returned)} label="יצאו וחזרו" />
+          </StatRow>
+          {past.length > 0 ? (
+            <ListCard>
+              {past.map((x) => <PastRow key={x.id} e={x} enabled={ctx.manager} />)}
+            </ListCard>
+          ) : <EmptyState variant="card" icon="calendar" title="אין אירועים קודמים" />}
+        </>
+      )}
+    </AppScreen>
+  );
+}
 /** A past event next to this one: tickets and how many came. */
-function CompareRow({ e, enabled }: { e: FarmEvent; enabled: boolean }) {
+function PastRow({ e, enabled }: { e: FarmEvent; enabled: boolean }) {
   const t = useEventTickets(e.id, enabled).items;
   const v = t.filter((x) => x.status === 'valid'); const a = v.filter((x) => x.entries > 0).length;
   return <Row minHeight={56} {...link(`/manage/events/${e.id}?tab=summary`)} title={e.title} meta={`${ddmm(e.start)} · ${a} הגיעו מתוך ${v.length}`}

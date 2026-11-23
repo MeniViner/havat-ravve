@@ -1,8 +1,9 @@
-// N9 stall products (price, shown at the stall) and N10 one product.
+// N9 / Q21 stall products (price, shown at the stall; reorder by the handle at the row start, copy from a previous event in ⋯)
+// and N10 one product (its sales live there).
 import { useMemo, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
-import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, ConfirmSheet, IconButton, StatRow, StatTile } from '../../kit';
+import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, ConfirmSheet, StatRow, StatTile, MoreMenu, DragHandle, useReorder } from '../../kit';
 import { useEvent, useProducts, useAllEvents, useEventTabs, copyProducts, deleteProduct } from '../../../data';
 import { nowMs } from '../../../clock';
 import { money, ddmm } from '../../format';
@@ -26,41 +27,25 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const products = useProducts(e.id, ctx.manager);
   const [copying, setCopying] = useState(false);
   const list = products.items as ProductV2[];
-  const tabs = useEventTabs(e.id, ctx.manager);
-  const move = (i: number, d: -1 | 1) => {
-    const j = i + d; if (j < 0 || j >= list.length) return;
-    const next = [...list]; [next[i], next[j]] = [next[j], next[i]];
-    run(() => reorderProducts(e.id, next));
-  };
+  const order = useReorder(list, (next) => { run(() => reorderProducts(e.id, next)); });
   return (
     <AppScreen variant="detail">
-      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<Button variant="outline" onClick={() => setCopying(true)}>העתקה מאירוע קודם</Button>} />
+      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<MoreMenu title="מוצרי הדוכן" items={[{ label: 'העתקה מאירוע קודם', icon: 'calendar', onSelect: () => setCopying(true) }]} />} />
       <PageTitle>מוצרי הדוכן</PageTitle>
       {list.length > 0 ? (
         <section className="k-card k-card--list" aria-label="מוצרי הדוכן">
           <div className="events-prodhead" aria-hidden="true"><span>מוצר ומחיר</span><span>מוצג בדוכן</span></div>
           <ul className="k-list">
-            {list.map((p, i) => {
-              const sold = unitsSold(tabs.items, p);
-              return (
-              <li key={p.id} className={p.active ? 'events-prodrow' : 'events-prodrow events-prodrow--off'}>
-                {list.length > 1 && (
-                  <span className="events-prodrow__move">
-                    <IconButton icon="chevron-down" className="events-up" label={`למעלה: ${p.name}`} variant="quiet" iconSize={18} disabled={i === 0} onClick={() => move(i, -1)} />
-                    <IconButton icon="chevron-down" label={`למטה: ${p.name}`} variant="quiet" iconSize={18} disabled={i === list.length - 1} onClick={() => move(i, 1)} />
-                  </span>
-                )}
+            {list.map((p, i) => (
+              <li key={p.id} className={p.active ? 'events-prodrow' : 'events-prodrow events-prodrow--off'} style={order.rowStyle(i)}>
+                <DragHandle {...order.handle(i, p.name)} />
                 <a className="events-prodrow__link" {...link(`/manage/events/${e.id}/products/${p.id}`)}>
-                  <span className="events-prodrow__text">
-                    <span className="events-prodrow__name">{p.name}</span>
-                    {sold > 0 && <span className="events-softline">נמכרו {sold}</span>}
-                  </span>
+                  <span className="events-prodrow__name">{p.name}</span>
                   <b className="events-value">{money(p.price)}</b>
                 </a>
                 <Toggle checked={p.active} onChange={(v) => run(() => setProductActive(e.id, p, v))} label={`מוצג בדוכן: ${p.name}`} />
               </li>
-              );
-            })}
+            ))}
           </ul>
         </section>
       ) : !products.loading && <EmptyState variant="card" icon="cart" title="עוד אין מוצרים" text="מוסיפים מוצר, או מעתיקים את המוצרים מאירוע קודם." />}

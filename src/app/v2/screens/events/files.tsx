@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, useToast, useExternal } from '../../core';
-import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ConfirmSheet, ChoiceGroup } from '../../kit';
+import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ChoiceGroup, ActionSheet } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storeFile, storePhoto } from '../../../upload';
@@ -44,6 +44,9 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const camRef = useRef<HTMLInputElement>(null); const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [opened, setOpened] = useState<Shown | null>(null);
+  // the sheet stays mounted after it closes, so the delete confirmation it opens can still run
+  const last = useRef<Shown | null>(null);
+  if (opened) last.current = opened;
   const [busy, setBusy] = useState(false);
   const [linkDraft, setLinkDraft] = useState<{ name: string; url: string; kind: 'doc' | 'image' } | null>(null);
   const legacy: Shown[] = (e.files || []).map((f, i) => ({ ...f, id: `legacy-${i}`, legacy: i }));
@@ -87,12 +90,10 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     setLinkDraft(null);
     toast.show({ text: `${name} נשמר`, check: true });
   };
-  const [askDelete, setAskDelete] = useState<Shown | null>(null);
   const remove = async (f: Shown) => {
     const isLegacy = f.legacy !== undefined;
     const ok = await run(async () => { if (isLegacy) await removeLegacyFile(e, f.legacy!); else await removeFileV2(e.id, f.id); return true; });
     if (!ok) return;
-    setAskDelete(null);
     logActivity(ctx.actor, 'event', e.id, 'edited', `${e.title}: נמחק קובץ "${f.name}"`, { eventId: e.id });
     const { id: _id, legacy: _l, ...rest } = f;
     toast.show({ text: `${f.name} נמחק`, check: true, actions: [{ label: 'ביטול', onClick: () => { addFileV2(e.id, rest); } }] });
@@ -138,20 +139,15 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           </div>
         )}
       </Sheet>
-      <Sheet open={!!opened} onClose={() => setOpened(null)} title={opened?.name || ''} aside={opened ? `${fileKindLabel(opened)} · ${ddmm(opened.at)}` : undefined}>
-        {opened && (
-          <div className="events-sheet">
-            {opened.kind === 'image' && <img src={opened.url} alt={opened.name} className="events-filepreview" />}
-            <p className="events-sheet__meta">{opened.by?.name} · {ddmm(opened.at)}</p>
-            <div className="events-sheet__actions">
-              <Button size="tall" block onClick={() => openStored(opened.url, external)}>פתיחה</Button>
-              <Button variant="danger" size="tall" block onClick={() => { setAskDelete(opened); setOpened(null); }}>מחיקה</Button>
-            </div>
-          </div>
-        )}
-      </Sheet>
-      <ConfirmSheet open={!!askDelete} onClose={() => setAskDelete(null)} title="למחוק את הקובץ?"
-        text={askDelete ? `"${askDelete.name}" יימחק מהאירוע.` : ''} confirmLabel="מחיקה" onConfirm={() => askDelete && remove(askDelete)} />
+      {/* the file's row sheet (Q11): open it, or delete it in red at the bottom (rule 6) */}
+      {last.current && (
+        <ActionSheet open={!!opened} onClose={() => setOpened(null)} title={last.current.name}
+          sub={`${fileKindLabel(last.current)} · ${last.current.by?.name || ''} · ${ddmm(last.current.at)}`}
+          items={[
+            { label: 'פתיחה', icon: last.current.kind === 'image' ? 'camera' : 'file', onSelect: () => { const f = last.current; if (f) openStored(f.url, external); } },
+            { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: { title: 'למחוק את הקובץ?', text: `"${last.current.name}" יימחק מהאירוע.`, onConfirm: () => { const f = last.current; return f ? remove(f) : undefined; } } },
+          ]} />
+      )}
     </AppScreen>
   );
 }
