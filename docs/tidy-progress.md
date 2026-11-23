@@ -121,7 +121,8 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   with check boxes beyond five people (`PickerSheet multiple`); Q12 nav; Q20 failed changes in "שינויים"; E7 "4 חשבונות פתוחים"
   is a body row; donation amounts open an edit sheet (delete through ⋯ and Q8, reorder kept); Q9 columns first, every table and
   CSV dates dd.mm.yyyy and money "180 ₪", sort by value; Q5 "הדפסה" and "היסטוריית שינויים" (activity filtered to money); Q2
-  overdue meta no longer red.
+  overdue meta no longer red. Same rule-6 shape for G2 visit types and the event form's "שאלות נוספות בהרשמה": rows open an
+  edit sheet, delete through ⋯ and Q8, edits apply on "שמירה".
 - Left as designed or decided: Q24 chips wrap (the "בלי תאריך" chip; Q3 wraps the same), C1 trip row with "הוספה" (approved C1),
   Q3 "הוספה, ועוד אחת" (approved T5-Add).
 - Demo coverage for the 46 Q and U screens is being added (`tidy/s7-demo`).
@@ -176,4 +177,3 @@ edit details; blocked page; demo: U12 quiet link and /demo).
 - From the guest builder: the team-only "מה יש לי בחווה" row on the team tickets page; the visit and donation detail pages
   reached from U7's list.
 - G5 "מנהלים ובעלים" lists pending e-mail invites only; a pending manager link sent by phone is not shown there.
-- G2 visit types still has rows with inputs and an X (same shape as donation amounts had); not in the verifier's list.
