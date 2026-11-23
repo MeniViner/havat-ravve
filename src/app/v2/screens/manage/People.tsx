@@ -20,6 +20,7 @@ import {
   changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson, type InviteRole,
 } from '../../data/manage';
 import { lnk, HistorySheet, LinkCard, Loading, NotFound } from './shared';
+import { useTeamLinks } from '../../data/invite';
 
 // ---------- Q23 ----------
 /** The two segments of "אנשים והודעות". The messages segment (Q25) is still the sent-messages screen at /manage/broadcasts;
@@ -58,7 +59,7 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
 function PeopleSegment({ people, debts, initial }: { people: Profile[]; debts: Map<string, number>; initial?: string }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt', 'blocked'] as string[]).includes(initial || '') ? (initial as PFilter) : 'all');
-  const invites = useRoleInvites(true).items;
+  const invites = [...useRoleInvites(true).items, ...useTeamLinks(true).items]; // Q27: added ahead by e-mail or by phone
   const team = people.filter(isTeam);
   const withDebt = people.filter((p) => debts.has(p.uid));
   const blockedN = people.filter((p) => p.status === 'blocked').length;
