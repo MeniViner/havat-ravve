@@ -1,5 +1,6 @@
 // M4-M7: one event, four stages chosen by ?tab (הכנה / נרשמים / יום האירוע / סיכום). Opens on the stage that fits the time.
-// The top bar holds ⋯ (Q15, rule 5): edit, the stage's table view / export / print / history, and delete (rule 6).
+// Top bar, one control (rule 5): the outlined "עריכה" on הכנה and יום האירוע (details keep it); ⋯ on נרשמים (table view,
+// export) and on סיכום (Q15: export, print, history). Delete is in ⋯ on the event form (rule 6).
 // The summary (Q15) shows its headline numbers and three drill-ins (?tab=summary&part=sold|money|compare, rule 10).
 import { useMemo, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
@@ -14,7 +15,7 @@ import {
 } from '../../../data';
 import { nowIso, nowMs, useClockVersion } from '../../../clock';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
-import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder, deleteEventV2 } from '../../data/events';
+import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
   filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
@@ -39,7 +40,6 @@ const PARTS: Part[] = ['sold', 'money', 'compare'];
 
 function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabParam?: string; part?: string }) {
   const now = nowMs();
-  const remove = useRemove();
   const tab = (EVENT_TABS.some((t) => t.value === tabParam) ? tabParam : defaultTab(e, now, ctx.today)) as EventTab;
   const tickets = useEventTickets(e.id, ctx.manager);
   const tabs = useEventTabs(e.id, ctx.manager && tab === 'summary');
@@ -52,22 +52,17 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
   if (table.active) return table.screen;
   if (tab === 'summary' && PARTS.includes(part as Part)) return <SummaryPart ctx={ctx} e={e} part={part as Part} />;
   const dayDonations = () => donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus)).reduce((s, d) => s + d.amount, 0);
-  const items: ActionItem[] = [
-    { label: 'עריכת האירוע', icon: 'edit', onSelect: () => go(`/manage/events/${e.id}/edit`) },
-    ...(tab === 'guests' ? table.items : []),
-    ...(tab === 'summary' ? [
-      { label: 'ייצוא לאקסל', icon: 'download', onSelect: () => reportCsv(e, tickets.items, tabs.items, dayDonations()) },
-      { label: 'הדפסה', icon: 'print', onSelect: () => window.print() },
-      { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go(`/manage/activity?event=${e.id}`) },
-    ] as ActionItem[] : []),
-    { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
-      title: 'למחוק את האירוע?', text: `"${e.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`,
-      onConfirm: () => remove(() => deleteEventV2(ctx.actor, e), { text: 'האירוע נמחק. הכרטיסים נשמרו.', after: () => go('/manage/events', true) }),
-    } },
+  const summaryItems: ActionItem[] = [
+    { label: 'ייצוא לאקסל', icon: 'download', onSelect: () => reportCsv(e, tickets.items, tabs.items, dayDonations()) },
+    { label: 'הדפסה', icon: 'print', onSelect: () => window.print() },
+    { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go(`/manage/activity?event=${e.id}`) },
   ];
+  const end = tab === 'guests' ? <MoreMenu title="נרשמים" items={table.items} />
+    : tab === 'summary' ? <MoreMenu title={`סיכום · ${e.title}`} items={summaryItems} />
+      : <Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/manage/events/${e.id}/edit`)}>עריכה</Button>;
   return (
     <AppScreen variant="detail" gap={tab === 'prep' ? 12 : 10}>
-      <TopBar back={backTo('אירועים', '/manage/events')} end={<MoreMenu title={e.title} items={items} />} />
+      <TopBar back={backTo('אירועים', '/manage/events')} end={end} />
       <TitleBlock over={eventSubtitle(e, now)} title={e.title} />
       <Segmented mode="tabs" className="events-tabs" label="שלבי האירוע" options={EVENT_TABS} value={tab} onChange={(v) => go(`/manage/events/${e.id}?tab=${v}`, true)} />
       {tab === 'prep' && <Prep ctx={ctx} e={e} />}
@@ -110,12 +105,13 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     const t = fillTemplate(ctx.settings.templates.ticketReminder || DEFAULT_SETTINGS.templates.ticketReminder, { 'שם': '', 'אירוע': e.title, 'תאריך': `${dayName(e.start)} ${ddmm(e.start)}`, 'שעה': hhmm(e.start) });
     open(`https://wa.me/?text=${encodeURIComponent(t.replace(/^שלום\s*,\s*/, 'שלום, '))}`);
   };
-  // rule 4: one status tag; a published event whose registration is closed says so instead of "מפורסם"
-  const status = !e.published ? <Tag tone="neutral">טיוטה</Tag> : e.open ? <Tag tone="paid">מפורסם</Tag> : <Tag tone="neutral">ההרשמה סגורה</Tag>;
+  // rule 4: one status tag (מפורסם / טיוטה); the registration state goes into the meta line
+  const status = <Tag tone={e.published ? 'paid' : 'neutral'}>{e.published ? 'מפורסם' : 'טיוטה'}</Tag>;
+  const detailsLine = e.published ? `${e.open ? 'פתוח להרשמה' : 'ההרשמה סגורה'} · ${detailsMeta(e)}` : detailsMeta(e);
   return (
     <>
       <ListCard>
-        <Row minHeight={58} title="פרטי האירוע" tags={status} meta={detailsMeta(e)} {...link(`/manage/events/${e.id}/edit`)} />
+        <Row minHeight={58} title="פרטי האירוע" tags={status} meta={detailsLine} {...link(`/manage/events/${e.id}/edit`)} />
         <Row minHeight={58} title="בעלי דוכנים" meta={vendors.items.length ? vendorsMeta(vendors.items as EventVendorV2[]) : 'עוד לא הוזמנו'} {...link(`/manage/events/${e.id}/vendors`)} />
         {e.stall !== false && <Row minHeight={58} title="מוצרי הדוכן" meta={productsMeta(products.items)} {...link(`/manage/events/${e.id}/products`)} />}
         <Row minHeight={58} title="משימות הכנה" meta={`${openTasks} פתוחות מתוך ${tasks.items.length}`} {...link(`/farm/events/${e.id}`)} />

@@ -126,3 +126,7 @@
 /* N12, orders: the payment confirmation's information lines (sending is the Q7 sheet) */
 .events-statuslines { display: flex; flex-direction: column; gap: 4px; }
 .events-sheet__meta .events-payconfirm__line { margin-top: 4px; }
+
+/* edit form header: ביטול and ⋯ (rule 6) */
+.events-formend { display: flex; align-items: center; gap: 12px; }
+.v2 .events-cancel { background: transparent; border: 0; font-family: inherit; }

@@ -1,5 +1,5 @@
 // N12 one stall tab: what is owed, what was recorded and by whom; approve the payment (then Q7, usePayConfirm) or let it go.
-// History, the payment confirmation and delete are in ⋯ (rules 5, 6).
+// The person's file, history, the payment confirmation and delete are in ⋯ (rules 5, 6).
 import { useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
@@ -78,6 +78,7 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
   return (
     <AppScreen variant="detail" bar={bar}>
       <TopBar back={backTo('חשבונות', parent)} end={<MoreMenu title={t.guestName} items={[
+        { label: `התיק של ${firstName(t.guestName)}`, icon: 'people', hidden: !t.guestUid, onSelect: () => go(`/manage/people/${t.guestUid}`) },
         { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => setShowHistory(true) },
         { label: t.paymentConfirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום', icon: 'mail', hidden: t.status !== 'paid' || t.total <= 0, onSelect: askPay },
         { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
@@ -118,7 +119,6 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
           <Button variant="outline" size="tall" icon="phone" onClick={() => open(telUrl(t.guestPhone))}>התקשרות</Button>
         </ButtonRow>
       )}
-      {t.guestUid && <div><Button variant="quiet" onClick={() => go(`/manage/people/${t.guestUid}`)}>התיק של {firstName(t.guestName)}</Button></div>}
       {t.total > 0 && t.status === 'paid' && <div className="events-statuslines"><PayConfirmStatus paid confirmation={t.paymentConfirmation} emailJob={'tab_' + t.id} /></div>}
       <Sheet open={showHistory} onClose={() => setShowHistory(false)} title="היסטוריית שינויים" sub={`${t.guestName} · ${money(t.total)}`}>
         <ListCard>

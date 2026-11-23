@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, useToast, useExternal } from '../../core';
-import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ChoiceGroup, ActionSheet } from '../../kit';
+import { TopBar, PageTitle, ListCard, Row, IconTile, Button, Sheet, Field, EmptyState, ChoiceGroup, ActionSheet, MoreMenu } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storeFile, storePhoto } from '../../../upload';
@@ -101,7 +101,9 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
 
   return (
     <AppScreen variant="detail">
-      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} />
+      {/* rule 5: "הוספת קישור" is a ⋯ item; the two upload buttons stay */}
+      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)}
+        end={<MoreMenu title="קבצים" items={[{ label: 'הוספת קישור', icon: 'link', onSelect: () => setLinkDraft({ name: '', url: '', kind: 'doc' }) }]} />} />
       <PageTitle>קבצים</PageTitle>
       {shown.length > 0 ? (
         <ListCard>
@@ -114,7 +116,6 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
       <ButtonRow>
         <Button variant="outline" size="tall" icon="camera" disabled={busy} onClick={() => camRef.current?.click()}>צילום מסמך</Button>
         <Button variant="outline" size="tall" icon="file" disabled={busy} onClick={() => fileRef.current?.click()}>קובץ מהטלפון</Button>
-        <Button variant="outline" size="tall" icon="link" onClick={() => setLinkDraft({ name: '', url: '', kind: 'doc' })}>הוספת קישור</Button>
       </ButtonRow>
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => { pick(ev.target.files?.[0], true); ev.target.value = ''; }} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { pick(ev.target.files?.[0], false); ev.target.value = ''; }} />

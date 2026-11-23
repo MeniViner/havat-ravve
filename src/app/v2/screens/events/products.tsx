@@ -1,17 +1,17 @@
 // N9 / Q21 stall products (price, shown at the stall; reorder by the handle at the row start, copy from a previous event in ⋯)
-// and N10 one product (its sales live there).
+// and N10 one product (delete in ⋯ beside "ביטול"; per-product sales live in the Q15 "מה נמכר בדוכן" drill-in).
 import { useMemo, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
-import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, ConfirmSheet, StatRow, StatTile, MoreMenu, DragHandle, useReorder } from '../../kit';
+import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, MoreMenu, DragHandle, useReorder } from '../../kit';
 import { useEvent, useProducts, useAllEvents, useEventTabs, copyProducts, deleteProduct } from '../../../data';
 import { nowMs } from '../../../clock';
 import { money, ddmm } from '../../format';
 import { back } from '../../../router';
 import { logActivity } from '../../../activity';
 import { useTabsIn, saveProductV2, setProductActive, reorderProducts, type ProductV2 } from '../../data/events';
-import { unitsSold, productSales, phaseOf } from './logic';
-import { Loading, Missing, backTo, link, useRun } from './shared';
+import { unitsSold, phaseOf } from './logic';
+import { FormEnd, Loading, Missing, backTo, link, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
 
 // ---------- N9 ----------
@@ -105,13 +105,10 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
   const [unit, setUnit] = useState(existing?.unit || '');
   const [active, setActive] = useState(existing?.active ?? true);
   const [tried, setTried] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
   const parent = `/manage/events/${e.id}/products`;
   const priceN = Number(price.replace(/[^\d.]/g, ''));
   const ok = name.trim().length > 0 && price.trim() !== '' && priceN >= 0;
   const sales = useSalesLine(ctx, e, existing);
-  const ownTabs = useEventTabs(e.id, ctx.manager && !!existing);
-  const here = existing ? productSales(ownTabs.items, existing) : { units: 0, revenue: 0 };
   const save = async () => {
     setTried(true); if (!ok) return;
     const id = await run(() => saveProductV2(e.id, { name, price: Math.round(priceN * 100) / 100, active, sort: existing?.sort ?? nextSort, unit }, existing));
@@ -132,10 +129,12 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
     <AppScreen variant="form" gap={16} bar={
       <BottomBar>
         <Button size="bar" grow onClick={save}>שמירה</Button>
-        {existing && <Button size="bar" variant="secondary" onClick={() => setConfirmDel(true)}>מחיקה</Button>}
       </BottomBar>
     }>
-      <FormHeader title="מוצר בדוכן" onCancel={() => back(parent)} />
+      {/* rule 6: delete in ⋯ beside "ביטול", then Q8; the undo toast stays */}
+      <FormHeader title="מוצר בדוכן" end={<FormEnd onCancel={() => back(parent)} title={existing?.name || ''} items={existing ? [
+        { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: { title: 'למחוק את המוצר?', text: `"${existing.name}" לא יופיע יותר בדוכן. מה שכבר נמכר נשאר בחשבונות.`, onConfirm: () => void remove() } },
+      ] : undefined} />} />
       <Field label="שם המוצר" value={name} onChange={(ev) => setName(ev.target.value)} error={tried && !name.trim() ? 'צריך שם למוצר' : undefined} />
       <FieldRow className="events-fieldrow-12">
         <Field grow label="מחיר בשקלים" ltr inputMode="decimal" value={price} onChange={(ev) => setPrice(ev.target.value)} error={tried && price.trim() === '' ? 'צריך מחיר' : undefined} />
@@ -144,17 +143,7 @@ function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; exi
       <ListCard>
         <Row minHeight={58} title="מוצג בדוכן" meta="כשכבוי, לא מופיע במסך המכירה" actions={<Toggle checked={active} onChange={setActive} label="מוצג בדוכן" />} />
       </ListCard>
-      {here.units > 0 && (
-        <StatRow>
-          <StatTile value={here.units} label="יחידות" />
-          <StatTile small value={money(here.revenue)} label="הכנסה" />
-        </StatRow>
-      )}
       {sales && <span className="events-softline">{sales}</span>}
-      {existing && (
-        <ConfirmSheet open={confirmDel} onClose={() => setConfirmDel(false)} title="למחוק את המוצר?"
-          text={`"${existing.name}" לא יופיע יותר בדוכן. מה שכבר נמכר נשאר בחשבונות.`} confirmLabel="מחיקה" onConfirm={remove} />
-      )}
     </AppScreen>
   );
 }

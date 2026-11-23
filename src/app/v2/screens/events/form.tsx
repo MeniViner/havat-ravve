@@ -1,17 +1,17 @@
 // N11 / Q32 Event edit / new event: the few fields that change most ("מתאריך" and "עד תאריך", empty = the same day), three
-// switches; picture, description and questions one tap away. Deleting the event is on the event screen's ⋯ (rule 6).
+// switches; picture, description and questions one tap away. Deleting the event is in ⋯ beside "ביטול" (rule 6; M4 keeps "עריכה").
 import { useId, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
-import { AppScreen, go, useToast } from '../../core';
+import { AppScreen, go, useRemove, useToast } from '../../core';
 import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storePhoto } from '../../../upload';
 import { back } from '../../../router';
 import { nowMs } from '../../../clock';
-import { saveEventV2 } from '../../data/events';
+import { saveEventV2, deleteEventV2 } from '../../data/events';
 import { dateFieldText, endDateOf, localOf, normTime, rangeFromForm } from './logic';
-import { Loading, Missing, useRun } from './shared';
+import { FormEnd, Loading, Missing, useRun } from './shared';
 import type { EventQuestion, FarmEvent } from '../../../types';
 
 export function EventForm({ ctx, params }: ScreenProps) {
@@ -25,7 +25,7 @@ export function EventForm({ ctx, params }: ScreenProps) {
 const DEFAULT_LOCATION = 'חוות רווה, ליד טנא עומרים';
 
 function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
-  const toast = useToast(); const run = useRun();
+  const toast = useToast(); const run = useRun(); const remove = useRemove();
   const s0 = localOf(existing?.start || ''); const e0 = localOf(existing?.end || '');
   const [title, setTitle] = useState(existing?.title || '');
   const [date, setDate] = useState(s0.date);
@@ -76,7 +76,12 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
 
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow disabled={busy} onClick={save}>שמירה</Button></BottomBar>}>
-      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} onCancel={() => back(parent)} />
+      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} end={<FormEnd onCancel={() => back(parent)} title={existing?.title || ''} items={existing ? [
+        { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+          title: 'למחוק את האירוע?', text: `"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`,
+          onConfirm: () => remove(() => deleteEventV2(ctx.actor, existing), { text: 'האירוע נמחק. הכרטיסים נשמרו.', after: () => go('/manage/events', true) }),
+        } },
+      ] : undefined} />} />
       <Field label="שם האירוע" value={title} onChange={(ev) => setTitle(ev.target.value)} error={tried && !title.trim() ? 'צריך שם לאירוע' : undefined} />
       <FieldRow>
         <DateField label="מתאריך" value={date} onChange={setDate} error={tried && !date ? 'בחרו תאריך' : undefined} />
