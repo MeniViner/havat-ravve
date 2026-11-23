@@ -54,8 +54,8 @@ const slice: Slice = (seed) => {
   const everyone = optIn.filter((u) => users.some((x) => x.uid === u && x.status !== 'blocked'));
   put(seed, 'broadcasts', [
     bc('demo-b-r1', A.noa, at(TODAY, '11:20'), 'registrants', 'פסטיבל הסתיו: החניה עברה לשדה הצפוני. יש שילוט מהכביש.', fall, { eventId: E.fall }),
-    bc('demo-b-r2', A.beni, at(YESTERDAY, '19:05'), 'registrants', 'סיור שבת בחווה: נפגשים בשער ב־9:45. כדאי נעליים סגורות.', tour, { eventId: E.tour, urgent: true }),
-    bc('demo-b-e1', A.beni, at('2026-11-16', '12:00'), 'everyone', 'ערב חנוכה בחווה, 13.12. ההרשמה תיפתח בקרוב.', everyone),
+    bc('demo-b-r2', A.beni, at(YESTERDAY, '19:05'), 'registrants', 'סיור שבת בחווה בוטל בגלל הגשם. נעדכן על מועד חדש.', tour, { eventId: E.tour, urgent: true }),
+    bc('demo-b-e1', A.beni, at('2026-11-16', '12:00'), 'everyone', 'ערב חנוכה בחווה, 13.12. ההרשמה נפתחה.', everyone),
   ]);
   // the guest persona (Michal) has not seen the festival message yet: it is her U1 card
   put(seed, 'broadcasts/demo-b-r1/reads', fall.filter((u) => u !== U.michal).slice(0, 5).map((u, i) => read(u, at(TODAY, `11:${String(24 + i * 6).padStart(2, '0')}`))));
