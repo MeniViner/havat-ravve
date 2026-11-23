@@ -8,7 +8,7 @@ import {
   BarList, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, ListCard, MoreMenu, PageTitle, Quote, Row, SectionHeader,
   StatRow, StatTile, Tag, TextLink, TopBar, type ActionItem,
 } from '../../kit';
-import { useTableView, usePayConfirm } from '../../patterns';
+import { useTableView, usePayConfirm, payConfirmText } from '../../patterns';
 import { money, num, dayTime, ddmm, daysFromToday, relDay, firstName, keyOf, hhmm } from '../../format';
 import { contactPhoneOk, receiptDestination, setDonation, useAllEvents, useEventTickets, useVisits } from '../../../data';
 import { useDoc } from '../../../db';
@@ -242,7 +242,7 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
   const thanks = fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': money(d.amount) });
   const email = receiptDestination({ phone: donor?.phone || d.phone, email: donor?.email || '' }, 'email');
   const mailto = () => {
-    const body = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || '', { 'שם': donor?.displayName || d.name, 'סכום': money(d.amount), 'עבור': 'תרומה לחווה', 'אירוע': '' });
+    const body = payConfirmText(ctx.settings.templates.paymentConfirmation, { name: donor?.displayName || d.name, amount: d.amount, purpose: target.purpose, event: target.event });
     ext('mailto:' + encodeURIComponent(email).replace('%40', '@') + '?subject=' + encodeURIComponent('אישור תשלום מחוות רווה') + '&body=' + encodeURIComponent(body));
   };
   const orders = [...new Map(tickets.map((t) => [t.orderId, tickets.filter((x) => x.orderId === t.orderId && x.status === 'valid')])).values()].filter((o) => o.length);

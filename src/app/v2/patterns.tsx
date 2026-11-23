@@ -64,6 +64,24 @@ function TableScreen({ spec, onBack, onDownload }: { spec: TableViewSpec; onBack
 
 /* ═════════════ Q7 payment confirmation ═════════════ */
 
+/**
+ * The payment confirmation text from the farm's template. [עבור] is what was paid for ("תרומה לחווה", "כרטיסים לאירוע ...");
+ * [אירוע] is the event's name, or the same purpose when there is no event (a donation), so "על [אירוע]" never reads "על .".
+ * A slot that is still empty takes its lead-in word with it ("עבור", "על", "בשביל") and no "[...]" is left.
+ */
+export function payConfirmText(template: string | undefined, v: { name: string; amount: number; purpose: string; event?: string }): string {
+  const t = template?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!;
+  const purpose = v.purpose.trim(), event = (v.event || '').trim() || purpose;
+  const filled = fillTemplate(t, { 'שם': v.name.trim(), 'סכום': money(v.amount), 'עבור': purpose, 'אירוע': event });
+  return filled
+    .replace(/(?:\s+(?:עבור|על|בשביל))?\s*\[[^\]]*\]/g, '')
+    .replace(/\s+(?:עבור|על|בשביל)\s*(?=[.,!?]|$)/g, '')
+    .replace(/\s+([.,!?])/g, '$1')
+    .replace(/,\s*([.!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export type PayConfirmTarget = {
   collection: 'tickets' | 'donations' | 'tabs';
   ids: string[];
@@ -90,9 +108,7 @@ export function usePayConfirm() {
   const wa = t ? receiptDestination(to, 'whatsapp') : '';
   const channels: PayChannel[] = [...(wa ? ['whatsapp' as const] : []), ...(pref === 'email' ? ['email' as const] : [])];
   const name = (profile?.displayName || t?.name || '').trim();
-  const preview = t ? fillTemplate(settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, {
-    'שם': name, 'סכום': money(t.amount), 'עבור': t.purpose, 'אירוע': t.event || '',
-  }) : '';
+  const preview = t ? payConfirmText(settings.templates.paymentConfirmation, { name, amount: t.amount, purpose: t.purpose, event: t.event }) : '';
   const send = async (c: PayChannel) => {
     if (!t) return;
     if (c === 'whatsapp') {

@@ -2,12 +2,13 @@
 // the guest's preference (WhatsApp or email), send by either, "סימון שהאישור נשלח", and the Worker's automatic email status
 // (email_outbox/order_<orderId> | donation_<id> | tab_<id>; managers read it; the app writes only broadcast jobs, bc_<id>_<uid>, never these).
 import { useDoc } from '../../../db';
-import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../../../data';
-import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_LABELS, type PaymentConfirmation } from '../../../types';
+import { markPaymentConfirmation, receiptDestination, receiptPreference } from '../../../data';
+import { RECEIPT_PREFERENCE_LABELS, type PaymentConfirmation } from '../../../types';
 import { useExternal, useToast, useV2, waUrl } from '../../core';
 import { Button, Tag } from '../../kit';
-import { dayTime, money } from '../../format';
+import { dayTime } from '../../format';
 import { useRun } from './shared';
+import { payConfirmText } from '../../patterns';
 
 type EmailJob = { id: string; status: 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'; reason?: string | null; to?: string; sentAt?: string; updatedAt: string };
 const SKIP_TEXT: Record<string, string> = {
@@ -49,9 +50,7 @@ export function PayConfirm({ collection, ids, uid, name, phone, amount, purpose,
   const to = { phone: profile?.phone || phone, email: profile?.email || '' };
   const whatsapp = receiptDestination(to, 'whatsapp');
   const email = receiptDestination(to, 'email');
-  const body = fillTemplate(settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, {
-    'שם': profile?.displayName || name, 'סכום': money(amount), 'עבור': purpose, 'אירוע': event || '',
-  });
+  const body = payConfirmText(settings.templates.paymentConfirmation, { name: profile?.displayName || name, amount, purpose, event });
   const mailto = 'mailto:' + encodeURIComponent(email).replace('%40', '@') + '?subject=' + encodeURIComponent('אישור תשלום מחוות רווה') + '&body=' + encodeURIComponent(body);
   const mark = async () => {
     const ok = await run(async () => { await markPaymentConfirmation(actor, collection, ids); return true; });
