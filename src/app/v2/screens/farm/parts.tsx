@@ -27,12 +27,18 @@ export const ROLE_WORD = (role: string, female: boolean) =>
 export function TopRow({ back = 'החווה', onBack, end, flat }: { back?: string; onBack: () => void; end?: ReactNode; flat?: boolean }) {
   return <div className={flat ? 'farm-toprow farm-toprow--flat' : 'farm-toprow'}><BackLink label={back} onClick={onBack} />{end}</div>;
 }
+/** The end of a form header while editing: "ביטול" and, when there is something to delete, ⋯ beside it (rules 5, 6). */
+export function FormEnd({ onCancel, more }: { onCancel: () => void; more?: ReactNode }) {
+  const cancel = <button type="button" className="k-quietlink farm-cancel" onClick={onCancel}>ביטול</button>;
+  return more ? <div className="farm-formend">{cancel}{more}</div> : cancel;
+}
 export const AddPresenceButton = ({ onClick }: { onClick: () => void }) => <Button icon="plus" iconSize={18} className="farm-addbtn" onClick={onClick}>נוכחות</Button>;
-/** Previous / next, and "היום" (back to today, as the old calendar) when the period on screen does not hold today. */
+/** Previous / next, and "היום" (back to today): always in the month view (Q30), in the day and week views when the period on
+ *  screen does not hold today. */
 export function Arrows({ prev, next, prevLabel, nextLabel, onToday }: { prev: () => void; next: () => void; prevLabel: string; nextLabel: string; onToday?: () => void }) {
   return (
     <div className="farm-arrows">
-      {onToday && <Button variant="outline" className="farm-todaybtn" onClick={onToday}>היום</Button>}
+      {onToday && <Button variant="neutral" className="farm-todaybtn" onClick={onToday}>היום</Button>}
       <IconButton variant="bordered" icon="back" label={prevLabel} onClick={prev} /><IconButton variant="bordered" icon="chevron" label={nextLabel} onClick={next} />
     </div>
   );
@@ -51,14 +57,24 @@ export function DayPicker({ days, selected, onToggle }: { days: string[]; select
   );
 }
 
-/** "תאריך אחר": any date, beyond the seven-day picker (as the old calendar's date field). `min` keeps past days out where they make no sense. */
-export function OtherDate({ onPick, min }: { onPick: (d: string) => void; min?: string }) {
+/** A day group: its label with "תאריך אחר" as a link at the other end (Q17), the seven-day picker, and, once the link is
+ *  pressed, a date field for any date beyond the week (as the old calendar's date field). `min` keeps past days out where
+ *  they make no sense. */
+export function DayGroup({ label, children, onPick, min, gap }: { label: string; children: ReactNode; onPick: (d: string) => void; min?: string; gap?: number }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
-  if (!open) return <button type="button" className="farm-link farm-otherdate" onClick={() => setOpen(true)}>תאריך אחר</button>;
   return (
-    <Field label="תאריך" type="date" ltr min={min} value={value} autoFocus
-      onChange={(e) => { const d = e.target.value; setValue(d); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!min || d >= min)) onPick(d); }} />
+    <div className="farm-group" style={gap ? { gap } : undefined}>
+      <div className="farm-group__head">
+        <span className="farm-group__label">{label}</span>
+        {!open && <button type="button" className="farm-link" onClick={() => setOpen(true)}>תאריך אחר</button>}
+      </div>
+      {children}
+      {open && (
+        <Field label="תאריך אחר" type="date" ltr min={min} value={value} autoFocus
+          onChange={(e) => { const d = e.target.value; setValue(d); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!min || d >= min)) onPick(d); }} />
+      )}
+    </div>
   );
 }
 

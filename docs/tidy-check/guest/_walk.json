@@ -1,0 +1,668 @@
+{
+ "role": "guest",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/",
+   "scenario": "regular",
+   "shots": [
+    "01-home.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "root-length",
+     "what": "content 794px vs design 627px (U1-GuestHome)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/",
+   "title": "ליד טנא עומרים חוות רווה הודעה מהחווה · היום 11:20 פסטיבל הסתיו: החניה",
+   "rootLen": {
+    "design": "U1-GuestHome",
+    "app": 794,
+    "appClient": 777,
+    "designScroll": 627,
+    "designClient": 627
+   },
+   "rowNav": "/events/demo-e-festival"
+  },
+  {
+   "nn": "02",
+   "route": "/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "02-events-e-festival.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls in top bar: להוסיף ליומן | שיתוף"
+    },
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/events/demo-e-festival",
+   "title": "שבת, 28 בנובמבר · 16:00 עד 21:00 פסטיבל הסתיו בית איפה חוות רווה, ליד "
+  },
+  {
+   "nn": "03",
+   "route": "/events/demo-e-festival/order",
+   "scenario": "regular",
+   "shots": [
+    "03-events-e-festival-order.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/events/demo-e-festival/order",
+   "title": "הזמנת כרטיסים"
+  },
+  {
+   "nn": "04",
+   "route": "/visit",
+   "scenario": "regular",
+   "shots": [
+    "04-visit.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/visit",
+   "title": "תיאום ביקור"
+  },
+  {
+   "nn": "05",
+   "route": "/donate",
+   "scenario": "regular",
+   "shots": [
+    "05-donate.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/donate",
+   "title": "תרומה לחווה"
+  },
+  {
+   "nn": "06",
+   "route": "/contact",
+   "scenario": "regular",
+   "shots": [
+    "06-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/contact",
+   "title": "פנייה לחווה"
+  },
+  {
+   "nn": "07",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "07-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/terms",
+   "title": "תנאי שימוש ופרטיות"
+  },
+  {
+   "nn": "08",
+   "route": "/privacy",
+   "scenario": "regular",
+   "shots": [
+    "08-privacy.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/privacy",
+   "title": "תנאי שימוש ופרטיות"
+  },
+  {
+   "nn": "09",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "09-install.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "english",
+     "what": "iPhone, Android, Safari"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/install",
+   "title": "להוסיף למסך הבית"
+  },
+  {
+   "nn": "10",
+   "route": "/calendar",
+   "scenario": "regular",
+   "shots": [
+    "10-calendar.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/calendar",
+   "title": "בית היומן זמין לצוות החווה בית הכרטיסים שלי החשבון שלי"
+  },
+  {
+   "nn": "11",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "11-me.jpg",
+    "11-me-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me",
+   "title": "הכרטיסים שלי",
+   "rootLen": {
+    "design": "U5-GuestTickets",
+    "app": 777,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   },
+   "moreItems": [
+    "שיתוף כרטיס 1",
+    "שיתוף כרטיס 1",
+    "להוסיף ליומן",
+    "להוסיף ליומן",
+    "לדף האירוע",
+    "לדף האירוע"
+   ],
+   "rowNav": "/me/orders/demo-o-19"
+  },
+  {
+   "nn": "12",
+   "route": "/me/orders/demo-o-19",
+   "scenario": "regular",
+   "shots": [
+    "12-me-orders-o-19.jpg",
+    "12-me-orders-o-19-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/orders/demo-o-19",
+   "title": "הכרטיסים שלי פסטיבל הסתיו שבת 28.11 · 16:00 עד 21:00 מיכל ברק כרטיס 1 ",
+   "moreItems": [
+    "שיתוף כרטיס 1",
+    "שיתוף כרטיס 1",
+    "להוסיף ליומן",
+    "להוסיף ליומן",
+    "לדף האירוע",
+    "לדף האירוע"
+   ]
+  },
+  {
+   "nn": "13",
+   "route": "/me/orders/demo-o-19/pay",
+   "scenario": "regular",
+   "shots": [
+    "13-me-orders-o-19-pay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/orders/demo-o-19/pay",
+   "title": "הכרטיסים שמורים לך"
+  },
+  {
+   "nn": "14",
+   "route": "/me/past",
+   "scenario": "regular",
+   "shots": [
+    "14-me-past.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/past",
+   "title": "אירועים שהיו",
+   "rowNav": "/me/orders/demo-o-15"
+  },
+  {
+   "nn": "15",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "15-me-items.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/items",
+   "title": "מה יש לי בחווה",
+   "rowNav": "/me/orders/demo-o-2"
+  },
+  {
+   "nn": "16",
+   "route": "/me/visits/demo-vi-michal",
+   "scenario": "regular",
+   "shots": [
+    "16-me-visits-vi-michal.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/visits/demo-vi-michal",
+   "title": "שישי, 27 בנובמבר"
+  },
+  {
+   "nn": "17",
+   "route": "/me/donations/demo-d-michal",
+   "scenario": "regular",
+   "shots": [
+    "17-me-donations-d-michal.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/donations/demo-d-michal",
+   "title": "תרומה · 180 ₪"
+  },
+  {
+   "nn": "18",
+   "route": "/me/stall/demo-tab-michal-unpaid-summer",
+   "scenario": "regular",
+   "shots": [
+    "18-me-stall-tab-michal-unpaid-summer.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/stall/demo-tab-michal-unpaid-summer",
+   "title": "החשבון שלי בדוכן"
+  },
+  {
+   "nn": "19",
+   "route": "/me/account",
+   "scenario": "regular",
+   "shots": [
+    "19-me-account.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-row__hit \"פנייה לחווה\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/account",
+   "title": "עריכת פרטים מב מיכל ברק 054-000-0155 · טנא עומרים מה יש לי בחווה הכל ·",
+   "rootLen": {
+    "design": "U7-GuestAccount",
+    "app": 779,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   },
+   "rowNav": "/me/orders/demo-o-2"
+  },
+  {
+   "nn": "20",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "20-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "michal.b@gmail.com, Google"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת החשבון\" (k-btn)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/edit",
+   "title": "עריכת פרטים"
+  },
+  {
+   "nn": "21",
+   "route": "/me/messages",
+   "scenario": "regular",
+   "shots": [
+    "21-me-messages.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/messages",
+   "title": "הודעות מהחווה"
+  },
+  {
+   "nn": "22",
+   "route": "/delete-account",
+   "scenario": "regular",
+   "shots": [
+    "22-delete-account.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "english",
+     "what": "michal.b@gmail.com, Google"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת החשבון\" (k-btn)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/delete-account",
+   "title": "מחיקת החשבון"
+  },
+  {
+   "nn": "23",
+   "route": "/login",
+   "scenario": "regular",
+   "shots": [
+    "23-login.jpg",
+    "23-login-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me",
+   "title": "הכרטיסים שלי",
+   "moreItems": [
+    "שיתוף כרטיס 1",
+    "שיתוף כרטיס 1",
+    "להוסיף ליומן",
+    "להוסיף ליומן",
+    "לדף האירוע",
+    "לדף האירוע"
+   ],
+   "rowNav": "/me/orders/demo-o-19"
+  },
+  {
+   "nn": "24",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "24-tasks.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks",
+   "title": "ליד טנא עומרים חוות רווה הודעה מהחווה · היום 11:20 פסטיבל הסתיו: החניה",
+   "rowNav": "/events/demo-e-festival"
+  },
+  {
+   "nn": "25",
+   "route": "/",
+   "scenario": "eventDay",
+   "shots": [
+    "25-home.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/",
+   "title": "ליד טנא עומרים חוות רווה הודעה מהחווה · 19.11 פסטיבל הסתיו: החניה עברה",
+   "rowNav": "/events/demo-e-festival"
+  },
+  {
+   "nn": "26",
+   "route": "/me",
+   "scenario": "eventDay",
+   "shots": [
+    "26-me.eventDay.jpg",
+    "26-me.eventDay-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הכרטיסים שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"החשבון שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me",
+   "title": "הכרטיסים שלי",
+   "moreItems": [
+    "שיתוף כרטיס 1",
+    "שיתוף כרטיס 1",
+    "להוסיף ליומן",
+    "להוסיף ליומן",
+    "לדף האירוע",
+    "לדף האירוע"
+   ],
+   "rowNav": "/me/orders/demo-o-19"
+  },
+  {
+   "nn": "27",
+   "route": "/events/demo-e-festival",
+   "scenario": "eventDay",
+   "shots": [
+    "27-events-e-festival.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls in top bar: להוסיף ליומן | שיתוף"
+    },
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/events/demo-e-festival",
+   "title": "שבת, 28 בנובמבר · 16:00 עד 21:00 פסטיבל הסתיו בית איפה חוות רווה, ליד "
+  }
+ ],
+ "unvisitedLinks": []
+}

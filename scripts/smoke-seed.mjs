@@ -1,9 +1,9 @@
-// Seeds the Firebase emulators (Firestore 8080, Auth 9099) for the end-to-end smoke cycle of the v2 redesign.
+// Seeds the Firebase emulators (Firestore 8080, Auth 9099) for the end-to-end smoke cycle (v2 redesign, tidy round).
 // Wipes both emulators first, creates the Google accounts in the Auth emulator and the base data in Firestore.
 // Everything a flow creates for real (events, vendor, helper, the invited volunteer, tickets ordered by a guest) is
 // left out on purpose: the smoke cycle (scripts/smoke-cycle.mjs) creates it through the app.
 //
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
+//   PATH=/opt/homebrew/opt/openjdk/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
 //   node scripts/smoke-seed.mjs
 //
 // Emulators only: every URL here is localhost.
@@ -31,7 +31,10 @@ export const ACCOUNTS = {
   noga: { email: 'noga.smoke@example.com', name: 'נגה שמיר', profile: false }, // invited by email (M-people), joins through C9
   raz: { email: 'raz.smoke@example.com', name: 'רז כהן', profile: false }, // stall owner, claims a vendor link
   tamar: { email: 'tamar.smoke@example.com', name: 'תמר כהן', profile: false }, // helper, claims the helper link
-  rotem: { email: 'rotem.smoke@example.com', name: 'רותם אברהם', profile: false }, // new guest, signs up in item 8
+  rotem: { email: 'rotem.smoke@example.com', name: 'רותם אברהם', profile: false }, // new guest, signs up in item 8 (agrees to updates)
+  lior: { email: 'lior.smoke@example.com', name: 'ליאור דהן', role: 'guest', gender: 'm' }, // a guest who opens a cancelled team link (item 10)
+  gal: { email: 'gal.smoke@example.com', name: 'גל מזרחי', profile: false }, // added ahead by phone, claims the team link (item 10)
+  shir: { email: 'shir.smoke@example.com', name: 'שיר לוי', profile: false }, // a second account that opens the used team link (item 10)
 };
 
 export async function idpSignIn(key) {

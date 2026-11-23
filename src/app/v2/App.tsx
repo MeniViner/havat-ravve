@@ -1,6 +1,6 @@
 // The v2 shell for staff, managers, owners and vendors: role navigation, the event-day tab, demo strip (Z2), offline strip (C8),
 // refused-write toast (X1), toasts, redirects from old routes, and the centred 390-480 column on wide screens.
-// The guest side keeps the legacy shell (App.tsx at src/app) and is not touched here.
+// The guest side has its own shell (screens/guest); a team member reaches guest pages through legacy.teamFallback.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
@@ -20,8 +20,6 @@ import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from '
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet, useInstallBanner } from './screens/system';
 import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
-import { useRootTasks } from './data/tasks';
-import { useUrgentOpenCount } from './data/shopping';
 import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
@@ -119,17 +117,16 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const allowed = !hit || ((!hit.route.manager || ctx.manager) && (!hit.route.owner || ctx.owner));
   useEffect(() => { if (hit && !allowed) navigate('/tasks', true); }, [hit, allowed]);
 
-  // nav badges (old shell): my open tasks, urgent shopping, and for managers what waits in "לטיפול" (the manage root's count)
-  const myOpen = useRootTasks(ctx).items.filter((t) => !t.done && t.assignee?.uid === user.uid).length;
-  const urgent = useUrgentOpenCount();
+  // nav badges (RULES.md rule 11): a red count only on ניהול (what waits in "לטיפול", the manage root's count). Not on משימות,
+  // קניות or החווה; the bell carries the personal count in each root header.
   const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
-  const badges: Partial<Record<NavItem['key'], number>> = { tasks: myOpen, shopping: urgent, manage: ctx.manager ? inbox : 0 };
+  const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings }) ?? <legacy.NotFound />}</AppScreen>;
+  else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <AppScreen variant="plain" noNav><legacy.NotFound /></AppScreen>;
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 
@@ -147,7 +144,7 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
   const nav = [TEAM_NAV.vendorEvents, TEAM_NAV.vendorStall];
   let screen: ReactNode = null;
   if (!redirect && hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings })}</AppScreen>;
+  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = legacy.teamFallback(route, { user, profile, settings });
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 

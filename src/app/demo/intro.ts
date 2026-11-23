@@ -15,7 +15,7 @@ export type IntroAction = 'start' | 'ask' | 'none';
  *  A demo switch in Settings proper needs a design first; when the tidy round moves the guest entry, change it here. */
 export const INTRO_DECLINED = {
   team: 'אפשר לחזור לדמו בכל רגע מהפרופיל, ב״לראות איך האפליקציה עובדת״',
-  guest: 'אפשר לחזור לדמו בכל רגע מ״החשבון שלי״, ב״מצב הדגמה״',
+  guest: 'אפשר לחזור לדמו בכל רגע מעמוד הכניסה, ב״לראות איך האפליקציה עובדת״',
 } as const;
 
 const STAGE = (uid: string) => 'farm-demo-intro:' + uid;

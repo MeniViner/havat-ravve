@@ -33,7 +33,9 @@ const slice: Slice = (seed) => {
   // ---- N3/N4 donations: this month 1,220 paid, the year 8,400, three waiting for a receipt ----
   patch(seed, 'donations', 'demo-d-michal', { createdAt: at(0, '09:40'), updatedAt: at(0, '09:40'), note: 'תודה על המקום הזה. אבא אהב לבוא לכאן.', method: 'bit' });
   patch(seed, 'donations', 'demo-d-noam', { createdAt: at(-1, '12:00'), updatedAt: at(-1, '15:00'), receiptSent: true });
-  patch(seed, 'donations', 'demo-d-david', { createdAt: at(-7, '12:00'), updatedAt: at(-7, '12:00') });
+  // Q4/Q9: David's donation is "בלי קבלה"
+  patch(seed, 'donations', 'demo-d-david', { createdAt: at(-7, '12:00'), updatedAt: at(-7, '12:00'), receiptWanted: false, receiptName: '', receiptSent: false });
+  drop(seed, 'email_outbox', ['donation_demo-d-david']);
   patch(seed, 'donations', 'demo-d-orly', { amount: 500, label: 'סכום חופשי', createdAt: at(-10, '14:00'), updatedAt: at(-10, '14:00'), receiptWanted: true, receiptName: 'אורלי לוי' });
   patch(seed, 'donations', 'demo-d-shirak', { amount: 162, createdAt: at(-10, '09:00'), updatedAt: at(-10, '09:00') });
   patch(seed, 'donations', 'demo-d-anon', { createdAt: at(-30, '12:00'), updatedAt: at(-30, '12:00') });
@@ -51,8 +53,14 @@ const slice: Slice = (seed) => {
   patch(seed, 'notifications', 'demo-n-contact', { text: 'לקראת פסטיבל הסתיו' });
   patch(seed, 'notifications', 'demo-n-tab', { createdAt: ago(6) });
 
-  // ---- N13/G5: the pending invite is a manager, set a week ago ----
-  patch(seed, 'role_invites', 'farm.ravve@gmail.com', { role: 'manager', createdAt: ago(7 * 24) });
+  // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows two waiting (omer.levi2 by e-mail,
+  // the phone link below), Q19 "2 בעלים · 3 מנהלים" ----
+  drop(seed, 'role_invites', ['farm.ravve@gmail.com']);
+  // ---- Q27: a volunteer added ahead by phone yesterday; the one-time WhatsApp link is still open (team_links/{code}) ----
+  put(seed, 'team_links', [
+    { id: 't-demo2k7q9mfx4r', code: 't-demo2k7q9mfx4r', role: 'staff', name: '', phone: '054-000-0421', fem: true, active: true, usedBy: null, usedAt: null,
+      createdBy: A.beni, createdAt: ago(26), expiresMs: new Date(ago(26)).getTime() + 14 * 86400_000 },
+  ]);
 
   // ---- N6/N7/G1/G4 settings (new keys are optional extras, see docs/redesign-data/manage.md) ----
   const s = seed.documents['settings/app'] as Row & { payment: Row; contact: Row; templates: Row };
@@ -66,7 +74,7 @@ const slice: Slice = (seed) => {
       ...s.templates,
       visitApproved: 'שלום [שם], הביקור שלכם בחוות רווה ב־[תאריך] מאושר. [הערה] נתראה!',
       donationThanks: 'שלום [שם], תודה מכל הלב על התרומה של [סכום] לחווה.',
-      paymentConfirmation: 'שלום [שם], קיבלנו [סכום] על [אירוע]. תודה!',
+      paymentConfirmation: 'שלום [שם], קיבלנו [סכום]. תודה מכל הלב. חוות רווה',
     },
   };
 
@@ -116,12 +124,13 @@ const slice: Slice = (seed) => {
   });
   put(seed, 'api_log', [
     log(1, '07:02', 'farm.overview', 'תמונת מצב של החווה', 'קרא', 'read', { count: null }),
-    log(2, '07:03', 'tasks.create', 'יצירת משימה', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'להחליף מים לסוסים', assignee: 'demo-u-yoav', dueDate: key(0) }), result: JSON.stringify({ taskId: 'demo-t-1', verified: true }), refs: [{ col: 'tasks', id: 'demo-t-1' }] }),
-    log(3, '07:05', 'shopping.add', 'הוספת פריט לרשימת הקניות', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'שק תירס', category: 'super' }), result: JSON.stringify({ itemId: 'demo-s-9' }), refs: [{ col: 'shopping', id: 'demo-s-9' }] }),
-    log(4, '07:40', 'broadcasts.send', 'הודעה לצוות', 'שלח', 'write', { body: JSON.stringify({ text: 'מחר בבוקר אין מים בלול, נא לא לפתוח את הברז', audience: 'all' }) }),
-    log(5, '08:10', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { status: 409, ok: false, code: 'STALE_WRITE', message: 'הרשומה השתנתה מאז שנקראה: the record changed since it was read', body: JSON.stringify({ taskId: 'demo-t-1', title: 'להחליף מים לסוסים ולעיזים' }) }),
-    log(6, '08:12', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { body: JSON.stringify({ taskId: 'demo-t-1', title: 'להחליף מים לסוסים ולעיזים' }), refs: [{ col: 'tasks', id: 'demo-t-1' }] }),
-    log(7, '09:15', 'shopping.delete', 'מחיקת פריט מרשימת הקניות', 'מחק', 'write', { body: JSON.stringify({ itemId: 'demo-s-4' }), result: JSON.stringify({ deleted: { id: 'demo-s-4', title: 'חבל כביסה' } }), refs: [{ col: 'shopping', id: 'demo-s-4' }] }),
+    // Q20: the morning as designed (subjects are real demo rows: demo-t-tap, demo-s-milk, demo-t-toolbox, demo-s-coffee)
+    log(2, '07:03', 'tasks.create', 'יצירת משימה', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'לתקן את הברז ליד החממה', assignee: 'demo-u-yoav', dueDate: key(0) }), result: JSON.stringify({ taskId: 'demo-t-tap', verified: true }), refs: [{ col: 'tasks', id: 'demo-t-tap' }] }),
+    log(3, '07:05', 'shopping.add', 'הוספת פריט לרשימת הקניות', 'יצר', 'write', { status: 201, body: JSON.stringify({ title: 'חלב 3%', qty: '6 קרטונים', category: 'super' }), result: JSON.stringify({ itemId: 'demo-s-milk' }), refs: [{ col: 'shopping', id: 'demo-s-milk' }] }),
+    log(4, '07:40', 'broadcasts.send', 'הודעה לצוות', 'שלח', 'write', { body: JSON.stringify({ text: 'מחר מתחילים ב־15:30', audience: 'all' }) }),
+    log(5, '08:10', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { status: 409, ok: false, code: 'STALE_WRITE', message: 'הרשומה השתנתה מאז שנקראה: the record changed since it was read', body: JSON.stringify({ taskId: 'demo-t-toolbox', note: 'המקדח במדף העליון' }) }),
+    log(6, '08:12', 'tasks.edit', 'עריכת משימה', 'ערך', 'write', { body: JSON.stringify({ taskId: 'demo-t-toolbox', note: 'המקדח במדף העליון' }), result: JSON.stringify({ taskId: 'demo-t-toolbox', title: 'לסדר את ארגז הכלים' }), refs: [{ col: 'tasks', id: 'demo-t-toolbox' }] }),
+    log(7, '09:15', 'shopping.delete', 'מחיקת פריט מרשימת הקניות', 'מחק', 'write', { body: JSON.stringify({ itemId: 'demo-s-coffee-old' }), result: JSON.stringify({ deleted: { id: 'demo-s-coffee-old', title: 'קפה שחור', category: 'super' } }), refs: [{ col: 'shopping', id: 'demo-s-coffee-old' }] }),
   ]);
 };
 export default slice;

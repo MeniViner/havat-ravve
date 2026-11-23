@@ -1,12 +1,13 @@
-// C11-CalItem: new (or edit) calendar item: what, when, hours, who sees, participants, reminder. Managers; volunteers go to F4.
+// Q31-CalItem (C11): new (or edit) calendar item: what, its kind ('סוג' chips under the title), when, hours, who sees,
+// participants (chips up to five people, past that one row with a check-box picker, rule 9), reminder. Managers; volunteers go to F4. Editing: delete is in ⋯ beside "ביטול" (rule 6).
 import { useEffect, useState } from 'react';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { BottomBar, Button, ChoiceChip, ConfirmSheet, EmptyState, Field, FormHeader, ListCard, Row, Toggle } from '../../kit';
+import { Avatar, BottomBar, Button, ChoiceChip, EmptyState, Field, FormHeader, ListCard, MoreMenu, PickerSheet, Row, SearchField, SelectRow, Toggle } from '../../kit';
 import type { ScreenProps } from '../../ctx';
 import { deleteCalItem, saveCalItem, useCalItem, type FarmCalItem } from '../../data/farm';
-import { TEAM_KINDS, firstOf, hoursOf, hoursValid, isPresence, normTime, pickerDays, pickerStart, teamKindOf, type TeamKind } from './logic';
-import { DayPicker, OtherDate } from './parts';
+import { TEAM_KINDS, firstOf, hoursOf, hoursValid, isTeamItem, normTime, pickerDays, pickerStart, teamKindOf, type TeamKind } from './logic';
+import { DayGroup, DayPicker, FormEnd } from './parts';
 
 const validDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '');
 
@@ -20,7 +21,7 @@ export function CalItemForm({ ctx, params }: ScreenProps) {
   }, [ctx.manager]);
   if (!ctx.manager) return null;
   if (id && item.loading) return <AppScreen variant="form"><FormHeader title="פריט ביומן" onCancel={() => back('/farm/calendar')} /></AppScreen>;
-  if (id && (!item.item || item.item.kind === 'event' || item.item.kind === 'visit' || isPresence(item.item))) {
+  if (id && (!item.item || !isTeamItem(item.item))) {
     return (
       <AppScreen variant="form">
         <FormHeader title="פריט ביומן" onCancel={() => back('/farm/calendar')} />
@@ -53,6 +54,11 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
   const people = ctx.team.filter((p) => audience === 'all' || rank(p.role) < 2)
     .sort((a, b) => pos(a.uid) - pos(b.uid) || rank(a.role) - rank(b.role) || a.displayName.localeCompare(b.displayName, 'he'));
   const extra = participants.filter((u) => !people.some((p) => p.uid === u));
+  const all = [...people.map((p) => ({ uid: p.uid, name: p.displayName })), ...extra.map((u) => ({ uid: u, name: ctx.peopleByUid.get(u)?.displayName || u }))];
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState('');
+  const chosen = participants.map((u) => firstOf(all.find((p) => p.uid === u)?.name || u));
+  const whoText = !chosen.length ? 'אין' : chosen.length <= 3 ? chosen.join(', ') : `${chosen.slice(0, 3).join(', ')} ועוד ${chosen.length - 3}`;
   const h = { from: normTime(from) || from, to: normTime(to) || to };
   const fromBad = !!from && !normTime(from), toBad = !!to && !normTime(to);
   const ok = !!title.trim() && !!validDate(date) && hoursValid(h);
@@ -66,29 +72,34 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
       back(`/farm/calendar?view=day&date=${date}`);
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
   }
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   const bar = (
-    <BottomBar column={!!existing}>
-      <Button size="bar" grow={!existing} block={!!existing} disabled={!ok} onClick={save}>{existing ? 'שמירה' : 'הוספה ליומן'}</Button>
-      {existing && <Button variant="danger" onClick={() => setAskDelete(true)}>מחיקה מהיומן</Button>}
+    <BottomBar>
+      <Button size="bar" grow disabled={!ok} onClick={save}>{existing ? 'שמירה' : 'הוספה ליומן'}</Button>
     </BottomBar>
   );
+  const more = existing ? (
+    <MoreMenu title="פריט ביומן" items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: {
+        title: 'למחוק מהיומן?', text: `"${existing.title}" יימחק מהיומן של כולם.`, confirmLabel: 'מחיקה',
+        onConfirm: () => remove(() => deleteCalItem(existing.id), { text: 'הפריט הוסר מהיומן', after: () => back(`/farm/calendar?view=day&date=${date}`) }),
+      },
+    }]} />
+  ) : null;
   return (
     <AppScreen variant="form" bar={bar}>
-      <FormHeader title="פריט ביומן" onCancel={() => back('/farm/calendar')} />
+      <FormHeader title="פריט ביומן" end={<FormEnd onCancel={() => back('/farm/calendar')} more={more} />} />
       <Field label="מה קורה" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
       <div className="farm-group">
-        <span className="farm-group__label">סוג פריט</span>
+        <span className="farm-group__label">סוג</span>
         <div className="k-chips k-chips--wrap">
           {TEAM_KINDS.map((k) => <ChoiceChip key={k.value} selected={kind === k.value} onClick={() => setKind(k.value)}>{k.label}</ChoiceChip>)}
         </div>
       </div>
-      <div className="farm-group" style={{ gap: 6 }}>
-        <span className="farm-group__label">מתי</span>
+      <DayGroup label="מתי" gap={6} onPick={setDate}>
         <DayPicker days={pickerDays(start, [date])} selected={[date]} onToggle={setDate} />
-        <OtherDate onPick={setDate} />
-      </div>
+      </DayGroup>
       <div className="k-fieldrow" style={{ gap: 12 }}>
         <Field grow label="משעה" ltr inputMode="numeric" value={from} error={fromBad ? 'למשל 10:30' : undefined} onChange={(e) => setFrom(e.target.value)} onBlur={() => setFrom((v) => normTime(v) || v)} />
         <Field grow label="עד שעה" ltr inputMode="numeric" value={to} error={toBad ? 'למשל 11:30' : !fromBad && !toBad && !hoursValid(h) ? 'אחרי שעת ההתחלה' : undefined} onChange={(e) => setTo(e.target.value)} onBlur={() => setTo((v) => normTime(v) || v)} />
@@ -100,21 +111,25 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
           <ChoiceChip selected={audience === 'managers'} onClick={() => pickAudience('managers')}>מנהלים בלבד</ChoiceChip>
         </div>
       </div>
-      <div className="farm-group">
-        <span className="farm-group__label">מי משתתף</span>
-        <div className="k-chips k-chips--wrap">
-          {people.map((p) => <ChoiceChip key={p.uid} selected={participants.includes(p.uid)} onClick={() => toggle(p.uid)}>{firstOf(p.displayName)}</ChoiceChip>)}
-          {extra.map((u) => <ChoiceChip key={u} selected onClick={() => toggle(u)}>{firstOf(ctx.peopleByUid.get(u)?.displayName || u)}</ChoiceChip>)}
+      {all.length <= 5 ? (
+        <div className="farm-group">
+          <span className="farm-group__label">מי משתתף</span>
+          <div className="k-chips k-chips--wrap">
+            {all.map((p) => <ChoiceChip key={p.uid} selected={participants.includes(p.uid)} onClick={() => toggle(p.uid)}>{firstOf(p.name)}</ChoiceChip>)}
+          </div>
         </div>
-      </div>
+      ) : (
+        // rule 9: past five people "מי משתתף" is one row that opens a picker with check boxes
+        <>
+          <SelectRow label="מי משתתף" value={whoText} onClick={() => { setQ(''); setPicking(true); }} />
+          <PickerSheet open={picking} onClose={() => setPicking(false)} title="מי משתתף" multiple values={participants} value={null} onChange={toggle}
+            head={all.length > 8 ? <SearchField label="חיפוש בצוות" placeholder="חיפוש: שם" size="sm" value={q} onChange={(e) => setQ(e.target.value)} /> : undefined}
+            options={(q.trim() ? all.filter((p) => p.name.includes(q.trim())) : all).map((p) => ({ value: p.uid, label: p.name, leading: <Avatar name={p.name} size={32} /> }))} />
+        </>
+      )}
       <ListCard>
         <Row minHeight={58} title="להזכיר שעה לפני" meta="התראה למי שמשתתף" actions={<Toggle checked={reminder} onChange={setReminder} label="להזכיר שעה לפני" />} />
       </ListCard>
-      {existing && (
-        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק מהיומן?"
-          text={`"${existing.title}" יימחק מהיומן של כולם.`} confirmLabel="מחיקה"
-          onConfirm={() => remove(() => deleteCalItem(existing.id), { text: 'הפריט הוסר מהיומן', after: () => back(`/farm/calendar?view=day&date=${date}`) })} />
-      )}
     </AppScreen>
   );
 }

@@ -11,6 +11,8 @@ export type Profile = {
   customerNumber: number;
   acceptedTermsAt: string;
   joinCode?: string;
+  /** The one-time team link (team_links/{code}) this account used to join (Q27). */
+  teamLink?: string;
   notes?: string;
   fields?: Record<string, string>;
   log?: { at: string; by: Actor; text: string }[];
@@ -37,6 +39,9 @@ export type Profile = {
   welcomedAt?: string;
   /** v2 (optional): grammatical gender for Hebrew wording; missing = guessed from the first name (v2/gender.ts). */
   gender?: 'f' | 'm';
+  /** Tidy round: the person agreed to receive update messages ("לקבל עדכונים מהחווה"). Messages to all users reach only
+   *  people with true; messages about an event they registered to (service messages) reach every registrant. Default off. */
+  updatesOptIn?: boolean;
 };
 
 export type Actor = { uid: string; name: string };
@@ -256,8 +261,12 @@ export type ProjectStep = {
 };
 
 /** Team broadcast (B1-B4). Read receipts at broadcasts/{id}/reads/{uid}. */
-export type BroadcastAudience = 'all' | 'farmToday' | 'managers' | 'crew' | 'vendors';
-export const AUDIENCE_LABELS: Record<BroadcastAudience, string> = { all: 'כל הצוות', farmToday: 'בחווה היום', managers: 'מנהלים', crew: 'צוות האירוע', vendors: 'בעלי דוכנים' };
+/** Team audiences: all, farmToday, managers, crew. Outside the team (tidy round, Q26): registrants of one event (eventId, a
+ *  service message to every registrant), vendors, and everyone (all users who opted in to updates, `Profile.updatesOptIn`). */
+export type BroadcastAudience = 'all' | 'farmToday' | 'managers' | 'crew' | 'vendors' | 'registrants' | 'everyone';
+export const AUDIENCE_LABELS: Record<BroadcastAudience, string> = { all: 'כל הצוות', farmToday: 'בחווה היום', managers: 'מנהלים', crew: 'צוות האירוע', vendors: 'בעלי דוכנים', registrants: 'נרשמי האירוע', everyone: 'כל המשתמשים' };
+/** Audiences outside the team (Q25 neutral tag; team audiences get the warm tag). */
+export const OUTSIDE_AUDIENCES: BroadcastAudience[] = ['registrants', 'vendors', 'everyone'];
 export type Broadcast = {
   id: string; text: string; audience: BroadcastAudience; eventId?: string; urgent: boolean;
   by: Actor; createdAt: string; recipients: string[]; recipientCount: number; resentAt?: string | null;

@@ -1,13 +1,14 @@
 // The payment confirmation of one paid order, donation or stall account (the old PaymentConfirmationActions, in v2 parts):
 // the guest's preference (WhatsApp or email), send by either, "סימון שהאישור נשלח", and the Worker's automatic email status
-// (email_outbox/order_<orderId> | donation_<id> | tab_<id>; managers read it, nobody writes it from the app).
+// (email_outbox/order_<orderId> | donation_<id> | tab_<id>; managers read it; the app writes only broadcast jobs, bc_<id>_<uid>, never these).
 import { useDoc } from '../../../db';
-import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../../../data';
-import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_LABELS, type PaymentConfirmation } from '../../../types';
+import { markPaymentConfirmation, receiptDestination, receiptPreference } from '../../../data';
+import { RECEIPT_PREFERENCE_LABELS, type PaymentConfirmation } from '../../../types';
 import { useExternal, useToast, useV2, waUrl } from '../../core';
 import { Button, Tag } from '../../kit';
-import { dayTime, money } from '../../format';
+import { dayTime } from '../../format';
 import { useRun } from './shared';
+import { payConfirmText } from '../../patterns';
 
 type EmailJob = { id: string; status: 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'; reason?: string | null; to?: string; sentAt?: string; updatedAt: string };
 const SKIP_TEXT: Record<string, string> = {
@@ -18,6 +19,20 @@ function EmailStatus({ job }: { job: EmailJob }) {
   if (job.status === 'queued' || job.status === 'sending') return <span className="events-payconfirm__line"><Tag tone="waiting">מייל אוטומטי בתור</Tag>{job.reason ? ' · ניסיון נוסף בקרוב' : ''}</span>;
   if (job.status === 'failed') return <span className="events-payconfirm__line"><Tag tone="urgent">המייל האוטומטי נכשל</Tag> {job.reason === 'rejected' ? 'הכתובת נדחתה' : 'שירות המייל לא זמין'} · אפשר לשלוח ידנית</span>;
   return <span className="events-payconfirm__line">מייל אוטומטי לא נשלח · {SKIP_TEXT[job.reason || ''] || 'לא נדרש'}</span>;
+}
+
+/** The information lines that stay on a paid order or stall account once sending moved into the Q7 sheet (usePayConfirm):
+ *  "אישור נשלח" with who and when, and the Worker's automatic e-mail status. Renders nothing when there is nothing to say. */
+export function PayConfirmStatus({ paid, confirmation, emailJob }: { paid: boolean; confirmation?: PaymentConfirmation; emailJob?: string }) {
+  const { manager } = useV2();
+  const job = useDoc<EmailJob>('email_outbox/' + (emailJob || '_'), manager && paid && !!emailJob).item;
+  if (!confirmation && !(paid && job)) return null;
+  return (
+    <>
+      {confirmation && <span className="events-payconfirm__line"><Tag tone="paid">אישור נשלח</Tag> {confirmation.by.name} · {dayTime(confirmation.at)}</span>}
+      {paid && job && <EmailStatus job={job} />}
+    </>
+  );
 }
 
 export type PayConfirmProps = {
@@ -35,9 +50,7 @@ export function PayConfirm({ collection, ids, uid, name, phone, amount, purpose,
   const to = { phone: profile?.phone || phone, email: profile?.email || '' };
   const whatsapp = receiptDestination(to, 'whatsapp');
   const email = receiptDestination(to, 'email');
-  const body = fillTemplate(settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, {
-    'שם': profile?.displayName || name, 'סכום': money(amount), 'עבור': purpose, 'אירוע': event || '',
-  });
+  const body = payConfirmText(settings.templates.paymentConfirmation, { name: profile?.displayName || name, amount, purpose, event });
   const mailto = 'mailto:' + encodeURIComponent(email).replace('%40', '@') + '?subject=' + encodeURIComponent('אישור תשלום מחוות רווה') + '&body=' + encodeURIComponent(body);
   const mark = async () => {
     const ok = await run(async () => { await markPaymentConfirmation(actor, collection, ids); return true; });

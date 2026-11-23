@@ -26,12 +26,12 @@ const FIXED: Record<string, Row[]> = {
   ],
   '2026-11-22': [presence('demo-c-f-noa-22', A.noa, '2026-11-22'), presence('demo-c-f-beni-22', A.beni, '2026-11-22', '08:00', '13:00')],
   '2026-11-24': [presence('demo-c-f-noa-24', A.noa, '2026-11-24', '12:00', ''), presence('demo-c-f-dana-24', A.dana, '2026-11-24', '09:00', '14:00')],
-  '2026-11-25': [presence('demo-c-f-yoav-25', A.yoav, '2026-11-25'), presence('demo-c-f-beni-25', A.beni, '2026-11-25'), presence('demo-c-f-dana-25', A.dana, '2026-11-25', '13:00', '18:00')],
+  '2026-11-25': [presence('demo-c-f-yoav-25', A.yoav, '2026-11-25'), presence('demo-c-f-orly-25', A.orly, '2026-11-25'), presence('demo-c-f-dana-25', A.dana, '2026-11-25', '13:00', '18:00')],
   // the old calendar wrote presence as a manual item "בני בחווה": kept on the 20th and the 27th to show old documents still count
   '2026-11-20': [presence('demo-c-f-roi-20', A.roi, '2026-11-20', '09:00', '14:00')],
   '2026-11-27': [presence('demo-c-f-noa-27', A.noa, '2026-11-27', '08:00', '13:00'), presence('demo-c-f-dana-27', A.dana, '2026-11-27'), presence('demo-c-f-beni-27', A.beni, '2026-11-27', '10:00', '16:00')],
 };
-/** From the 19th on, Yoav and Noa appear only where the designs show them (F4, C5). */
+/** From the 19th on, Yoav and Noa appear only where the designs show them (F4, C5), and Orly only on Wednesday 25.11, all day (Q17). */
 const ROTATION: Actor[] = [A.beni, A.dana, A.roi, A.eliya, A.orly, A.shira, A.gil, A.omer, A.noa, A.yoav];
 
 function november(): Row[] {
@@ -39,7 +39,7 @@ function november(): Row[] {
   NOVEMBER.forEach((n, i) => {
     const date = `2026-11-${String(i + 1).padStart(2, '0')}`;
     if (FIXED[date]) { rows.push(...FIXED[date]); return; }
-    const pool = date >= '2026-11-19' ? ROTATION.filter((a) => a !== A.yoav && a !== A.noa) : ROTATION;
+    const pool = date >= '2026-11-19' ? ROTATION.filter((a) => a !== A.yoav && a !== A.noa && a !== A.orly) : ROTATION;
     for (let k = 0; k < n; k++) {
       const a = pool[(i * 3 + k) % pool.length];
       const [from, to] = HOURS[(i + k) % HOURS.length];

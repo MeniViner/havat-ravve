@@ -2,6 +2,8 @@
 // Rules: real <button>/<a>/<input>+<label>; className and style pass through; RTL only; no emoji.
 import {
   Children,
+  Fragment,
+  isValidElement,
   useEffect,
   useId,
   useRef,
@@ -12,6 +14,7 @@ import {
   type HTMLAttributes,
   type InputHTMLAttributes,
   type MouseEventHandler,
+  type ReactElement,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
@@ -465,7 +468,7 @@ export function ListCard({ title, count, icon, tone, end, header, children, foot
 
 export interface RowProps extends Base, Target {
   title?: ReactNode;
-  /** Inline tags after the title (Tag elements). */
+  /** At most one status tag after the title (rule 4). Several are cut to the first. */
   tags?: ReactNode;
   meta?: ReactNode;
   /** Checkbox slot, outside the link: switches to the task-row layout (gap 8, title 16/500). */
@@ -480,8 +483,10 @@ export interface RowProps extends Base, Target {
   unread?: boolean;
   /** Soft chevron at the end; default true when the row has href or onClick. */
   chevron?: boolean;
-  /** Outside the link, at the end: buttons such as "לקחת". */
-  actions?: ReactNode;
+  /** Rule 4: ONE control outside the link, at the end: a single Button ("לקחת"), IconButton (WhatsApp) or Toggle.
+   *  A row with a control has no chevron. Anything more belongs in the detail screen or a row sheet (ActionSheet, Q11);
+   *  a fragment or array of several controls is cut to the first and logged as an error. */
+  actions?: ReactElement | null | false;
   /** Struck-through soft title (done tasks, bought items). */
   done?: boolean;
   /** Dimmed (opacity .65), e.g. people already away. */
@@ -494,6 +499,15 @@ export interface RowProps extends Base, Target {
    *  Nothing runs until the button is pressed. The check, the link and every action keep working as taps. */
   swipe?: SwipeActions;
   'aria-label'?: string;
+}
+/** Rule 4 guard: a fragment or array holding several elements keeps only the first one. */
+function oneOf(node: ReactElement | null | false | undefined, what: string): ReactElement | null {
+  if (!node) return null;
+  const kids = isValidElement(node) && node.type === Fragment ? Children.toArray((node.props as { children?: ReactNode }).children) : Array.isArray(node) ? Children.toArray(node) : null;
+  if (!kids) return node;
+  const els = kids.filter(isValidElement);
+  if (els.length > 1) console.error(`Row: only one element in "${what}" (RULES.md rule 4); ${els.length} given, the rest is not shown.`);
+  return (els[0] as ReactElement) ?? null;
 }
 /**
  * One list row (<li>). Order: check | [link: leading, body (title + tags, meta), trailing, value, unread, chevron] | actions.
@@ -523,7 +537,10 @@ export function Row({
 }: RowProps) {
   const sw = useSwipe(swipe);
   const interactive = href !== undefined || onClick !== undefined;
-  const showChevron = chevron ?? interactive;
+  const action = oneOf(actions, 'actions');
+  tags = oneOf(tags as ReactElement | null | undefined, 'tags');
+  actions = action;
+  const showChevron = !action && (chevron ?? interactive);
   const body = (
     <>
       {leading}
@@ -1384,12 +1401,14 @@ export interface SheetProps extends Base {
   title: ReactNode;
   /** Soft text at the end of the title row ("נתונים לא אמיתיים"). */
   aside?: ReactNode;
-  children: ReactNode;
+  /** One soft 15px line under the title (Q8 "180 ₪ · מיכל ברק. ...", Q11 "לא ענה · הוזמן ב־10.11"). */
+  sub?: ReactNode;
+  children?: ReactNode;
   /** Position inside the nearest positioned ancestor instead of the viewport (gallery, previews). */
   contained?: boolean;
 }
 /** Bottom sheet: backdrop rgba(20,23,27,.45), bg panel, radius 16 top, grabber 40x4, title 20/700. Escape and backdrop close it. Z3. */
-export function Sheet({ open, onClose, title, aside, children, contained, className, style }: SheetProps) {
+export function Sheet({ open, onClose, title, aside, sub, children, contained, className, style }: SheetProps) {
   const panel = useRef<HTMLElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -1409,9 +1428,10 @@ export function Sheet({ open, onClose, title, aside, children, contained, classN
       <button type="button" className="k-sheet__backdrop" aria-label="סגירה" tabIndex={-1} onClick={onClose} />
       <section ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={cx('k-sheet__panel', className)} style={style}>
         <span className="k-sheet__grab" aria-hidden="true" />
-        <div className="k-sheet__head">
+        <div className={cx('k-sheet__head', sub !== undefined && 'k-sheet__head--sub')}>
           <h2 id={titleId} className="k-sheet__title">{title}</h2>
           {aside !== undefined && <span className="k-sheet__aside">{aside}</span>}
+          {sub !== undefined && <span className="k-sheet__sub">{sub}</span>}
         </div>
         {children}
       </section>
@@ -1422,18 +1442,18 @@ export function Sheet({ open, onClose, title, aside, children, contained, classN
 export interface ConfirmSheetProps extends Base {
   open: boolean;
   onClose: () => void;
-  /** The question: "למחוק את המשימה?" */
+  /** The question: "למחוק את התרומה?" */
   title: ReactNode;
-  /** One line saying what happens (what goes with it, what stays). */
+  /** One line: what is deleted, and that it is logged and cannot be undone ("180 ₪ · מיכל ברק. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה."). */
   text?: ReactNode;
-  /** The red button: "מחיקה", "כן, למחוק". */
-  confirmLabel: string;
+  /** The red button. Default "מחיקה" ("הסרה" for taking something off a list). */
+  confirmLabel?: string;
   cancelLabel?: string;
   /** Runs once per press; both buttons wait while it runs. */
   onConfirm: () => unknown;
 }
-/** The one confirmation before anything is deleted: a Sheet with the question, one line, a red outlined button and "ביטול". */
-export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelLabel = 'ביטול', onConfirm, className, style }: ConfirmSheetProps) {
+/** Q8, the one delete confirmation: the question, one soft line, a red filled "מחיקה" with a bin and an outlined "ביטול". */
+export function ConfirmSheet({ open, onClose, title, text, confirmLabel = 'מחיקה', cancelLabel = 'ביטול', onConfirm, className, style }: ConfirmSheetProps) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!open) setBusy(false); }, [open]);
   const go = async () => {
@@ -1442,11 +1462,10 @@ export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelL
     try { await onConfirm(); } finally { setBusy(false); }
   };
   return (
-    <Sheet open={open} onClose={busy ? () => {} : onClose} title={title} className={cx('k-confirm', className)} style={style}>
-      {text && <p className="k-confirm__text">{text}</p>}
+    <Sheet open={open} onClose={busy ? () => {} : onClose} title={title} sub={text} className={cx('k-confirm', className)} style={style}>
       <div className="k-confirm__actions">
-        <Button variant="danger" size="lg" block className="k-confirm__go" disabled={busy} onClick={go}>{confirmLabel}</Button>
-        <Button variant="secondary" size="lg" block disabled={busy} onClick={onClose}>{cancelLabel}</Button>
+        <button type="button" className="k-confirm__go" disabled={busy} onClick={go}><Icon name="trash" size={20} />{confirmLabel}</button>
+        <button type="button" className="k-confirm__cancel" disabled={busy} onClick={onClose}>{cancelLabel}</button>
       </div>
     </Sheet>
   );

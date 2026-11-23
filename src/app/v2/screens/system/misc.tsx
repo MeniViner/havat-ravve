@@ -1,7 +1,7 @@
 // C9-Welcome (first entry), C10-Install, C8-Offline (the queue of writes kept on the phone) and X2-Suspended.
 import { useEffect, useState } from 'react';
 import { AppScreen, go, useToast, useExternal, waUrl, telUrl, ToastProvider, ToastStack } from '../../core';
-import { TopBar, Button, BottomBar, Field, Hero, Avatar, Segmented, ListCard, Row, IconTile, TextLink, EmptyState, Icon, initials } from '../../kit';
+import { TopBar, Button, BottomBar, Field, Hero, Avatar, Segmented, ListCard, Row, IconTile, TextLink, EmptyState, Icon, MoreDetails, initials } from '../../kit';
 import { back, navigate, depth, useRoute } from '../../../router';
 import { useSync } from '../../../db';
 import { useOnline, createProfile } from '../../../store';
@@ -20,12 +20,14 @@ import {
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
 import { RegistrationQuestions } from './fields';
+import { forgetVendorInvite } from '../../data/vendor';
 import './system.css';
 
 // ---------- C9 ----------
 /** C9 for a person a manager added: create the profile (first entry) or confirm the details of an existing one (/welcome).
  *  `fields` are the farm's registration questions (settings.registrationFields), asked here as the old onboarding did. */
-export function WelcomeForm({ user, profile, invite, fields }: { user: Session; profile: Profile | null; invite: RoleInvite | null; fields?: RegistrationField[] }) {
+/** `link`: the one-time team link (Q27) a new account came through; createProfile uses it up with the profile. */
+export function WelcomeForm({ user, profile, invite, fields, link }: { user: Session; profile: Profile | null; invite: RoleInvite | null; fields?: RegistrationField[]; link?: string }) {
   const toast = useToast();
   const [name, setName] = useState(profile?.displayName || '');
   const [phone, setPhone] = useState(profile?.phone || '');
@@ -49,7 +51,8 @@ export function WelcomeForm({ user, profile, invite, fields }: { user: Session; 
         const at = nowIso();
         await write.set('users', user.uid, { uid: user.uid, email: (invite?.email || user.email).toLowerCase(), displayName: name.trim(), phone: phone.trim(), role: invite?.role || 'staff', status: 'active', customerNumber: 999, acceptedTermsAt: at, createdAt: at, updatedAt: at, welcomedAt: at, fields: given });
       } else {
-        await createProfile(user, { displayName: name, phone, fields: given });
+        await createProfile(user, { displayName: name, phone, fields: given }, link);
+        if (link) forgetVendorInvite();
         void write.update('users', user.uid, { welcomedAt: nowIso() }, { quiet: true }).catch(() => {});
       }
       navigate('/tasks', true);
@@ -71,8 +74,27 @@ export function WelcomeForm({ user, profile, invite, fields }: { user: Session; 
       )}
       <Field label="השם שלך בעברית" placeholder="שם פרטי ומשפחה" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" placeholder="05" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
-      <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      {/* C9 shows name and phone. The farm's sign-up questions (parity) follow rule 8: a required one stays in the form,
+          the optional ones wait in "עוד פרטים". */}
+      <RegistrationQuestions questions={questions.filter((f) => f.required)} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      {questions.some((f) => !f.required) && (
+        <MoreDetails>
+          <li className="k-moredetails__fields">
+            <RegistrationQuestions questions={questions.filter((f) => !f.required)} answers={answers} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+          </li>
+        </MoreDetails>
+      )}
       <span className="system-note">השם יופיע ליד כל משימה שתבצע. <button type="button" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
+    </AppScreen>
+  );
+}
+
+/** Q27: a one-time team link that was used, cancelled or expired. "המשך" continues as a guest (the usual first entry). */
+export function LinkGone({ onContinue }: { onContinue: () => void }) {
+  return (
+    <AppScreen variant="root" gap={16} noNav bar={<BottomBar><Button size="bar" grow onClick={onContinue}>המשך</Button></BottomBar>}>
+      <div className="system-welcome"><span className="system-welcome__farm">חוות רווה</span></div>
+      <EmptyState icon="clock" title="הקישור כבר לא בתוקף" text="הוא כבר שימש לכניסה, בוטל, או שעבר הזמן שלו. בקשו מהחווה קישור חדש. אפשר להמשיך בינתיים כאורח." />
     </AppScreen>
   );
 }
