@@ -148,17 +148,38 @@ async function bumpCounters(tx: Tx, eventId: string, at: string, d: Partial<Reco
 /** Creates the counters document once, without touching an existing one (so an offline scan always has a copy to add to). */
 export function ensureCounters(eventId: string) { return write.merge(countersCol(eventId), 'live', { eventId }).catch(() => {}); }
 
-export type AdmitResult = { entries: number };
+export type AdmitResult = {
+  entries: number;
+  /** What was recorded: 'ok' also when the screen asked for payment but another gate had already taken it for this order. */
+  result: ScanResult;
+  /** The amount recorded as paid at the gate (or as a debt), from the order as the server had it at that moment. */
+  amount: number;
+};
 /** Lets one ticket in. pay 'gate' marks the unpaid tickets of the order paid at the gate; 'later' lets them in as a debt.
  *  Refused (ConflictError -> X1) when another gate already counted this entry. When the server cannot be reached in time
- *  (weak reception), it is saved on the phone as a queued write and sent when the network is back (db.ts transact `queue`). */
+ *  (weak reception), it is saved on the phone as a queued write and sent when the network is back (db.ts transact `queue`).
+ *
+ *  One payment per order: `order` is only the screen's copy. Two gates can scan two tickets of the same unpaid order at the
+ *  same moment, and each sees the whole order as owing. So every ticket of the order is read again inside the transaction,
+ *  and what is owed (which tickets to mark, the amount on the scan, the counters) comes from those fresh copies. Firestore
+ *  runs the transaction again if any of them changes before it commits, so the second gate finds the order already paid
+ *  and records a plain entry ('ok', no amount). Same rule as the Worker's gate.admit (updateTime preconditions).
+ *
+ *  Limitation, the offline queue (db.ts `queued`): with no server to ask, "read again" means this phone's cached copy. If
+ *  another gate took the payment while this phone was cut off, the queued scan still records the full amount once more.
+ *  No phone can know that offline. What stops harm: the rules refuse a volunteer's update of a ticket that is already
+ *  paid (crewPaidOnsite: only pending/claimed -> paid_onsite), and both scans keep the same orderId in the scan log, where
+ *  the cash count at closing shows the double. Managers' writes are trusted by the rules (managerTicket). */
 export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, order: TicketV2[], pay: Pay = 'none'): Promise<AdmitResult> {
   const at = nowIso();
-  const owing = order.filter(isUnpaid);
-  const amount = pay === 'none' ? 0 : owing.reduce((s, t) => s + (t.price || 0), 0);
   const res = await transact(async (tx) => {
     const cur = await tx.get<TicketV2>('tickets', ticket.id);
     if (!cur || cur.status !== 'valid' || (cur.entries || 0) !== (ticket.entries || 0)) throw new ConflictError();
+    // the rest of the order as the server has it now (all reads before the first write, as Firestore requires)
+    const others = await Promise.all(order.filter((t) => t.id !== ticket.id).map((t) => tx.get<TicketV2>('tickets', t.id)));
+    const fresh = [cur, ...others.filter((t): t is TicketV2 & { id: string } => !!t && t.orderId === ticket.orderId)];
+    const owing = fresh.filter(isUnpaid).sort((a, b) => a.index - b.index);
+    const amount = pay === 'none' ? 0 : owing.reduce((s, t) => s + (t.price || 0), 0);
     const n = (cur.entries || 0) + 1;
     const sid = `${ticket.id}-${n}`;
     if (await tx.get('events/' + event.id + '/scans', sid)) throw new ConflictError();
@@ -171,9 +192,10 @@ export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, or
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: ticket.id, orderId: ticket.orderId, name: ticketName(ticket), phone: ticket.ownerPhone, meta, result, ...(amount ? { amount, method: '' } : {}), count: result === 'ok' ? 1 : owing.length, by: actor, at, reopenedBy: null, reopenedAt: null };
     tx.set('events/' + event.id + '/scans', sid, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: n === 1 ? 1 : 0, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: owing.length } : {}), ...(result === 'payLater' ? { payLater: owing.length, payLaterAmount: amount } : {}) });
-    return { entries: n };
+    return { entries: n, result, amount };
   }, { queue: true }); // weak reception: saved on the phone like the old gate, never lost
-  logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticketName(ticket)} · כניסה ${res.entries}${pay === 'gate' && amount ? ` · שולם במקום ${amount} ₪` : ''}${pay === 'later' && amount ? ` · ישלמו אחר כך ${amount} ₪` : ''}`, { subjectUid: ticket.ownerUid, eventId: event.id });
+  const { amount, result } = res;
+  logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticketName(ticket)} · כניסה ${res.entries}${result === 'paidAtGate' ? ` · שולם במקום ${amount} ₪` : ''}${result === 'payLater' ? ` · ישלמו אחר כך ${amount} ₪` : ''}`, { subjectUid: ticket.ownerUid, eventId: event.id });
   return res;
 }
 
