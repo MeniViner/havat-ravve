@@ -59,7 +59,8 @@ for (const r of rows) {
     }
     // the designs show the demo strip only on Z2-Z5: hide it elsewhere so the comparison lines up
     if (!r.id.startsWith('Z') && !args.includes('--strip')) await page.addStyleTag({ content: '.k-demo{display:none!important}#root>.v2:not(.k-screen):has(>.k-demo){display:none!important}.v2:has(>.k-demo)+.k-screen{height:100dvh!important}.v2:has(>.k-demo)+.v2 .system-suspended{min-height:100dvh!important}' });
-    await page.waitForTimeout(100);
+    // let a sheet that a step opened finish sliding up before the shot
+    await page.waitForTimeout(steps.length ? 700 : 100);
     const full = steps.includes('fullpage');
     // the v2 screen body scrolls on its own: let it grow so a full-page shot shows everything
     if (full) await page.addStyleTag({ content: '.k-screen{height:auto!important;min-height:100dvh;overflow:visible!important}.k-screen__body{overflow:visible!important}' });

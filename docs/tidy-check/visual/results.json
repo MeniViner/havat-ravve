@@ -17,7 +17,7 @@
   "steps": "click:קראתי",
   "diff": 0.087,
   "errors": [],
-  "at": "2026-11-23T02:01:54.414Z"
+  "at": "2026-11-23T02:10:50.821Z"
  },
  "Q3-AddMore": {
   "id": "Q3-AddMore",
@@ -27,7 +27,7 @@
   "steps": "click:אחר; click:ליד הכניסה",
   "diff": 0.248,
   "errors": [],
-  "at": "2026-11-23T02:03:22.698Z"
+  "at": "2026-11-23T02:10:53.527Z"
  },
  "Q24-AddRecurring": {
   "id": "Q24-AddRecurring",
@@ -37,7 +37,7 @@
   "steps": "click:חוזרת; exact:ב׳; exact:ד׳; exact:ו׳; exact:ש׳; fill:עד איזו שעה=07:00",
   "diff": 0.169,
   "errors": [],
-  "at": "2026-11-23T02:01:59.540Z"
+  "at": "2026-11-23T02:10:57.360Z"
  },
  "Q22-ShopSuggest": {
   "id": "Q22-ShopSuggest",
@@ -55,9 +55,9 @@
   "scenario": "regular",
   "route": "/farm/presence",
   "steps": "click:החלפה; click:אורלי לוי; exact:22; click:בוקר",
-  "diff": 0.048,
+  "diff": 0.046,
   "errors": [],
-  "at": "2026-11-23T02:02:03.227Z"
+  "at": "2026-11-23T02:11:00.635Z"
  },
  "Q18-Profile": {
   "id": "Q18-Profile",
@@ -85,9 +85,9 @@
   "scenario": "regular",
   "route": "/manage/donations",
   "steps": "button:עוד פעולות",
-  "diff": 0.218,
+  "diff": 0.088,
   "errors": [],
-  "at": "2026-11-23T02:02:07.288Z"
+  "at": "2026-11-23T02:10:41.475Z"
  },
  "Q9-TableView": {
   "id": "Q9-TableView",
@@ -115,9 +115,9 @@
   "scenario": "regular",
   "route": "/manage/donations/demo-d-michal",
   "steps": "click:אישור תשלום",
-  "diff": 0.152,
+  "diff": 0.109,
   "errors": [],
-  "at": "2026-11-23T02:02:11.417Z"
+  "at": "2026-11-23T02:12:36.722Z"
  },
  "Q8-ConfirmDelete": {
   "id": "Q8-ConfirmDelete",
@@ -127,7 +127,7 @@
   "steps": "button:עוד פעולות; click:מחיקה",
   "diff": 0.034,
   "errors": [],
-  "at": "2026-11-23T02:02:13.253Z"
+  "at": "2026-11-23T02:11:05.762Z"
  },
  "Q10-EventVendors": {
   "id": "Q10-EventVendors",
@@ -147,7 +147,7 @@
   "steps": "click:דבש הגבעה",
   "diff": 0.016,
   "errors": [],
-  "at": "2026-11-23T02:02:16.097Z"
+  "at": "2026-11-23T02:11:08.177Z"
  },
  "Q12-StallTabs": {
   "id": "Q12-StallTabs",
@@ -207,7 +207,7 @@
   "steps": "fill:תוכן ההודעה=פסטיבל הסתיו: הפתיחה נדחתה ל־17:00 בגלל הגשם.; click:נרשמי פסטיבל הסתיו; exact:פסטיבל הסתיו; click:דחופה; click:לשלוח גם במייל",
   "diff": 0.093,
   "errors": [],
-  "at": "2026-11-23T02:02:25.077Z"
+  "at": "2026-11-23T02:11:11.663Z"
  },
  "Q27-InviteAhead": {
   "id": "Q27-InviteAhead",
@@ -217,7 +217,7 @@
   "steps": "fill:מספר הטלפון=052-000-0188",
   "diff": 0.01,
   "errors": [],
-  "at": "2026-11-23T02:02:26.613Z"
+  "at": "2026-11-23T02:11:14.012Z"
  },
  "Q13-Person": {
   "id": "Q13-Person",
@@ -277,7 +277,7 @@
   "steps": "click:לימונדה; click:לימונדה; click:עוגת תפוחים",
   "diff": 0.012,
   "errors": [],
-  "at": "2026-11-23T02:02:35.000Z"
+  "at": "2026-11-23T02:11:16.940Z"
  },
  "Q29-StallAccount": {
   "id": "Q29-StallAccount",
@@ -287,7 +287,7 @@
   "steps": "click:לימונדה; click:לימונדה; click:עוגת תפוחים; click:כבר בחשבון",
   "diff": 0.13,
   "errors": [],
-  "at": "2026-11-23T02:02:37.421Z"
+  "at": "2026-11-23T02:11:20.134Z"
  },
  "Q30-Calendar": {
   "id": "Q30-Calendar",
@@ -307,7 +307,7 @@
   "steps": "fill:מה קורה=פגישת צוות לפני הפסטיבל; click:פגישה; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה",
   "diff": 0.085,
   "errors": [],
-  "at": "2026-11-23T02:02:42.446Z"
+  "at": "2026-11-23T02:11:24.724Z"
  },
  "Q32-EventForm": {
   "id": "Q32-EventForm",
@@ -347,7 +347,7 @@
   "steps": "button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים",
   "diff": 0.163,
   "errors": [],
-  "at": "2026-11-23T02:02:48.367Z"
+  "at": "2026-11-23T02:11:27.637Z"
  },
  "U4-GuestPay": {
   "id": "U4-GuestPay",
@@ -357,7 +357,7 @@
   "steps": "button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים; click:הזמנה · 150",
   "diff": 0.051,
   "errors": [],
-  "at": "2026-11-23T02:02:50.779Z"
+  "at": "2026-11-23T02:11:30.837Z"
  },
  "U5-GuestTickets": {
   "id": "U5-GuestTickets",
@@ -417,7 +417,7 @@
   "steps": "click:לבחור תאריך; exact:27; button:עוד; button:עוד; button:עוד; button:עוד; fill:סבא וסבתא עם הנכדים, מעדיפים בוקר.=סבא וסבתא עם הנכדים, מעדיפים בוקר.",
   "diff": 0.047,
   "errors": [],
-  "at": "2026-11-23T02:03:00.263Z"
+  "at": "2026-11-23T02:11:34.907Z"
  },
  "U9-GuestDonate": {
   "id": "U9-GuestDonate",
@@ -427,7 +427,7 @@
   "steps": "fill:הנצחה=לזכר יוסף ברק",
   "diff": 0.186,
   "errors": [],
-  "at": "2026-11-23T02:03:01.782Z"
+  "at": "2026-11-23T02:11:37.245Z"
  },
  "U11-GuestContact": {
   "id": "U11-GuestContact",
@@ -437,7 +437,7 @@
   "steps": "fill:נושא=חניה נגישה בפסטיבל; fill:מה רצית לשאול=יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים.",
   "diff": 0.022,
   "errors": [],
-  "at": "2026-11-23T02:03:03.564Z"
+  "at": "2026-11-23T02:11:39.898Z"
  },
  "U12-GuestSignIn": {
   "id": "U12-GuestSignIn",
