@@ -129,7 +129,13 @@ function QuotaSection({ m, notify }: { m: Monitor; notify: (t: string, tone?: 'i
             <Button variant="neutral" onClick={copy}>העתקת הפקודה</Button>
           </div>
         )}
-        {q && q.error && q.error !== 'permission' && <p className="c-soft"><span title={q.detail || undefined}>לא הצלחנו למדוד את המכסה של מסד הנתונים. ננסה שוב בעוד שעה.</span></p>}
+        {q?.error === 'billing' && (
+          <div className="c-grant">
+            <p><b>Google מציג את המונה הזה רק בפרויקטים עם חיוב מופעל, והחווה בתוכנית החינמית.</b> את השימוש היומי אפשר לראות בקונסולת Firebase, בלשונית השימוש של מסד הנתונים. אם המכסה מתקרבת לסוף, האפליקציה עצמה מתחילה לסרב לשמירות עד 10:00 בבוקר.</p>
+            <a className="c-link" href="https://console.firebase.google.com/project/havat-ravve/firestore/usage" target="_blank" rel="noreferrer">לשימוש במסד הנתונים בקונסולת Firebase</a>
+          </div>
+        )}
+        {q && q.error && q.error !== 'permission' && q.error !== 'billing' && <p className="c-soft"><span title={q.detail || undefined}>לא הצלחנו למדוד את המכסה של מסד הנתונים. ננסה שוב בעוד שעה.</span></p>}
         {!q && <p className="c-soft">המדידה הראשונה תירשם בריצה הבאה של השרת.</p>}
         {m.health?.r2Bytes !== null && m.health?.r2Bytes !== undefined && <Meter label="אחסון קבצים וגיבויים" used={m.health.r2Bytes} limit={m.limits.r2Bytes} unit={size} />}
         <p className="c-note">המכסה של מסד הנתונים מתחדשת כל יום ב־10:00 (חצות בקליפורניה). כשהשימוש עובר 80% נשלחת התראה.</p>

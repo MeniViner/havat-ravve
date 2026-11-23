@@ -37,7 +37,7 @@ export type BackupDoc = { path: string; then: Record<string, unknown>; now: Reco
 export type TrashItem = { key: string; path: string; collection: string; title: string; by: string; who: string; requestId: string; deletedAt: string };
 
 export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
-export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'unavailable' | 'failed'; detail?: string };
+export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'billing' | 'unavailable' | 'failed'; detail?: string };
 export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
 export type Health = { at: string; date: string; by: string; worst: HealthState; items: { id: string; he: string; state: HealthState; detail: string }[]; r2Bytes: number | null };
 export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
