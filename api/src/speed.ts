@@ -1,5 +1,6 @@
 // מהירות: how fast the server answers. From the assistant log (api_log keeps each request's time in ms), the 5-minute
 // round's own timings (monitor.ts jobs) and the site check (uptime). Computed on request: up to a few thousand reads.
+import { lastIlDays } from './util';
 import type { Env, Firestore } from './firestore';
 import { invalid } from './http';
 import { readJobs, readMonitor } from './monitor';
@@ -44,8 +45,7 @@ export async function speed(env: Env, fs: Firestore, daysIn: number) {
   if (daysIn > 1) {
     const per = new Map<string, number[]>();
     for (const r of timed) { const d = dayOf(str(r.at)); per.set(d, [...(per.get(d) || []), num(r.ms)!]); }
-    for (let i = daysIn - 1; i >= 0; i--) {
-      const d = dayOf(new Date(now - i * 86400_000).toISOString());
+    for (const d of lastIlDays(daysIn, new Date(now))) {
       const s = (per.get(d) || []).sort((a, b) => a - b);
       days.push({ day: d, count: s.length, p50: pct(s, 0.5), p95: pct(s, 0.95) });
     }

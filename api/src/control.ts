@@ -182,6 +182,20 @@ export async function cleanupPreview(env: Env, fs: Firestore) {
   return { items, last: await readCleanup(env) };
 }
 
+const ARCHIVE_DAYS = 365;
+/** Removes archive files older than a year (their names start with the night's date), at most a page per collection. */
+async function pruneArchive(env: Env): Promise<number> {
+  if (!env.FILE_BUCKET) return 0;
+  const cut = ilDate(new Date(Date.now() - ARCHIVE_DAYS * 86400_000));
+  let n = 0;
+  for (const col of [...new Set(CLEANUP_RULES.map((r) => r.col))]) {
+    const old = (await env.FILE_BUCKET.list({ prefix: `${ARCHIVE}${col}/`, limit: 1000 })).objects.map((o) => o.key)
+      .filter((k) => (/\/(\d{4}-\d{2}-\d{2})-/.exec(k)?.[1] || '9999') < cut);
+    if (old.length) { await env.FILE_BUCKET.delete(old); n += old.length; }
+  }
+  return n;
+}
+
 /** One page of cleanup: at night after today's backup, or when an owner presses "now". Copies the page to R2, then
  *  deletes exactly those documents (each with its updateTime, so a record changed meanwhile is left alone). */
 export async function runCleanup(env: Env, opts: { force?: boolean; by?: string } = {}) {
@@ -236,7 +250,10 @@ export async function runCleanup(env: Env, opts: { force?: boolean; by?: string 
   st.done = st.rule >= CLEANUP_RULES.length;
   st.at = new Date().toISOString();
   await env.TOKEN_KV.put(CLEANUP_KEY, JSON.stringify(st));
-  return { cron: 'cleanup', done: st.done, archived: st.archived, deleted: st.deleted, rule: st.rule };
+  // the night's last step: archive files older than a year go (logs hold personal details; a year is enough to look back)
+  let expired = 0;
+  if (st.done) expired = await pruneArchive(env).catch(() => 0);
+  return { cron: 'cleanup', done: st.done, archived: st.archived, deleted: st.deleted, rule: st.rule, ...(expired ? { expired } : {}) };
 }
 
 /** What is in the archive (sizes by collection), for the console. */

@@ -62,8 +62,8 @@ function Body({ v, busy, flip, set }: { v: SwitchesView; busy: boolean; flip: (k
       <Section title="מה אנשים רואים באפליקציה">
         <ListCard>
           <Row title="מצב תחזוקה" meta="כולם חוץ מהבעלים רואים מסך תחזוקה" value={<Toggle checked={s.maintenance} onChange={(x) => flip('maintenance', x)} label="מצב תחזוקה" disabled={busy} />} />
-          <Row title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
-          <Row title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
+          <Row title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם באפליקציה (נאכף באפליקציה עצמה)" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
+          <Row title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום באפליקציה ובמפתחות. נאכף בגרסה העדכנית של האפליקציה, לא בכללי מסד הנתונים" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
         </ListCard>
         {s.maintenance && (
           <Card pad="lg" className="c-stack c-stack--sm">

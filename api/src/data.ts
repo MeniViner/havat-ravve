@@ -11,13 +11,16 @@ import { type Env, Firestore, FsError, type RawDoc, type V, dec, decFields, enc 
 import { BACKUPS, groupOf, lastBackup, listBackups, pathOf, titleOf } from './backup';
 
 const GROUP_RE = /^[A-Za-z0-9_]{1,100}(\/\*\/[A-Za-z0-9_]{1,100}){0,4}$/;
-const PATH_RE = /^[A-Za-z0-9_]{1,100}\/[^/\s]{1,300}(\/[A-Za-z0-9_]{1,100}\/[^/\s]{1,300}){0,4}$/;
+// ids may hold Hebrew and punctuation, never what changes a URL (? # %) and never . or .. on their own
+const PATH_RE = /^[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}(\/[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}){0,4}$/;
 const READ_ONLY = new Set(['api_log', 'api_failures', 'api_idempotency', 'users']);
 const PAGE = 200;
+/** Fields that hold a person, a place or a confirmation when filled: never set to plain text from the browser. */
+const OBJECT_FIELDS = new Set(['assignee', 'doneBy', 'by', 'createdBy', 'updatedBy', 'claimedBy', 'place', 'location', 'paymentConfirmation', 'owner', 'vendor']);
 const lastCol = (path: string) => { const s = path.split('/'); return s[s.length - 2] || ''; };
 
 export function checkPath(path: string) {
-  if (typeof path !== 'string' || !PATH_RE.test(path)) throw invalid('path', 'a document path such as tasks/abc123');
+  if (typeof path !== 'string' || !PATH_RE.test(path) || path.split('/').some((x) => x === '.' || x === '..')) throw invalid('path', 'a document path such as tasks/abc123');
   return path;
 }
 function checkGroup(group: string) {
@@ -157,11 +160,15 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
     const cur = fields[k];
     if (!cur) throw invalid('set.' + k, 'only fields the document already has can be changed here');
     const t = typeOf(cur);
+    // an empty field the app fills with a person or a place ({uid, name}) must not become plain text
+    if (t === 'null' && v !== null && OBJECT_FIELDS.has(k)) throw invalid('set.' + k, 'this field holds a person or a place when filled; set it in the app');
     const ok = v === null || (t === 'string' && typeof v === 'string' && v.length <= 5000) || ((t === 'integer' || t === 'double') && typeof v === 'number' && Number.isFinite(v)) || (t === 'boolean' && typeof v === 'boolean') || (t === 'null' && ['string', 'number', 'boolean'].includes(typeof v));
     if (!['string', 'integer', 'double', 'boolean', 'null'].includes(t) || !ok) throw invalid('set.' + k, `this field holds ${t}; only text, numbers, yes/no or empty can be set here`);
     before[k] = dec(cur);
     next[k] = enc(v);
   }
+  // the record's own "last changed" moves too, so a client working from an older read sees the change (core.ts fresh)
+  if (fields.updatedAt && typeOf(fields.updatedAt) === 'string' && !('updatedAt' in set)) next.updatedAt = enc(new Date().toISOString());
   try {
     await fs.commit([{ update: { name: d.name, fields: next }, updateMask: { fieldPaths: Object.keys(next) }, currentDocument: { updateTime: d.updateTime } }]);
   } catch (e) {
@@ -198,7 +205,8 @@ function cell(v: unknown): string {
 }
 const csvQuote = (s: string) => {
   // a leading = + - @ would run as a formula in Excel
-  const safe = /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+  // (a real number, -150, stays a number so SUM counts it)
+  const safe = /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? "'" + s : s;
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 

@@ -51,7 +51,7 @@ export function MoneyScreen() {
             </Section>
           )}
           {!!open.length && (
-            <Section title={`מחכים לתשלום · ${open.length}`}>
+            <Section title={`מחכים לתשלום · ${open.length}${m.waiting.count > m.debts.length ? ` (מוצגים ${fmt(m.debts.length)} הראשונים מתוך ${fmt(m.waiting.count)})` : ''}`}>
               <ListCard>{open.map((d) => <DebtRow key={d.kind + d.id} d={d} />)}</ListCard>
             </Section>
           )}

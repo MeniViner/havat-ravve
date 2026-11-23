@@ -59,7 +59,7 @@ export function TrafficScreen() {
 
           <Section title={`האתר · ${fmt(d.totals.visitors)} מבקרים`}>
             <StatRow grid>
-              <StatTile value={fmt(d.totals.visitors)} label="מבקרים" />
+              <StatTile value={fmt(d.totals.visitors)} label="מבקרים (לפי יום)" />
               <StatTile value={fmt(d.totals.views)} label="כניסות" />
               <StatTile value={`${pct(d.totals.returning, d.totals.visitors)}%`} label="חזרו שוב" />
               <StatTile value={`${pct(mobile, d.totals.views)}%`} label="מהטלפון" />
