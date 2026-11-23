@@ -590,6 +590,66 @@ try {
     check(LB && LB.op === 'console.backups.restore' && LB.verb === 'שחזר' && LB.keyLabel === 'קונסולה · נועה', 'a restore is logged as the console', LB && { op: LB.op, verb: LB.verb });
     check((await api('GET', '/v1/console/backups/2020-01-01/download', C(own))).status === 404, 'a day without a backup → 404');
     check((await api('GET', `/v1/console/backups/${day}/docs?collection=${encodeURIComponent('../x')}`, C(own))).status === 400, 'a bad collection name → 400');
+
+    // ---------- watching: the site, the free quota, the morning check, alerts, the security log ----------
+    const mon0 = await api('GET', '/v1/console/monitor', C(own));
+    check(mon0.status === 200 && Array.isArray(mon0.json.data.site.checks) && mon0.json.data.limits.reads === 50000 && mon0.json.data.alerts.on === true && mon0.json.data.alerts.push === true, 'monitor: site checks, limits, alerts on by default', mon0.json?.data && { alerts: mon0.json.data.alerts });
+    check((await api('GET', '/v1/console/monitor', C(mgr))).status === 403, 'a manager cannot open the monitor');
+    const chk = await api('POST', '/v1/console/monitor/check', C(own));
+    const items = Object.fromEntries((chk.json?.data?.health?.items || []).map((i) => [i.id, i]));
+    check(chk.status === 200 && items.backup?.state === 'ok' && items.quota?.state === 'unknown' && chk.json.data.quota?.error === 'unavailable' && items.keys && items.failures && items.cron && chk.json.data.health.by === 'נועה בעלים', 'check now: the morning check runs (backup of today ok; no Cloud Monitoring in the emulator)', chk.json?.data?.health);
+    check(chk.json?.data?.cronAt === mon0.json.data.cronAt, 'a check from the console does not move the last cron run');
+    const off1 = await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: false } });
+    check(off1.status === 200 && off1.json.data.on === true && off1.json.data.push === false && off1.json.data.updatedBy === 'נועה בעלים', 'alerts: phone push turned off, alerts stay on', off1.json?.data);
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: 'no' } })).status === 400, 'alerts: a value that is not true/false → 400');
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { sms: true } })).status === 400, 'alerts: an unknown field → 400');
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(mgr), body: { on: false } })).status === 403, 'a manager cannot change alerts');
+    const ta = await api('POST', '/v1/console/monitor/test-alert', C(own));
+    const inbox = await fetch(`${DOCS}/users/${own.localId}/notifications?pageSize=50`, { headers: admin }).then((x) => x.json());
+    const note = (inbox.documents || []).map((d) => d.fields).find((f) => f.title?.stringValue === 'בדיקת התראות מהשרת');
+    check(ta.status === 200 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
+    await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: true } });
+    const sec = await api('GET', '/v1/console/security?days=7', C(own));
+    const secItems = sec.json?.data?.items || [];
+    check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
+    check(secItems.every((e, i) => i === 0 || secItems[i - 1].at >= e.at), 'security log: newest first');
+    check((await api('GET', '/v1/console/security', C(mgr))).status === 403, 'a manager cannot read the security log');
+
+    // ---------- the data browser: collections, records, history, careful edits, delete to the bin, CSV ----------
+    const cols = await api('GET', '/v1/console/data', C(own));
+    const colOf = (g) => cols.json?.data?.items?.find((c) => c.group === g);
+    check(cols.status === 200 && colOf('users')?.count >= 10 && colOf('users').readOnly === true && colOf('places')?.readOnly === false && cols.json.data.backupDate === day, 'data: every collection with a live count; people and logs are read-only', cols.json?.data?.items?.slice(0, 4));
+    check((await api('GET', '/v1/console/data', C(mgr))).status === 403, 'a manager cannot browse the data');
+    const pDat = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
+    const pg = await api('GET', '/v1/console/data/docs?collection=places', C(own));
+    check(pg.status === 200 && pg.json.data.items.some((d) => d.path === `places/${pDat}` && d.title === 'מקום לדפדוף'), 'data: a page of records with titles', pg.json?.data?.items?.length);
+    const dv = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check(dv.status === 200 && dv.json.data.fields.name === 'מקום לדפדוף' && dv.json.data.types.name === 'string' && dv.json.data.types.lat === 'double' && dv.json.data.updateTime && dv.json.data.readOnly === false, 'data: one record with field types and updateTime', dv.json?.data?.types);
+    check((await api('GET', '/v1/console/data/doc?path=places/nope-nope', C(own))).status === 404, 'data: a missing record → 404');
+    check((await api('GET', `/v1/console/data/doc?path=${encodeURIComponent('../etc')}`, C(own))).status === 400, 'data: a bad path → 400');
+    const ed = await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'מקום ששמו תוקן' }, updateTime: dv.json.data.updateTime } });
+    check(ed.status === 200 && ed.json.data.before.name === 'מקום לדפדוף' && (await docOf(`places/${pDat}`)).name === 'מקום ששמו תוקן', 'edit: a text field changes, and the answer keeps what it was', ed.json);
+    const LE = await (async () => { for (let i = 0; i < 30; i++) { const x = await docOf('api_log/' + ed.json.meta.requestId); if (x) return x; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(LE && LE.op === 'console.data.edit' && LE.result.includes('מקום לדפדוף') && LE.keyLabel === 'קונסולה · נועה', 'edit: logged as the console, with the value before', LE && { op: LE.op });
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'שוב' }, updateTime: dv.json.data.updateTime } })).status === 409, 'edit: an old updateTime → 409, nothing overwritten');
+    const dv2 = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { lat: 'north' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a number field refuses text');
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { brandNew: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a field the record does not have → 400');
+    const uv = await api('GET', '/v1/console/data/doc?path=users/syn-staff2', C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: 'users/syn-staff2', set: { role: 'owner' }, updateTime: uv.json.data.updateTime } })).status === 403 && (await docOf('users/syn-staff2')).role !== 'owner', 'edit: people cannot be edited here (role stays)');
+    check((await api('POST', '/v1/console/data/edit', { ...C(mgr), body: { path: `places/${pDat}`, set: { name: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 403, 'a manager cannot edit records');
+    const hist = await api('GET', `/v1/console/data/history?path=users/syn-staff2&days=7`, C(own));
+    check(hist.status === 200 && hist.json.data.versions.length >= 1 && hist.json.data.versions[0].fields?.displayName === 'יואב כהן' && hist.json.data.days >= 1 && hist.json.data.now, 'history: the version in tonight\'s backup, next to now', hist.json?.data && { versions: hist.json.data.versions.length, days: hist.json.data.days });
+    const dDel = await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: `places/${pDat}`, updateTime: dv2.json.data.updateTime } });
+    const binNow = (await api('GET', '/v1/console/trash', C(own))).json.data.items.find((t) => t.path === `places/${pDat}`);
+    check(dDel.status === 200 && !(await docOf(`places/${pDat}`)) && binNow && binNow.by === 'קונסולה · נועה', 'delete: the record is gone and waits in the recycle bin', binNow);
+    check((await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: 'api_log/' + ed.json.meta.requestId, updateTime: 'x' } })).status === 403, 'delete: the logs cannot be deleted');
+    const csv = await fetch(BASE + '/v1/console/data/export?collection=users', { headers: { authorization: 'Bearer ' + own.idToken } });
+    const csvBytes = new Uint8Array(await csv.arrayBuffer());
+    const csvText = new TextDecoder().decode(csvBytes); // the decoder drops the BOM
+    check(csv.status === 200 && csvBytes[0] === 0xEF && csvBytes[1] === 0xBB && csvBytes[2] === 0xBF && /attachment; filename="havat-ravve-users-/.test(csv.headers.get('content-disposition') || '') && csvText.startsWith('id,') && csvText.includes('מנהלת בדיקה'), 'export: a CSV for Excel (BOM, header, Hebrew)', csvText.slice(0, 120));
+    const LX = await (async () => { for (let i = 0; i < 30; i++) { const r = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.data.export' } } }, limit: 1 } }) }).then((x) => x.json()); if (r[0]?.document) return r[0].document; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(!!LX, 'export: always logged (data leaving the server)');
   }
 
   section('the app\'s Rules accept what the API wrote');

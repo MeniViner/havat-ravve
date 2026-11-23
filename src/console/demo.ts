@@ -1,5 +1,5 @@
 // /admin?demo: the console over made-up people, keys and numbers, kept in memory only. No Firestore, no Worker.
-import type { Backup, KeyView, LogEntry, Overview, Person, Source, TrashItem } from './source';
+import type { AlertSettings, Backup, DataDoc, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const DAY = 24 * 60;
@@ -62,6 +62,72 @@ const restoredDocs = new Set<string>(); // put back in this demo session: "now" 
 
 const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 180));
 const fakeKey = () => 'hr_DEMO_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 56]).join('');
+
+// watching: 24 hours of site checks with one short outage, the free quota, this morning's check, alerts, the security log
+const checks = Array.from({ length: 96 }, (_, i) => {
+  const min = (95 - i) * 15 + 4;
+  const down = i === 40 || i === 41;
+  return { at: ago(min), ok: !down, ms: down ? 10_000 : 180 + ((i * 37) % 220), status: down ? 0 : 200 };
+});
+let alerts: AlertSettings = { on: true, push: true, updatedAt: null, updatedBy: null };
+const health = (): Health => ({
+  at: ago(80), date: dayKey(0), by: 'cron', worst: 'warn', r2Bytes: 38_400_000,
+  items: [
+    { id: 'site', he: 'האתר', state: 'ok', detail: 'עונה · 97.9% מהבדיקות ביממה האחרונה' },
+    { id: 'backup', he: 'גיבוי הלילה', state: 'ok', detail: 'נשמר · 246 רשומות' },
+    { id: 'failures', he: 'תקלות שרת ביממה', state: 'ok', detail: 'אין' },
+    { id: 'push', he: 'התראות לטלפון בתור', state: 'ok', detail: 'התור ריק' },
+    { id: 'keys', he: 'מפתחות API', state: 'warn', detail: 'בדיקות אוטומטיות: התוקף נגמר השבוע' },
+    { id: 'quota', he: 'מכסת Firestore החינמית', state: 'ok', detail: '18% מהמכסה היומית בשימוש' },
+    { id: 'storage', he: 'אחסון R2', state: 'ok', detail: '\u206636.6 MB\u2069 מתוך \u206610 GB\u2069' },
+    { id: 'cron', he: 'משימות מתוזמנות', state: 'ok', detail: 'רצות כל 5 דקות' },
+  ],
+});
+const monitor = (): Monitor => ({
+  site: { url: 'havat-ravve.web.app', checks, downSince: null, incidents: [{ from: checks[40].at, to: checks[42].at }], uptime: 97.9 },
+  quota: { at: ago(12), since: ago(14 * 60), reads: 8_930, writes: 1_210, deletes: 64 },
+  limits: { reads: 50_000, writes: 20_000, deletes: 20_000, r2Bytes: 10 * 1024 ** 3 },
+  health: health(), alerts, cronAt: ago(2),
+});
+const ev = (min: number, kind: SecurityEvent['kind'], who: string, what: string, detail = '', ok = kind === 'console'): SecurityEvent => ({ at: ago(min), kind, who, what, detail, ok });
+const security: SecurityEvent[] = [
+  ev(8, 'console', 'מני בעלים', 'כניסה לקונסולה'),
+  ev(42, 'console', 'מני בעלים', 'החלפת מפתח API'),
+  ev(95, 'refused', 'האינסטינקט של בני', 'שליחת הודעה לצוות', 'אין הרשאה: the key may not send broadcasts', false),
+  ev(6 * 60, 'limited', 'כתובת לא מוכרת', '/v1/tasks', 'יותר מדי בקשות בזמן קצר: נחסם לדקה', false),
+  ev(DAY + 30, 'console', 'בני גוטמן', 'כניסה לקונסולה'),
+  ev(2 * DAY, 'console', 'מני בעלים', 'שחזור מסל המחזור'),
+  ev(3 * DAY, 'refused', 'מפתח ישן לניסוי', 'רשימת משימות', 'לא מחובר: the key was revoked', false),
+];
+
+// the data browser: a few made-up records per collection, editable in memory
+const SYS = { api_log: 132, api_idempotency: 203, push_jobs: 14, email_outbox: 0 };
+type DemoRec = { path: string; fields: Record<string, unknown>; updateTime: string; createTime: string };
+const recs: DemoRec[] = [
+  ...people.map((p) => ({ path: `users/${p.uid}`, fields: { displayName: p.displayName, email: p.email, phone: p.phone, role: p.role, status: p.status, customerNumber: p.customerNumber }, updateTime: p.updatedAt!, createTime: p.createdAt! })),
+  { path: 'tasks/t-fence', fields: { title: 'לתקן את הגדר בחלקה הצפונית', done: false, urgent: true, place: 'החלקה הצפונית', assignee: { uid: 'd-yoav', name: 'יואב פרץ' }, createdAt: ago(9 * DAY), updatedAt: ago(35) }, updateTime: ago(35), createTime: ago(9 * DAY) },
+  { path: 'tasks/t-water', fields: { title: 'לבדוק את השוקת', done: true, urgent: false, place: 'החלקה הצפונית', assignee: { uid: 'd-yoav', name: 'יואב פרץ' }, doneAt: ago(DAY), createdAt: ago(9 * DAY), updatedAt: ago(DAY) }, updateTime: ago(DAY), createTime: ago(9 * DAY) },
+  { path: 'tasks/t-feed', fields: { title: 'להזמין מזון לעיזים', done: false, urgent: false, place: '', assignee: null, createdAt: ago(2 * DAY), updatedAt: ago(2 * DAY) }, updateTime: ago(2 * DAY), createTime: ago(2 * DAY) },
+  { path: 'places/p-north', fields: { name: 'החלקה הצפונית', lat: 31.52, lng: 34.6, createdAt: ago(200 * DAY) }, updateTime: ago(40 * DAY), createTime: ago(200 * DAY) },
+  { path: 'places/p-pen', fields: { name: 'דיר העיזים', lat: 31.521, lng: 34.602, createdAt: ago(190 * DAY) }, updateTime: ago(60 * DAY), createTime: ago(190 * DAY) },
+  { path: 'events/e-harvest', fields: { title: 'חג האסיף בחווה', date: dayKey(-12), status: 'published', price: 40, capacity: 300 }, updateTime: ago(3 * DAY), createTime: ago(30 * DAY) },
+  { path: 'events/e-harvest/vendors/v1', fields: { name: 'רז גבינות העמק', status: 'approved', fee: 150 }, updateTime: ago(4 * DAY), createTime: ago(20 * DAY) },
+  { path: 'events/e-harvest/vendors/v2', fields: { name: 'מאפיית הכפר', status: 'pending', fee: 150 }, updateTime: ago(2 * DAY), createTime: ago(6 * DAY) },
+  { path: 'shopping/s-hay', fields: { text: 'חבילות חציר', bought: false, qty: 4, addedBy: { uid: 'd-beni', name: 'בני גוטמן' } }, updateTime: ago(5 * 60), createTime: ago(5 * 60) },
+  { path: 'settings/site', fields: { title: 'חוות רווה', email: 'farm@demo.invalid', ticketsOpen: true }, updateTime: ago(20 * DAY), createTime: ago(300 * DAY) },
+];
+const groupOfPath = (p: string) => p.split('/').filter((_, i) => i % 2 === 0).join('/*/');
+const titleOfRec = (f: Record<string, unknown>) => String(f.title || f.name || f.displayName || f.text || f.email || '');
+const typeOfVal = (v: unknown) => (v === null ? 'null' : typeof v === 'boolean' ? 'boolean' : typeof v === 'number' ? (Number.isInteger(v) ? 'integer' : 'double') : typeof v === 'string' ? 'string' : Array.isArray(v) ? 'array' : 'map');
+const docOfRec = (r: DemoRec): DataDoc => {
+  const g = groupOfPath(r.path);
+  return {
+    path: r.path, id: r.path.split('/').pop()!, group: g, title: titleOfRec(r.fields), fields: structuredClone(r.fields),
+    types: Object.fromEntries(Object.entries(r.fields).map(([k, v]) => [k, typeOfVal(v)])), createTime: r.createTime, updateTime: r.updateTime,
+    subcollections: recs.some((x) => x.path.startsWith(r.path + '/')) ? [...new Set(recs.filter((x) => x.path.startsWith(r.path + '/')).map((x) => x.path.slice(r.path.length + 1).split('/')[0]))] : [],
+    readOnly: ['users', 'api_log', 'api_failures', 'api_idempotency'].includes(g.split('/*/').pop()!),
+  };
+};
 
 export const demoSource: Source = {
   demo: true,
@@ -126,4 +192,34 @@ export const demoSource: Source = {
     for (const k of keys) { const i = trash.findIndex((t) => t.key === k); if (i >= 0) trash.splice(i, 1); }
     return wait({ restored, exists: [], gone: [] });
   },
+  monitor: () => wait(monitor()),
+  checkNow: () => wait(monitor()),
+  setAlerts: (b) => { alerts = { ...alerts, ...b, updatedAt: ago(0), updatedBy: 'מני בעלים' }; return wait(alerts); },
+  testAlert: () => wait({ sent: true, push: alerts.push }),
+  security: (days) => wait({ since: ago(days * DAY), items: security.filter((e) => Date.now() - Date.parse(e.at) < days * DAY * 60_000) }),
+  dataCollections: () => {
+    const counts: Record<string, number> = { ...COLS, ...SYS, users: people.length };
+    for (const r of recs) counts[groupOfPath(r.path)] = Math.max(counts[groupOfPath(r.path)] || 0, recs.filter((x) => groupOfPath(x.path) === groupOfPath(r.path)).length);
+    const items = Object.entries(counts).map(([group, count]) => ({ group, count: group.includes('/*/') ? null : count, backupCount: count, readOnly: ['users', 'api_log', 'api_failures', 'api_idempotency'].includes(group) }));
+    return wait({ items: items.sort((a, b) => (b.count ?? b.backupCount ?? 0) - (a.count ?? a.backupCount ?? 0)), backupDate: dayKey(0) });
+  },
+  dataDocs: (group, _after, parent) => wait({ items: recs.filter((r) => groupOfPath(r.path) === group && (!parent || r.path.startsWith(parent + '/'))).map((r) => ({ path: r.path, id: r.path.split('/').pop()!, title: titleOfRec(r.fields), updateTime: r.updateTime })), next: null }),
+  dataDoc: async (path) => { const r = recs.find((x) => x.path === path); if (!r) throw new Error('not found'); return wait(docOfRec(r)); },
+  dataHistory: (path, days) => {
+    const r = recs.find((x) => x.path === path);
+    const now = r ? { updateTime: r.updateTime, fields: structuredClone(r.fields) } : null;
+    const older: Record<string, unknown> | null = r ? { ...r.fields, ...(typeof r.fields.done === 'boolean' ? { done: !r.fields.done } : {}), ...(typeof r.fields.status === 'string' ? { status: 'draft' } : {}) } : null;
+    const versions = r ? [
+      { updateTime: r.updateTime, from: dayKey(1), to: dayKey(0), fields: structuredClone(r.fields), changed: Object.keys(r.fields).filter((k) => JSON.stringify(r.fields[k]) !== JSON.stringify(older![k])) },
+      { updateTime: ago(8 * DAY), from: dayKey(Math.min(days, 7) - 1), to: dayKey(2), fields: older, changed: [] },
+    ] : [];
+    const activity = path.startsWith('tasks/') ? [
+      { at: ago(35), text: 'סומנה דחוף: ' + titleOfRec(r?.fields || {}), by: 'מני בעלים', action: 'urgent', via: 'האינסטינקט של מני' },
+      { at: ago(9 * DAY), text: 'נוצרה: ' + titleOfRec(r?.fields || {}), by: 'בני גוטמן', action: 'created', via: '' },
+    ] : [];
+    return wait({ path, now, versions, activity, days: Math.min(days, 12) });
+  },
+  editDoc: (path, set) => { const r = recs.find((x) => x.path === path)!; Object.assign(r.fields, set); r.updateTime = ago(0); return wait({ path, updateTime: r.updateTime }); },
+  deleteDoc: (path) => { const i = recs.findIndex((x) => x.path === path); const r = recs[i]; recs.splice(i, 1); trash.unshift({ key: `trash/d/${Date.now()}-dddddddd.json`, path, collection: groupOfPath(path), title: titleOfRec(r.fields), by: 'קונסולה · מני', who: 'מני בעלים', requestId: 'req_demo', deletedAt: ago(0) }); return wait({ path, deleted: true }); },
+  exportCsv: async () => { await wait(null); throw new Error('demo'); },
 };
