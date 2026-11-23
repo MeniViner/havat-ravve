@@ -4,16 +4,17 @@
 // templates, guestIntro and contact.phone/whatsapp keep their meaning. New keys (donationOptions, contactMore, payment.bitNumber,
 // payment.payboxLink) are optional extras (see docs/redesign-data/manage.md).
 // Tidy round: Q19 groups the index in two cards; recurring tasks (Tasks tab) and the Instinct log (Manage root) are not here.
-// A sign-up question's removal is in its row sheet behind the Q8 confirmation (rule 6). The managers page lists owners and
+// A sign-up question's removal is in its row sheet behind the Q8 confirmation (rule 6); a donation amount opens its edit sheet,
+// whose ⋯ holds "מחיקה" (rules 4 and 6). The managers page lists owners and
 // managers only: the team list lives in People (?filter=team) and role changes in Activity ("אנשים").
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
 import {
-  ActionSheet, Avatar, BottomBar, Button, Card, DragHandle, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
+  ActionSheet, Avatar, BottomBar, Button, Card, DragHandle, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, MoreMenu, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
   TextLink, Toggle, TopBar, useReorder, type ActionItem,
 } from '../../kit';
-import { daysFromToday } from '../../format';
+import { daysFromToday, money } from '../../format';
 import { useRoute } from '../../../router';
 import { getDemo } from '../../../demo/store';
 import type { RegistrationField, Settings } from '../../../types';
@@ -182,41 +183,68 @@ function AmountsPage({ ctx }: ScreenProps) {
   const s = ctx.settings as ManageSettings;
   const [rows, setRows] = useState<PresetRow[]>(() => s.donationPresets.map((p) => ({ key: rowKey(), amount: String(p.amount), label: p.label })));
   const [opts, setOpts] = useState(() => donationOptionsOf(s));
+  // the amount being edited in its sheet; key '' is a new one ("סכום נוסף")
+  const [edit, setEdit] = useState<PresetRow | null>(null);
   const save = useSave();
   const toast = useToast();
   const { handle, rowStyle } = useReorder(rows, setRows);
-  const upd = (i: number, patch: Partial<PresetRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const submit = () => {
     const presets = cleanPresets(rows);
     if (!presets.length && !opts.custom) { toast.refused('לא נשמר. צריך לפחות סכום אחד, או "סכום אחר".'); return; }
     save(() => saveSettings(ctx.actor, { donationPresets: presets, donationOptions: opts }, 'סכומי התרומה עודכנו'), 'סכומי התרומה נשמרו');
   };
-  const bad = (r: PresetRow) => r.amount.trim() !== '' && !(Number(r.amount) > 0);
+  const editOk = !!edit && Number(edit.amount) > 0;
+  const keep = () => {
+    if (!edit || !editOk) return;
+    setRows((x) => (edit.key ? x.map((r) => (r.key === edit.key ? edit : r)) : [...x, { ...edit, key: rowKey() }]));
+    setEdit(null);
+  };
+  const drop = (key: string) => { setRows((x) => x.filter((r) => r.key !== key)); setEdit(null); };
+  const editMore = edit?.key ? (
+    <MoreMenu title={`${money(Number(edit.amount) || 0)}`} items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: { title: 'למחוק את הסכום?', text: `${money(Number(rows.find((r) => r.key === edit.key)?.amount) || 0)} יוסר מטופס התרומה כשתלחצו "שמירה".`, confirmLabel: 'מחיקה', onConfirm: () => drop(edit.key) },
+    }]} />
+  ) : undefined;
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow onClick={submit}>שמירה</Button></BottomBar>}>
       <FormHeader title="סכומי תרומה" onCancel={closeTo} />
       {rows.length > 0 && (
+        // rules 4 and 6: a row is the handle, the amount and its title; it opens its sheet, where ⋯ holds "מחיקה"
         <section className="k-card k-card--list">
           <ul className="manage-list">
             {rows.map((r, i) => (
-              <li key={r.key} className="manage-editrow" style={rowStyle(i)}>
-                <DragHandle {...handle(i, r.amount || 'סכום')} />
-                <label className="k-sr" htmlFor={`${r.key}-a`}>סכום</label>
-                <input id={`${r.key}-a`} className="manage-editinput manage-editinput--amount" dir="ltr" inputMode="numeric" value={r.amount} aria-invalid={bad(r) || undefined} onChange={(e) => upd(i, { amount: e.target.value.replace(/[^\d]/g, '') })} />
-                <label className="k-sr" htmlFor={`${r.key}-l`}>כותרת</label>
-                <input id={`${r.key}-l`} className="manage-editinput" value={r.label} maxLength={100} onChange={(e) => upd(i, { label: e.target.value })} />
-                <IconButton variant="quiet" icon="close" label={`הסרה: ${r.amount || r.label}`} onClick={() => setRows((x) => x.filter((_, j) => j !== i))} />
+              <li key={r.key} className="manage-qrow" style={rowStyle(i)}>
+                <DragHandle {...handle(i, r.amount ? money(Number(r.amount)) : 'סכום')} />
+                <button type="button" className="manage-qrow__hit" onClick={() => setEdit(r)} aria-haspopup="dialog">
+                  <span className="manage-qrow__body">
+                    <span className="manage-qrow__title">{money(Number(r.amount) || 0)}</span>
+                    {r.label.trim() && <span className="k-meta">{r.label}</span>}
+                  </span>
+                  <span className="manage-chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>
+                </button>
               </li>
             ))}
           </ul>
         </section>
       )}
-      <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setRows((x) => [...x, { key: rowKey(), amount: '', label: '' }])}>סכום נוסף</Button>
+      <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setEdit({ key: '', amount: '', label: '' })}>סכום נוסף</Button>
       <ListCard aria-label="אפשרויות בטופס התרומה">
         <Row minHeight={58} title="סכום אחר" meta="האורח כותב סכום בעצמו" actions={<Toggle label="סכום אחר" checked={opts.custom} onChange={(v) => setOpts((o) => ({ ...o, custom: v }))} />} />
         <Row minHeight={58} title="הנצחה" meta='שדה "לזכר" בטופס התרומה' actions={<Toggle label="הנצחה" checked={opts.memorial} onChange={(v) => setOpts((o) => ({ ...o, memorial: v }))} />} />
         <Row minHeight={58} title="בקשת קבלה" meta="האורח יכול לבקש קבלה על שמו" actions={<Toggle label="בקשת קבלה" checked={opts.receipt} onChange={(v) => setOpts((o) => ({ ...o, receipt: v }))} />} />
       </ListCard>
+      <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.key ? 'עריכת סכום' : 'סכום חדש'} aside={editMore}>
+        {edit && (
+          <div className="manage-sheet">
+            <Field label="סכום (₪)" ltr numeric inputMode="numeric" maxLength={7} value={edit.amount}
+              error={edit.amount.trim() !== '' && !editOk ? 'סכום גדול מאפס' : undefined}
+              onChange={(e) => setEdit({ ...edit, amount: e.target.value.replace(/[^\d]/g, '') })} />
+            <Field label="כותרת" placeholder="למשל: חי" value={edit.label} maxLength={100} onChange={(e) => setEdit({ ...edit, label: e.target.value })} />
+            <Button size="lg" block onClick={keep} disabled={!editOk}>{edit.key ? 'עדכון' : 'הוספה'}</Button>
+          </div>
+        )}
+      </Sheet>
     </AppScreen>
   );
 }
