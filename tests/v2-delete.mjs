@@ -156,9 +156,9 @@ await step('owner', async () => {
   }
 
   // stall tab: N12 top-bar ⋯ (rule 6)
-  const more = async () => { await s.page.getByRole('button', { name: 'עוד פעולות' }).first().click(); await s.page.waitForTimeout(250); };
+  const moreFirst = async () => { await s.page.getByRole('button', { name: 'עוד פעולות' }).first().click(); await s.page.waitForTimeout(250); };
   await s.go('/manage/events/demo-e-october/tabs/demo-tab-roni-oct');
-  await more();
+  await moreFirst();
   await s.confirm('מחיקה', 'למחוק את החשבון?', 'מחיקה', { label: 'tab' });
   log(s.path() === '/manage/events/demo-e-october/tabs', 'tab: back on the tabs');
   await s.go('/manage/events/demo-e-october/tabs/demo-tab-roni-oct'); log(await s.has('החשבון לא נמצא'), 'tab: gone after a reload');
@@ -190,13 +190,13 @@ await step('owner', async () => {
   const prod = s.page.locator('.k-row').first();
   if (await prod.count()) {
     await prod.locator('a').first().click(); await s.page.waitForTimeout(250);
-    await more(); // N10: ⋯ beside "ביטול" (rule 6)
+    await moreFirst(); // N10: ⋯ beside "ביטול" (rule 6)
     await s.confirm('מחיקה', 'למחוק את המוצר?', 'מחיקה', { label: 'product' });
     log(s.path() === '/manage/events/demo-e-festival/products', 'product: back on the products');
   }
   // event: ⋯ beside "ביטול" on the event form (M4 keeps "עריכה")
   await s.go('/manage/events/demo-e-october/edit'); await s.page.waitForTimeout(300);
-  await more();
+  await moreFirst();
   await s.confirm('מחיקה', 'למחוק את האירוע?', 'מחיקה', { label: 'event', text: 'הכרטיסים שכבר נרשמו נשמרים' });
   log(s.path() === '/manage/events', 'event: back on the events');
   await s.go('/manage/events/demo-e-october'); log(await s.has('האירוע לא נמצא'), 'event: gone after a reload');
