@@ -52,6 +52,21 @@ export type DataDoc = { path: string; id: string; group: string; title: string; 
 export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; changed: string[] };
 export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number };
 
+export type Debt = { kind: 'ticket' | 'donation' | 'tab'; id: string; who: string; what: string; amount: number; since: string; claimed: boolean };
+export type EventFunnel = { id: string; title: string; start: string; capacity: number; price: number; published: boolean; open: boolean; orders: number; tickets: number; cancelled: number; paid: number; entered: number; ticketMoney: number; stallMoney: number; stallOpen: number; upcoming: boolean };
+export type Stats = {
+  from: string; to: string; days: number;
+  farm: {
+    people: { total: number; byRole: Record<string, number>; joined: number; blocked: number };
+    tasks: { created: number; done: number; open: number; overdue: number; urgentOpen: number; doers: { name: string; count: number }[] };
+    shopping: { added: number; bought: number; open: number };
+    visits: { requests: number; approved: number; rejected: number; waiting: number; people: number };
+    activity: { total: number; days: { day: string; actions: number; tasksDone: number }[]; weekday: number[] };
+  };
+  money: { received: { tickets: number; donations: number; tabs: number; total: number; donors: number }; waiting: { total: number; claimed: number; count: number }; months: { month: string; tickets: number; donations: number; tabs: number }[]; debts: Debt[] };
+  events: EventFunnel[];
+};
+
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -84,6 +99,7 @@ export interface Source {
   editDoc(path: string, set: Record<string, unknown>, updateTime: string): Promise<{ path: string; updateTime: string | null }>;
   deleteDoc(path: string, updateTime: string): Promise<{ path: string; deleted: boolean }>;
   exportCsv(group: string): Promise<void>;
+  stats(days: number): Promise<Stats>;
 }
 
 export class ConsoleError extends Error {
@@ -173,6 +189,7 @@ const liveSource: Source = {
   dataHistory: (path, days) => call('GET', `/data/history?path=${encodeURIComponent(path)}&days=${days}`),
   editDoc: (path, set, updateTime) => call('POST', '/data/edit', { path, set, updateTime }),
   deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
+  stats: (days) => call('GET', `/stats?days=${days}`),
   exportCsv: (group) => download(`/data/export?collection=${encodeURIComponent(group)}`, `havat-ravve-${group.replace(/\/\*\//g, '-')}.csv`),
 };
 

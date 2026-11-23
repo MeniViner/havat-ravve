@@ -1,5 +1,5 @@
 // /admin?demo: the console over made-up people, keys and numbers, kept in memory only. No Firestore, no Worker.
-import type { AlertSettings, Backup, DataDoc, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
+import type { AlertSettings, Backup, DataDoc, Stats, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const DAY = 24 * 60;
@@ -129,6 +129,45 @@ const docOfRec = (r: DemoRec): DataDoc => {
   };
 };
 
+// the numbers: a quiet farm with one event coming and one behind
+const demoStats = (days: number): Stats => {
+  const n = Math.min(days, 90);
+  const seq = Array.from({ length: n }, (_, i) => {
+    const d = dayKey(n - 1 - i);
+    const wd = new Date(d + 'T12:00:00Z').getUTCDay();
+    const base = wd === 5 ? 14 : wd === 6 ? 3 : 8;
+    return { day: d, actions: base + ((i * 7) % 6), tasksDone: Math.max(0, Math.round(base / 3) + ((i * 3) % 3) - 1) };
+  });
+  const k = days / 30;
+  const month = (i: number) => { const d = new Date(); d.setDate(15); d.setMonth(d.getMonth() - (11 - i)); return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(d).slice(0, 7); };
+  return {
+    from: ago(days * DAY), to: ago(0), days,
+    farm: {
+      people: { total: people.length, byRole: { owner: 2, manager: 1, staff: 2, vendor: 1, guest: 3 }, joined: Math.round(2 * k), blocked: 1 },
+      tasks: { created: Math.round(46 * k), done: Math.round(41 * k), open: 7, overdue: 2, urgentOpen: 1, doers: [{ name: 'יואב פרץ', count: Math.round(17 * k) }, { name: 'אורלי כהן', count: Math.round(13 * k) }, { name: 'מתן לוי', count: Math.round(8 * k) }, { name: 'בני גוטמן', count: Math.round(3 * k) }] },
+      shopping: { added: Math.round(22 * k), bought: Math.round(19 * k), open: 4 },
+      visits: { requests: Math.round(6 * k), approved: Math.round(4 * k), rejected: Math.round(1 * k), waiting: 1, people: Math.round(38 * k) },
+      activity: { total: seq.reduce((a, d) => a + d.actions, 0), days: seq, weekday: [52, 61, 58, 66, 70, 112, 21] },
+    },
+    money: {
+      received: { tickets: Math.round(2640 * k), donations: Math.round(1260 * k), tabs: Math.round(910 * k), total: Math.round(4810 * k), donors: Math.round(9 * k) },
+      waiting: { total: 520, claimed: 160, count: 5 },
+      months: Array.from({ length: 12 }, (_, i) => ({ month: month(i), tickets: [0, 0, 1200, 0, 0, 2400, 0, 0, 0, 1800, 0, 2640][i], donations: [180, 360, 540, 180, 900, 360, 180, 720, 360, 540, 1080, 1260][i], tabs: [0, 0, 420, 0, 0, 760, 0, 0, 0, 610, 0, 910][i] })),
+      debts: [
+        { kind: 'ticket', id: 'o-1', who: 'מיכל אברהם', what: 'חג האסיף בחווה', amount: 80, since: ago(2 * DAY), claimed: true },
+        { kind: 'tab', id: 'tab-1', who: 'נוגה ברק', what: 'חג האסיף בחווה', amount: 80, since: ago(DAY), claimed: true },
+        { kind: 'ticket', id: 'o-2', who: 'תמר שלו', what: 'חג האסיף בחווה', amount: 120, since: ago(6 * DAY), claimed: false },
+        { kind: 'donation', id: 'don-1', who: 'משפחת לוי', what: 'עשר פעמים חי', amount: 180, since: ago(9 * DAY), claimed: false },
+        { kind: 'tab', id: 'tab-2', who: 'אורח בלי חשבון', what: 'ערב שירה', amount: 60, since: ago(40 * DAY), claimed: false },
+      ],
+    },
+    events: [
+      { id: 'e-harvest', title: 'חג האסיף בחווה', start: ago(-12 * DAY), capacity: 300, price: 40, published: true, open: true, orders: 41, tickets: 96, cancelled: 3, paid: 81, entered: 0, ticketMoney: 3240, stallMoney: 0, stallOpen: 0, upcoming: true },
+      { id: 'e-songs', title: 'ערב שירה', start: ago(40 * DAY), capacity: 120, price: 30, published: true, open: false, orders: 38, tickets: 88, cancelled: 4, paid: 84, entered: 79, ticketMoney: 2520, stallMoney: 610, stallOpen: 60, upcoming: false },
+    ].filter((e) => days >= 60 || e.upcoming),
+  };
+};
+
 export const demoSource: Source = {
   demo: true,
   me: () => wait({ uid: 'd-owner', name: 'מני בעלים', role: 'owner' as const }),
@@ -222,4 +261,5 @@ export const demoSource: Source = {
   editDoc: (path, set) => { const r = recs.find((x) => x.path === path)!; Object.assign(r.fields, set); r.updateTime = ago(0); return wait({ path, updateTime: r.updateTime }); },
   deleteDoc: (path) => { const i = recs.findIndex((x) => x.path === path); const r = recs[i]; recs.splice(i, 1); trash.unshift({ key: `trash/d/${Date.now()}-dddddddd.json`, path, collection: groupOfPath(path), title: titleOfRec(r.fields), by: 'קונסולה · מני', who: 'מני בעלים', requestId: 'req_demo', deletedAt: ago(0) }); return wait({ path, deleted: true }); },
   exportCsv: async () => { await wait(null); throw new Error('demo'); },
+  stats: (days) => wait(demoStats(days)),
 };
