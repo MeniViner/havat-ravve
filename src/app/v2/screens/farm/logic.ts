@@ -270,13 +270,20 @@ export function feedSentence(l: FeedLine, female: boolean): string {
   return `${who} ${g(female, 'קנה', 'קנתה')} ${joinHe(l.titles)}`;
 }
 
-// ---------- C11 item kinds (as the old calendar) ----------
-export type TeamKind = 'meeting' | 'planning' | 'manual';
-export const TEAM_KINDS: { value: TeamKind; label: string }[] = [{ value: 'meeting', label: 'פגישת צוות' }, { value: 'planning', label: 'הכנות לפסטיבל' }, { value: 'manual', label: 'פריט אחר' }];
+// ---------- C11 / Q31 item kinds: the 'סוג' chip row ----------
+/** Meeting / visit / event prep / other. A visit noted here by hand is kind 'visit' with no refId (a visit request's own
+ *  entry has its refId and opens the visit, not this form); it gets the month's "ביקור או אירוע" dot like one. */
+export type TeamKind = 'meeting' | 'visit' | 'planning' | 'manual';
+export const TEAM_KINDS: { value: TeamKind; label: string }[] = [
+  { value: 'meeting', label: 'פגישה' }, { value: 'visit', label: 'ביקור' }, { value: 'planning', label: 'הכנות לאירוע' }, { value: 'manual', label: 'אחר' },
+];
+const NAMED = (kind: string): kind is 'meeting' | 'visit' | 'planning' => kind === 'meeting' || kind === 'visit' || kind === 'planning';
 /** The kind a manager can choose for an existing item ('manual' for anything else). */
-export const teamKindOf = (kind: string): TeamKind => (kind === 'meeting' || kind === 'planning' ? kind : 'manual');
-/** The label of a chosen kind, shown on the row when nothing else is ('' for "פריט אחר"). */
-export const teamKindLabel = (kind: string) => (kind === 'meeting' || kind === 'planning' ? TEAM_KINDS.find((k) => k.value === kind)!.label : '');
+export const teamKindOf = (kind: string): TeamKind => (NAMED(kind) ? kind : 'manual');
+/** The label of a chosen kind, shown on the row when nothing else is ('' for "אחר"). */
+export const teamKindLabel = (kind: string) => (NAMED(kind) ? TEAM_KINDS.find((k) => k.value === kind)!.label : '');
+/** A calendar entry a manager edits in C11: not an event, not a visit request's entry, not presence. */
+export const isTeamItem = (it: Pick<CalItem, 'kind' | 'title' | 'ownerName'> & { refId?: string }) => it.kind !== 'event' && !(it.kind === 'visit' && it.refId) && !isPresence(it);
 /** `kind` goes into the write on a new item, and on an edit only when it changed (an old item keeps its exact shape). */
 export function kindToSave(chosen: TeamKind | undefined, existingKind?: string): TeamKind | undefined {
   if (existingKind === undefined) return chosen || 'manual';

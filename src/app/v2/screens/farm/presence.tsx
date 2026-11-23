@@ -1,14 +1,16 @@
-// F4-Presence: when I am at the farm. Pick days, hours (all day / morning / afternoon / other), a note; my existing entries.
-// Managers also register presence for someone else ("מי בחווה", ?uid=) and change or remove that person's entries, as the old calendar did.
+// F4-Presence / Q17-PresenceFor: when I am at the farm. Pick days ("תאריך אחר" beside the label), hours (all day / morning /
+// afternoon / other), a note; my existing entries. Managers also register presence for someone else: one "של מי" row with
+// "החלפה" that opens a picker (?uid= preselects); staff never see it. Changing an entry is "שינוי" on its row; removing it is
+// ⋯ beside "ביטול" while it is being changed (rule 6).
 import { useMemo, useState } from 'react';
 import { AppScreen, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { BottomBar, Button, ChoiceChip, ConfirmSheet, Field, FormHeader } from '../../kit';
+import { Avatar, BottomBar, Button, ChoiceChip, Field, FormHeader, ListCard, MoreMenu, PickerSheet, Row, SearchField, SelectRow } from '../../kit';
 import { DAY_LETTERS } from '../../format';
 import type { ScreenProps } from '../../ctx';
 import { removePresence, savePresence, useCalendarRange } from '../../data/farm';
 import { PRESETS, addDays, dayNum, entryText, firstOf, hoursOf, hoursValid, isPresence, labelOf, normTime, pickerDays, pickerStart, presencePeople, saveLabel, weekdayOf, type Hours, type PresenceLabel } from './logic';
-import { DayPicker, OtherDate } from './parts';
+import { DayGroup, DayPicker, FormEnd, femaleOf } from './parts';
 
 const MODES: { value: PresenceLabel; label: string }[] = [{ value: 'allDay', label: 'כל היום' }, { value: 'morning', label: 'בוקר' }, { value: 'afternoon', label: 'אחה״צ' }, { value: 'other', label: 'אחר' }];
 const validDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '');
@@ -72,36 +74,46 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
       back('/farm');
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
   }
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState('');
+  const forOthers = ctx.manager && people.length > 1;
+  const female = femaleOf(who.name, me ? ctx.profile : whoP);
 
   const bar = (
-    <BottomBar column={!!editing}>
-      <Button size="bar" grow={!editing} block={!!editing} disabled={!ok} onClick={save}>{saveLabel(days.length)}</Button>
-      {editing && <Button variant="danger" onClick={() => setAskDelete(true)}>הסרה מהיומן</Button>}
+    <BottomBar>
+      <Button size="bar" grow disabled={!ok} onClick={save}>{saveLabel(days.length)}</Button>
     </BottomBar>
   );
+  const more = editing ? (
+    <MoreMenu title="נוכחות" items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: { title: 'להסיר מהיומן?', text: 'היום הזה יוסר מהיומן של הצוות.', confirmLabel: 'הסרה', onConfirm: () => remove(() => removePresence(editing), { text: 'הוסר מהיומן', after: () => back('/farm') }) },
+    }]} />
+  ) : null;
+  const shown = q.trim() ? people.filter((p) => p.displayName.includes(q.trim())) : people;
   const fromBad = !!h.from && !normTime(h.from), toBad = !!h.to && !normTime(h.to);
   const orderBad = !fromBad && !toBad && !hoursValid(h);
   return (
     <AppScreen variant="form" gap={16} bar={bar}>
-      <FormHeader title={me ? 'מתי אני בחווה' : `מתי ${firstOf(who.name)} בחווה`} onCancel={() => back('/farm')} />
-      {ctx.manager && people.length > 1 && (
-        <div className="farm-group">
-          <span className="farm-group__label">מי בחווה</span>
-          <div className="k-chips k-chips--wrap">
-            {people.map((p) => <ChoiceChip key={p.uid} selected={whoUid === p.uid} onClick={() => pickWho(p.uid)}>{p.uid === ctx.user.uid ? 'אני' : firstOf(p.displayName)}</ChoiceChip>)}
-          </div>
-        </div>
+      <FormHeader title={forOthers ? 'נוכחות בחווה' : 'מתי אני בחווה'} end={<FormEnd onCancel={() => back('/farm')} more={more} />} />
+      {forOthers && (
+        <>
+          <SelectRow label="של מי" value={me ? 'אני' : who.name} linkLabel="החלפה" onClick={() => { setQ(''); setPicking(true); }}
+            leading={<Avatar name={whoP?.displayName || who.name} size={32} tone={me ? 'me' : 'default'} />} />
+          <PickerSheet open={picking} onClose={() => setPicking(false)} title="של מי" value={whoUid} onChange={pickWho}
+            head={people.length > 8 ? <SearchField label="חיפוש בצוות" placeholder="חיפוש: שם" size="sm" value={q} onChange={(e) => setQ(e.target.value)} /> : undefined}
+            options={shown.map((p) => ({ value: p.uid, label: p.uid === ctx.user.uid ? 'אני' : p.displayName, leading: <Avatar name={p.displayName} size={32} tone={p.uid === ctx.user.uid ? 'me' : 'default'} /> }))} />
+        </>
       )}
-      <div className="farm-group">
-        <span className="farm-group__label">באילו ימים</span>
+      <DayGroup label="באילו ימים" min={today} onPick={addDay}>
         <DayPicker days={pickerDays(start, days)} selected={days} onToggle={toggle} />
-        <OtherDate min={today} onPick={addDay} />
-      </div>
+      </DayGroup>
       <div className="farm-group">
         <span className="farm-group__label">באילו שעות</span>
-        <div className="farm-hours">{MODES.map((m) => <ChoiceChip key={m.value} fill selected={mode === m.value} onClick={() => pick(m.value)}>{m.label}</ChoiceChip>)}</div>
+        {forOthers
+          ? <div className="k-chips k-chips--wrap">{MODES.map((m) => <ChoiceChip key={m.value} selected={mode === m.value} onClick={() => pick(m.value)}>{m.label}</ChoiceChip>)}</div>
+          : <div className="farm-hours">{MODES.map((m) => <ChoiceChip key={m.value} fill selected={mode === m.value} onClick={() => pick(m.value)}>{m.label}</ChoiceChip>)}</div>}
       </div>
       {mode !== 'allDay' && (
         <div className="farm-row2">
@@ -112,9 +124,19 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
         </div>
       )}
       <Field label="הערה לצוות" placeholder="למשל: מביא את הטנדר" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
-      {mine.length > 0 && (
+      {mine.length > 0 && !me && (
+        // Q17: someone else's entries, a day per row with "שינוי"
+        <ListCard title={female ? 'כבר רשום אצלה' : 'כבר רשום אצלו'}>
+          {mine.slice(0, 14).map((it) => (
+            <Row key={it.id} minHeight={50} title={`${DAY_LETTERS[weekdayOf(it.date)]} ${dayNum(it.date)}`}
+              meta={[entryText(hoursOf(it)), it.note || ''].filter(Boolean).join(' · ')}
+              actions={<button type="button" className="farm-link" onClick={() => edit(it.id)}>שינוי</button>} />
+          ))}
+        </ListCard>
+      )}
+      {mine.length > 0 && me && (
         <section className="farm-card" style={{ overflow: 'hidden' }}>
-          <div className="farm-cardhead" style={{ minHeight: 40 }}><h2 style={{ fontSize: 15 }}>{me ? 'כבר רשום אצלך' : `כבר רשום אצל ${firstOf(who.name)}`}</h2></div>
+          <div className="farm-cardhead" style={{ minHeight: 40 }}><h2 style={{ fontSize: 15 }}>כבר רשום אצלך</h2></div>
           <ul className="farm-list">
             {mine.slice(0, 14).map((it) => (
               <li key={it.id} className="farm-item">
@@ -126,9 +148,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
           </ul>
         </section>
       )}
-      <ConfirmSheet open={askDelete && !!editing} onClose={() => setAskDelete(false)} title="להסיר מהיומן?"
-        text="היום הזה יוסר מהיומן של הצוות." confirmLabel="הסרה"
-        onConfirm={() => remove(() => removePresence(editing), { text: 'הוסר מהיומן', after: () => back('/farm') })} />
+      {forOthers && !me && <p className="farm-note">רק מנהלים יכולים לרשום נוכחות בשביל מישהו אחר.</p>}
     </AppScreen>
   );
 }

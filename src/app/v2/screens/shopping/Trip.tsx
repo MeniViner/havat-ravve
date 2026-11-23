@@ -1,7 +1,7 @@
 // S6-Trip (I am at the store) and S7-TripEnd (the trip closed).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AppScreen, go, useRemove, useToast } from '../../core';
-import { BottomBar, Button, ConfirmSheet, Icon, IconButton, ListCard, PageTitle, ProgressSegments, Row, Tag } from '../../kit';
+import { BottomBar, Button, Icon, IconButton, ListCard, MoreMenu, PageTitle, ProgressSegments, Row, Tag } from '../../kit';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem, ShoppingTrip } from '../../../types';
 import {
@@ -118,7 +118,6 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
     return parts.filter(Boolean).join(' · ');
   };
   const mine = trip.by.uid === ctx.user.uid;
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   return (
     <AppScreen variant="root" bar={
@@ -127,7 +126,19 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
         {mine && <Button variant="link" onClick={back}>טעות? לחזור לקנייה</Button>}
       </BottomBar>
     }>
-      <PageTitle className="shopping-done-title">{`הקנייה ב${listLabel(trip.list)} נסגרה`}</PageTitle>
+      {/* managers delete a trip through ⋯ (rule 6); S7 has no top bar, so ⋯ stands alone at its end */}
+      {ctx.manager && (
+        <div className="k-topbar shopping-done-top">
+          <MoreMenu title="הקנייה" items={[{
+            label: 'מחיקה', icon: 'trash', tone: 'danger',
+            confirm: {
+              title: 'למחוק את הקנייה?', text: 'הקנייה תימחק. מה שנקנה נשאר מסומן כנקנה, ומה שלא היה נשאר ברשימה.', confirmLabel: 'מחיקה',
+              onConfirm: () => remove(() => deleteTrip(trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) }),
+            },
+          }]} />
+        </div>
+      )}
+      <PageTitle className={ctx.manager ? undefined : 'shopping-done-title'}>{`הקנייה ב${listLabel(trip.list)} נסגרה`}</PageTitle>
       <div className="shopping-stats">
         <div className="shopping-stat"><b className="k-num">{bought.length}</b><span>נקנו</span></div>
         <div className="shopping-stat"><b className="k-num">{missing.length}</b><span>לא היה</span></div>
@@ -142,10 +153,6 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
           {bought.map((i) => <Row key={i.id} leading={<span className="shopping-done-mark" aria-hidden="true"><Icon name="check" size={20} /></span>} title={i.title} meta={done(i)} />)}
         </ListCard>
       )}
-      {ctx.manager && <Button variant="danger" className="shopping-trip-delete" onClick={() => setAskDelete(true)}>מחיקת הקנייה</Button>}
-      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את הקנייה?"
-        text="הקנייה תימחק. מה שנקנה נשאר מסומן כנקנה, ומה שלא היה נשאר ברשימה." confirmLabel="מחיקה"
-        onConfirm={() => remove(() => deleteTrip(trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) })} />
     </AppScreen>
   );
 }

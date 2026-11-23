@@ -151,16 +151,19 @@ await step('owner', async () => {
   } else log(false, 'order: a guest row to open');
 
   // the instant deletes that now confirm
+  // shopping item and calendar item: delete is in ⋯ (tidy rule 6)
   await s.go('/shopping/demo-s-milk');
-  await s.page.getByRole('button', { name: 'מחיקה', exact: true }).click(); await s.page.waitForTimeout(200);
+  await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).click(); await s.page.waitForTimeout(250);
+  await s.dialog().getByRole('button', { name: 'מחיקה' }).click(); await s.page.waitForTimeout(350);
   log((await s.dialog().innerText()).includes('למחוק מהרשימה?'), 'shopping item: the delete asks first');
   await s.dialog().getByRole('button', { name: 'ביטול' }).click(); await s.page.waitForTimeout(200);
   log(s.path() === '/shopping/demo-s-milk', 'shopping item: "ביטול" keeps it');
   await s.go('/farm/calendar/demo-c-5/edit');
-  if (await s.page.getByRole('button', { name: 'מחיקה מהיומן' }).count()) {
-    await s.confirm('מחיקה מהיומן', 'למחוק מהיומן?', 'מחיקה', { label: 'calendar item' });
+  if (await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).count()) {
+    await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).click(); await s.page.waitForTimeout(250);
+    await s.confirm('מחיקה', 'למחוק מהיומן?', 'מחיקה', { label: 'calendar item', locator: s.dialog().getByRole('button', { name: 'מחיקה' }) });
     await s.go('/farm/calendar/demo-c-5/edit'); log(await s.has('הפריט לא נמצא'), 'calendar item: gone after a reload');
-  } else log(false, 'calendar item: the delete is on its form');
+  } else log(false, 'calendar item: the delete is in ⋯ on its form');
   await s.go('/manage/events/demo-e-festival/products');
   const prod = s.page.locator('.k-row').first();
   if (await prod.count()) {
