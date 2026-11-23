@@ -1,11 +1,9 @@
-// Google Play readiness for the Trusted Web Activity (TWA) wrapper of /app.
+// Google Play readiness for the installed Android app.
 // Usage: npm run play:check            (local files; run `npm run build` first)
 //        npm run play:check -- --live  (also fetches the production site)
 //        add --strict to fail on owner items too.
 // Statuses: pass, fail (fix in code), owner (needs the farm owner), pending (later step).
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { execSync } from 'node:child_process';
 
 const args = new Set(process.argv.slice(2));
@@ -53,39 +51,25 @@ ok('Hosting', 'hosting ignore does not drop /.well-known', !ignore.some((g) => g
 const alHeader = (fb?.hosting?.headers || []).find((h) => h.source === '/.well-known/assetlinks.json');
 ok('Hosting', 'assetlinks.json served as application/json', alHeader?.headers?.some((h) => h.key.toLowerCase() === 'content-type' && /application\/json/.test(h.value)));
 
-// ---------- TWA config ----------
-const twa = readJson('android/twa-manifest.json');
-if (!twa) add('TWA', 'android/twa-manifest.json parses', 'fail', 'missing or invalid JSON');
-else {
-  ok('TWA', 'packageId is a valid Android application id', /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(twa.packageId), twa.packageId);
-  // permanent once uploaded; approved by the owner on 2026-11-19
-  ok('TWA', 'package name is the approved one (permanent once uploaded)', twa.packageId === 'com.menis10tec.havatravve', twa.packageId);
-  ok('TWA', 'host matches site.config.json origin', twa.host === host, `${twa.host} vs ${host}`);
-  ok('TWA', 'startUrl matches the web manifest start_url', m && twa.startUrl === m.start_url, `${twa.startUrl} vs ${m?.start_url}`);
-  ok('TWA', 'webManifestUrl and icons are on the same origin', [twa.webManifestUrl, twa.iconUrl, twa.maskableIconUrl].every((u) => String(u).startsWith(origin + '/')));
-  ok('TWA', 'colors match the web manifest', m && twa.themeColor === m.theme_color && twa.backgroundColor === m.background_color);
-  ok('TWA', 'notifications off (push is out of scope)', twa.enableNotifications === false);
-  const keyPath = twa.signingKey?.path ? path.resolve('android', twa.signingKey.path.replace(/^~(?=\/)/, os.homedir())) : '';
-  ok('TWA', 'signing key path is outside the repository', keyPath && !keyPath.startsWith(path.resolve('.') + path.sep), twa.signingKey?.path);
-  const prints = (twa.fingerprints || []).map((f) => f.value).filter(Boolean);
-  if (!prints.length) add('TWA', 'SHA-256 signing fingerprint(s) listed (upload key + Play App Signing key)', 'owner', 'add after the Play Console app exists');
-  else {
-    ok('TWA', 'fingerprints are SHA-256 (32 colon-separated bytes)', prints.every((p) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(p)));
-    const al = readJson('dist/.well-known/assetlinks.json');
-    ok('TWA', 'dist/.well-known/assetlinks.json matches package and fingerprints (npm run build)', al?.[0]?.target?.package_name === twa.packageId && JSON.stringify(al[0].target.sha256_cert_fingerprints) === JSON.stringify(prints));
-  }
-}
-
-// ---------- Android project ----------
-const gradle = ['android/app/build.gradle', 'android/app/build.gradle.kts'].map(read).find(Boolean);
-if (!gradle) add('Android', 'generated project targets API 36 (required for new apps)', 'pending', 'run `bubblewrap init --manifest android/twa-manifest.json` with the owner\'s key');
-else {
-  const target = Number((gradle.match(/targetSdk(?:Version)?\s*=?\s*(\d+)/) || [])[1]);
-  ok('Android', 'targetSdk is at least 36 (required for new apps)', target >= 36, `targetSdk ${target || 'not found'}`);
-  const versionCode = Number(gradle.match(/^\s*versionCode\s*=?\s*(\d+)/m)?.[1]);
-  const versionName = gradle.match(/^\s*versionName\s*=?\s*["']([^"']*)/m)?.[1];
-  ok('Android', 'version name and code match the Bubblewrap manifest', !!versionName && versionName === twa?.appVersion && versionCode > 0 && versionCode === twa?.appVersionCode, 'update appVersion and appVersionCode, then regenerate the Android project');
-}
+// ---------- packaged Android project ----------
+const cap = readJson('capacitor.config.json');
+const gradle = read('android/app/build.gradle');
+const manifest = read('android/app/src/main/AndroidManifest.xml');
+const activity = read('android/app/src/main/java/com/menis10tec/havatravve/MainActivity.java');
+const target = Number(read('android/variables.gradle').match(/targetSdkVersion\s*=\s*(\d+)/)?.[1]);
+const versionCode = Number(gradle.match(/^\s*versionCode\s*=?\s*(\d+)/m)?.[1]);
+const versionName = gradle.match(/^\s*versionName\s*=?\s*["']([^"']*)/m)?.[1];
+ok('Android', 'uses the existing Play package', cap?.appId === 'com.menis10tec.havatravve' && gradle.includes(cap.appId));
+ok('Android', 'targets API 36 or later and has a release version', target >= 36 && versionCode > 0 && !!versionName);
+ok('Android', 'starts a native activity and loads a packaged entry point', /extends BridgeActivity/.test(activity) && manifest.includes('.MainActivity') && cap?.webDir === '.build/native' && !cap?.server?.url);
+ok('Android', 'does not depend on an external browser activity', !/androidbrowserhelper|trustedwebactivity/i.test(gradle + manifest));
+ok('Android', 'App Links cover the app paths of the production domain', manifest.includes(`android:host="${host}"`) && manifest.includes('android:pathPrefix="/app/"'));
+const assetLinks = readJson('public/.well-known/assetlinks.json')?.find((link) => link.target?.package_name === cap?.appId);
+const prints = assetLinks?.target?.sha256_cert_fingerprints || [];
+ok('Android', 'production App Links keep valid SHA-256 certificates', prints.length >= 2 && prints.every((p) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(p)));
+ok('Hosting', 'build preserves the production App Links', JSON.stringify(readJson('dist/.well-known/assetlinks.json')) === JSON.stringify(readJson('public/.well-known/assetlinks.json')));
+const playAuth = readJson('android/app/google-services.json')?.client?.find((client) => client.client_info?.android_client_info?.package_name === cap?.appId);
+ok('Android', 'Firebase configuration includes signing and web OAuth clients', [1, 3].every((type) => playAuth?.oauth_client?.some((client) => client.client_type === type)));
 let tracked = '';
 try { tracked = execSync('git ls-files', { encoding: 'utf8' }); } catch {}
 ok('Android', 'no keystore or build output tracked in git', !/\.(jks|keystore|apk|aab)$/m.test(tracked));
@@ -110,10 +94,10 @@ if (args.has('--live')) {
   const terms = await get('/app/terms');
   ok('Live', 'privacy page URL answers 200', terms.status === 200, `HTTP ${terms.status}`);
   const al = await get('/.well-known/assetlinks.json');
-  if (!(twa?.fingerprints || []).length) add('Live', 'assetlinks.json served', 'pending', `HTTP ${al.status}; written once fingerprints exist`);
+  if (!prints.length) add('Live', 'assetlinks.json served', 'pending', `HTTP ${al.status}; written once fingerprints exist`);
   else {
     let parsed = null; try { parsed = JSON.parse(al.body); } catch {}
-    ok('Live', 'assetlinks.json served as JSON without a redirect', al.status === 200 && /application\/json/.test(al.type) && parsed?.[0]?.target?.package_name === twa.packageId, `HTTP ${al.status} ${al.type}`);
+    ok('Live', 'assetlinks.json served as JSON without a redirect', al.status === 200 && /application\/json/.test(al.type) && parsed?.some((link) => link.target?.package_name === cap?.appId), `HTTP ${al.status} ${al.type}`);
   }
 }
 

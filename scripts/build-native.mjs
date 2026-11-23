@@ -1,5 +1,5 @@
-// The web part of the iPhone app (Capacitor, docs/app-store.md): the team app from dist/, packed so it opens with no reception.
-// Runs after `npm run build`. Capacitor copies .build/native into ios/App/App/public on `npx cap sync ios`.
+// The web bundle for the installed Android and iPhone apps: the team app from dist/, packed so it opens with no reception.
+// Runs after `npm run build`. Capacitor copies .build/native into the chosen platform on `npx cap sync android` or `npx cap sync ios`.
 import fs from 'node:fs/promises';
 
 const out = '.build/native';
@@ -14,4 +14,4 @@ const page = html
 if (page === html) throw Error('dist/app.html changed shape: update scripts/build-native.mjs');
 await fs.writeFile(`${out}/index.html`, page);
 const size = async (p) => { const s = await fs.stat(p); if (!s.isDirectory()) return s.size; let n = 0; for (const e of await fs.readdir(p)) n += await size(`${p}/${e}`); return n; };
-console.log(`Built ${out} for the iPhone app (${(await size(out) / 1e6).toFixed(1)} MB).`);
+console.log(`Built ${out} for Android and iPhone (${(await size(out) / 1e6).toFixed(1)} MB).`);

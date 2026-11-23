@@ -1,0 +1,78 @@
+{
+  "project_info": {
+    "project_number": "714901430354",
+    "project_id": "havat-ravve",
+    "storage_bucket": "havat-ravve.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:714901430354:android:4cf2c5d1c20c7ec33a3f8b",
+        "android_client_info": {
+          "package_name": "com.menis10tec.havatravve"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "714901430354-n9t8quum04clbfqqb61jq73fh6a53sat.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.menis10tec.havatravve",
+            "certificate_hash": "0ad0c0862844f85c0630c200df50700af90c5653"
+          }
+        },
+        {
+          "client_id": "714901430354-r7pe9bs55ujj63tplsb81s3ovfmes2kr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.menis10tec.havatravve",
+            "certificate_hash": "1c55543895312498ea7b60d53f597f2ef71d208c"
+          }
+        },
+        {
+          "client_id": "714901430354-s3kvf8v7ibu4hr51v0k7si7j3mer2iho.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.menis10tec.havatravve",
+            "certificate_hash": "de073686eac72aabe88dda052a3b027610698c7b"
+          }
+        },
+        {
+          "client_id": "714901430354-u2evvq9359ilaaakdnjohql5cfuqicf2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.menis10tec.havatravve",
+            "certificate_hash": "db96b7e7205a6df3540fc81de6edeb4f3abaac1d"
+          }
+        },
+        {
+          "client_id": "714901430354-k2bemmj6rts1naaklco9se40432i2t09.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCezj8wJ9IPuqz4W8GYL7BsDg2-8BtFgpU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "714901430354-k2bemmj6rts1naaklco9se40432i2t09.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "714901430354-3gc5djrccp6fuoalfpeojhghi2e3rsnl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.menis10tec.havatravve"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -54,7 +54,9 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
 export function useProfile(user: Session | null) {
   const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user);
   // a profile that could not be read is not a missing profile: never send an existing member to registration because of a network error
-  return { profile: item ? { ...item, uid: user!.uid } : null, loading, error: error || '', missing: !!user && !loading && !item && !error };
+  const online = useOnline();
+  const offlineError = user && !loading && !item && !online ? 'פרטי החשבון עוד לא נשמרו במכשיר. צריך להתחבר לרשת פעם אחת' : '';
+  return { profile: item ? { ...item, uid: user!.uid } : null, loading, error: error || offlineError, missing: !!user && !loading && !item && !error && !offlineError };
 }
 
 export const isOwnerEmail = (email?: string | null) => !!email && email.toLowerCase() === ownerEmail.toLowerCase();

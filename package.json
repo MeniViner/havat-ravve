@@ -16,10 +16,13 @@
     "dev": "npm run build && firebase emulators:start --only hosting,firestore,auth --project demo-havat-ravve",
     "seed": "FIRESTORE_EMULATOR_HOST=localhost:8080 node tests/seed.mjs havat-ravve",
     "build:ios": "npm run build && node scripts/build-native.mjs && cap sync ios",
-    "ios:open": "cap open ios"
+    "ios:open": "cap open ios",
+    "build:android": "npm run build && node scripts/build-native.mjs && cap sync android"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.6.0",
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.1.0",
     "@capacitor/core": "^8.6.2",
     "@capacitor/ios": "^8.6.2",
     "firebase": "^12.0.0",

@@ -20,7 +20,7 @@ service-account*.json
 api/.keys*.json
 api/.fixtures*.json
 
-# Android (Trusted Web Activity). The signing key never enters git.
+# Android (Capacitor). The signing key never enters git.
 *.jks
 *.keystore
 android/**/build/

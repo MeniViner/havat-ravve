@@ -1,9 +1,11 @@
+import { CapacitorHttp } from '@capacitor/core';
 // Images and event files go to R2 through the farm's Worker (api/src/files.ts): a short https link is stored
 // in the document instead of the picture itself. Whenever that is not possible (demo mode, the emulators without
 // a local Worker, offline, the Worker not deployed yet, any refusal) the caller keeps the data URL, exactly as
 // before, so saving never fails because of storage. The same link prefix is allowed in firestore.rules.
 import { getDemo } from './demo/store';
 import { emulatorMode, readyAuth } from './firebase';
+import { isNativeAndroid } from './native';
 
 export const FILES_API = 'https://havat-ravve-api.meniviner.workers.dev';
 export type FileKind = 'avatar' | 'task' | 'shopping' | 'place' | 'event' | 'eventfile' | 'stall';
@@ -33,17 +35,30 @@ export async function storeFile(blob: Blob, kind: FileKind): Promise<string | nu
     const user = (await readyAuth()).currentUser;
     if (!user) return null;
     const token = await user.getIdToken();
-    const res = await fetch(`${base}/v1/files?kind=${kind}`, {
-      method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': blob.type }, body: blob,
-      signal: AbortSignal.timeout(blob.size > 1_000_000 ? 60_000 : 20_000),
-    });
-    if (!res.ok) { console.warn('file upload refused', res.status); return null; }
-    const j = await res.json() as { data?: { url?: string } };
-    return j.data?.url && isStoredFile(j.data.url) ? j.data.url : null;
+    const url = `${base}/v1/files?kind=${kind}`;
+    const headers = { authorization: `Bearer ${token}`, 'content-type': blob.type };
+    const timeout = blob.size > 1_000_000 ? 60_000 : 20_000;
+    const result = isNativeAndroid ? await CapacitorHttp.post({
+      url, headers, data: await asBase64(blob), dataType: 'file', responseType: 'json',
+      connectTimeout: timeout, readTimeout: timeout, disableRedirects: true,
+    }) : await fetch(url, { method: 'POST', headers, body: blob, signal: AbortSignal.timeout(timeout) })
+      .then(async (res) => ({ status: res.status, data: res.ok ? await res.json() : null }));
+    if (result.status !== 201) { console.warn('file upload refused', result.status); return null; }
+    const j = result.data as { data?: { url?: string } };
+    return j?.data?.url && isStoredFile(j.data.url) ? j.data.url : null;
   } catch (e) {
     console.warn('file upload failed', (e as Error)?.name || e);
     return null;
   }
+}
+
+function asBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',', 2)[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function dataUrlToBlob(url: string): Blob {

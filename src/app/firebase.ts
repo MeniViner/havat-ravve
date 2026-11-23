@@ -5,7 +5,7 @@ import config from '../../site.config.json';
 import { nowIso, todayKey, dateKeyOf, hoursAgoIso } from './clock';
 import { isNative, isNativeIos, NativeAuth } from './native';
 
-const useEmulator = location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator');
+const useEmulator = !isNative && location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator');
 export const emulatorMode = useEmulator;
 export const app = getApps()[0] || initializeApp(config.firebase);
 export const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
@@ -20,7 +20,7 @@ export { config };
 let appAuth: Auth | undefined;
 function getAppAuth() {
   if (!appAuth) {
-    // Inside the iPhone app there is no popup or redirect (Google refuses embedded web views): the native sheets sign in
+    // Inside the installed app there is no popup or redirect (Google refuses embedded web views): the native sheets sign in
     // and hand the credential over. initializeAuth without the popup/redirect helper, which would load Google's iframe.
     appAuth = isNative ? initializeAuth(app, { persistence: indexedDBLocalPersistence }) : getAuth(app);
     if (useEmulator) connectAuthEmulator(appAuth, 'http://localhost:9099', { disableWarnings: true });

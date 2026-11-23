@@ -4,8 +4,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
-import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
+import { useOnline, useOpenTasks, useOpenShopping, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
 import { useAllEvents, useNotifications } from '../data';
+import { isNativeAndroid } from '../native';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { leaveDemoTarget } from '../demo/intro';
 import { DemoIntro } from './DemoIntro';
@@ -96,6 +97,9 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const templates = useTemplates(true, manager); const instances = useTodayInstances(true, manager, today);
   const places = usePlaces(true); const team = useTeam(true); const people = usePeople(manager);
   const peopleByUid = useMemo(() => new Map([...team.items, ...people.items].map((p) => [p.uid, p])), [team.items, people.items]);
+  // Cache both active work lists while the team app is online, even before the shopping tab opens.
+  useOpenTasks(isNativeAndroid, manager && !viewAsStaff);
+  useOpenShopping(isNativeAndroid);
   const eventToday = useEventToday(today);
   const staffing = useList<Staffing>(`events/${eventToday?.id || '_'}/staffing`, {}, !!eventToday);
   const crew = !!eventToday && (manager || staffing.items.some((s) => s.people?.some((p) => p.uid === user.uid)));
