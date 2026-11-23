@@ -163,7 +163,9 @@ export default {
     // the owners' assistant log: every request of a recognised key, its body and answer (best effort, after the response)
     const doc = auditDoc(env, audit, { requestId: meta.requestId, method: req.method, path: audit.path || url.pathname, query: url.search.slice(1), status: res.status, ms: Date.now() - meta.started, error });
     // the console's own successful reads (opening a screen, refreshing the overview) would only bury what was done
-    const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok && doc.op !== 'console.me' && doc.op !== 'console.monitor.check';
+    // (signing in, a check, and anything that takes data away, a download or an export, are always kept)
+    const KEEP = ['console.me', 'console.monitor.check', 'console.backups.download', 'console.data.export'];
+    const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok && !KEEP.includes(doc.op);
     if (doc && !quietRead && log.code !== 'QUOTA_EXCEEDED') {
       const p = writeAudit(env, doc).catch((e) => console.log(JSON.stringify({ requestId: meta.requestId, auditFailed: String(e).slice(0, 200) })));
       if (ctx) ctx.waitUntil(p); else await p;

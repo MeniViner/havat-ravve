@@ -614,6 +614,42 @@ try {
     check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
     check(secItems.every((e, i) => i === 0 || secItems[i - 1].at >= e.at), 'security log: newest first');
     check((await api('GET', '/v1/console/security', C(mgr))).status === 403, 'a manager cannot read the security log');
+
+    // ---------- the data browser: collections, records, history, careful edits, delete to the bin, CSV ----------
+    const cols = await api('GET', '/v1/console/data', C(own));
+    const colOf = (g) => cols.json?.data?.items?.find((c) => c.group === g);
+    check(cols.status === 200 && colOf('users')?.count >= 10 && colOf('users').readOnly === true && colOf('places')?.readOnly === false && cols.json.data.backupDate === day, 'data: every collection with a live count; people and logs are read-only', cols.json?.data?.items?.slice(0, 4));
+    check((await api('GET', '/v1/console/data', C(mgr))).status === 403, 'a manager cannot browse the data');
+    const pDat = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
+    const pg = await api('GET', '/v1/console/data/docs?collection=places', C(own));
+    check(pg.status === 200 && pg.json.data.items.some((d) => d.path === `places/${pDat}` && d.title === 'מקום לדפדוף'), 'data: a page of records with titles', pg.json?.data?.items?.length);
+    const dv = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check(dv.status === 200 && dv.json.data.fields.name === 'מקום לדפדוף' && dv.json.data.types.name === 'string' && dv.json.data.types.lat === 'double' && dv.json.data.updateTime && dv.json.data.readOnly === false, 'data: one record with field types and updateTime', dv.json?.data?.types);
+    check((await api('GET', '/v1/console/data/doc?path=places/nope-nope', C(own))).status === 404, 'data: a missing record → 404');
+    check((await api('GET', `/v1/console/data/doc?path=${encodeURIComponent('../etc')}`, C(own))).status === 400, 'data: a bad path → 400');
+    const ed = await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'מקום ששמו תוקן' }, updateTime: dv.json.data.updateTime } });
+    check(ed.status === 200 && ed.json.data.before.name === 'מקום לדפדוף' && (await docOf(`places/${pDat}`)).name === 'מקום ששמו תוקן', 'edit: a text field changes, and the answer keeps what it was', ed.json);
+    const LE = await (async () => { for (let i = 0; i < 30; i++) { const x = await docOf('api_log/' + ed.json.meta.requestId); if (x) return x; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(LE && LE.op === 'console.data.edit' && LE.result.includes('מקום לדפדוף') && LE.keyLabel === 'קונסולה · נועה', 'edit: logged as the console, with the value before', LE && { op: LE.op });
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'שוב' }, updateTime: dv.json.data.updateTime } })).status === 409, 'edit: an old updateTime → 409, nothing overwritten');
+    const dv2 = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { lat: 'north' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a number field refuses text');
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { brandNew: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a field the record does not have → 400');
+    const uv = await api('GET', '/v1/console/data/doc?path=users/syn-staff2', C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: 'users/syn-staff2', set: { role: 'owner' }, updateTime: uv.json.data.updateTime } })).status === 403 && (await docOf('users/syn-staff2')).role !== 'owner', 'edit: people cannot be edited here (role stays)');
+    check((await api('POST', '/v1/console/data/edit', { ...C(mgr), body: { path: `places/${pDat}`, set: { name: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 403, 'a manager cannot edit records');
+    const hist = await api('GET', `/v1/console/data/history?path=users/syn-staff2&days=7`, C(own));
+    check(hist.status === 200 && hist.json.data.versions.length >= 1 && hist.json.data.versions[0].fields?.displayName === 'יואב כהן' && hist.json.data.days >= 1 && hist.json.data.now, 'history: the version in tonight\'s backup, next to now', hist.json?.data && { versions: hist.json.data.versions.length, days: hist.json.data.days });
+    const dDel = await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: `places/${pDat}`, updateTime: dv2.json.data.updateTime } });
+    const binNow = (await api('GET', '/v1/console/trash', C(own))).json.data.items.find((t) => t.path === `places/${pDat}`);
+    check(dDel.status === 200 && !(await docOf(`places/${pDat}`)) && binNow && binNow.by === 'קונסולה · נועה', 'delete: the record is gone and waits in the recycle bin', binNow);
+    check((await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: 'api_log/' + ed.json.meta.requestId, updateTime: 'x' } })).status === 403, 'delete: the logs cannot be deleted');
+    const csv = await fetch(BASE + '/v1/console/data/export?collection=users', { headers: { authorization: 'Bearer ' + own.idToken } });
+    const csvBytes = new Uint8Array(await csv.arrayBuffer());
+    const csvText = new TextDecoder().decode(csvBytes); // the decoder drops the BOM
+    check(csv.status === 200 && csvBytes[0] === 0xEF && csvBytes[1] === 0xBB && csvBytes[2] === 0xBF && /attachment; filename="havat-ravve-users-/.test(csv.headers.get('content-disposition') || '') && csvText.startsWith('id,') && csvText.includes('מנהלת בדיקה'), 'export: a CSV for Excel (BOM, header, Hebrew)', csvText.slice(0, 120));
+    const LX = await (async () => { for (let i = 0; i < 30; i++) { const r = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.data.export' } } }, limit: 1 } }) }).then((x) => x.json()); if (r[0]?.document) return r[0].document; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(!!LX, 'export: always logged (data leaving the server)');
   }
 
   section('the app\'s Rules accept what the API wrote');

@@ -19,6 +19,13 @@
 //   POST /v1/console/monitor/alerts           { on?, push? } alert settings
 //   POST /v1/console/monitor/test-alert       a test alert to the signed-in owner
 //   GET  /v1/console/security?days=7          refused requests, rate limits, and what was done from the console
+//   GET  /v1/console/data                     every collection and its size (data.ts)
+//   GET  /v1/console/data/docs?collection=&after=&parent=   a page of documents (parent: one document's subcollection)
+//   GET  /v1/console/data/doc?path=           one document, its field types and subcollections
+//   GET  /v1/console/data/history?path=&days= each version the backups saw, and the app's activity lines about it
+//   POST /v1/console/data/edit                { path, set: { field: value }, updateTime } simple fields only
+//   POST /v1/console/data/delete              { path, updateTime } (kept in the recycle bin)
+//   GET  /v1/console/data/export?collection=  the collection as a CSV file for Excel
 // Every console request lands in the assistant log (api_log) as "קונסולה · <first name>".
 import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
@@ -29,6 +36,7 @@ import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
 import { alertSettings, healthCheck, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
+import { collections, deleteDoc, docsPage, docView, editDoc, exportCsv, history } from './data';
 import { backupCollection, backupDoc, downloadBackup, listBackups, listTrash, restoreFromBackup, restoreFromTrash, runBackup } from './backup';
 
 export const CONSOLE = 'console';
@@ -115,6 +123,11 @@ const OPS: Record<string, ConsoleOp> = {
   'monitor.alerts': { name: 'console.monitor.alerts', he: 'הגדרות התראות', kind: 'write' },
   'monitor.testAlert': { name: 'console.monitor.testAlert', he: 'שליחת התראת בדיקה', kind: 'write' },
   security: { name: 'console.security', he: 'יומן אבטחה', kind: 'read' },
+  'data.browse': { name: 'console.data.browse', he: 'דפדוף בנתונים', kind: 'read' },
+  'data.history': { name: 'console.data.history', he: 'היסטוריה של רשומה', kind: 'read' },
+  'data.edit': { name: 'console.data.edit', he: 'עריכת רשומה', kind: 'write' },
+  'data.delete': { name: 'console.data.delete', he: 'מחיקת רשומה', kind: 'write' },
+  'data.export': { name: 'console.data.export', he: 'ייצוא לאקסל', kind: 'read' },
 };
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
@@ -180,6 +193,25 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
   }
   if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
   if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
+  // the data browser (data.ts)
+  if (m === 'GET' && path === '/data') return { op: OPS['data.browse'], data: await collections(env, fs) };
+  if (m === 'GET' && path === '/data/docs') return { op: OPS['data.browse'], data: await docsPage(fs, q.get('collection') || '', q.get('after'), q.get('parent')) };
+  if (m === 'GET' && path === '/data/doc') return { op: OPS['data.browse'], data: await docView(fs, q.get('path') || '') };
+  if (m === 'GET' && path === '/data/history') return { op: OPS['data.history'], data: await history(env, fs, q.get('path') || '', Number(q.get('days') || 7) || 7) };
+  if (m === 'POST' && path === '/data/edit') {
+    const b = await body();
+    const done = await editDoc(fs, b);
+    return { op: OPS['data.edit'], data: done, logBody: b, logResult: { path: done.path, before: done.before, after: done.after } };
+  }
+  if (m === 'POST' && path === '/data/delete') {
+    const b = await body();
+    const done = await deleteDoc(fs, b);
+    return { op: OPS['data.delete'], data: done, logBody: b, logResult: done };
+  }
+  if (m === 'GET' && path === '/data/export') {
+    const col = q.get('collection') || '';
+    return { op: OPS['data.export'], data: { collection: col }, raw: await exportCsv(fs, col, new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date())) };
+  }
   throw new ApiError('NOT_FOUND', `no console route for ${m} ${path}`);
 }
 

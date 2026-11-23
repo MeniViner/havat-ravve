@@ -13,11 +13,13 @@ import { PeopleScreen } from './People';
 import { BackupsScreen } from './Backups';
 import { MonitorScreen } from './Monitor';
 import { SecurityScreen } from './Security';
+import { DataScreen } from './Data';
 
-type Tab = 'overview' | 'monitor' | 'people' | 'keys' | 'security' | 'backups';
+type Tab = 'overview' | 'monitor' | 'data' | 'people' | 'keys' | 'security' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
   { value: 'monitor', label: 'ניטור', icon: 'chart' },
+  { value: 'data', label: 'נתונים', icon: 'grid' },
   { value: 'people', label: 'אנשים', icon: 'people' },
   { value: 'keys', label: 'מפתחות API', icon: 'key' },
   { value: 'security', label: 'אבטחה', icon: 'blocked' },
@@ -114,6 +116,7 @@ function Shell({ me }: { me: Me }) {
         {tab === 'backups' && <BackupsScreen notify={notice.show} />}
         {tab === 'monitor' && <MonitorScreen notify={notice.show} />}
         {tab === 'security' && <SecurityScreen />}
+        {tab === 'data' && <DataScreen notify={notice.show} />}
       </main>
       {notice.view}
     </div>
