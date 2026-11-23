@@ -54,6 +54,25 @@ export type DocHistory = { path: string; now: { updateTime: string | null; field
 
 export type Debt = { kind: 'ticket' | 'donation' | 'tab'; id: string; who: string; what: string; amount: number; since: string; claimed: boolean };
 export type EventFunnel = { id: string; title: string; start: string; capacity: number; price: number; published: boolean; open: boolean; orders: number; tickets: number; cancelled: number; paid: number; entered: number; ticketMoney: number; stallMoney: number; stallOpen: number; upcoming: boolean };
+export type Switches = {
+  emailPaused: boolean; pushPaused: boolean; keysStopped: boolean; readOnly: boolean;
+  maintenance: boolean; maintenanceText: string; registrationClosed: boolean;
+  backupPaused: boolean; monitorPaused: boolean; cleanupPaused: boolean;
+  updatedAt: string | null; updatedBy: string | null;
+};
+export type SwitchesView = { switches: Switches; server: { email: { on: boolean; configured: boolean }; push: { mode: string; missing?: string[] | string | null } } };
+export type QueueEmail = { id: string; kind: string; status: string; reason: string; error: string; who: string; attempts: number; provider: string; createdAt: string; nextAt: string; updatedAt: string; updateTime: string };
+export type QueuePush = { id: string; kind: string; title: string; body: string; to: number; done: number; createdAt: string; by: string; stale: boolean; updateTime: string };
+export type Queue = { emails: QueueEmail[]; pushes: QueuePush[]; switches: Switches; email: { on: boolean }; push: { mode: string } };
+export type EmailPreview = { subject: string; from: string; template: string; custom: boolean; text: string; html: string };
+export type JobRun = { at: string; ms: number; ok: boolean; result: Record<string, unknown>; by?: string };
+export type Job = { id: string; he: string; every: string; canPause: boolean; paused: boolean; canRun: boolean; last: JobRun | null };
+export type CleanupItem = { collection: string; he: string; days: number; due: number | null };
+export type Jobs = {
+  cronAt: string | null; cronMs: number | null; jobs: Job[];
+  cleanup: { items: CleanupItem[]; last: { date: string; archived: number; deleted: number; done: boolean; at: string; by: string } | null };
+  archive: { collections: { collection: string; files: number; bytes: number }[] };
+};
 export type Stats = {
   from: string; to: string; days: number;
   farm: {
@@ -100,6 +119,14 @@ export interface Source {
   deleteDoc(path: string, updateTime: string): Promise<{ path: string; deleted: boolean }>;
   exportCsv(group: string): Promise<void>;
   stats(days: number): Promise<Stats>;
+  switches(): Promise<SwitchesView>;
+  setSwitches(b: Partial<Switches>): Promise<SwitchesView>;
+  queue(): Promise<Queue>;
+  emailAction(id: string, action: 'retry' | 'cancel', updateTime: string): Promise<{ id: string; status: string }>;
+  cancelPush(id: string, updateTime: string): Promise<{ id: string; cancelled: boolean }>;
+  emailPreview(): Promise<EmailPreview>;
+  jobs(): Promise<Jobs>;
+  runJob(id: string): Promise<{ id: string; result: Record<string, unknown> | null }>;
 }
 
 export class ConsoleError extends Error {
@@ -190,6 +217,14 @@ const liveSource: Source = {
   editDoc: (path, set, updateTime) => call('POST', '/data/edit', { path, set, updateTime }),
   deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
   stats: (days) => call('GET', `/stats?days=${days}`),
+  switches: () => call('GET', '/switches'),
+  setSwitches: (b) => call('POST', '/switches', b),
+  queue: () => call('GET', '/queue'),
+  emailAction: (id, action, updateTime) => call('POST', `/queue/email/${encodeURIComponent(id)}/${action}`, { updateTime }),
+  cancelPush: (id, updateTime) => call('POST', `/queue/push/${encodeURIComponent(id)}/cancel`, { updateTime }),
+  emailPreview: () => call('GET', '/queue/preview'),
+  jobs: () => call('GET', '/jobs'),
+  runJob: (id) => call('POST', `/jobs/${id}/run`),
   exportCsv: (group) => download(`/data/export?collection=${encodeURIComponent(group)}`, `havat-ravve-${group.replace(/\/\*\//g, '-')}.csv`),
 };
 

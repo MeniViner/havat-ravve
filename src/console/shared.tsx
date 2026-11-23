@@ -76,3 +76,13 @@ export function Section({ title, aside, children }: { title: ReactNode; aside?: 
     </section>
   );
 }
+
+/** A queue line: what it is, why it waits, and its actions (under the text on a phone, beside it on a wide screen). */
+export function QRow({ title, meta, tag, children }: { title: ReactNode; meta: ReactNode; tag: ReactNode; children: ReactNode }) {
+  return (
+    <div className="c-qrow">
+      <div className="c-qrow__text"><div className="c-qrow__title">{title} <span className="c-qrow__tag">{tag}</span></div><div className="c-qrow__meta">{meta}</div></div>
+      <div className="c-qrow__actions">{children}</div>
+    </div>
+  );
+}

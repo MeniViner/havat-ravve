@@ -27,6 +27,14 @@
 //   POST /v1/console/data/delete              { path, updateTime } (kept in the recycle bin)
 //   GET  /v1/console/data/export?collection=  the collection as a CSV file for Excel
 //   GET  /v1/console/stats?days=30            the farm, the money and each event as a funnel (stats.ts)
+//   GET  /v1/console/switches                 the owners' switches (control.ts) and what the server is set up for
+//   POST /v1/console/switches                 { emailPaused?, pushPaused?, keysStopped?, readOnly?, maintenance?, maintenanceText?, registrationClosed?, ... }
+//   GET  /v1/console/queue                    payment emails and phone pushes that wait or failed
+//   POST /v1/console/queue/email/<id>/<retry|cancel>  { updateTime }
+//   POST /v1/console/queue/push/<id>/cancel   { updateTime }
+//   GET  /v1/console/queue/preview            the payment email as a guest gets it
+//   GET  /v1/console/jobs                     each scheduled job: last result, paused or not, cleanup and archive
+//   POST /v1/console/jobs/<id>/run            run one turn now (email, push, backup, cleanup, monitor)
 // Every console request lands in the assistant log (api_log) as "קונסולה · <first name>".
 import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
@@ -36,8 +44,11 @@ import { CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
-import { alertSettings, healthCheck, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
+import { alertSettings, healthCheck, type JobRun, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
 import { stats } from './stats';
+import { archiveSummary, cancelPush, cleanupPreview, emailAction, emailPreview, readSwitches, runCleanup, saveSwitches, sendQueue } from './control';
+import { runEmail } from './email';
+import { runPush } from './push';
 import { collections, deleteDoc, docsPage, docView, editDoc, exportCsv, history } from './data';
 import { backupCollection, backupDoc, downloadBackup, listBackups, listTrash, restoreFromBackup, restoreFromTrash, runBackup } from './backup';
 
@@ -81,7 +92,7 @@ async function overview(env: Env, fs: Firestore) {
     count(fs, 'api_log', [['at', 'GREATER_THAN_OR_EQUAL', day], ['kind', 'EQUAL', 'write']]),
     count(fs, 'api_failures', [['at', 'GREATER_THAN_OR_EQUAL', day]]),
     count(fs, 'push_jobs', [['sentAt', 'EQUAL', null]]),
-    count(fs, 'email_outbox', [['status', 'EQUAL', 'pending']]),
+    count(fs, 'email_outbox', [['status', 'EQUAL', 'queued']]),
     count(fs, 'email_outbox', [['status', 'EQUAL', 'sent']]),
     count(fs, 'email_outbox', [['status', 'EQUAL', 'failed']]),
   ]);
@@ -131,6 +142,14 @@ const OPS: Record<string, ConsoleOp> = {
   'data.delete': { name: 'console.data.delete', he: 'מחיקת רשומה', kind: 'write' },
   'data.export': { name: 'console.data.export', he: 'ייצוא לאקסל', kind: 'read' },
   stats: { name: 'console.stats', he: 'סטטיסטיקות', kind: 'read' },
+  'switches.read': { name: 'console.switches.read', he: 'מתגים', kind: 'read' },
+  'switches.set': { name: 'console.switches.set', he: 'שינוי מתג', kind: 'write' },
+  'queue.read': { name: 'console.queue.read', he: 'תור השליחה', kind: 'read' },
+  'queue.retry': { name: 'console.queue.retry', he: 'שליחה מחדש של מייל', kind: 'write' },
+  'queue.cancel': { name: 'console.queue.cancel', he: 'ביטול שליחה', kind: 'write' },
+  'queue.preview': { name: 'console.queue.preview', he: 'תצוגה של המייל', kind: 'read' },
+  'jobs.read': { name: 'console.jobs.read', he: 'משימות מתוזמנות', kind: 'read' },
+  'jobs.run': { name: 'console.jobs.run', he: 'הרצת משימה מתוזמנת', kind: 'write' },
 };
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
@@ -216,7 +235,78 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
     const col = q.get('collection') || '';
     return { op: OPS['data.export'], data: { collection: col }, raw: await exportCsv(fs, col, new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date())) };
   }
+  // switches, the send queue and the scheduled jobs (control.ts)
+  if (m === 'GET' && path === '/switches') return { op: OPS['switches.read'], data: await switchesView(env) };
+  if (m === 'POST' && path === '/switches') {
+    const b = await body();
+    const before = await readSwitches(env, true);
+    const done = await saveSwitches(env, fs, b, by);
+    const changed = Object.fromEntries(Object.keys(b).map((k) => [k, { from: (before as Record<string, unknown>)[k], to: (done as Record<string, unknown>)[k] }]));
+    return { op: OPS['switches.set'], data: await switchesView(env), logBody: b, logResult: changed };
+  }
+  if (m === 'GET' && path === '/queue') return { op: OPS['queue.read'], data: { ...(await sendQueue(fs)), switches: await readSwitches(env, true), email: { on: emailEnabled(env) }, push: pushMode(env as PushEnv) } };
+  if (m === 'GET' && path === '/queue/preview') return { op: OPS['queue.preview'], data: await emailPreview(fs) };
+  const qe = /^\/queue\/email\/([\w-]{1,120})\/(retry|cancel)$/.exec(path);
+  if (m === 'POST' && qe) {
+    const b = await body();
+    const done = await emailAction(fs, qe[1], qe[2] as 'retry' | 'cancel', String(b.updateTime || ''), by);
+    return { op: OPS[qe[2] === 'retry' ? 'queue.retry' : 'queue.cancel'], data: done, logBody: { id: qe[1], kind: 'email' }, logResult: done };
+  }
+  const qp = /^\/queue\/push\/([\w-]{1,120})\/cancel$/.exec(path);
+  if (m === 'POST' && qp) {
+    const b = await body();
+    const done = await cancelPush(fs, qp[1], String(b.updateTime || ''), by);
+    return { op: OPS['queue.cancel'], data: done, logBody: { id: qp[1], kind: 'push' }, logResult: done };
+  }
+  if (m === 'GET' && path === '/jobs') return { op: OPS['jobs.read'], data: await jobsView(env, fs) };
+  const jr = /^\/jobs\/([a-z]{1,20})\/run$/.exec(path);
+  if (m === 'POST' && jr) {
+    const id = jr[1];
+    const sw = await readSwitches(env, true);
+    const t = Date.now();
+    let r: Record<string, unknown> | null;
+    if (id === 'email') r = await runEmail(env, Date.now(), sw.emailPaused);
+    else if (id === 'push') { if (sw.pushPaused) throw invalid('id', 'phone pushes are paused: turn the switch off first'); r = await runPush(env as PushEnv); }
+    else if (id === 'backup') r = await runBackup(env, { force: true, by });
+    else if (id === 'cleanup') r = await runCleanup(env, { force: true, by });
+    else if (id === 'monitor') {
+      const st = await readMonitor(env);
+      st.quota = await readQuota(env);
+      st.health = await healthCheck(env, fs, st, by);
+      await saveMonitor(env, st);
+      r = { health: st.health.worst };
+    } else throw invalid('id', 'email, push, backup, cleanup or monitor');
+    const st = await readMonitor(env);
+    st.jobs = { ...(st.jobs || {}), [id]: { at: new Date().toISOString(), ms: Date.now() - t, ok: true, result: Object.fromEntries(Object.entries(r || { nothing: true }).filter(([k, v]) => k !== 'cron' && ['number', 'boolean', 'string'].includes(typeof v)).slice(0, 12)), by } as JobRun };
+    await saveMonitor(env, st);
+    return { op: OPS['jobs.run'], data: { id, result: r }, logBody: { id }, logResult: { id } };
+  }
   throw new ApiError('NOT_FOUND', `no console route for ${m} ${path}`);
+}
+
+async function switchesView(env: Env) {
+  return {
+    switches: await readSwitches(env, true),
+    server: { email: { on: emailEnabled(env), configured: env.EMAIL_ENABLED === 'true' }, push: pushMode(env as PushEnv) },
+  };
+}
+
+const JOB_LIST = [
+  { id: 'email', he: 'מיילים על תשלומים', every: 'כל 5 דקות', pause: 'emailPaused', run: true },
+  { id: 'push', he: 'התראות לטלפון', every: 'כל 5 דקות', pause: 'pushPaused', run: true },
+  { id: 'monitor', he: 'בדיקת האתר והמכסה', every: 'האתר כל 15 דקות, המכסה כל שעה, בדיקה כללית כל בוקר', pause: 'monitorPaused', run: true },
+  { id: 'backup', he: 'גיבוי לילי', every: 'כל לילה מ־03:00', pause: 'backupPaused', run: true },
+  { id: 'cleanup', he: 'ניקוי רשומות ישנות', every: 'כל לילה אחרי הגיבוי, עד 06:00', pause: 'cleanupPaused', run: true },
+  { id: 'accounts', he: 'מחיקת חשבונות', every: 'כל 5 דקות, 30 יום אחרי הבקשה', pause: null, run: false },
+] as const;
+
+async function jobsView(env: Env, fs: Firestore) {
+  const [mon, sw, cleanup, archive] = await Promise.all([readMonitor(env), readSwitches(env, true), cleanupPreview(env, fs), archiveSummary(env)]);
+  return {
+    cronAt: mon.at || null, cronMs: mon.wallMs ?? null,
+    jobs: JOB_LIST.map((j) => ({ id: j.id, he: j.he, every: j.every, canPause: !!j.pause, paused: j.pause ? !!sw[j.pause] : false, canRun: j.run, last: mon.jobs?.[j.id] || null })),
+    cleanup, archive,
+  };
 }
 
 async function monitorView(env: Env) {
