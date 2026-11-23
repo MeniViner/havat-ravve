@@ -64,7 +64,7 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
@@ -199,6 +199,40 @@ console.log('PASS: demo mode never reaches Firestore, demo ids are refused outsi
   reset();
   txTiming.waitMs = 4000; globalThis.__serverDocs = undefined; globalThis.__cacheDocs = undefined;
   console.log('PASS: a gate scan is saved on the phone when the server cannot be reached, and refusals are reported honestly');
+}
+
+// ---- one order, two gates: the payment is recorded once (manager actor, whom the rules let re-mark a paid ticket)
+{
+  setDemo({ on: true, persona: 'manager' });
+  calls.length = 0;
+  const ev = { id: 'pay-ev', title: 'אירוע', price: 50 };
+  const base = { eventId: ev.id, eventTitle: ev.title, orderId: 'pay-order', total: 3, ownerUid: 'u1', ownerName: 'משפחת כהן', ownerPhone: '0501234567', holderName: '', secret: 's', price: 50, paymentStatus: 'pending', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: '2026-11-23T10:00:00.000Z', updatedAt: '2026-11-23T10:00:00.000Z' };
+  for (const i of [1, 2, 3]) await write.set('tickets', 'pay-t' + i, { ...base, index: i });
+  // both gate screens loaded the order before either scan: all three tickets unpaid, 150 to collect
+  const order = [1, 2, 3].map((i) => ({ ...base, id: 'pay-t' + i, index: i }));
+  const gateA = { uid: 'mgr-a', name: 'מנהל א' }, gateB = { uid: 'mgr-b', name: 'מנהל ב' };
+  const a = await admit(gateA, ev, order[0], order, 'gate');
+  assert.deepEqual(a, { entries: 1, result: 'paidAtGate', amount: 150 }, 'the first gate takes the whole order');
+  // Firestore serializes the two transactions: the second one runs (or reruns) after the first committed, with gate B's stale list
+  const b = await admit(gateB, ev, order[1], order, 'gate');
+  assert.deepEqual(b, { entries: 1, result: 'ok', amount: 0 }, 'the second gate finds the order paid and records a plain entry');
+  const scans = demoItems(`events/${ev.id}/scans`);
+  assert.equal(scans.length, 2);
+  assert.deepEqual(scans.filter((s) => s.amount).map((s) => [s.ticketId, s.result, s.amount, s.count]), [['pay-t1', 'paidAtGate', 150, 3]], 'one scan carries the payment');
+  assert.equal(scans.find((s) => s.ticketId === 'pay-t2').result, 'ok');
+  const live = demoDoc(`events/${ev.id}/counters/live`);
+  assert.equal(live.paidAtGate, 3, 'the counters count the three tickets once, not six');
+  assert.equal(live.entered, 2);
+  for (const i of [1, 2, 3]) assert.equal(demoDoc('tickets/pay-t' + i).paymentStatus, 'paid_onsite');
+  // "ישלמו אחר כך" the same way: a debt is recorded once
+  for (const i of [1, 2]) await write.set('tickets', 'debt-t' + i, { ...base, orderId: 'debt-order', total: 2, index: i });
+  const debt = [1, 2].map((i) => ({ ...base, id: 'debt-t' + i, orderId: 'debt-order', total: 2, index: i }));
+  assert.deepEqual(await admit(gateA, ev, debt[0], debt, 'later'), { entries: 1, result: 'payLater', amount: 100 });
+  assert.deepEqual(await admit(gateB, ev, debt[1], debt, 'later'), { entries: 1, result: 'ok', amount: 0 });
+  assert.equal(demoDoc(`events/${ev.id}/counters/live`).payLaterAmount, 100, 'the debt is counted once');
+  assert.deepEqual(writes(), [], 'all of it stayed in the demo sandbox');
+  setDemo({ on: false });
+  console.log('PASS: two gates on two tickets of one unpaid order record one payment');
 }
 
 // ---- Today: completed rows never push an open task off its group
