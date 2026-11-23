@@ -7,6 +7,8 @@ import { useSync, useList } from '../db';
 import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
 import { useAllEvents, useNotifications } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
+import { leaveDemoTarget } from '../demo/intro';
+import { DemoIntro } from './DemoIntro';
 import { todayKey, useClockVersion } from '../clock';
 import { sweepPrivateTaskActivity } from '../activity';
 import type { Profile, Settings, Staffing } from '../types';
@@ -55,7 +57,7 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
   // the old shell's automatic install invitation (two weeks after "סגירה"; never on /install or in the demo)
   const install = useInstallBanner();
   const top = (demo.on || offline || install) ? <>
-    {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate('/demo', true); }} />}
+    {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
     {install}
   </> : null;
@@ -148,6 +150,12 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
 /** Entry used by src/app/App.tsx. */
 export function V2Root(props: { user: Session; profile: Profile; settings: Settings }) {
   const isVendor = props.profile.role === 'vendor';
-  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}</ToastProvider>;
+  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}<IntroV2 {...props} /></ToastProvider>;
+}
+/** First visits in demo, for the real account only (the demo personas never see it). */
+function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
+  const demo = useDemo(); const toast = useToast();
+  if (demo.on) return null;
+  return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
 }
 export { canManage };
