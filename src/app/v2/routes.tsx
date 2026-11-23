@@ -187,5 +187,7 @@ export function resolve(routes: Route[], route: string, search: URLSearchParams)
     const m = match(route, r.path);
     if (m) return { screen: r.screen, params: { ...Object.fromEntries(search.entries()), ...m }, tab: r.tab, kind: r.kind, route: r };
   }
+  // Q9: "<list>/table" is the list's own table view; the list screen renders it (useTableView in patterns.tsx)
+  if (route.endsWith('/table')) return resolve(routes, route.slice(0, -'/table'.length) || '/', search);
   return null;
 }

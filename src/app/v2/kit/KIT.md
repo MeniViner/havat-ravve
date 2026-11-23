@@ -166,3 +166,28 @@ user camera check farm megaphone back plus tasks cart grid message search bell p
 <GateResult tone="ok" place="שער · פסטיבל הסתיו" headline="מאושר" name="מיכל ברק" detail="כרטיס 2 מתוך 3 · כניסה ראשונה"
   actions={<GateButton onClick={next}>הבא</GateButton>} note="חוזר לסריקה בעוד 3 שניות" />
 ```
+
+## Tidy patterns (`patterns.tsx`, design: `havat-raveh-tidy/design`, rules: `havat-raveh-tidy/RULES.md`)
+Build every secondary action, choice and delete from these. A screen never grows its own variant.
+
+| Component | Key props | Notes / design |
+|---|---|---|
+| `MoreMenu` | `title`, `items: ActionItem[]` | ⋯ in the TopBar `end` plus its sheet "{title} · עוד פעולות" (Q5). Rule 5: table view, export, print, history, copy-from-previous, block and delete live here. Renders nothing when every item is hidden. |
+| `ActionItem` | `label`, `icon`, `meta`, `tone: 'danger'`, `hidden`, `onSelect`, `confirm: {title, text, confirmLabel, onConfirm}` | Red items sit in their own card at the bottom. `confirm` opens the Q8 sheet after the menu closes (rule 6: the only way to delete). |
+| `ActionSheet` | `open`, `onClose`, `title`, `sub`, `items` | The row sheet (Q11): tap a row, its actions open here. Also what MoreMenu uses. |
+| `MoreButton` | `onClick`, `label='עוד פעולות'` | The bare 44px outlined ⋯. |
+| `ConfirmSheet` | `title` (question), `text` (what is deleted · logged · cannot be undone), `confirmLabel='מחיקה'`, `onConfirm` | Q8: red filled button with a bin beside an outlined "ביטול". |
+| `SelectRow` | `label`, `value`, `leading`, `linkLabel`, `onClick` | One choice of many in its own card (rule 9): chevron (U3, U8) or a "החלפה" link (Q17). Opens a `PickerSheet`. |
+| `PickerSheet` | `title`, `options: PickOption[]`, `value`, `onChange`, `head` | Sheet with one radio list; `head` holds a search field for long lists. |
+| `Dropdown` | `label`, `options`, `value`, `onChange` | Q16: field-like 44px button with a down chevron; two side by side replace two chip rows. |
+| `MoreDetails` | `title='עוד פרטים'`, `defaultOpen` | Q3: collapsible card for fields beyond the designed set (rule 8). Open when any field inside has a value. Children are rows. |
+| `useReorder` / `DragHandle` | `handle(i, name)`, `rowStyle(i)` | Q21: the handle is the first thing in the row; arrows move with the keyboard. No up/down arrow pairs. |
+| `UnderlineLink` | `icon`, `href/onClick` | Q18: "עריכת פרטים" on the team profile and the guest account only. Other detail screens keep the outlined "עריכה". |
+| `DataTable` | `headers`, `rows` | Q9 card: horizontal scroll inside the card, heading tap sorts. Screen wiring: `useTableView` in `v2/patterns.tsx` (`<route>/table`). |
+| `PayConfirmSheet` | `name`, `channels`, `initial`, `preview`, `onSend` | Q7 after approving a payment. Screen wiring: `usePayConfirm` in `v2/patterns.tsx`. |
+
+### Row shape (rule 4, enforced in `Row`)
+Leading avatar or icon, a title with at most one status tag (`tags` keeps the first element), one meta line, an optional
+amount (`value` or `trailing`), then either the chevron or ONE control in `actions` (a single element; a fragment of several is
+cut to the first and logged). A row with `actions` has no chevron. Swipe (`swipe`) actions are hidden and do not count.
+A title must never wrap one word per line: if a row needs more, move it into the detail screen or a row sheet.
