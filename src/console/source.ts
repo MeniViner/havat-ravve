@@ -27,6 +27,12 @@ export type LogEntry = {
   kind: 'read' | 'write'; op: string; opHe: string; verb: string; ok: boolean; code: string; message: string; status: number;
 };
 export type KeyAction = 'rename' | 'revoke' | 'restore' | 'expire' | 'rotate';
+export type Backup = { date: string; startedAt: string; finishedAt: string; docs: number; bytes: number; parts: number; collections: Record<string, number>; by: string };
+export type Backups = { items: Backup[]; running: { date: string; docs: number; startedAt: string } | null };
+export type BackupStep = { done: boolean; date: string | null; docs: number };
+export type BackupDocRow = { path: string; title: string; updateTime: string | null };
+export type BackupDoc = { path: string; then: Record<string, unknown>; now: Record<string, unknown> | null; thenUpdated: string | null; nowUpdated: string | null };
+export type TrashItem = { key: string; path: string; collection: string; title: string; by: string; who: string; requestId: string; deletedAt: string };
 
 export interface Source {
   demo: boolean;
@@ -40,6 +46,14 @@ export interface Source {
   lastUse(ids: string[]): Promise<Record<string, string | null>>;
   /** Any API action (/v1/actions/<op>), as the signed-in owner. */
   action(op: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
+  backups(): Promise<Backups>;
+  runBackup(): Promise<BackupStep>;
+  downloadBackup(date: string): Promise<void>;
+  backupDocs(date: string, collection: string): Promise<{ items: BackupDocRow[]; total: number }>;
+  backupDoc(date: string, path: string): Promise<BackupDoc>;
+  restoreBackup(date: string, paths: string[]): Promise<{ restored: number; missing: number }>;
+  trash(): Promise<TrashItem[]>;
+  restoreTrash(keys: string[]): Promise<{ restored: string[]; exists: string[]; gone: string[] }>;
 }
 
 export class ConsoleError extends Error {
@@ -57,16 +71,31 @@ function apiBase() {
   } catch { return PROD; }
 }
 
-async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+async function token() {
   const auth = await readyAuth();
   const user = auth.currentUser;
   if (!user) throw new ConsoleError('UNAUTHENTICATED', 'not signed in', 'צריך להתחבר עם Google');
-  const token = await user.getIdToken();
+  return user.getIdToken();
+}
+
+/** Saves a file the browser receives from the Worker (the backup download), with the signed-in token. */
+async function download(path: string, filename: string) {
+  const res = await fetch(apiBase() + '/v1/console' + path, { headers: { authorization: 'Bearer ' + (await token()) } }).catch(() => null);
+  if (!res) throw new ConsoleError('NETWORK', 'no connection to the server', 'אין חיבור לשרת');
+  if (!res.ok) { const j = await res.json().catch(() => null); throw new ConsoleError(j?.error?.code || 'HTTP_' + res.status, j?.error?.message || res.statusText, j?.error?.he || ''); }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  const tk = await token();
   let res: Response;
   try {
     res = await fetch(apiBase() + '/v1/console' + path, {
       method,
-      headers: { authorization: 'Bearer ' + token, ...(body ? { 'content-type': 'application/json' } : {}), ...(method === 'POST' ? { 'idempotency-key': crypto.randomUUID() } : {}) },
+      headers: { authorization: 'Bearer ' + tk, ...(body ? { 'content-type': 'application/json' } : {}), ...(method === 'POST' ? { 'idempotency-key': crypto.randomUUID() } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -95,6 +124,14 @@ const liveSource: Source = {
     return out;
   },
   action: (op, body) => call('POST', '/api/actions/' + op, body),
+  backups: () => call('GET', '/backups'),
+  runBackup: () => call('POST', '/backups/run'),
+  downloadBackup: (date) => download(`/backups/${date}/download`, `havat-ravve-backup-${date}.ndjson`),
+  backupDocs: (date, collection) => call('GET', `/backups/${date}/docs?collection=${encodeURIComponent(collection)}`),
+  backupDoc: (date, path) => call('GET', `/backups/${date}/doc?path=${encodeURIComponent(path)}`),
+  restoreBackup: (date, paths) => call('POST', `/backups/${date}/restore`, { paths }),
+  trash: async () => (await call<{ items: TrashItem[] }>('GET', '/trash')).items,
+  restoreTrash: (keys) => call('POST', '/trash/restore', { keys }),
 };
 
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };

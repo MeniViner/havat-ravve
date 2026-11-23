@@ -10,12 +10,14 @@ import { ConsoleError, errorText, source, type Me } from './source';
 import { OverviewScreen } from './Overview';
 import { KeysScreen } from './Keys';
 import { PeopleScreen } from './People';
+import { BackupsScreen } from './Backups';
 
-type Tab = 'overview' | 'people' | 'keys';
+type Tab = 'overview' | 'people' | 'keys' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
   { value: 'people', label: 'אנשים', icon: 'people' },
   { value: 'keys', label: 'מפתחות API', icon: 'key' },
+  { value: 'backups', label: 'גיבויים', icon: 'box' },
 ];
 const tabOf = (): Tab => { const h = location.hash.replace(/^#\/?/, ''); return (TABS.some((t) => t.value === h) ? h : 'overview') as Tab; };
 
@@ -105,6 +107,7 @@ function Shell({ me }: { me: Me }) {
         {tab === 'overview' && <OverviewScreen />}
         {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
         {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
+        {tab === 'backups' && <BackupsScreen notify={notice.show} />}
       </main>
       {notice.view}
     </div>

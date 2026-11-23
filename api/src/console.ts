@@ -6,6 +6,14 @@
 //   POST /v1/console/keys                     { label, actor: "user:<uid>", expiresAt? } -> { id, key } (the key is shown once)
 //   POST /v1/console/keys/<id>/<action>       rename { label } | revoke | restore | expire { expiresAt|null } | rotate { graceHours }
 //   ANY  /v1/console/api/<path>               any API operation (/v1/<path>), as the signed-in owner, without an API key
+//   GET  /v1/console/backups                  the daily backups in R2 (backup.ts) and one in progress
+//   POST /v1/console/backups/run              one step of a backup now (call again while done is false)
+//   GET  /v1/console/backups/<day>/download   the whole backup as one NDJSON file
+//   GET  /v1/console/backups/<day>/docs?collection=<c>   a collection as it was that day
+//   GET  /v1/console/backups/<day>/doc?path=<p>          one document then and now
+//   POST /v1/console/backups/<day>/restore    { paths: [...] } writes them back as they were
+//   GET  /v1/console/trash                    what API requests deleted in the last 30 days
+//   POST /v1/console/trash/restore            { keys: [...] } puts them back (never over a document created since)
 // Every console request lands in the assistant log (api_log) as "קונסולה · <first name>".
 import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
@@ -15,6 +23,7 @@ import { CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
+import { backupCollection, backupDoc, downloadBackup, listBackups, listTrash, restoreFromBackup, restoreFromTrash, runBackup } from './backup';
 
 export const CONSOLE = 'console';
 export const isConsolePath = (path: string) => path === '/v1/console' || path.startsWith('/v1/console/');
@@ -93,11 +102,18 @@ const OPS: Record<string, ConsoleOp> = {
   'keys.restore': { name: 'console.keys.restore', he: 'החזרת מפתח API שבוטל', kind: 'write' },
   'keys.expire': { name: 'console.keys.expire', he: 'תוקף למפתח API', kind: 'write' },
   'keys.rotate': { name: 'console.keys.rotate', he: 'החלפת מפתח API', kind: 'write' },
+  'backups.list': { name: 'console.backups.list', he: 'רשימת הגיבויים', kind: 'read' },
+  'backups.run': { name: 'console.backups.run', he: 'גיבוי עכשיו', kind: 'write' },
+  'backups.download': { name: 'console.backups.download', he: 'הורדת גיבוי', kind: 'read' },
+  'backups.browse': { name: 'console.backups.browse', he: 'עיון בגיבוי', kind: 'read' },
+  'backups.restore': { name: 'console.backups.restore', he: 'שחזור מגיבוי', kind: 'write' },
+  'trash.list': { name: 'console.trash.list', he: 'סל המחזור', kind: 'read' },
+  'trash.restore': { name: 'console.trash.restore', he: 'שחזור מסל המחזור', kind: 'write' },
 };
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
 /** The console's own routes (not /api/...). Returns the operation for the log and the answer. */
-export async function consoleRoute(req: Request, env: Env, path: string, caller: Caller, fs: Firestore, body: () => Promise<Record<string, unknown>>): Promise<{ op: ConsoleOp; status?: number; data: unknown; logBody?: unknown; logResult?: unknown }> {
+export async function consoleRoute(req: Request, env: Env, path: string, caller: Caller, fs: Firestore, body: () => Promise<Record<string, unknown>>): Promise<{ op: ConsoleOp; status?: number; data: unknown; logBody?: unknown; logResult?: unknown; raw?: Response }> {
   const m = req.method;
   const by = caller.actor.person.name;
   if (m === 'GET' && path === '/me') return { op: OPS.me, data: { uid: caller.actor.person.uid, name: by, role: 'owner' } };
@@ -119,6 +135,28 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
     const b = await body();
     const done = await changeKey(env, k[1], k[2], b, by);
     return { op: OPS['keys.' + k[2]], data: done, logBody: { id: k[1], ...b }, logResult: { id: done.id, rotated: !!done.key } };
+  }
+  // backups and the recycle bin (backup.ts)
+  const q = new URL(req.url).searchParams;
+  if (m === 'GET' && path === '/backups') return { op: OPS['backups.list'], data: await listBackups(env) };
+  if (m === 'POST' && path === '/backups/run') {
+    const r = await runBackup(env, { force: true, by: by });
+    return { op: OPS['backups.run'], data: r || { done: true, date: null, docs: 0 } };
+  }
+  const bk = /^\/backups\/(\d{4}-\d{2}-\d{2})\/(download|docs|doc|restore)$/.exec(path);
+  if (bk && m === 'GET' && bk[2] === 'download') return { op: OPS['backups.download'], data: { date: bk[1] }, raw: await downloadBackup(env, bk[1]) };
+  if (bk && m === 'GET' && bk[2] === 'docs') return { op: OPS['backups.browse'], data: await backupCollection(env, bk[1], q.get('collection') || '') };
+  if (bk && m === 'GET' && bk[2] === 'doc') return { op: OPS['backups.browse'], data: await backupDoc(env, bk[1], q.get('path') || '', fs) };
+  if (bk && m === 'POST' && bk[2] === 'restore') {
+    const b = await body();
+    const done = await restoreFromBackup(env, bk[1], b.paths as string[], fs);
+    return { op: OPS['backups.restore'], data: done, logBody: { date: bk[1], paths: b.paths }, logResult: done };
+  }
+  if (m === 'GET' && path === '/trash') return { op: OPS['trash.list'], data: await listTrash(env) };
+  if (m === 'POST' && path === '/trash/restore') {
+    const b = await body();
+    const done = await restoreFromTrash(env, b.keys as string[], fs);
+    return { op: OPS['trash.restore'], data: done, logBody: b, logResult: done };
   }
   throw new ApiError('NOT_FOUND', `no console route for ${m} ${path}`);
 }
