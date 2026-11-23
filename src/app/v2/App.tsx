@@ -1,6 +1,6 @@
 // The v2 shell for staff, managers, owners and vendors: role navigation, the event-day tab, demo strip (Z2), offline strip (C8),
 // refused-write toast (X1), toasts, redirects from old routes, and the centred 390-480 column on wide screens.
-// The guest side keeps the legacy shell (App.tsx at src/app) and is not touched here.
+// The guest side has its own shell (screens/guest); a team member reaches guest pages through legacy.teamFallback.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
@@ -120,7 +120,7 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings }) ?? <legacy.NotFound />}</AppScreen>;
+  else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <AppScreen variant="plain" noNav><legacy.NotFound /></AppScreen>;
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 
@@ -138,7 +138,7 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
   const nav = [TEAM_NAV.vendorEvents, TEAM_NAV.vendorStall];
   let screen: ReactNode = null;
   if (!redirect && hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings })}</AppScreen>;
+  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = legacy.teamFallback(route, { user, profile, settings });
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 

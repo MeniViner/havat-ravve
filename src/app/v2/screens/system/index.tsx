@@ -5,9 +5,8 @@ import type { V2Ctx } from '../../ctx';
 import type { Profile, Settings } from '../../../types';
 import type { Session } from '../../../firebase';
 import { ToastProvider } from '../../core';
-import { useDemo } from '../../../demo/store';
 import { useInviteFor } from '../../data/system';
-import { OnboardingPage as LegacyOnboarding } from '../../../screens/Guest';
+import { GuestRegister } from '../guest/forms';
 import { WelcomeForm, Suspended } from './misc';
 
 /** L6-Me, C12-Profile */
@@ -28,13 +27,12 @@ export function SuspendedScreen({ ctx }: { ctx: { profile: Profile; settings: Se
   return <Suspended profile={ctx.profile} settings={ctx.settings} />;
 }
 
-/** First entry for an account without a profile. C9 for someone a manager added (role invite) and for ?demo=new;
- *  everyone else keeps the legacy guest registration. */
+/** First entry for an account without a profile. C9 for someone a manager added (role invite; the demo's ?demo=new account
+ *  has one); everyone else gets the guest registration (U13). */
 export function FirstEntry(p: { user: Session; settings: Settings }): ReactNode {
-  const demo = useDemo();
   const { invite, loading } = useInviteFor(p.user.email);
   if (loading) return null;
-  if (invite || (demo.on && demo.persona === 'new')) return <ToastProvider><WelcomeForm user={p.user} profile={null} invite={invite} fields={p.settings.registrationFields} /></ToastProvider>;
-  return <LegacyOnboarding user={p.user} fields={p.settings.registrationFields} />;
+  if (invite) return <ToastProvider><WelcomeForm user={p.user} profile={null} invite={invite} fields={p.settings.registrationFields} /></ToastProvider>;
+  return <GuestRegister user={p.user} settings={p.settings} />;
 }
 export type { V2Ctx };

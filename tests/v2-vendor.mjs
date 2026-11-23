@@ -82,7 +82,7 @@ async function clickPart() {
     await s.click('אבי לוי'); await s.page.getByRole('dialog').getByText('הסרה מהדוכן').click(); await s.page.getByRole('dialog').getByText('כן, להסיר').click(); await s.page.waitForTimeout(250);
     await s.reload(); log(!(await s.has('אבי לוי')), 'D7 helper removed and persisted');
     // the profile's terms and account deletion open for a vendor (guest pages through the legacy fallback), not bounced to /vendor
-    for (const [path, title] of [['/terms', 'תנאי שימוש ופרטיות'], ['/privacy', 'תנאי שימוש ופרטיות'], ['/delete-account', 'מחיקת החשבון'], ['/contact', 'פנייה למנהלים']]) {
+    for (const [path, title] of [['/terms', 'תנאי שימוש ופרטיות'], ['/privacy', 'תנאי שימוש ופרטיות'], ['/delete-account', 'מחיקת החשבון'], ['/contact', 'פנייה לחווה']]) {
       await s.go(path); log(s.page.url().endsWith(path) && await s.has(title), `vendor opens ${path}`);
     }
     await s.go('/events/demo-e-festival'); log(s.page.url().endsWith('/vendor'), 'other guest pages still go to /vendor');
