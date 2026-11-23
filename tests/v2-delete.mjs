@@ -138,11 +138,11 @@ await step('owner', async () => {
   await s.reload(); log(!(await s.has('רוני לוי')), 'person: gone from the directory after a reload');
   await s.go('/manage/people/demo-u-beni'); log(!(await s.moreItems()).includes('מחיקה'), 'person: no delete on my own file');
 
-  // broadcast (owner only)
-  await s.go('/manage/broadcasts/demo-b-1');
-  await s.confirm('מחיקה', 'למחוק את ההודעה?', 'מחיקה', { label: 'broadcast' });
-  log(s.path() === '/manage/broadcasts', 'broadcast: back on the list');
-  await s.go('/manage/broadcasts/demo-b-1'); log(await s.has('ההודעה לא נמצאה'), 'broadcast: gone after a reload');
+  // broadcast (owner only; tidy round: ⋯ on B3, which lives under People; the list is People's messages segment)
+  await s.go('/manage/people/messages/demo-b-1');
+  await s.more('מחיקה', 'למחוק את ההודעה?', 'מחיקה', { label: 'broadcast' });
+  log(s.path() === '/manage/people' && s.page.url().includes('tab=messages'), 'broadcast: back on the messages list');
+  await s.go('/manage/people/messages/demo-b-1'); log(await s.has('ההודעה לא נמצאה'), 'broadcast: gone after a reload');
 
   // inbox item: the card's head opens its row sheet, "מחיקה מהרשימה" is in it (tidy round: no X on the card)
   await s.go('/manage/inbox');
@@ -199,7 +199,7 @@ await step('manager', async () => {
   const s = await session('manager');
   await s.go('/manage/people/demo-u-david'); log(await s.has('דוד כהן') && !(await s.moreItems()).includes('מחיקה'), 'manager: no person delete (owner only)');
   await s.go('/projects/demo-p-irrigation/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByRole('button', { name: 'עוד פעולות' }).count()), 'manager: no project delete (owner only)');
-  await s.go('/manage/broadcasts/demo-b-2'); log(!(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'manager: no broadcast delete (owner only)');
+  await s.go('/manage/people/messages/demo-b-2'); log(!(await s.page.getByRole('button', { name: 'עוד פעולות' }).count()) && !(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'manager: no broadcast delete (owner only)');
   await s.go('/manage/visits/demo-vi-photo'); log((await s.moreItems()).includes('מחיקה'), 'manager: visits are deletable');
   await clean(s, 'manager');
 });
