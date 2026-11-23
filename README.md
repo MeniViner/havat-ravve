@@ -84,7 +84,7 @@ flowchart LR
   vendor["בעלי דוכנים"] --> web
   web["האתר והאפליקציה<br/>Firebase Hosting · PWA"] --> fs["Cloud Firestore<br/>עם חוקי הרשאות"]
   web --> auth["Google Sign-In"]
-  assistant["עוזר אישי"] --> worker["Cloudflare Worker<br/>ה־API, הקונסולה והגיבוי"]
+  assistant["עוזר אישי"] --> worker["Cloudflare Worker<br/>ממשק לעוזר, קונסולה וגיבוי"]
   worker --> fs
   worker --> r2["R2<br/>תמונות וגיבויים"]
 ```
