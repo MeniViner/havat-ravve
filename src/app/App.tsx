@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth, useProfile, isOwner, isOwnerEmail, isTeam } from './store';
-import { useSettings } from './data';
+import { useSettings, useSwitchesDoc } from './data';
+import { publishSwitches, useAppSwitches } from './switches';
+import { signOutUser } from './firebase';
 import { useRoute } from './router';
 import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
@@ -46,6 +48,30 @@ function TeamClaim({ user, code }: { user: Session; code: string }) {
   return <div className="splash" role="alert"><div className="title">לא הצלחנו לצרף אותך לצוות</div><div>{error}</div><button type="button" className="btn ghost" onClick={() => location.replace('/app')}>המשך</button></div>;
 }
 
+/** The owners turned on maintenance from the console: everyone but owners waits here. */
+function MaintenancePage({ text }: { text: string }) {
+  return (
+    <div className="splash" role="status">
+      <img src="/assets/rava-logo.png" alt="" />
+      <div className="title">האפליקציה בתחזוקה</div>
+      <div className="splash-text">{text || 'אנחנו עובדים על שיפור קטן. נחזור בקרוב.'}</div>
+      <button type="button" className="btn ghost" onClick={() => location.reload()}>לבדוק שוב</button>
+    </div>
+  );
+}
+
+/** Registration closed from the console: someone without an account sees this instead of the sign-up questions. */
+function RegistrationClosedPage() {
+  return (
+    <div className="splash" role="status">
+      <img src="/assets/rava-logo.png" alt="" />
+      <div className="title">ההרשמה סגורה כרגע</div>
+      <div className="splash-text">אפשר לחזור לכאן בהמשך. מי שכבר רשום/ה נכנס/ת כרגיל.</div>
+      <button type="button" className="btn ghost" onClick={() => signOutUser().then(() => location.replace('/'))}>יציאה</button>
+    </div>
+  );
+}
+
 function Splash() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(t); }, []);
@@ -62,6 +88,11 @@ export default function App() {
   const [invite] = useState(() => pendingVendorInvite());
   // a scheduled deletion locks the account (v2/screens/guest/pages.tsx); it never blocks the first render
   const deletion = useDeletionRequest(user && profile ? user.uid : undefined);
+  // the owners' switches from the console: maintenance, closed registration, read-only (owners keep working)
+  const switchesDoc = useSwitchesDoc();
+  const owner = !!user && isOwner(profile, user.email);
+  useEffect(() => { publishSwitches(demo.on ? null : switchesDoc.item, owner); }, [switchesDoc.item, owner, demo.on]);
+  const sw = useAppSwitches();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
     if (loading || profileLoading || demo.on) return;
@@ -73,6 +104,7 @@ export default function App() {
   // Z1: the demo start page works for everyone, signed in or not, demo on or off
   if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
+  if (sw.maintenance && !owner && !demo.on && route !== '/terms' && route !== '/privacy') return <MaintenancePage text={sw.maintenanceText} />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   const teamLink = isTeamLink(invite);
   if (user && invite && !teamLink && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
@@ -81,6 +113,7 @@ export default function App() {
     if (route === '/terms' || route === '/privacy') return <GuestFrame><TermsPage /></GuestFrame>; // the terms link on C9 / U13 works before the profile exists
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
+    if (sw.registrationClosed && !demo.on && !isOwnerEmail(user.email)) return <RegistrationClosedPage />;
     return <GuestFrame><FirstEntry key={user.uid} user={user} settings={settings} link={teamLink && !demo.on && pendingVendorInvite() ? invite : undefined} /></GuestFrame>;
   }
   if (user && profile && deletion.item) return <GuestFrame><DeletionScheduledPage profile={profile} request={deletion.item} /></GuestFrame>;

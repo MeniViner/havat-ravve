@@ -25,7 +25,7 @@ Plan and inventory: `docs/tidy-plan.md`.
   table resolves any `/table` suffix to its list) and `usePayConfirm` (Q7).
 - New icons from the tidy designs: more, clock, trash, robot, table, print, mail, globe, home, share.
 
-## Stages 2 and 3: roots, forms, lists and details (built; verification running)
+## Stages 2 and 3: roots, forms, lists and details (built, merged)
 One builder per area, each in its own branch, merged into `tidy/placement`:
 - **Tasks and projects** (`tidy/s2-tasks`): Q2 (no "עליך" list, four views, red "באיחור" first, bottom rows "בוצעו ביממה
   האחרונה" and, for managers, "משימות חוזרות"; no places row), Q3 (date chip, "עוד פרטים" card with event, note and photo,
@@ -60,7 +60,7 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
 - Checks on the merged branch: `npx tsc` clean; unit suites tasks 26, projects, shopping, farm 20, manage, events 18, system,
   core and demo; click-throughs delete 79/79, vendor all passed, event day 39/39, broadcast 37/37.
 
-## Stage 4: messages inside People, new audiences (Q23, Q25, Q26)
+## Stage 4: messages inside People, new audiences (Q23, Q25, Q26) (built, merged)
 - "אנשים והודעות" `?tab=messages` is the sent-messages segment (`screens/broadcast/Sent.tsx`): audience tag (warm for the
   team, neutral outside it), read bar, "קראו" / "ראו", filters הכל / לצוות / לאורחים ולכולם; the top bar holds ⋯ on people and
   "+ הודעה חדשה" on messages. Read details at `/manage/people/messages/:id`; `/manage/broadcasts` and `/:id` redirect there.
@@ -79,6 +79,20 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
   and get the e-mail; the Instinct API (`api/src/v2/broadcast.ts`) does not know the two new audiences yet; the Q26 e-mail
   switch starts off while the design shows it on.
 
+## Stage 5: adding someone ahead by phone (Q27) (built, merged)
+- `InviteScreen` lives in `manage/Invite.tsx` (People.tsx re-exports it). By phone creates `team_links/{code}`
+  (`v2/data/invite.ts`), built like the vendor access link: `?k=` on `/app/login`, remembered across the Google redirect, used
+  once, good for 14 days (rules allow at most 15), "ביטול" deletes it. The role is granted only by the claim at Google sign-in
+  (a new account inside `createProfile` after C9; a guest account through `TeamClaim` in `App.tsx`), never by the typed phone.
+- Decision (plan row 110, small additions row 9): no "אורח" segment. Anyone who signs in is a guest; the old "אורח" choice only
+  deleted an address set up ahead, which is "ביטול" on its pending row.
+- Decision: the pending list is oldest first, as Q27 lists it. Expiry is not in the row meta (no room in Q27); an expired link
+  shows "הקישור פג תוקף" in place of "הקישור נשלח …". Roles the person may not give are hidden (a manager sees only מתנדב and
+  the line "רק בעלים יכולים למנות מנהלים ובעלים.").
+- Checks: `npm run test:rules` 631/631 (44 new cases: who may create, single use, expiry, cancel, nobody raises their own
+  role without a valid link); claim flow on the emulators 21/21 (claimed once, a second account refused, a guest became a
+  manager, a cancelled link refused). The demo count is 3 (the seed had two e-mail invites; one phone invite added).
+
 ## Stage 6: the guest side on the v2 kit (built, merged)
 Branch `tidy/s6-guest`, merged into `tidy/placement`. U1-U14 in `src/app/v2/screens/guest/` (home, order, tickets,
 account, forms, pages); one pay block serves U4, U6, U9 and U10. Team members reach the same screens through `legacy.tsx`
@@ -94,19 +108,14 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   now names the sign-in page entry: "אפשר לחזור לדמו בכל רגע מעמוד הכניסה, ב״לראות איך האפליקציה עובדת״".
 - Removed as duplicates: the claimed-donation strip (the U7 tag shows it), the ticket dots ("כרטיס i מתוך n" instead).
 
-## Stage 5: adding someone ahead by phone (Q27)
-- `InviteScreen` lives in `manage/Invite.tsx` (People.tsx re-exports it). By phone creates `team_links/{code}`
-  (`v2/data/invite.ts`), built like the vendor access link: `?k=` on `/app/login`, remembered across the Google redirect, used
-  once, good for 14 days (rules allow at most 15), "ביטול" deletes it. The role is granted only by the claim at Google sign-in
-  (a new account inside `createProfile` after C9; a guest account through `TeamClaim` in `App.tsx`), never by the typed phone.
-- Decision (plan row 110, small additions row 9): no "אורח" segment. Anyone who signs in is a guest; the old "אורח" choice only
-  deleted an address set up ahead, which is "ביטול" on its pending row.
-- Decision: the pending list is oldest first, as Q27 lists it. Expiry is not in the row meta (no room in Q27); an expired link
-  shows "הקישור פג תוקף" in place of "הקישור נשלח …". Roles the person may not give are hidden (a manager sees only מתנדב and
-  the line "רק בעלים יכולים למנות מנהלים ובעלים.").
-- Checks: `npm run test:rules` 631/631 (44 new cases: who may create, single use, expiry, cancel, nobody raises their own
-  role without a valid link); claim flow on the emulators 21/21 (claimed once, a second account refused, a guest became a
-  manager, a cancelled link refused). The demo count is 3 (the seed had two e-mail invites; one phone invite added).
+## Stage 7: demo and verification (in progress)
+- First independent verifier pass (a session that wrote no screen), 28 Q screens against their PNGs plus a rules walk as owner,
+  manager and staff on the regular and event days (about 430 page loads): 15 match, 5 minor, 8 defects; no console errors.
+  Defects and rule findings handed to a fixer (`tidy/fix-verify`): Q7 empty purpose in the donation preview, Q17 extra field and
+  missing footnote, Q31 name-chip grid (rule 9), Q12 missing nav, Q20 failed entry missing from the default view, the stall
+  screen's text beside the back link, donation amounts' X on rows, Q24 chip wrap, Q9 columns and formats, Q5 print/history,
+  Q2 red meta, Q3 "הוספה, ועוד אחת". Findings that are logged decisions stay (Q14/Q4 tiles, Q20 search, edit-form ⋯).
+- Demo coverage for the 46 Q and U screens is being added (`tidy/s7-demo`).
 
 ## Decisions (log)
 - `main` is merged into `tidy/placement` (not rebased): the area builders' branches are cut from it, and a rebase would rewrite
@@ -124,6 +133,9 @@ edit details; blocked page; demo: U12 quiet link and /demo).
 - Guest side: the intro moved to the bottom of home; `payment.note` shows in the U4 note; the missing-details nudge and "לא
   אני" stay; the old on-device "new events" switch is replaced by `updatesOptIn`; U2's top bar has two icons as in the design;
   U7 "הכל" shows 7 (the seed has a visit too).
+- Main merged again (console rounds 3-5, PR #27 gate payment, PR #30-#33). The console's switches from PR #33 (maintenance,
+  closed registration, read-only strip) are wired into the new guest `App.tsx`; the read-only strip also shows in the new guest
+  shell, as in the team shell. The console's e-mail pause also stops the stage 4 broadcast lane.
 
 ## Open decisions (defaults implemented)
 - Delete on detail screens that keep the outlined "עריכה" (task, shopping item, event, project, vendor card, calendar item,

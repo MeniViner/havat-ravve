@@ -19,6 +19,7 @@ import { TEAM_ROUTES, VENDOR_ROUTES, VENDOR_LEGACY, resolve, redirectOf, type Na
 import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet, useInstallBanner } from './screens/system';
+import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
 import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
@@ -54,7 +55,10 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
   const pending = demo.on && states.offline ? Math.max(3, sync.pending) : sync.pending;
   // the old shell's automatic install invitation (two weeks after "סגירה"; never on /install or in the demo)
   const install = useInstallBanner();
-  const top = (demo.on || offline || install) ? <>
+  // the owners turned on read-only from the console (switches.ts): say so, before anyone tries to change something
+  const locked = useAppSwitches().locked && !demo.on;
+  const top = (demo.on || offline || install || locked) ? <>
+    {locked && <Strip icon="blocked">{READ_ONLY_TEXT}</Strip>}
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
     {install}

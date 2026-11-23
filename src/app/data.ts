@@ -30,6 +30,9 @@ export function useSettings() {
   return { settings: { ...DEFAULT_SETTINGS, ...item, payment: { ...DEFAULT_SETTINGS.payment, ...item?.payment }, templates: { ...DEFAULT_SETTINGS.templates, ...item?.templates }, contact: { ...DEFAULT_SETTINGS.contact, ...item?.contact } }, loading, error };
 }
 
+/** The owners' switches from the console (switches.ts); written only by the Worker. */
+export const useSwitchesDoc = () => useDoc<{ id: string; maintenance?: boolean; maintenanceText?: string; registrationClosed?: boolean; readOnly?: boolean }>('settings/switches', true);
+
 /** Merge a section of settings, including when the document has never been saved. */
 export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, what = 'ההגדרות עודכנו') {
   await write.merge('settings', 'app', patch);

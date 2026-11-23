@@ -232,6 +232,10 @@ try{
  await assertFails(setDoc(doc(guest,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(setDoc(doc(beni,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(getDoc(doc(anon,'settings','app')));
+ // the owners' switches (settings/switches) are written only by the Worker; everyone may read them (the app's maintenance screen)
+ await assertSucceeds(getDoc(doc(anon,'settings','switches')));
+ await assertFails(setDoc(doc(owner,'settings','switches'),{maintenance:true}));
+ await assertFails(setDoc(doc(beni,'settings','switches'),{readOnly:false}));
  await assertFails(updateDoc(doc(beni,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));   // a manager cannot change where the money goes
  await assertSucceeds(updateDoc(doc(beni,'settings','app'),{visitTypes:['סיור']}));
  await assertSucceeds(updateDoc(doc(owner,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));
