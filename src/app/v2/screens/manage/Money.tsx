@@ -1,38 +1,48 @@
-// M10 reports, N3 donations, N4 one donation.
+// Q14 reports (+ drill-ins /manage/reports/people, /manage/reports/events), Q4 donations, Q6 one donation.
+// Rule 10: the reports root shows the headline numbers, who did what, and rows that open the detail. Rule 4: a donation row
+// carries no buttons; every donation action lives on its screen (Q6), and its secondary actions behind ⋯ (rule 5).
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
 import {
-  BarList, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, Icon, ListCard, PageTitle, Quote, Row, SectionHeader,
-  IconButton, SectionTitle, StatRow, StatTile, Tag, TextLink, TopBar, ConfirmSheet,
+  BarList, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, ListCard, MoreMenu, PageTitle, Quote, Row, SectionHeader,
+  StatRow, StatTile, Tag, TextLink, TopBar, type ActionItem,
 } from '../../kit';
+import { useTableView, usePayConfirm } from '../../patterns';
 import { money, num, dayTime, ddmm, daysFromToday, relDay, firstName, keyOf, hhmm } from '../../format';
-import { contactPhoneOk, setDonation, useAllEvents, useEventTickets, useVisits } from '../../../data';
+import { contactPhoneOk, receiptDestination, setDonation, useAllEvents, useEventTickets, useVisits } from '../../../data';
+import { useDoc } from '../../../db';
 import { useHistoryTasks, useOpenTasks, usePeople as usePeopleAll } from '../../../store';
 import { useActivityFor, ACTION_LABELS } from '../../../activity';
 import { nowIso } from '../../../clock';
-import { PAYMENT_LABELS, DEFAULT_SETTINGS } from '../../../types';
+import { PAYMENT_LABELS } from '../../../types';
 import type { Donation, FarmEvent } from '../../../types';
-import { PayConfirm } from '../events/payconfirm';
 import {
   useActivityAll, useDonations, useDonation, useTicketsSince, useOpenTickets, useOpenTabs, useNotifications, useMyTickets, useMyVisits, useMyDonations, usePerson,
-  buildReport, periodStart, donationTotals, donationsIn, recurringOnTime, peopleStats, heardFrom, needsReceipt, awaitsApproval, isPaid, gw, fillTemplate, markPaymentConfirmation,
-  type DonationFilter,
-  approvePayment, paymentNotArrived, undoApproval, markReceipt, useRun, deleteDonation, type Period,
+  buildReport, periodStart, donationTotals, donationsIn, recurringOnTime, peopleStats, heardFrom, needsReceipt, awaitsApproval, gw, fillTemplate, markPaymentConfirmation, payTarget,
+  type DonationFilter, approvePayment, paymentNotArrived, undoApproval, markReceipt, useRun, deleteDonation, type Period,
 } from '../../data/manage';
-import { lnk, ExcelButton, Loading, NotFound } from './shared';
+import { lnk, HistorySheet, Loading, NotFound } from './shared';
 
-// ---------- M10 ----------
+// ---------- Q14 ----------
 const PERIOD_LABEL: Record<Period, string> = { month: 'החודש', '3m': '3 חודשים', year: 'השנה' };
-export function ReportsScreen({ ctx }: ScreenProps) {
-  const [period, setPeriod] = useState<Period>('month');
+const PERIODS: Period[] = ['month', '3m', 'year'];
+const periodOf = (v?: string): Period => (PERIODS.includes(v as Period) ? (v as Period) : 'month');
+
+/** Who came out of the tickets of one event: "84% הגיעו". */
+function arrivedPct(tickets: { status: string; entries: number }[]) {
+  const v = tickets.filter((x) => x.status === 'valid'); const a = v.filter((x) => x.entries > 0).length;
+  return { valid: v.length, arrived: a, pct: v.length ? Math.round((a / v.length) * 100) : null };
+}
+
+export function ReportsScreen({ ctx, params }: ScreenProps) {
+  const [period, setPeriod] = useState<Period>(periodOf(params.period));
   const from = periodStart(ctx.today, period);
   const activity = useActivityAll(true, 3000).items;
   const donations = useDonations(true).items;
   const tickets = useTicketsSince(from).items;
   const openTickets = useOpenTickets(true).items, openTabs = useOpenTabs(true).items;
   const r = useMemo(() => buildReport({ activity, donations, tickets, openTickets, openTabs, today: ctx.today, period }), [activity, donations, tickets, openTickets, openTabs, ctx.today, period]);
-  // The old M10 extras: recurring in time, overdue open tasks, people, how they heard of us, past events, the task export.
   const tasks = useHistoryTasks(true, true, from + 'T00:00:00.000Z', ctx.today + 'T23:59:59.999Z').items;
   const overdue = useOpenTasks(true, true).items.filter((t) => t.dueDate && t.dueDate < ctx.today).length;
   const rec = recurringOnTime(tasks, ctx.templates, hhmm);
@@ -41,73 +51,106 @@ export function ReportsScreen({ ctx }: ScreenProps) {
   const ps = peopleStats(people, visits, from);
   const heard = heardFrom(people);
   const nowS = nowIso();
-  const past = useAllEvents(true).items.filter((e) => e.end < nowS).slice(0, 4);
+  const past = useAllEvents(true).items.filter((e) => e.end < nowS);
+  const lastTickets = useEventTickets(past[0]?.id || '', !!past[0]).items;
+  const last = arrivedPct(lastTickets);
+  const table = useTableView({
+    title: 'דוחות', filter: PERIOD_LABEL[period], filename: `דוח ${PERIOD_LABEL[period]}.csv`, headers: ['סעיף', 'ערך'],
+    rows: () => [
+      ['משימות שבוצעו', r.tasksDone], ['ממוצע ביום', r.perDay], ['תרומות ששולמו (₪)', r.donations], ['כרטיסים ששולמו (₪)', r.tickets],
+      ...r.byPerson.map((p) => [`משימות: ${p.label}`, p.value] as (string | number)[]), ['חובות פתוחים (₪)', r.debts.total], ['אנשים עם חוב', r.debts.people],
+      ['חוזרות בזמן (%)', rec.pct ?? ''], ['פתוחות באיחור', overdue], ['נרשמים חדשים', ps.newPeople], ['ביקורים אושרו', ps.visitsApproved], ['חסומים', ps.blocked],
+    ],
+  });
+  const tasksTable = useTableView({
+    title: 'משימות', filter: PERIOD_LABEL[period], filename: `משימות ${PERIOD_LABEL[period]}.csv`, headers: ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'],
+    rows: () => tasks.map((t) => [t.title, t.doneBy?.name || '', t.doneAt || '', t.templateId ? 'כן' : '']),
+  });
+  const section = params.section || '';
+  // Two tables (Q14 ⋯): the report at /manage/reports/table and the tasks at /manage/reports/tasks/table.
+  if (table.active) return section === 'tasks' ? tasksTable.screen : table.screen;  const back = { label: 'דוחות', ...lnk(`/manage/reports${period === 'month' ? '' : `?period=${period}`}`) };
+  const chips = (
+    <ChipRow label="תקופה">
+      {PERIODS.map((p) => <Chip key={p} selected={period === p} onClick={() => setPeriod(p)}>{PERIOD_LABEL[p]}</Chip>)}
+    </ChipRow>
+  );
+
+  // drill-in: people and registrants
+  if (section === 'people') return (
+    <AppScreen variant="detail" gap={10}>
+      <TopBar back={back} />
+      <PageTitle>אנשים ונרשמים</PageTitle>
+      {chips}
+      <StatRow>
+        <StatTile value={num(ps.newPeople)} label="נרשמים חדשים" />
+        <StatTile value={num(ps.visitsApproved)} label={`ביקורים אושרו${ps.visitsRequested ? ` · מ־${ps.visitsRequested}` : ''}`} />
+        <StatTile value={num(ps.blocked)} label="חסומים" />
+      </StatRow>
+      <Card as="section" className="manage-bars">
+        <SectionHeader title="איך שמעו עלינו" />
+        {heard.length ? <BarList items={heard.slice(0, 8)} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px 14px' }}>עוד אין תשובות לשאלה הזאת.</p>}
+      </Card>
+    </AppScreen>
+  );
+  // drill-in: past events
+  if (section === 'events') return (
+    <AppScreen variant="detail" gap={10}>
+      <TopBar back={back} />
+      <PageTitle>אירועים</PageTitle>
+      {past.length
+        ? <ListCard title="אירועים שעברו" end={<TextLink {...lnk('/manage/events')}>כל האירועים</TextLink>}>{past.slice(0, 12).map((e) => <PastEventRow key={e.id} e={e} />)}</ListCard>
+        : <EmptyState variant="card" icon="ticket" title="עוד אין אירועים שעברו" />}
+    </AppScreen>
+  );
+
+  const more: ActionItem[] = [
+    ...table.items,
+    { label: 'משימות בטבלה', icon: 'table', meta: `מי ביצע מה, ${PERIOD_LABEL[period]}`, onSelect: () => go('/manage/reports/tasks/table') },
+    { label: 'ייצוא משימות לאקסל', icon: 'download', onSelect: tasksTable.download },
+  ];
   return (
     <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={
-        <ExcelButton filename={`דוח ${PERIOD_LABEL[period]}.csv`} headers={['סעיף', 'ערך']} rows={() => [
-          ['משימות שבוצעו', r.tasksDone], ['ממוצע ביום', r.perDay], ['תרומות ששולמו (₪)', r.donations], ['כרטיסים ששולמו (₪)', r.tickets],
-          ...r.byPerson.map((p) => [`משימות: ${p.label}`, p.value] as (string | number)[]), ['חובות פתוחים (₪)', r.debts.total], ['אנשים עם חוב', r.debts.people],
-        ]} />
-      } />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="דוחות" items={more} />} />
       <PageTitle>דוחות</PageTitle>
-      <ChipRow label="תקופה">
-        {(['month', '3m', 'year'] as Period[]).map((p) => <Chip key={p} selected={period === p} onClick={() => setPeriod(p)}>{PERIOD_LABEL[p]}</Chip>)}
-      </ChipRow>
+      {chips}
       <StatRow grid>
         <StatTile value={num(r.tasksDone)} label="משימות בוצעו" />
         <StatTile value={String(r.perDay)} label="ביום בממוצע" />
         <StatTile value={money(r.donations)} label="תרומות" />
         <StatTile value={money(r.tickets)} label="כרטיסים" />
       </StatRow>
+      {/* Not on Q14; stays until it has a design (tidy-plan row 89). */}
       <StatRow>
         {rec.pct !== null && <StatTile value={`${rec.pct}%`} label="חוזרות בזמן" />}
         <StatTile value={num(overdue)} label="פתוחות באיחור" />
       </StatRow>
       <Card as="section" className="manage-bars">
-        <SectionHeader title="מי ביצע" end={
-          <ExcelButton filename={`משימות ${PERIOD_LABEL[period]}.csv`} headers={['משימה', 'בוצע על ידי', 'מתי', 'חוזרת']}
-            rows={() => tasks.map((t) => [t.title, t.doneBy?.name || '', t.doneAt || '', t.templateId ? 'כן' : ''])} />
-        } />
+        <SectionHeader title="מי ביצע" />
         {r.byPerson.length ? <BarList items={r.byPerson} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px' }}>עוד לא בוצעו משימות בתקופה הזאת.</p>}
       </Card>
-      <Card {...lnk('/manage/people?filter=debt')} className="manage-debts" aria-label={`חובות פתוחים, ${money(r.debts.total)}`}>
-        <span className="manage-debts__body">
-          <span className="manage-debts__title">חובות פתוחים{r.debts.total > 0 && <Tag tone="waiting">{money(r.debts.total)}</Tag>}</span>
-          <span className="k-meta">{r.debts.people ? `${r.debts.people} אנשים · בכל האירועים` : 'אין חובות פתוחים'}</span>
-        </span>
-        <span className="manage-chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>
-      </Card>
-      <SectionTitle spaced>אנשים</SectionTitle>
-      <StatRow>
-        <StatTile value={num(ps.newPeople)} label="נרשמים חדשים" />
-        <StatTile value={num(ps.visitsApproved)} label={`ביקורים אושרו${ps.visitsRequested ? ` · מ־${ps.visitsRequested}` : ''}`} />
-        <StatTile value={num(ps.blocked)} label="חסומים" />
-      </StatRow>
-      {heard.length > 1 && (
-        <Card as="section" className="manage-bars">
-          <SectionHeader title="איך שמעו עלינו" />
-          <BarList items={heard.slice(0, 5)} />
-        </Card>
-      )}
-      {past.length > 0 && (
-        <ListCard title="אירועים" end={<TextLink {...lnk('/manage/events')}>כל האירועים</TextLink>}>
-          {past.map((e) => <PastEventRow key={e.id} e={e} />)}
-        </ListCard>
-      )}
+      <ListCard aria-label="עוד בדוחות">
+        <Row minHeight={58} {...lnk('/manage/people?filter=debt')} title="חובות פתוחים" tags={r.debts.total > 0 ? <Tag tone="waiting">{money(r.debts.total)}</Tag> : undefined}
+          meta={r.debts.people ? `${r.debts.people} אנשים · בכל האירועים` : 'אין חובות פתוחים'} />
+        <Row minHeight={58} {...lnk(`/manage/reports/people${period === 'month' ? '' : `?period=${period}`}`)} title="אנשים ונרשמים"
+          meta={`${num(ps.newPeople)} נרשמו ${PERIOD_LABEL[period]} · איך שמעו עלינו`} />
+        <Row minHeight={58} {...lnk('/manage/reports/events')} title="אירועים"
+          meta={past[0] ? (last.pct !== null ? `${past[0].title}: ${last.pct}% הגיעו` : past[0].title) : 'עוד אין אירועים שעברו'} />
+      </ListCard>
     </AppScreen>
   );
 }
 /** One past event: tickets, how many came. */
 function PastEventRow({ e }: { e: FarmEvent }) {
-  const t = useEventTickets(e.id, true).items;
-  const v = t.filter((x) => x.status === 'valid'); const a = v.filter((x) => x.entries > 0).length;
-  return <Row minHeight={56} {...lnk(`/manage/events/${e.id}?tab=summary`)} title={e.title} meta={`${ddmm(e.start)} · ${a} הגיעו מתוך ${v.length}`}
-    trailing={<span className="manage-num">{v.length ? `${Math.round((a / v.length) * 100)}%` : '—'}</span>} />;
+  const a = arrivedPct(useEventTickets(e.id, true).items);
+  return <Row minHeight={56} {...lnk(`/manage/events/${e.id}?tab=summary`)} title={e.title} meta={`${ddmm(e.start)} · ${a.arrived} הגיעו מתוך ${a.valid}`}
+    trailing={<span className="manage-num">{a.pct !== null ? `${a.pct}%` : '—'}</span>} />;
 }
 
-// ---------- N3 ----------
+// ---------- Q4 ----------
 type DFilter = DonationFilter;
+const D_FILTERS: { v: DFilter; l: string }[] = [
+  { v: 'month', l: 'החודש' }, { v: 'approve', l: 'לאישור' }, { v: 'receipt', l: 'צריכות קבלה' }, { v: 'memorial', l: 'עם הנצחה' }, { v: 'year', l: 'השנה' }, { v: 'all', l: 'הכל' },
+];
 const shortDay = (iso: string) => { const d = daysFromToday(iso); return d === 0 ? 'היום' : d === -1 ? 'אתמול' : ddmm(iso); };
 const statusTag = (d: Donation) =>
   d.paymentStatus === 'claimed' ? <Tag tone="waiting">{gw(d.name, 'סימן שהעביר', 'סימנה שהעבירה')}</Tag>
@@ -122,48 +165,35 @@ export function DonationsScreen({ ctx }: ScreenProps) {
   const t = donationTotals(items, ctx.today);
   const approve = items.filter(awaitsApproval), receipt = items.filter((d) => d.paymentStatus !== 'cancelled' && needsReceipt(d));
   const list = donationsIn(items, filter, ctx.today);
-  const run = useRun();
-  const ext = useExternal();
-  const open = useNotifications(true).items;
-  const approveRow = (d: Donation) => { const p = { kind: 'donation' as const, doc: d }; run(() => approvePayment(ctx.actor, p, open), { text: `${d.name} · ${money(d.amount)} · אושר`, undo: () => undoApproval(ctx.actor, p, open, []) }); };
-  const thanks = (d: Donation) => ext(waUrl(d.phone, fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': money(d.amount) })));
-  const rowActs = (d: Donation) => {
-    const paid = isPaid(d.paymentStatus);
-    // One button per row (a phone row has room for one), plus "תודה" as an icon.
-    const main = awaitsApproval(d) ? <Button onClick={() => approveRow(d)}>אישור תשלום</Button>
-      : needsReceipt(d) && paid ? <Button variant="outline" onClick={() => run(() => markReceipt(ctx.actor, d, true), { text: 'סומן: הקבלה נשלחה', undo: () => markReceipt(ctx.actor, { ...d, receiptSent: true }, false) })}>הקבלה נשלחה</Button>
-      : null;
-    if (!main) return undefined;
-    return <>{contactPhoneOk(d.phone) && <IconButton variant="quiet" icon="message" label={`תודה בוואטסאפ ל${d.name}`} onClick={() => thanks(d)} />}{main}</>;
-  };
+  const label = D_FILTERS.find((f) => f.v === filter)!.l;
+  const table = useTableView({
+    title: 'תרומות', filter: filter === 'all' ? undefined : label, filename: 'תרומות.csv',
+    headers: ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'],
+    rows: () => list.map((d) => [keyOf(d.createdAt), d.name, d.phone, d.amount, d.label, d.memorial, d.note, PAYMENT_LABELS[d.paymentStatus], d.receiptWanted ? (d.receiptSent ? 'נשלחה' : 'צריך · ' + (d.receiptName || d.name)) : '']),
+  });
+  if (table.active) return table.screen;
   if (loading && !items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;
+  const count = (f: DFilter) => (f === 'approve' ? approve.length : f === 'receipt' ? receipt.length : 0);
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={
-        <ExcelButton filename="תרומות.csv" headers={['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה']}
-          rows={() => items.map((d) => [keyOf(d.createdAt), d.name, d.phone, d.amount, d.label, d.memorial, d.note, PAYMENT_LABELS[d.paymentStatus], d.receiptWanted ? (d.receiptSent ? 'נשלחה' : 'צריך · ' + (d.receiptName || d.name)) : ''])} />
-      } />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={table.items} />} />
       <PageTitle>תרומות</PageTitle>
+      {/* Q4 shows three stats; "ממתין" stays until it has a design (tidy-plan row 79). */}
       <StatRow grid>
         <StatTile value={money(t.month)} label="החודש" />
         <StatTile value={money(t.year)} label="השנה" />
-        <StatTile value={money(t.pending)} label="ממתין" />
         <StatTile value={num(t.needReceipt)} label="מחכות לקבלה" />
+        <StatTile value={money(t.pending)} label="ממתין" />
       </StatRow>
       <ChipRow label="סינון">
-        <Chip selected={filter === 'month'} onClick={() => setFilter('month')}>החודש</Chip>
-        <Chip selected={filter === 'approve'} onClick={() => setFilter('approve')}>{approve.length ? `לאישור · ${approve.length}` : 'לאישור'}</Chip>
-        <Chip selected={filter === 'receipt'} onClick={() => setFilter('receipt')}>{receipt.length ? `צריכות קבלה · ${receipt.length}` : 'צריכות קבלה'}</Chip>
-        <Chip selected={filter === 'memorial'} onClick={() => setFilter('memorial')}>עם הנצחה</Chip>
-        <Chip selected={filter === 'year'} onClick={() => setFilter('year')}>השנה</Chip>
-        <Chip selected={filter === 'all'} onClick={() => setFilter('all')}>הכל</Chip>
+        {D_FILTERS.map((f) => <Chip key={f.v} selected={filter === f.v} onClick={() => setFilter(f.v)}>{count(f.v) ? `${f.l} · ${count(f.v)}` : f.l}</Chip>)}
       </ChipRow>
       {list.length ? (
         <ListCard aria-label="תרומות">
           {list.map((d) => (
             <Row key={d.id} minHeight={58} {...lnk(`/manage/donations/${d.id}`)} title={d.name} tags={statusTag(d)}
               meta={[shortDay(d.createdAt), d.memorial && `לזכר ${d.memorial}`, receiptText(d)].filter(Boolean).join(' · ')}
-              trailing={<b className="manage-amount">{money(d.amount)}</b>} actions={rowActs(d)} />
+              trailing={<b className="manage-amount">{money(d.amount)}</b>} />
           ))}
         </ListCard>
       ) : <EmptyState variant="card" icon="heart" title={filter === 'approve' ? 'אין תרומות שמחכות לאישור' : filter === 'receipt' ? 'כל הקבלות נשלחו' : items.length ? 'אין תרומות כאלה' : 'עוד אין תרומות'} />}
@@ -171,28 +201,50 @@ export function DonationsScreen({ ctx }: ScreenProps) {
   );
 }
 
-// ---------- N4 ----------
+// ---------- Q6 ----------
 const METHOD: Record<string, string> = { bit: 'ביט', paybox: 'PayBox', cash: 'מזומן', transfer: 'העברה בנקאית' };
+
+/** The Worker's automatic payment e-mail (email_outbox/donation_<id>): information on the detail, not a control. */
+type EmailJob = { id: string; status: 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'; reason?: string | null; to?: string; sentAt?: string; updatedAt: string };
+const SKIP_TEXT: Record<string, string> = {
+  whatsapp: 'ההעדפה היא וואטסאפ', no_preference: 'לא נבחרה דרך שליחה', no_address: 'אין כתובת מייל תקינה', not_paid: 'התשלום בוטל לפני השליחה', manual: 'סומן ידנית',
+};
+function EmailLine({ job }: { job: EmailJob }) {
+  if (job.status === 'sent') return <><Tag tone="paid">נשלח במייל אוטומטית</Tag>{job.sentAt && ` ${dayTime(job.sentAt)}`}{job.to && <> · <bdi>{job.to}</bdi></>}</>;
+  if (job.status === 'queued' || job.status === 'sending') return <><Tag tone="waiting">מייל אוטומטי בתור</Tag>{job.reason ? ' · ניסיון נוסף בקרוב' : ''}</>;
+  if (job.status === 'failed') return <><Tag tone="urgent">המייל האוטומטי נכשל</Tag> {job.reason === 'rejected' ? 'הכתובת נדחתה' : 'שירות המייל לא זמין'} · אפשר לשלוח ידנית</>;
+  return <>מייל אוטומטי לא נשלח · {SKIP_TEXT[job.reason || ''] || 'לא נדרש'}</>;
+}
+
 export function DonationScreen({ ctx, params }: ScreenProps) {
   const { item: d, loading } = useDonation(params.id);
   const open = useNotifications(true).items;
   const tickets = useMyTickets(d?.uid || '', !!d?.uid).items, visits = useMyVisits(d?.uid || '', !!d?.uid).items, donations = useMyDonations(d?.uid || '', !!d?.uid).items;
   const run = useRun();
   const ext = useExternal();
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
+  const pay = usePayConfirm();
+  const [history, setHistory] = useState(false);
   const log = useActivityFor('donation', params.id).items;
   const donor = usePerson(d?.uid || '', !!d?.uid).item;
+  const paidNow = !!d && (d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite');
+  const job = useDoc<EmailJob>('email_outbox/donation_' + (d?.id || '_'), !!d && paidNow).item;
   if (loading) return <Loading back={{ label: 'תרומות', path: '/manage/donations' }} />;
   if (!d) return <NotFound back={{ label: 'תרומות', path: '/manage/donations' }} title="התרומה לא נמצאה" />;
-  const paid = d.paymentStatus === 'paid' || d.paymentStatus === 'paid_onsite';
+  const paid = paidNow;
   const method = (d as Donation & { method?: string }).method;
   const p = { kind: 'donation' as const, doc: d };
-  const approve = () => run(() => approvePayment(ctx.actor, p, open), { text: `התשלום אושר: ${money(d.amount)}`, undo: () => undoApproval(ctx.actor, p, open, []) });
+  const target = payTarget(p);
+  const approve = async () => {
+    if (await run(() => approvePayment(ctx.actor, p, open), { text: `התשלום אושר: ${money(d.amount)}`, undo: () => undoApproval(ctx.actor, p, open, []) })) pay.ask(target);
+  };
   const notYet = () => run(() => paymentNotArrived(ctx.actor, p, open), 'סומן: עוד לא הגיע');
   const thanks = fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': money(d.amount) });
-  const confirmText = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, { 'שם': firstName(d.name), 'סכום': money(d.amount), 'עבור': `תרומה${d.label ? ' · ' + d.label : ''}`, 'אירוע': 'התרומה' });
-  const sendConfirmation = () => { ext(waUrl(d.phone, confirmText)); run(() => markPaymentConfirmation(ctx.actor, 'donations', [d.id]), 'סומן: אישור התשלום נשלח'); };
+  const email = receiptDestination({ phone: donor?.phone || d.phone, email: donor?.email || '' }, 'email');
+  const mailto = () => {
+    const body = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || '', { 'שם': donor?.displayName || d.name, 'סכום': money(d.amount), 'עבור': 'תרומה לחווה', 'אירוע': '' });
+    ext('mailto:' + encodeURIComponent(email).replace('%40', '@') + '?subject=' + encodeURIComponent('אישור תשלום מחוות רווה') + '&body=' + encodeURIComponent(body));
+  };
   const orders = [...new Map(tickets.map((t) => [t.orderId, tickets.filter((x) => x.orderId === t.orderId && x.status === 'valid')])).values()].filter((o) => o.length);
   const more = [
     ...orders.map((o) => ({ key: 'o' + o[0].orderId, at: o[0].createdAt, title: `${o[0].eventTitle} · ${o.length === 1 ? 'כרטיס אחד' : `${o.length} כרטיסים`}`, meta: `הוזמן ${relDay(o[0].createdAt)}`, path: `/manage/events/${o[0].eventId}?tab=guests` })),
@@ -202,11 +254,21 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
   const bar = !paid && d.paymentStatus !== 'cancelled'
     ? <BottomBar><Button size="bar" grow icon="check" onClick={approve}>אישור תשלום</Button>{d.paymentStatus === 'claimed' && <Button size="bar" variant="secondary" onClick={notYet}>עוד לא הגיע</Button>}</BottomBar>
     : paid && !d.paymentConfirmation && contactPhoneOk(d.phone)
-      ? <BottomBar><Button size="bar" grow variant="outline" icon="message" onClick={sendConfirmation}>אישור תשלום בוואטסאפ</Button></BottomBar>
+      ? <BottomBar><Button size="bar" grow variant="outline" icon="message" onClick={() => pay.ask(target)}>אישור תשלום בוואטסאפ</Button></BottomBar>
       : undefined;
+  const actions: ActionItem[] = [
+    { label: 'להחזיר לממתין', icon: 'back', hidden: !paid, onSelect: () => run(() => setDonation(ctx.actor, d, { paymentStatus: 'claimed' }), 'הוחזר לממתין') },
+    { label: 'אישור תשלום במייל', icon: 'mail', meta: <bdi>{email}</bdi>, hidden: !paid || !email, onSelect: mailto },
+    { label: 'סימון שהאישור נשלח', icon: 'check', hidden: !paid || !!d.paymentConfirmation, onSelect: () => run(() => markPaymentConfirmation(ctx.actor, 'donations', [d.id]), 'סומן: אישור התשלום נשלח') },
+    { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => setHistory(true) },
+    { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+      title: 'למחוק את התרומה?', text: `${money(d.amount)} · ${d.name}. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה.`,
+      onConfirm: () => remove(() => deleteDonation(ctx.actor, d, open), { text: 'התרומה נמחקה', after: () => go('/manage/donations', true) }),
+    } },
+  ];
   return (
     <AppScreen variant="detail" bar={bar}>
-      <TopBar back={{ label: 'תרומות', ...lnk('/manage/donations') }} end={<Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button>} />
+      <TopBar back={{ label: 'תרומות', ...lnk('/manage/donations') }} end={<MoreMenu title="תרומה" items={actions} />} />
       <div className="manage-titled">
         <span className="k-meta">תרומה · {dayTime(d.createdAt)}</span>
         <PageTitle size="detail" className="k-h1--detail-tight">{money(d.amount)} · {d.name}</PageTitle>
@@ -220,38 +282,30 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
           : <Button variant="outline" onClick={() => run(() => markReceipt(ctx.actor, d, true), { text: 'סומן: הקבלה נשלחה', undo: () => markReceipt(ctx.actor, { ...d, receiptSent: true }, false) })}>נשלחה</Button>) : undefined}>
           {d.receiptWanted ? <>{d.receiptSent && <><Tag tone="paid">נשלחה</Tag> </>}על שם {d.receiptName || d.name}</> : <span className="k-soft">{gw(d.name, 'לא ביקש', 'לא ביקשה')}</span>}
         </DetailRow>
-        {d.paymentConfirmation && <DetailRow term="אישור">נשלח · {firstName(d.paymentConfirmation.by.name)} · {dayTime(d.paymentConfirmation.at)}</DetailRow>}
+        {(d.paymentConfirmation || (paid && job)) && (
+          <DetailRow term="אישור">
+            {d.paymentConfirmation ? <>נשלח · {firstName(d.paymentConfirmation.by.name)} · {dayTime(d.paymentConfirmation.at)}</> : job ? <EmailLine job={job} /> : null}
+          </DetailRow>
+        )}
       </DetailList>
       {d.note && <Quote>{d.note}</Quote>}
-      {donor && (
-        <ListCard aria-label="התורם">
-          <Row minHeight={58} {...lnk(`/manage/people/${donor.uid}`)} title={donor.displayName}
-            meta={`#${donor.customerNumber} · ${donations.length || 1} תרומות עד היום`} />
-        </ListCard>
-      )}
-      {d.paymentStatus !== 'cancelled' && (
-        <PayConfirm collection="donations" ids={[d.id]} uid={d.uid} name={d.name} phone={d.phone} amount={d.amount} purpose="תרומה לחווה"
-          paid={d.paymentStatus === 'paid'} confirmation={d.paymentConfirmation} emailJob={'donation_' + d.id} />
-      )}
-      {paid && <div><Button variant="quiet" onClick={() => run(() => setDonation(ctx.actor, d, { paymentStatus: 'claimed' }), 'הוחזר לממתין')}>להחזיר לממתין</Button></div>}
       {contactPhoneOk(d.phone) && (
         <div className="manage-btnrow">
           <Button size="tall" variant="outline" icon="message" iconSize={18} onClick={() => ext(waUrl(d.phone, thanks))}>תודה בוואטסאפ</Button>
           <Button size="tall" variant="outline" icon="phone" iconSize={18} onClick={() => ext(telUrl(d.phone))}>התקשרות</Button>
         </div>
       )}
-      {more.length > 0 && (
-        <ListCard title={`עוד מ${firstName(d.name)}`}>
-          {more.map((m) => <Row key={m.key} minHeight={50} {...lnk(m.path)} title={m.title} meta={m.meta} />)}
+      {(donor || more.length > 0) && (
+        <ListCard title={`עוד מ${firstName(d.name)}`} end={donor ? <TextLink {...lnk(`/manage/people/${donor.uid}`)}>{gw(d.name, 'לתיק שלו', 'לתיק שלה')}</TextLink> : undefined}>
+          {more.length ? more.map((m) => <Row key={m.key} minHeight={50} {...lnk(m.path)} title={m.title} meta={m.meta} />)
+            : <Row minHeight={50} title={<span className="k-soft" style={{ fontWeight: 400 }}>רק התרומה הזאת</span>} />}
         </ListCard>
       )}
-      <ListCard title="היסטוריה">
-        {log.map((a) => <Row key={a.id} minHeight={50} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={dayTime(a.at)} />)}
-        <Row minHeight={50} title={<span style={{ fontWeight: 500 }}>התרומה נרשמה מהאפליקציה · התראה למנהלים</span>} meta={dayTime(d.createdAt)} />
-      </ListCard>
-      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את התרומה?"
-        text={`התרומה של ${d.name} על ${money(d.amount)} תימחק מהרשימה ומהדוחות.`} confirmLabel="מחיקה"
-        onConfirm={() => remove(() => deleteDonation(ctx.actor, d, open), { text: 'התרומה נמחקה', after: () => go('/manage/donations', true) })} />
+      <HistorySheet open={history} onClose={() => setHistory(false)} title="היסטוריית שינויים" lines={[
+        ...log.map((a) => ({ key: a.id, title: `${ACTION_LABELS[a.action] || a.action} · ${firstName(a.by.name)}`, meta: dayTime(a.at) })),
+        { key: 'created', title: 'התרומה נרשמה מהאפליקציה · התראה למנהלים', meta: dayTime(d.createdAt) },
+      ]} />
+      {pay.sheet}
     </AppScreen>
   );
 }
