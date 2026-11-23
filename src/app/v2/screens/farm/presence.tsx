@@ -1,11 +1,11 @@
 // F4-Presence / Q17-PresenceFor: when I am at the farm. Pick days ("תאריך אחר" beside the label), hours (all day / morning /
-// afternoon / other), a note; my existing entries. Managers also register presence for someone else: one "של מי" row with
+// afternoon / other), a note (in "עוד פרטים" on Q17); my existing entries. Managers also register presence for someone else: one "של מי" row with
 // "החלפה" that opens a picker (?uid= preselects); staff never see it. Changing an entry is "שינוי" on its row; removing it is
 // ⋯ beside "ביטול" while it is being changed (rule 6).
 import { useMemo, useState } from 'react';
 import { AppScreen, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { Avatar, BottomBar, Button, ChoiceChip, Field, FormHeader, ListCard, MoreMenu, PickerSheet, Row, SearchField, SelectRow } from '../../kit';
+import { Avatar, BottomBar, Button, ChoiceChip, Field, FormHeader, ListCard, MoreDetails, MoreMenu, PickerSheet, Row, SearchField, SelectRow } from '../../kit';
 import { DAY_LETTERS } from '../../format';
 import type { ScreenProps } from '../../ctx';
 import { removePresence, savePresence, useCalendarRange } from '../../data/farm';
@@ -94,6 +94,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
   const shown = q.trim() ? people.filter((p) => p.displayName.includes(q.trim())) : people;
   const fromBad = !!h.from && !normTime(h.from), toBad = !!h.to && !normTime(h.to);
   const orderBad = !fromBad && !toBad && !hoursValid(h);
+  const noteField = <Field label="הערה לצוות" placeholder="למשל: מביא את הטנדר" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />;
   return (
     <AppScreen variant="form" gap={16} bar={bar}>
       <FormHeader title={forOthers ? 'נוכחות בחווה' : 'מתי אני בחווה'} end={<FormEnd onCancel={() => back('/farm')} more={more} />} />
@@ -123,7 +124,12 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
             onChange={(e) => { setHours({ ...hours, to: e.target.value }); setMode('other'); }} onBlur={() => setHours((x) => ({ ...x, to: normTime(x.to) || x.to }))} />
         </div>
       )}
-      <Field label="הערה לצוות" placeholder="למשל: מביא את הטנדר" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
+      {forOthers ? (
+        // Q17 has no note field: it waits in "עוד פרטים" (rule 8); F4 (my own presence) shows it as designed
+        <MoreDetails key={`${whoUid}:${editing}`} defaultOpen={!!note.trim()}>
+          <li className="farm-moreli">{noteField}</li>
+        </MoreDetails>
+      ) : noteField}
       {mine.length > 0 && !me && (
         // Q17: someone else's entries, a day per row with "שינוי"
         <ListCard title={female ? 'כבר רשום אצלה' : 'כבר רשום אצלו'}>
@@ -148,7 +154,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
           </ul>
         </section>
       )}
-      {forOthers && !me && <p className="farm-note">רק מנהלים יכולים לרשום נוכחות בשביל מישהו אחר.</p>}
+      {forOthers && <p className="farm-note">רק מנהלים יכולים לרשום נוכחות בשביל מישהו אחר.</p>}
     </AppScreen>
   );
 }
