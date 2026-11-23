@@ -55,3 +55,16 @@ Plan and inventory: `docs/tidy-plan.md`.
   four), event summary "יצאו וחזרו" (Q15).
 - Vendor pool export and table view: the V1 top bar already holds "חדש" (rule 5 allows one control).
 - From the first-visit demo session: a role-level demo switch in Settings.
+
+## Stage 5: adding someone ahead by phone (Q27)
+- `InviteScreen` lives in `manage/Invite.tsx` (People.tsx re-exports it). By phone creates `team_links/{code}`
+  (`v2/data/invite.ts`), built like the vendor access link: `?k=` on `/app/login`, remembered across the Google redirect, used
+  once, good for 14 days (rules allow at most 15), "ביטול" deletes it. The role is granted only by the claim at Google sign-in
+  (a new account inside `createProfile` after C9; a guest account through `TeamClaim` in `App.tsx`), never by the typed phone.
+- Decision (plan row 110, small additions row 9): no "אורח" segment. Anyone who signs in is a guest; the old "אורח" choice only
+  deleted an address set up ahead, which is "ביטול" on its pending row.
+- Decision: the pending list is oldest first, as Q27 lists it. Expiry is not in the row meta (no room in Q27); an expired link
+  shows "הקישור פג תוקף" in place of "הקישור נשלח …". Roles the person may not give are hidden (a manager sees only מתנדב and
+  the line "רק בעלים יכולים למנות מנהלים ובעלים.").
+- Needs a design / follow-up: G5 "מנהלים ובעלים" lists pending e-mail invites only; a pending manager link by phone is not
+  shown there.
