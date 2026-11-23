@@ -31,7 +31,6 @@
     <td align="center"><img src="docs/readme/e4-pay.jpg" width="190" alt="תשלום בשער"><br><sub>ערב אירוע: תשלום בשער</sub></td>
     <td align="center"><img src="docs/readme/m1-root.jpg" width="190" alt="מסך הניהול"><br><sub>מנהלים: מה מחכה לטיפול</sub></td>
     <td align="center"><img src="docs/readme/d3-home.jpg" width="190" alt="אפליקציית בעלי הדוכנים"><br><sub>בעלי דוכנים: האירוע הבא</sub></td>
-    <td></td>
   </tr>
 </table>
 
@@ -83,11 +82,11 @@ flowchart LR
   guest["אורחים"] --> web
   team["צוות ומנהלים"] --> web
   vendor["בעלי דוכנים"] --> web
-  web["האתר והאפליקציה<br/>Firebase Hosting · PWA"] --> fs[("Cloud Firestore<br/>+ חוקי הרשאות")]
+  web["האתר והאפליקציה<br/>Firebase Hosting · PWA"] --> fs["Cloud Firestore<br/>+ חוקי הרשאות"]
   web --> auth["Google Sign-In"]
   assistant["עוזר אישי"] --> worker["Cloudflare Worker<br/>API · קונסולה · גיבוי"]
   worker --> fs
-  worker --> r2[("R2<br/>תמונות וגיבויים")]
+  worker --> r2["R2<br/>תמונות וגיבויים"]
 ```
 
 - **רק מסלולים חינמיים.** Firebase במסלול Spark (בלי Cloud Functions ובלי חיוב), ו־Cloudflare Workers במסלול החינמי.
