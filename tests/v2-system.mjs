@@ -252,6 +252,53 @@ if (BASE) {
     assert.deepEqual(s.errors, [], 'C9: no page errors');
     await s.ctx.close();
   }
+  { // decision 10 (U15, U16): a guest opens a visit request and a donation from the account, marks the donation paid, cancels the request
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+    await ctx.addInitScript(() => { if (sessionStorage.getItem('__vc')) return; sessionStorage.setItem('__vc', '1'); localStorage.clear(); localStorage.setItem('farm-demo', JSON.stringify({ on: true, persona: 'guest', scenario: 'eventDay' })); });
+    const page = await ctx.newPage(); page.setDefaultTimeout(4000);
+    const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (x) => { if (x.type() === 'error') errors.push(x.text()); });
+    const text = () => page.locator('body').innerText();
+    const fromAccount = async (title) => { // the row on U7, or under "הכל · N" when it is not in the first four
+      await page.goto(`${BASE}/app/me/account`, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+      const row = page.locator('.k-row').filter({ hasText: title });
+      if (!(await row.count())) { await page.getByRole('button', { name: /^הכל/ }).click(); await page.waitForTimeout(300); }
+      await page.locator('.k-row').filter({ hasText: title }).first().click(); await page.waitForTimeout(400);
+    };
+    await fromAccount('ביקור ·');
+    assert.match(new URL(page.url()).pathname, /\/app\/me\/visits\/demo-vi-michal$/, 'U15: the visit row opens the request');
+    let t = await text();
+    for (const w of ['בקשת ביקור', 'מחכה לתשובה', '8 אנשים', 'כתבת', 'הבקשה נשלחה', 'החווה חוזרת אליך', 'הביקור נקבע', 'וואטסאפ לחווה', 'ביטול הבקשה']) assert.ok(t.includes(w), `U15 shows "${w}"`);
+    await page.getByRole('button', { name: 'עוד פעולות' }).click(); await page.waitForTimeout(300);
+    assert.deepEqual(await page.locator('.k-actionsheet .k-action__label').allInnerTexts(), ['ביטול הבקשה'], 'U15: cancel and nothing else in ⋯');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await fromAccount('תרומה · 180');
+    assert.match(new URL(page.url()).pathname, /\/app\/me\/donations\/demo-d-michal$/, 'U16: the donation row opens the donation');
+    t = await text();
+    for (const w of ['ממתין לתשלום', 'לזכר יוסף ברק', 'ביקשת · תישלח אחרי האישור', 'נשאר לשלם', 'תרומה, מיכל ברק']) assert.ok(t.includes(w), `U16 shows "${w}"`);
+    await page.getByRole('button', { name: 'העברתי את התשלום' }).click();
+    await page.getByText('המנהלים יאשרו את ההעברה').first().waitFor();
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+    t = await text();
+    assert.ok(t.includes('סימנת שהעברת · מחכה לאישור') && !t.includes('העברתי את התשלום'), 'U16: marked paid, kept after reload, the button is gone');
+    await fromAccount('ביקור ·');
+    await page.locator('.guest-actions').getByRole('button', { name: 'ביטול הבקשה' }).click(); await page.waitForTimeout(300);
+    await page.locator('.k-sheet').getByRole('button', { name: 'ביטול הבקשה' }).click();
+    await page.getByText('הבקשה בוטלה').first().waitFor();
+    t = await text();
+    assert.ok(t.includes('בוטל') && (await page.getByRole('button', { name: 'עוד פעולות' }).count()) === 0 && (await page.locator('.guest-steps').count()) === 0, 'U15: the cancelled request has no status line and no cancel');
+    assert.deepEqual(errors, [], 'U15/U16: no page errors');
+    await ctx.close();
+  }
+  { // decision 11: one row at the bottom of a team member's tickets leads to their own "מה יש לי בחווה"
+    const s = await open('staff', '/me/tickets');
+    const last = s.page.locator('.k-list').last();
+    assert.ok((await last.innerText()).includes('מה יש לי בחווה'), 'decision 11: the row sits at the bottom of the tickets page');
+    await last.locator('.k-row').filter({ hasText: 'מה יש לי בחווה' }).click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/me\/items$/, 'decision 11: the row opens /me/items');
+    assert.ok((await s.text()).includes('הכרטיסים שלי'), 'decision 11: the list goes back to the tickets');
+    assert.deepEqual(s.errors, [], 'decision 11: no page errors');
+    await s.ctx.close();
+  }
   await browser.close();
   console.log('v2-system: Q18 placement checked in the app');
 }

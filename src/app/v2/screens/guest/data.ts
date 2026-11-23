@@ -114,7 +114,7 @@ export function tabTag(t: Tab): Status {
   return { text: 'שולם', tone: 'paid' };
 }
 export function visitTag(v: Visit): Status {
-  if (v.status === 'new') return { text: 'התקבל', tone: 'waiting' };
+  if (v.status === 'new') return { text: 'מחכה לתשובה', tone: 'waiting' };
   if (v.status === 'approved') return { text: 'אושר', tone: 'paid' };
   if (v.status === 'rejected') return { text: 'לא מתאים', tone: 'neutral' };
   return { text: 'בוטל', tone: 'neutral' };
