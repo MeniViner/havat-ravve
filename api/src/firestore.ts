@@ -21,6 +21,8 @@ export type Env = {
   /** Shares the Google access token between isolates (production only; the emulator path never uses it). */
   TOKEN_KV?: KV;
   AUTH_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  /** The public visit counter (traffic.ts): a few beacons a minute per location, so a flood cannot spend the write quota. */
+  HIT_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   /** Must equal FIRESTORE_PROJECT_ID to serve a production project. Meni approved havat-ravve on 2026-11-12. */
   PRODUCTION_APPROVED?: string;
   /** Automatic payment-confirmation email (email.ts). Off unless "true" and both Brevo secrets are set. */

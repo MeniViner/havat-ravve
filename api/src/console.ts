@@ -27,6 +27,7 @@
 //   POST /v1/console/data/delete              { path, updateTime } (kept in the recycle bin)
 //   GET  /v1/console/data/export?collection=  the collection as a CSV file for Excel
 //   GET  /v1/console/stats?days=30            the farm, the money and each event as a funnel (stats.ts)
+//   GET  /v1/console/traffic?days=30          site visits and app usage, from our own daily counters (traffic.ts)
 //   GET  /v1/console/switches                 the owners' switches (control.ts) and what the server is set up for
 //   POST /v1/console/switches                 { emailPaused?, pushPaused?, keysStopped?, readOnly?, maintenance?, maintenanceText?, registrationClosed?, ... }
 //   GET  /v1/console/queue                    payment emails and phone pushes that wait or failed
@@ -46,6 +47,7 @@ import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
 import { alertSettings, healthCheck, type JobRun, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
 import { stats } from './stats';
+import { trafficStats } from './traffic';
 import { archiveSummary, cancelPush, cleanupPreview, emailAction, emailPreview, readSwitches, runCleanup, saveSwitches, sendQueue } from './control';
 import { runEmail } from './email';
 import { runPush } from './push';
@@ -142,6 +144,7 @@ const OPS: Record<string, ConsoleOp> = {
   'data.delete': { name: 'console.data.delete', he: 'מחיקת רשומה', kind: 'write' },
   'data.export': { name: 'console.data.export', he: 'ייצוא לאקסל', kind: 'read' },
   stats: { name: 'console.stats', he: 'סטטיסטיקות', kind: 'read' },
+  traffic: { name: 'console.traffic', he: 'ביקורים ושימוש', kind: 'read' },
   'switches.read': { name: 'console.switches.read', he: 'מתגים', kind: 'read' },
   'switches.set': { name: 'console.switches.set', he: 'שינוי מתג', kind: 'write' },
   'queue.read': { name: 'console.queue.read', he: 'תור השליחה', kind: 'read' },
@@ -216,6 +219,7 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
   if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
   if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
   if (m === 'GET' && path === '/stats') return { op: OPS.stats, data: await stats(fs, Number(q.get('days') || 30)) };
+  if (m === 'GET' && path === '/traffic') return { op: OPS.traffic, data: await trafficStats(fs, Number(q.get('days') || 30)) };
   // the data browser (data.ts)
   if (m === 'GET' && path === '/data') return { op: OPS['data.browse'], data: await collections(env, fs) };
   if (m === 'GET' && path === '/data/docs') return { op: OPS['data.browse'], data: await docsPage(fs, q.get('collection') || '', q.get('after'), q.get('parent')) };

@@ -59,5 +59,12 @@ name = "AUTH_LIMITER"
 namespace_id = "1002"
 simple = { limit = 30, period = 60 }
 
+# The public visit counter (/v1/hit, src/traffic.ts): one key for everyone, so a flood of beacons cannot spend the
+# farm's free Firestore writes. With the daily cap in traffic.ts this bounds the counter to a small share of the quota.
+[[ratelimits]]
+name = "HIT_LIMITER"
+namespace_id = "1003"
+simple = { limit = 30, period = 60 }
+
 [observability]
 enabled = true
