@@ -1,0 +1,57 @@
+{
+ "role": "manager",
+ "results": [
+  {
+   "nn": "120",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "120-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/items",
+   "title": "מה יש לי בחווה"
+  },
+  {
+   "nn": "121",
+   "route": "/tasks/demo-tpl-pots_2026-11-19",
+   "scenario": "regular",
+   "shots": [
+    "121-tasks-tpl-pots_2026-11-19.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-tpl-pots_2026-11-19",
+   "title": "להשקות את שורת העציצים"
+  },
+  {
+   "nn": "122",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "122-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/terms",
+   "title": "תנאי שימוש ופרטיות"
+  }
+ ],
+ "unvisitedLinks": [
+  "/tasks",
+  "/tasks/:id_2026-11-19/edit"
+ ]
+}

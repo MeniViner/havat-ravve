@@ -1,0 +1,2354 @@
+{
+ "role": "manager",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "01-tasks.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "root-length",
+     "what": "content 1400px vs design 703px (T1-Root)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks",
+   "title": "משימות",
+   "rootLen": {
+    "design": "T1-Root",
+    "app": 1400,
+    "appClient": 703,
+    "designScroll": 703,
+    "designClient": 703
+   }
+  },
+  {
+   "nn": "02",
+   "route": "/tasks?view=time",
+   "scenario": "regular",
+   "shots": [
+    "02-tasks-view-time.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks?view=time",
+   "title": "משימות"
+  },
+  {
+   "nn": "03",
+   "route": "/tasks?view=mine",
+   "scenario": "regular",
+   "shots": [
+    "03-tasks-view-mine.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks?view=mine",
+   "title": "משימות"
+  },
+  {
+   "nn": "04",
+   "route": "/tasks?view=free",
+   "scenario": "regular",
+   "shots": [
+    "04-tasks-view-free.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks?view=free",
+   "title": "משימות"
+  },
+  {
+   "nn": "05",
+   "route": "/tasks/history",
+   "scenario": "regular",
+   "shots": [
+    "05-tasks-history.jpg",
+    "05-tasks-history-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/history",
+   "title": "היסטוריה",
+   "moreItems": [
+    "סיכום היום",
+    "סיכום היום"
+   ]
+  },
+  {
+   "nn": "06",
+   "route": "/tasks/demo-t-toolbox",
+   "scenario": "regular",
+   "shots": [
+    "06-tasks-t-toolbox.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-toolbox",
+   "title": "לסדר את ארגז הכלים במכולה"
+  },
+  {
+   "nn": "07",
+   "route": "/tasks/demo-t-tables",
+   "scenario": "regular",
+   "shots": [
+    "07-tasks-t-tables.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-tables",
+   "title": "להכין את שולחנות הדוכן"
+  },
+  {
+   "nn": "08",
+   "route": "/tasks/demo-t-tap",
+   "scenario": "regular",
+   "shots": [
+    "08-tasks-t-tap.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-tap",
+   "title": "לתקן את הברז ליד החממה"
+  },
+  {
+   "nn": "09",
+   "route": "/tasks/demo-t-tap/assign",
+   "scenario": "regular",
+   "shots": [
+    "09-tasks-t-tap-assign.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-tap/assign",
+   "title": "על מי המשימה"
+  },
+  {
+   "nn": "10",
+   "route": "/tasks/demo-t-toolbox/done",
+   "scenario": "regular",
+   "shots": [
+    "10-tasks-t-toolbox-done.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.tasks-shot \"התמונה שצולמה\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-toolbox/done",
+   "title": "בוצע, עם צילום"
+  },
+  {
+   "nn": "11",
+   "route": "/tasks/demo-t-toolbox/edit",
+   "scenario": "regular",
+   "shots": [
+    "11-tasks-t-toolbox-edit.jpg",
+    "11-tasks-t-toolbox-edit-more.jpg",
+    "11-tasks-t-toolbox-edit-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-row__hit \"קשור לאירוע אין\" 3 lines for 3 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-t-toolbox/edit",
+   "title": "עריכה",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את המשימה?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   },
+   "rowSheet": [
+    "לא קשור לאירוע",
+    "פסטיבל הסתיו שבת 28.11",
+    "סיור שבת בחווה שבת 5.12",
+    "ערב חנוכה ראשון 13.12"
+   ]
+  },
+  {
+   "nn": "12",
+   "route": "/new",
+   "scenario": "regular",
+   "shots": [
+    "12-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/new",
+   "title": "הוספה"
+  },
+  {
+   "nn": "13",
+   "route": "/new?kind=shopping",
+   "scenario": "regular",
+   "shots": [
+    "13-new-kind-shopping.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-addchip \"מזון לעיזים\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-addchip \"שמן זית\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/new?kind=shopping",
+   "title": "הוספה"
+  },
+  {
+   "nn": "14",
+   "route": "/day",
+   "scenario": "regular",
+   "shots": [
+    "14-day.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/day",
+   "title": "סגירה חמישי, 19 בנובמבר 4 משימות סגרת היום תודה, נועה. כל הצוות יחד: 1"
+  },
+  {
+   "nn": "15",
+   "route": "/projects",
+   "scenario": "regular",
+   "shots": [
+    "15-projects.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/projects",
+   "title": "פרויקטים"
+  },
+  {
+   "nn": "16",
+   "route": "/projects/new",
+   "scenario": "regular",
+   "shots": [
+    "16-projects-new.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"1 צעד 1\" [INPUT | לשייך מנהל לצעד 1]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/projects/new",
+   "title": "פרויקט חדש"
+  },
+  {
+   "nn": "17",
+   "route": "/projects/demo-p-festival",
+   "scenario": "regular",
+   "shots": [
+    "17-projects-p-festival.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"6 לארגן חניה ושילוט עד חמישי 26.11 לקחת\" [לארגן חניה ושילוט עד | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"7 תדריך למתנדבים עד שישי 27.11 לקחת\" [תדריך למתנדבים עד שי | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/projects/demo-p-festival",
+   "title": "הכנות לפסטיבל הסתיו"
+  },
+  {
+   "nn": "18",
+   "route": "/projects/demo-p-festival/edit",
+   "scenario": "regular",
+   "shots": [
+    "18-projects-p-festival-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"1 צעד 1 בג\" [INPUT | בני גוטמן, לשנות מי ]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"2 צעד 2 נש\" [INPUT | נועה שחר, לשנות מי ל]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"3 צעד 3 אכ\" [INPUT | אליה כהן, לשנות מי ל]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"4 צעד 4 בג\" [INPUT | בני גוטמן, לשנות מי ]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"5 צעד 5 נש\" [INPUT | נועה שחר, לשנות מי ל]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"6 צעד 6\" [INPUT | לשייך מנהל לצעד 6]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"7 צעד 7\" [INPUT | לשייך מנהל לצעד 7]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/projects/demo-p-festival/edit",
+   "title": "עריכת פרויקט"
+  },
+  {
+   "nn": "19",
+   "route": "/projects/demo-p-festival/steps/demo-ps-police",
+   "scenario": "regular",
+   "shots": [
+    "19-projects-p-festival-steps-ps-police.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/projects/demo-p-festival/steps/demo-ps-police",
+   "title": "לסגור אישור משטרה"
+  },
+  {
+   "nn": "20",
+   "route": "/manage/recurring",
+   "scenario": "regular",
+   "shots": [
+    "20-manage-recurring.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"פתיחת שער הכניסה כל יום · 06:30 · בני\" [פתיחת שער הכניסה כל  | פעילה: פתיחת שער הכנ]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"האכלת העיזים כל יום · 07:00 · נועה\" [האכלת העיזים כל יום  | פעילה: האכלת העיזים]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"השקיית שורת העציצים א׳ ג׳ ה׳ · 07:00 · מי שפנוי\" [השקיית שורת העציצים  | פעילה: השקיית שורת ה]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"איסוף ביצים כל יום · 07:00 · מי שפנוי\" [איסוף ביצים כל יום · | פעילה: איסוף ביצים]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"ניקוי פינת החי ו׳ · 09:00 · מי שפנוי\" [ניקוי פינת החי ו׳ ·  | פעילה: ניקוי פינת הח]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"בדיקת מערכת ההשקיה ב׳ · מנהלים בלבד\" [בדיקת מערכת ההשקיה ב | פעילה: בדיקת מערכת ה]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/recurring",
+   "title": "משימות חוזרות"
+  },
+  {
+   "nn": "21",
+   "route": "/manage/recurring/new",
+   "scenario": "regular",
+   "shots": [
+    "21-manage-recurring-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/recurring/new",
+   "title": "הוספה"
+  },
+  {
+   "nn": "22",
+   "route": "/manage/recurring/demo-tpl-pots",
+   "scenario": "regular",
+   "shots": [
+    "22-manage-recurring-tpl-pots.jpg",
+    "22-manage-recurring-tpl-pots-more.jpg",
+    "22-manage-recurring-tpl-pots-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/recurring/demo-tpl-pots",
+   "title": "עריכה",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את המשימה החוזרת?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   },
+   "rowSheet": [
+    "שמירה"
+   ]
+  },
+  {
+   "nn": "23",
+   "route": "/shopping",
+   "scenario": "regular",
+   "shots": [
+    "23-shopping.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping",
+   "title": "קניות",
+   "rootLen": {
+    "design": "Q22-ShopSuggest",
+    "app": 703,
+    "appClient": 703,
+    "designScroll": 703,
+    "designClient": 703
+   }
+  },
+  {
+   "nn": "24",
+   "route": "/shopping?list=wish",
+   "scenario": "regular",
+   "shots": [
+    "24-shopping-list-wish.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping?list=wish",
+   "title": "קניות"
+  },
+  {
+   "nn": "25",
+   "route": "/shopping?list=online",
+   "scenario": "regular",
+   "shots": [
+    "25-shopping-list-online.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping?list=online",
+   "title": "קניות"
+  },
+  {
+   "nn": "26",
+   "route": "/shopping?list=building",
+   "scenario": "regular",
+   "shots": [
+    "26-shopping-list-building.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping?list=building",
+   "title": "קניות"
+  },
+  {
+   "nn": "27",
+   "route": "/shopping/demo-s-milk",
+   "scenario": "regular",
+   "shots": [
+    "27-shopping-s-milk.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping/demo-s-milk",
+   "title": "חלב 3% דחוף"
+  },
+  {
+   "nn": "28",
+   "route": "/shopping/demo-s-milk/edit",
+   "scenario": "regular",
+   "shots": [
+    "28-shopping-s-milk-edit.jpg",
+    "28-shopping-s-milk-edit-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping/demo-s-milk/edit",
+   "title": "עריכה",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק מהרשימה?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "29",
+   "route": "/shopping/trip",
+   "scenario": "eventDay",
+   "shots": [
+    "29-shopping-trip.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping",
+   "title": "קניות"
+  },
+  {
+   "nn": "30",
+   "route": "/shopping/trip/done",
+   "scenario": "afterEvent",
+   "shots": [
+    "30-shopping-trip-done.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping",
+   "title": "קניות"
+  },
+  {
+   "nn": "31",
+   "route": "/shopping/history",
+   "scenario": "regular",
+   "shots": [
+    "31-shopping-history.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/shopping/history",
+   "title": "מה נקנה"
+  },
+  {
+   "nn": "32",
+   "route": "/farm",
+   "scenario": "regular",
+   "shots": [
+    "32-farm.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "root-length",
+     "what": "content 760px vs design 703px (F1-Root)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm",
+   "title": "החווה",
+   "rootLen": {
+    "design": "F1-Root",
+    "app": 760,
+    "appClient": 703,
+    "designScroll": 703,
+    "designClient": 703
+   }
+  },
+  {
+   "nn": "33",
+   "route": "/farm/calendar",
+   "scenario": "regular",
+   "shots": [
+    "33-farm-calendar.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"בג בני\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"נש נועה\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"יפ יואב\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"דא דנה\" 2 lines for 2 words"
+    },
+    {
+     "rule": "backlink-loose",
+     "what": "beside back link: \"נוכחות\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/calendar",
+   "title": "נובמבר 2026"
+  },
+  {
+   "nn": "34",
+   "route": "/farm/calendar?view=month",
+   "scenario": "regular",
+   "shots": [
+    "34-farm-calendar-view-month.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"בג בני\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"נש נועה\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"יפ יואב\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-chip \"דא דנה\" 2 lines for 2 words"
+    },
+    {
+     "rule": "backlink-loose",
+     "what": "beside back link: \"נוכחות\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/calendar?view=month",
+   "title": "נובמבר 2026"
+  },
+  {
+   "nn": "35",
+   "route": "/farm/calendar?view=day",
+   "scenario": "regular",
+   "shots": [
+    "35-farm-calendar-view-day.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-axis__row \"יואב 08–13\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-axis__row \"דנה 15–19\" 2 lines for 2 words"
+    },
+    {
+     "rule": "backlink-loose",
+     "what": "beside back link: \"נוכחות\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/calendar?view=day",
+   "title": "חמישי, 19 בנובמבר"
+  },
+  {
+   "nn": "36",
+   "route": "/farm/calendar/new",
+   "scenario": "regular",
+   "shots": [
+    "36-farm-calendar-new.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ה׳ 19\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ו׳ 20\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ש׳ 21\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"א׳ 22\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ב׳ 23\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ג׳ 24\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ד׳ 25\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-selectrow__hit \"מי משתתף אין\" 3 lines for 3 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/calendar/new",
+   "title": "פריט ביומן"
+  },
+  {
+   "nn": "37",
+   "route": "/farm/calendar/demo-c-1/edit",
+   "scenario": "regular",
+   "shots": [
+    "37-farm-calendar-c-1-edit.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/calendar/demo-c-1/edit",
+   "title": "פריט ביומן"
+  },
+  {
+   "nn": "38",
+   "route": "/farm/presence",
+   "scenario": "regular",
+   "shots": [
+    "38-farm-presence.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ה׳ 19\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ו׳ 20\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ש׳ 21\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"א׳ 22\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ב׳ 23\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ג׳ 24\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.farm-day \"ד׳ 25\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/presence",
+   "title": "נוכחות בחווה"
+  },
+  {
+   "nn": "39",
+   "route": "/farm/today",
+   "scenario": "regular",
+   "shots": [
+    "39-farm-today.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/today",
+   "title": "היום בחווה"
+  },
+  {
+   "nn": "40",
+   "route": "/farm/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "40-farm-events-e-festival.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm/events/demo-e-festival",
+   "title": "פסטיבל הסתיו",
+   "rowNav": "/tasks/demo-t-signs"
+  },
+  {
+   "nn": "41",
+   "route": "/people/demo-u-noa",
+   "scenario": "regular",
+   "shots": [
+    "41-people-u-noa.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/people/demo-u-noa",
+   "title": "חזרה נש נועה שחר מנהלת · בחווה עכשיו, עד 14:00 עליה עכשיו · 2 להכין את",
+   "rowNav": "/tasks/demo-t-tables"
+  },
+  {
+   "nn": "42",
+   "route": "/places",
+   "scenario": "regular",
+   "shots": [
+    "42-places.jpg",
+    "42-places-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/places",
+   "title": "מקומות בחווה",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "43",
+   "route": "/places/table",
+   "scenario": "regular",
+   "shots": [
+    "43-places-table.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/places/table",
+   "title": "מקומות בחווה"
+  },
+  {
+   "nn": "44",
+   "route": "/places/demo-p-greenhouse",
+   "scenario": "regular",
+   "shots": [
+    "44-places-p-greenhouse.jpg",
+    "44-places-p-greenhouse-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/places/demo-p-greenhouse",
+   "title": "מקומות שם המקום נקודה על המפה לעדכן למקום שבו אני עומד ניווט לכאן תמונ",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את המקום?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "45",
+   "route": "/notifications",
+   "scenario": "regular",
+   "shots": [
+    "45-notifications.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה לקבל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/notifications",
+   "title": "התראות"
+  },
+  {
+   "nn": "46",
+   "route": "/search",
+   "scenario": "regular",
+   "shots": [
+    "46-search.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/search",
+   "title": "חזרה חיפוש בכל האפליקציה הכל אנשים משימות אירועים קניות משימות קניות ה"
+  },
+  {
+   "nn": "47",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "47-me.jpg",
+    "47-me-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"עריכת פרטים\""
+    },
+    {
+     "rule": "english",
+     "what": "noa.sh@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me",
+   "title": "חזרה עריכת פרטים נש נועה שחר מנהל · מספר 7 · ממרץ 2026 4 בוצעו היום 8 ",
+   "rootLen": {
+    "design": "Q18-Profile",
+    "app": 777,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   },
+   "rowSheet": [
+    "להפעיל"
+   ]
+  },
+  {
+   "nn": "48",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "48-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "noa.sh@gmail.com, Google"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת החשבון\" (k-btn)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/edit",
+   "title": "הפרטים שלי"
+  },
+  {
+   "nn": "49",
+   "route": "/me/photo",
+   "scenario": "regular",
+   "shots": [
+    "49-me-photo.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "Google"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/photo",
+   "title": "תמונת פרופיל"
+  },
+  {
+   "nn": "50",
+   "route": "/me/photo/crop",
+   "scenario": "regular",
+   "shots": [
+    "50-me-photo-crop.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/photo/crop",
+   "title": "למקם את התמונה"
+  },
+  {
+   "nn": "51",
+   "route": "/me/tickets",
+   "scenario": "regular",
+   "shots": [
+    "51-me-tickets.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/tickets",
+   "title": "הכרטיסים שלי",
+   "rowNav": "/me/items"
+  },
+  {
+   "nn": "52",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "52-install.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "iPhone, Android, Safari"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/install",
+   "title": "להוסיף למסך הבית"
+  },
+  {
+   "nn": "53",
+   "route": "/offline",
+   "scenario": "regular",
+   "shots": [
+    "53-offline.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/offline",
+   "title": "חזרה הכול נשלח אין פעולות שמחכות לקליטה משימות קניות החווה 4 ניהול , 4"
+  },
+  {
+   "nn": "54",
+   "route": "/tasks",
+   "scenario": "eventDay",
+   "shots": [
+    "54-tasks.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks",
+   "title": "משימות"
+  },
+  {
+   "nn": "55",
+   "route": "/farm",
+   "scenario": "eventDay",
+   "shots": [
+    "55-farm.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/farm",
+   "title": "החווה"
+  },
+  {
+   "nn": "56",
+   "route": "/event",
+   "scenario": "eventDay",
+   "shots": [
+    "56-event.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event",
+   "title": "אירוע",
+   "rootLen": {
+    "design": "E1-Home",
+    "app": 777,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   }
+  },
+  {
+   "nn": "57",
+   "route": "/event/gate",
+   "scenario": "eventDay",
+   "shots": [
+    "57-event-gate.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/gate",
+   "title": "שער · פסטיבל הסתיו יציאה מהשער QR תקין QR לא שולם QR מבוטל תצוגת מצלמה"
+  },
+  {
+   "nn": "58",
+   "route": "/event/gate/search",
+   "scenario": "eventDay",
+   "shots": [
+    "58-event-gate-search.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/gate/search",
+   "title": "מי בכניסה?"
+  },
+  {
+   "nn": "59",
+   "route": "/event/stall",
+   "scenario": "eventDay",
+   "shots": [
+    "59-event-stall.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/stall",
+   "title": "מי קונה?"
+  },
+  {
+   "nn": "60",
+   "route": "/event/stall/demo-tab-roni-fest",
+   "scenario": "eventDay",
+   "shots": [
+    "60-event-stall-tab-roni-fest.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/stall/demo-tab-roni-fest",
+   "title": "החלפת קונה רל רוני לוי כבר בחשבון: 2 פריטים · 22 ₪ לימונדה 12 ₪ תה צמח"
+  },
+  {
+   "nn": "61",
+   "route": "/event/stall/tabs",
+   "scenario": "eventDay",
+   "shots": [
+    "61-event-stall-tabs.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/stall/tabs",
+   "title": "חשבונות הדוכן"
+  },
+  {
+   "nn": "62",
+   "route": "/manage",
+   "scenario": "regular",
+   "shots": [
+    "62-manage.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "red-badge",
+     "what": "red count 1 at btn:1 ביקורים 4 מאושרים החודש"
+    },
+    {
+     "rule": "red-badge",
+     "what": "red count 1 at btn:1 תרומות 1,220 ₪ החודש"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage",
+   "title": "ניהול",
+   "rootLen": {
+    "design": "Q1-ManageRoot",
+    "app": 777,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   }
+  },
+  {
+   "nn": "63",
+   "route": "/manage/inbox",
+   "scenario": "regular",
+   "shots": [
+    "63-manage-inbox.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה שטופל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/inbox",
+   "title": "לטיפול · 4"
+  },
+  {
+   "nn": "64",
+   "route": "/manage/events",
+   "scenario": "regular",
+   "shots": [
+    "64-manage-events.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events",
+   "title": "אירועים"
+  },
+  {
+   "nn": "65",
+   "route": "/manage/events/new",
+   "scenario": "regular",
+   "shots": [
+    "65-manage-events-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/new",
+   "title": "אירוע חדש"
+  },
+  {
+   "nn": "66",
+   "route": "/manage/events/demo-e-festival?tab=prep",
+   "scenario": "regular",
+   "shots": [
+    "66-manage-events-e-festival-tab-prep.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival?tab=prep",
+   "title": "פסטיבל הסתיו"
+  },
+  {
+   "nn": "67",
+   "route": "/manage/events/demo-e-festival?tab=guests",
+   "scenario": "regular",
+   "shots": [
+    "67-manage-events-e-festival-tab-guests.jpg",
+    "67-manage-events-e-festival-tab-guests-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"דוד כהן סימן שהעביר 4 כרטיסים · 052-000-0130 200 ₪\" [בחירה: דוד כהן | דוד כהן סימן שהעביר ]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"רוני לוי סימן שהעביר 3 כרטיסים · 054-000-0088 150 ₪\" [בחירה: רוני לוי | רוני לוי סימן שהעביר]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival?tab=guests",
+   "title": "פסטיבל הסתיו",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "68",
+   "route": "/manage/events/demo-e-festival/edit",
+   "scenario": "regular",
+   "shots": [
+    "68-manage-events-e-festival-edit.jpg",
+    "68-manage-events-e-festival-edit-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/edit",
+   "title": "עריכת אירוע",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את האירוע?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "69",
+   "route": "/manage/events/demo-e-festival/vendors",
+   "scenario": "regular",
+   "shots": [
+    "69-manage-events-e-festival-vendors.jpg",
+    "69-manage-events-e-festival-vendors-more.jpg",
+    "69-manage-events-e-festival-vendors-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/vendors",
+   "title": "בעלי דוכנים",
+   "moreItems": [
+    "להזמין את מי שהיה ביריד אוקטובר 2 בעלי דוכנים",
+    "להזמין את מי שהיה ביריד אוקטובר",
+    "נוסח ההזמנה הודעה מוכנה: הזמנת בעל דוכן",
+    "נוסח ההזמנה"
+   ],
+   "rowSheet": [
+    "לא מגיע הפעם",
+    "לא מגיע הפעם",
+    "לכרטיס בעל הדוכן",
+    "לכרטיס בעל הדוכן",
+    "הסרה מהאירוע",
+    "הסרה מהאירוע"
+   ]
+  },
+  {
+   "nn": "70",
+   "route": "/manage/events/demo-e-festival/products",
+   "scenario": "regular",
+   "shots": [
+    "70-manage-events-e-festival-products.jpg",
+    "70-manage-events-e-festival-products-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"לימונדה 12 ₪\" [גרירה לשינוי הסדר: ל | לימונדה 12 ₪ | מוצג בדוכן: לימונדה]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"תה צמחים 10 ₪\" [גרירה לשינוי הסדר: ת | תה צמחים 10 ₪ | מוצג בדוכן: תה צמחים]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"גבינת עיזים 35 ₪\" [גרירה לשינוי הסדר: ג | גבינת עיזים 35 ₪ | מוצג בדוכן: גבינת עי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"עוגת תפוחים 18 ₪\" [גרירה לשינוי הסדר: ע | עוגת תפוחים 18 ₪ | מוצג בדוכן: עוגת תפו]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"זיתים 20 ₪\" [גרירה לשינוי הסדר: ז | זיתים 20 ₪ | מוצג בדוכן: זיתים]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"דבש 40 ₪\" [גרירה לשינוי הסדר: ד | דבש 40 ₪ | מוצג בדוכן: דבש]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"שמן זית 500 מ״ל 45 ₪\" [גרירה לשינוי הסדר: ש | שמן זית 500 מ״ל 45 ₪ | מוצג בדוכן: שמן זית ]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "3 controls: \"לחם מחמצת 25 ₪\" [גרירה לשינוי הסדר: ל | לחם מחמצת 25 ₪ | מוצג בדוכן: לחם מחמצ]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/products",
+   "title": "מוצרי הדוכן",
+   "moreItems": [
+    "העתקה מאירוע קודם",
+    "העתקה מאירוע קודם"
+   ]
+  },
+  {
+   "nn": "71",
+   "route": "/manage/events/demo-e-festival/products/new",
+   "scenario": "regular",
+   "shots": [
+    "71-manage-events-e-festival-products-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/products/new",
+   "title": "מוצר בדוכן"
+  },
+  {
+   "nn": "72",
+   "route": "/manage/events/demo-e-festival/products/demo-pr-lemonade",
+   "scenario": "regular",
+   "shots": [
+    "72-manage-events-e-festival-products-pr-lemonade.jpg",
+    "72-manage-events-e-festival-products-pr-lemonade-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/products/demo-pr-lemonade",
+   "title": "מוצר בדוכן",
+   "moreItems": [
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את המוצר?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "73",
+   "route": "/manage/events/demo-e-festival/files",
+   "scenario": "regular",
+   "shots": [
+    "73-manage-events-e-festival-files.jpg",
+    "73-manage-events-e-festival-files-more.jpg",
+    "73-manage-events-e-festival-files-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/files",
+   "title": "קבצים",
+   "moreItems": [
+    "הוספת קישור",
+    "הוספת קישור"
+   ],
+   "rowSheet": [
+    "פתיחה",
+    "פתיחה",
+    "מחיקה",
+    "מחיקה"
+   ]
+  },
+  {
+   "nn": "74",
+   "route": "/manage/events/demo-e-festival/staffing",
+   "scenario": "regular",
+   "shots": [
+    "74-manage-events-e-festival-staffing.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"בג בני גוטמן 15:30–21:00\" 4 lines for 4 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"נש נועה שחר 15:30–21:00\" 4 lines for 4 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"יפ יואב פרץ 15:30–21:00\" 4 lines for 4 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"דא דנה אברהם 15:30–21:00\" 4 lines for 4 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "h2.k-cardhead__title \"חניה חסר\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"רא רועי אלון 15:00–18:00\" 4 lines for 4 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.events-personrow__hit \"שג שירה גולן 15:00–18:00\" 4 lines for 4 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/staffing",
+   "title": "מי עובד באירוע"
+  },
+  {
+   "nn": "75",
+   "route": "/manage/events/demo-e-october?tab=summary",
+   "scenario": "regular",
+   "shots": [
+    "75-manage-events-e-october-tab-summary.jpg",
+    "75-manage-events-e-october-tab-summary-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october?tab=summary",
+   "title": "יריד אוקטובר",
+   "moreItems": [
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "הדפסה",
+    "הדפסה",
+    "היסטוריית שינויים",
+    "היסטוריית שינויים"
+   ]
+  },
+  {
+   "nn": "76",
+   "route": "/manage/events/demo-e-october?tab=summary&part=sold",
+   "scenario": "regular",
+   "shots": [
+    "76-manage-events-e-october-tab-summary-part-sold.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=sold",
+   "title": "מה נמכר בדוכן"
+  },
+  {
+   "nn": "77",
+   "route": "/manage/events/demo-e-october?tab=summary&part=money",
+   "scenario": "regular",
+   "shots": [
+    "77-manage-events-e-october-tab-summary-part-money.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=money",
+   "title": "כסף"
+  },
+  {
+   "nn": "78",
+   "route": "/manage/events/demo-e-october?tab=summary&part=compare",
+   "scenario": "regular",
+   "shots": [
+    "78-manage-events-e-october-tab-summary-part-compare.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=compare",
+   "title": "לעומת אירועים קודמים"
+  },
+  {
+   "nn": "79",
+   "route": "/manage/events/demo-e-october/tabs",
+   "scenario": "regular",
+   "shots": [
+    "79-manage-events-e-october-tabs.jpg",
+    "79-manage-events-e-october-tabs-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october/tabs",
+   "title": "חשבונות הדוכן",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "80",
+   "route": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+   "scenario": "regular",
+   "shots": [
+    "80-manage-events-e-october-tabs-tab-roni-oct.jpg",
+    "80-manage-events-e-october-tabs-tab-roni-oct-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+   "title": "רוני לוי",
+   "moreItems": [
+    "התיק של רוני",
+    "התיק של רוני",
+    "היסטוריית שינויים",
+    "היסטוריית שינויים",
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את החשבון?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "81",
+   "route": "/manage/vendors",
+   "scenario": "regular",
+   "shots": [
+    "81-manage-vendors.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/vendors",
+   "title": "בעלי דוכנים · 9",
+   "rowNav": "/manage/vendors/demo-v-raz"
+  },
+  {
+   "nn": "82",
+   "route": "/manage/vendors/demo-v-raz",
+   "scenario": "regular",
+   "shots": [
+    "82-manage-vendors-v-raz.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/vendors/demo-v-raz",
+   "title": "גבינות משק רז",
+   "rowNav": "/manage/events/demo-e-festival/vendors"
+  },
+  {
+   "nn": "83",
+   "route": "/manage/vendors/demo-v-raz/access",
+   "scenario": "regular",
+   "shots": [
+    "83-manage-vendors-v-raz-access.jpg",
+    "83-manage-vendors-v-raz-access-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/vendors/demo-v-raz/access",
+   "title": "גישה לאפליקציה",
+   "moreItems": [
+    "הסרת הגישה",
+    "הסרת הגישה"
+   ],
+   "rowNav": "/manage/people/demo-u-raz"
+  },
+  {
+   "nn": "84",
+   "route": "/manage/people",
+   "scenario": "regular",
+   "shots": [
+    "84-manage-people.jpg",
+    "84-manage-people-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people",
+   "title": "אנשים והודעות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "תפקיד לפי כתובת מייל להוסיף מישהו מראש",
+    "תפקיד לפי כתובת מייל"
+   ]
+  },
+  {
+   "nn": "85",
+   "route": "/manage/people?filter=team",
+   "scenario": "regular",
+   "shots": [
+    "85-manage-people-filter-team.jpg",
+    "85-manage-people-filter-team-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people?filter=team",
+   "title": "אנשים והודעות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "תפקיד לפי כתובת מייל להוסיף מישהו מראש",
+    "תפקיד לפי כתובת מייל"
+   ]
+  },
+  {
+   "nn": "86",
+   "route": "/manage/people?tab=messages",
+   "scenario": "regular",
+   "shots": [
+    "86-manage-people-tab-messages.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people?tab=messages",
+   "title": "אנשים והודעות"
+  },
+  {
+   "nn": "87",
+   "route": "/manage/people/invite",
+   "scenario": "regular",
+   "shots": [
+    "87-manage-people-invite.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "Google, omer.levi2@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people/invite",
+   "title": "להוסיף מישהו מראש"
+  },
+  {
+   "nn": "88",
+   "route": "/manage/people/messages/demo-b-1",
+   "scenario": "regular",
+   "shots": [
+    "88-manage-people-messages-b-1.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people/messages/demo-b-1",
+   "title": "הודעות בני · היום 14:10 · כל הצוות מחר מתחילים ב־15:30 ולא ב־16:00. לה"
+  },
+  {
+   "nn": "89",
+   "route": "/manage/people/demo-u-michal",
+   "scenario": "regular",
+   "shots": [
+    "89-manage-people-u-michal.jpg",
+    "89-manage-people-u-michal-more.jpg",
+    "89-manage-people-u-michal-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "michal.b@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people/demo-u-michal",
+   "title": "אנשים מב מיכל ברק לקוחה 155 · נרשמה באוקטובר 2026 וואטסאפ התקשרות טלפו",
+   "moreItems": [
+    "חסימה לא תוכל להזמין כרטיסים",
+    "חסימה"
+   ],
+   "rowSheet": []
+  },
+  {
+   "nn": "90",
+   "route": "/manage/people/demo-u-yoav",
+   "scenario": "regular",
+   "shots": [
+    "90-manage-people-u-yoav.jpg",
+    "90-manage-people-u-yoav-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "yoav.p@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/people/demo-u-yoav",
+   "title": "אנשים יפ יואב פרץ מתנדב 9 · נרשם באוקטובר 2026 וואטסאפ התקשרות טלפון 0",
+   "rowSheet": []
+  },
+  {
+   "nn": "91",
+   "route": "/manage/broadcasts/new",
+   "scenario": "regular",
+   "shots": [
+    "91-manage-broadcasts-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/broadcasts/new",
+   "title": "הודעה חדשה"
+  },
+  {
+   "nn": "92",
+   "route": "/manage/reports",
+   "scenario": "regular",
+   "shots": [
+    "92-manage-reports.jpg",
+    "92-manage-reports-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/reports",
+   "title": "דוחות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "משימות בטבלה מי ביצע מה, החודש",
+    "משימות בטבלה",
+    "ייצוא משימות לאקסל",
+    "ייצוא משימות לאקסל"
+   ]
+  },
+  {
+   "nn": "93",
+   "route": "/manage/reports/people",
+   "scenario": "regular",
+   "shots": [
+    "93-manage-reports-people.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/reports/people",
+   "title": "אנשים ונרשמים"
+  },
+  {
+   "nn": "94",
+   "route": "/manage/reports/events",
+   "scenario": "regular",
+   "shots": [
+    "94-manage-reports-events.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/reports/events",
+   "title": "אירועים"
+  },
+  {
+   "nn": "95",
+   "route": "/manage/reports/tasks",
+   "scenario": "regular",
+   "shots": [
+    "95-manage-reports-tasks.jpg",
+    "95-manage-reports-tasks-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/reports/tasks",
+   "title": "דוחות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "משימות בטבלה מי ביצע מה, החודש",
+    "משימות בטבלה",
+    "ייצוא משימות לאקסל",
+    "ייצוא משימות לאקסל"
+   ]
+  },
+  {
+   "nn": "96",
+   "route": "/manage/visits",
+   "scenario": "regular",
+   "shots": [
+    "96-manage-visits.jpg",
+    "96-manage-visits-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/visits",
+   "title": "ביקורים",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "97",
+   "route": "/manage/visits/demo-vi-cohen",
+   "scenario": "regular",
+   "shots": [
+    "97-manage-visits-vi-cohen.jpg",
+    "97-manage-visits-vi-cohen-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/visits/demo-vi-cohen",
+   "title": "משפחת כהן",
+   "moreItems": [
+    "היסטוריית שינויים",
+    "היסטוריית שינויים",
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את הבקשה?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "98",
+   "route": "/manage/donations",
+   "scenario": "regular",
+   "shots": [
+    "98-manage-donations.jpg",
+    "98-manage-donations-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/donations",
+   "title": "תרומות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "הדפסה",
+    "הדפסה",
+    "היסטוריית שינויים",
+    "היסטוריית שינויים"
+   ]
+  },
+  {
+   "nn": "99",
+   "route": "/manage/donations/table",
+   "scenario": "regular",
+   "shots": [
+    "99-manage-donations-table.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/donations/table",
+   "title": "תרומות · החודש"
+  },
+  {
+   "nn": "100",
+   "route": "/manage/donations/demo-d-michal",
+   "scenario": "regular",
+   "shots": [
+    "100-manage-donations-d-michal.jpg",
+    "100-manage-donations-d-michal-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/donations/demo-d-michal",
+   "title": "180 ₪ · מיכל ברק",
+   "moreItems": [
+    "היסטוריית שינויים",
+    "היסטוריית שינויים",
+    "מחיקה",
+    "מחיקה"
+   ],
+   "deleteConfirm": {
+    "title": "למחוק את התרומה?",
+    "buttons": [
+     "מחיקה",
+     "ביטול"
+    ]
+   }
+  },
+  {
+   "nn": "101",
+   "route": "/manage/settings",
+   "scenario": "regular",
+   "shots": [
+    "101-manage-settings.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings",
+   "title": "הגדרות"
+  },
+  {
+   "nn": "102",
+   "route": "/manage/settings/messages",
+   "scenario": "regular",
+   "shots": [
+    "102-manage-settings-messages.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "https://havat-ravve.web.app/app/me"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/messages",
+   "title": "הודעות מוכנות"
+  },
+  {
+   "nn": "103",
+   "route": "/manage/settings/questions",
+   "scenario": "regular",
+   "shots": [
+    "103-manage-settings-questions.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"יישוב טקסט חופשי · ענו: 5 מתוך 157 חובה\" [גרירה לשינוי הסדר: י | יישוב טקסט חופשי · ע]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"איך שמעתם עלינו? בחירה · 4 אפשרויות · ענו: 2 מתוך 157 רשות\" [גרירה לשינוי הסדר: א | איך שמעתם עלינו? בחי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"תאריך לידה תאריך · ענו: 1 מתוך 157 רשות\" [גרירה לשינוי הסדר: ת | תאריך לידה תאריך · ע]"
+    },
+    {
+     "rule": "english",
+     "what": "Google"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/questions",
+   "title": "שאלות הרשמה"
+  },
+  {
+   "nn": "104",
+   "route": "/manage/settings/payments",
+   "scenario": "regular",
+   "shots": [
+    "104-manage-settings-payments.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "PayBox"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/payments",
+   "title": "איך משלמים"
+  },
+  {
+   "nn": "105",
+   "route": "/manage/settings/donation-amounts",
+   "scenario": "regular",
+   "shots": [
+    "105-manage-settings-donation-amounts.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"18 ₪ חי\" [גרירה לשינוי הסדר: 1 | 18 ₪ חי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"180 ₪ עשר פעמים חי\" [גרירה לשינוי הסדר: 1 | 180 ₪ עשר פעמים חי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"360 ₪ לב\" [גרירה לשינוי הסדר: 3 | 360 ₪ לב]"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.manage-qrow__hit \"18 ₪ חי\" 3 lines for 3 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.manage-qrow__hit \"360 ₪ לב\" 3 lines for 3 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-btn \"סכום נוסף\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/donation-amounts",
+   "title": "סכומי תרומה"
+  },
+  {
+   "nn": "106",
+   "route": "/manage/settings/visit-types",
+   "scenario": "regular",
+   "shots": [
+    "106-manage-settings-visit-types.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"סיור בחווה\" [גרירה לשינוי הסדר: ס | סיור בחווה]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"מפגש קבוצתי\" [גרירה לשינוי הסדר: מ | מפגש קבוצתי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"אירוע פרטי\" [גרירה לשינוי הסדר: א | אירוע פרטי]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"אחר\" [גרירה לשינוי הסדר: א | אחר]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/visit-types",
+   "title": "סוגי ביקור"
+  },
+  {
+   "nn": "107",
+   "route": "/manage/settings/contact",
+   "scenario": "regular",
+   "shots": [
+    "107-manage-settings-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/contact",
+   "title": "פרטי קשר לחווה"
+  },
+  {
+   "nn": "108",
+   "route": "/manage/settings/guests",
+   "scenario": "regular",
+   "shots": [
+    "108-manage-settings-guests.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/settings/guests",
+   "title": "סוגי ביקור ושאלות הרשמה"
+  },
+  {
+   "nn": "109",
+   "route": "/manage/activity",
+   "scenario": "regular",
+   "shots": [
+    "109-manage-activity.jpg",
+    "109-manage-activity-more.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "omer.levi2@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/activity",
+   "title": "כל הפעילות",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "110",
+   "route": "/manage",
+   "scenario": "eventDay",
+   "shots": [
+    "110-manage.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "red-badge",
+     "what": "red count 1 at btn:1 ביקורים 1 מאושרים החודש"
+    },
+    {
+     "rule": "red-badge",
+     "what": "red count 1 at btn:1 תרומות 1,220 ₪ החודש"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage",
+   "title": "ניהול"
+  },
+  {
+   "nn": "111",
+   "route": "/manage/events/demo-e-festival?tab=day",
+   "scenario": "eventDay",
+   "shots": [
+    "111-manage-events-e-festival-tab-day.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival?tab=day",
+   "title": "פסטיבל הסתיו"
+  },
+  {
+   "nn": "112",
+   "route": "/manage/events/demo-e-festival/live",
+   "scenario": "eventDay",
+   "shots": [
+    "112-manage-events-e-festival-live.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/live",
+   "title": "פסטיבל הסתיו חי · 17:20 212 נכנסו מתוך 640 כרטיסים 428 עוד לא הגיעו נש"
+  },
+  {
+   "nn": "113",
+   "route": "/manage/events/demo-e-festival/live/scans",
+   "scenario": "eventDay",
+   "shots": [
+    "113-manage-events-e-festival-live-scans.eventDay.jpg",
+    "113-manage-events-e-festival-live-scans.eventDay-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/live/scans",
+   "title": "סריקות · 217",
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "צפייה בטבלה",
+    "ייצוא לאקסל",
+    "ייצוא לאקסל"
+   ]
+  },
+  {
+   "nn": "114",
+   "route": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+   "scenario": "eventDay",
+   "shots": [
+    "114-manage-events-e-festival-live-scans-sc-yossi.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+   "title": "יוסי מזרחי"
+  },
+  {
+   "nn": "115",
+   "route": "/manage/events/demo-e-festival/live/waiting",
+   "scenario": "eventDay",
+   "shots": [
+    "115-manage-events-e-festival-live-waiting.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/live/waiting",
+   "title": "עוד לא הגיעו"
+  },
+  {
+   "nn": "116",
+   "route": "/manage/events/demo-e-festival/vendors/today",
+   "scenario": "eventDay",
+   "shots": [
+    "116-manage-events-e-festival-vendors-today.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/vendors/today",
+   "title": "הדוכנים היום",
+   "rowNav": "/manage/vendors/demo-v-dana"
+  },
+  {
+   "nn": "117",
+   "route": "/manage/events/demo-e-festival/close",
+   "scenario": "afterEvent",
+   "shots": [
+    "117-manage-events-e-festival-close.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival/close",
+   "title": "סגירת האירוע"
+  },
+  {
+   "nn": "118",
+   "route": "/manage/events/demo-e-october/debts",
+   "scenario": "afterEvent",
+   "shots": [
+    "118-manage-events-e-october-debts.afterEvent.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"דוד כהן 4 כרטיסים 200 ₪ שליחה\" [דוד כהן 4 כרטיסים 20 | שליחה]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"שירה כץ חשבון דוכן · 3 פריטים 58 ₪ שליחה\" [שירה כץ חשבון דוכן · | שליחה]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"רוני לוי נשלחה היום חשבון דוכן · 4 פריטים 46 ₪ שוב\" [רוני לוי נשלחה היום  | שוב]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"יוסי מזרחי נשלחה היום 6 כרטיסים 312 ₪ שוב\" [יוסי מזרחי נשלחה היו | שוב]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-october/debts",
+   "title": "תזכורות חוב · 4"
+  },
+  {
+   "nn": "119",
+   "route": "/manage/events/demo-e-festival?tab=summary",
+   "scenario": "afterEvent",
+   "shots": [
+    "119-manage-events-e-festival-tab-summary.afterEvent.jpg",
+    "119-manage-events-e-festival-tab-summary.afterEvent-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/manage/events/demo-e-festival?tab=summary",
+   "title": "פסטיבל הסתיו",
+   "moreItems": [
+    "ייצוא לאקסל",
+    "ייצוא לאקסל",
+    "הדפסה",
+    "הדפסה",
+    "היסטוריית שינויים",
+    "היסטוריית שינויים"
+   ]
+  }
+ ],
+ "unvisitedLinks": [
+  "/me/items",
+  "/tasks/:id_2026-11-18",
+  "/tasks/:id_2026-11-19",
+  "/tasks/:id_2026-11-28",
+  "/terms"
+ ]
+}

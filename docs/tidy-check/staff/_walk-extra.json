@@ -1,0 +1,54 @@
+{
+ "role": "staff",
+ "results": [
+  {
+   "nn": "55",
+   "route": "/event/stall/tabs",
+   "scenario": "eventDay",
+   "shots": [
+    "55-event-stall-tabs.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/stall/tabs",
+   "title": "חשבונות הדוכן"
+  },
+  {
+   "nn": "56",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "56-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/items",
+   "title": "מה יש לי בחווה"
+  },
+  {
+   "nn": "57",
+   "route": "/tasks/demo-tpl-goats_2026-11-19",
+   "scenario": "regular",
+   "shots": [
+    "57-tasks-tpl-goats_2026-11-19.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-btn \"להוסיף תמונה\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-tpl-goats_2026-11-19",
+   "title": "להאכיל את העיזים"
+  }
+ ],
+ "unvisitedLinks": [
+  "/event/stall",
+  "/event/stall/:id",
+  "/tasks"
+ ]
+}
