@@ -183,11 +183,11 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
 
 export type Resolved = { screen: Screen; params: Record<string, string>; tab: NavTab; kind: Route['kind']; route: Route } | null;
 export function resolve(routes: Route[], route: string, search: URLSearchParams): Resolved {
+  // Q9 first: ".../tabs/table" must reach the list, not the detail route "/tabs/:tid" with tid "table"
+  if (route.endsWith('/table')) { const list = resolve(routes, route.slice(0, -'/table'.length) || '/', search); if (list) return list; }
   for (const r of routes) {
     const m = match(route, r.path);
     if (m) return { screen: r.screen, params: { ...Object.fromEntries(search.entries()), ...m }, tab: r.tab, kind: r.kind, route: r };
   }
-  // Q9: "<list>/table" is the list's own table view; the list screen renders it (useTableView in patterns.tsx)
-  if (route.endsWith('/table')) return resolve(routes, route.slice(0, -'/table'.length) || '/', search);
   return null;
 }
