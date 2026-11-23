@@ -122,8 +122,10 @@ export async function changeRole(actor: Actor, p: Profile, role: Role) {
   }
 }
 export const toggleBlock = (actor: Actor, p: Profile) => setUserRole(actor, p, p.role, p.status === 'blocked' ? 'active' : 'blocked');
-export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role'] | 'guest') => inviteByEmail(actor, email, role);
+export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role']) => inviteByEmail(actor, email, role);
 export const cancelInvite = (email: string) => removeRoleInvite(email);
+// Q27 by phone: a one-time link claimed at Google sign-in (data/invite.ts)
+export { useTeamLinks, createTeamLink, cancelTeamLink, restoreTeamLink, linkOpen, LINK_DAYS, type TeamLink, type TeamRole } from './invite';
 
 // ---------- deletes (each behind the ConfirmSheet) ----------
 /** The inbox items about a record (visit, donation, order): every one of them, also the handled ones, when the server answers;

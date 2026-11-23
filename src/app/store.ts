@@ -9,6 +9,7 @@ import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './act
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
 import { nowMs } from './clock';
+import { linkOpen, LINK_GONE, type TeamLink } from './v2/data/invite';
 
 // ---------- auth ----------
 type AuthState = { loading: boolean; user: User | null };
@@ -75,8 +76,10 @@ export function useCmsEditor(user: Session, enabled: boolean) {
   return item?.active === true && (item.uid === null || item.uid === user.uid);
 }
 
-/** The role for a brand-new account: owner by bootstrap email, otherwise whatever a manager pre-assigned to this email, otherwise guest. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }) {
+/** The role for a brand-new account: owner by bootstrap email; otherwise the role of the one-time team link the person came
+ *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
+ *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }, link = '') {
   const now = nowIso();
   const email = (user.email || '').toLowerCase();
   const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
@@ -89,16 +92,21 @@ export async function createProfile(user: Session, data: { displayName: string; 
   const counterRef = doc(db, 'counters', 'users');
   const userRef = doc(db, 'users', user.uid);
   const inviteRef = doc(db, 'role_invites', email);
+  const linkRef = link && !isOwnerEmail(email) ? doc(db, 'team_links', link) : null;
   await runTransaction(db, async (t) => {
     const existing = await t.get(userRef);
     if (existing.exists()) return;
     const counter = await t.get(counterRef);
-    const invite = isOwnerEmail(email) ? null : await t.get(inviteRef).catch(() => null);
+    const linkSnap = linkRef ? await t.get(linkRef) : null;
+    const team = linkSnap?.exists() ? (linkSnap.data() as TeamLink) : null;
+    if (linkRef && !linkOpen(team)) throw new Error(LINK_GONE);
+    const invite = isOwnerEmail(email) || team ? null : await t.get(inviteRef).catch(() => null);
     const value = (counter.exists() ? counter.data().value : 0) + 1;
     if (counter.exists()) t.update(counterRef, { value }); else t.set(counterRef, { value });
-    const role: Role = isOwnerEmail(email) ? 'owner' : (invite?.exists() ? (invite.data().role as Role) : 'guest');
-    const profile: Profile = { ...details, role, customerNumber: value };
+    const role: Role = isOwnerEmail(email) ? 'owner' : team ? team.role : (invite?.exists() ? (invite.data().role as Role) : 'guest');
+    const profile: Profile = { ...details, role, customerNumber: value, ...(team ? { teamLink: link } : {}) };
     t.set(userRef, profile);
+    if (linkRef && team) t.update(linkRef, { usedBy: user.uid, usedAt: now, active: false });
   });
   logActivity({ uid: user.uid, name: data.displayName.trim() }, 'user', user.uid, 'joined', `${data.displayName.trim()} נרשם/ה`, { subjectUid: user.uid });
 }

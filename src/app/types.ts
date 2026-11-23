@@ -11,6 +11,8 @@ export type Profile = {
   customerNumber: number;
   acceptedTermsAt: string;
   joinCode?: string;
+  /** The one-time team link (team_links/{code}) this account used to join (Q27). */
+  teamLink?: string;
   notes?: string;
   fields?: Record<string, string>;
   log?: { at: string; by: Actor; text: string }[];

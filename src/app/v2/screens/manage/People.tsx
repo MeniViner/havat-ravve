@@ -20,6 +20,7 @@ import {
   changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson, type InviteRole,
 } from '../../data/manage';
 import { lnk, HistorySheet, LinkCard, Loading, NotFound } from './shared';
+import { useTeamLinks } from '../../data/invite';
 
 // ---------- Q23 ----------
 /** The two segments of "אנשים והודעות". The messages segment (Q25) is still the sent-messages screen at /manage/broadcasts;
@@ -58,7 +59,7 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
 function PeopleSegment({ people, debts, initial }: { people: Profile[]; debts: Map<string, number>; initial?: string }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt', 'blocked'] as string[]).includes(initial || '') ? (initial as PFilter) : 'all');
-  const invites = useRoleInvites(true).items;
+  const invites = [...useRoleInvites(true).items, ...useTeamLinks(true).items]; // Q27: added ahead by e-mail or by phone
   const team = people.filter(isTeam);
   const withDebt = people.filter((p) => debts.has(p.uid));
   const blockedN = people.filter((p) => p.status === 'blocked').length;
@@ -223,47 +224,5 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
   );
 }
 
-// ---------- N13 ----------
-const agoDays = (iso: string) => {
-  const d = Math.floor((nowMs() - new Date(iso).getTime()) / 86400_000);
-  return d <= 0 ? 'היום' : d === 1 ? 'אתמול' : d === 2 ? 'לפני יומיים' : d === 7 ? 'לפני שבוע' : d === 14 ? 'לפני שבועיים' : `לפני ${d} ימים`;
-};
-export function InviteScreen({ ctx }: ScreenProps) {
-  const invites = useRoleInvites(true).items;
-  const people = usePeople(true).items;
-  const allowed = inviteRolesFor(ctx.owner);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<InviteRole>('staff');
-  const [error, setError] = useState('');
-  const run = useRun();
-  const existing = people.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase());
-  const save = async () => {
-    const e = email.trim().toLowerCase();
-    if (!emailOk(e)) { setError('כתובת מייל לא תקינה'); return; }
-    if (existing) { setError(''); go(`/manage/people/${existing.uid}`); return; }
-    const ok = role === 'guest' ? 'הוסר. יהיה אורח כשייכנס.' : `${e} ${role === 'owner' ? 'יקבל תפקיד בעלים' : `יקבל תפקיד ${roleWord(role, false)}`} בכניסה הראשונה`;
-    if (await run(() => inviteRole(ctx.actor, e, role), ok)) { setEmail(''); setError(''); }
-  };
-  return (
-    <AppScreen variant="form" gap={16} bar={<BottomBar><Button size="bar" grow onClick={save}>{existing ? 'פתיחת הכרטיס שלו' : 'שמירת התפקיד'}</Button></BottomBar>}>
-      <FormHeader title="תפקיד לפי מייל" onCancel={() => go('/manage/people')} />
-      <Field label="כתובת Google של האדם" ltr type="email" inputMode="email" autoComplete="off" placeholder="name@gmail.com" value={email}
-        onChange={(e) => { setEmail(e.target.value); setError(''); }} error={error || undefined}
-        hint={existing ? `${existing.displayName} כבר ${gw(existing.displayName, 'רשום', 'רשומה')}. את התפקיד משנים בכרטיס שלו.` : undefined} />
-      <div className="manage-group">
-        <span className="manage-group__label">איזה תפקיד</span>
-        <Segmented className="manage-seg manage-seg44" label="תפקיד" value={role} onChange={setRole}
-          options={(['guest', 'staff', 'manager', 'owner'] as const).map((r) => ({ value: r, label: roleWord(r, false), disabled: !allowed.includes(r) }))} />
-      </div>
-      {!ctx.owner && <span className="manage-hint">רק בעלים יכולים למנות מנהלים ובעלים.</span>}
-      {invites.length > 0 && (
-        <ListCard title="הוגדרו ועוד לא נכנסו" count={invites.length}>
-          {invites.map((i) => (
-            <Row key={i.id} title={i.email} meta={`${roleWord(i.role, false)} · הוגדר ${agoDays(i.createdAt)}`}
-              actions={<Button variant="quiet" onClick={() => run(() => cancelInvite(i.id), { text: `בוטל: ${i.email}`, undo: () => inviteRole(ctx.actor, i.email, i.role) })}>ביטול</Button>} />
-          ))}
-        </ListCard>
-      )}
-    </AppScreen>
-  );
-}
+// N13 / Q27 moved to Invite.tsx
+export { InviteScreen } from './Invite';
