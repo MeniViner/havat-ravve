@@ -21,6 +21,7 @@ import { type JobRun, monitorStep, readMonitor, recordCron } from './monitor';
 import { guardKeys, readSwitches, runCleanup } from './control';
 import { storedKeys } from './keys';
 import { runBackup, trashFor } from './backup';
+import { handleHit } from './traffic';
 
 const MAX_BODY = 16 * 1024;
 
@@ -152,6 +153,8 @@ export default {
     const url = new URL(req.url);
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
+    // the site's and the app's visit counter (traffic.ts): public, no sign-in, counters only, always 204
+    if (url.pathname === '/v1/hit') return handleHit(req, env, () => new Firestore(env, faultsOf(req, env)));
     const consolePath = isConsolePath(url.pathname);
     if (consolePath && req.method === 'OPTIONS') return new Response(null, { status: 204, headers: consoleCors(req) });
     const log: Record<string, unknown> = { requestId: meta.requestId, method: req.method, path: url.pathname };

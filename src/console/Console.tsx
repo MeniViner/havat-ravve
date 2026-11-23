@@ -20,12 +20,17 @@ import { MoneyScreen } from './Money';
 import { SwitchesScreen } from './Switches';
 import { QueueScreen } from './Queue';
 import { JobsScreen } from './Jobs';
+import { TrafficScreen } from './Traffic';
+import { SpeedScreen } from './Speed';
+import { RunScreen } from './Run';
+import { ImportScreen } from './Import';
 
-type Tab = 'overview' | 'monitor' | 'stats' | 'money' | 'data' | 'people' | 'keys' | 'switches' | 'queue' | 'jobs' | 'security' | 'backups';
+type Tab = 'overview' | 'monitor' | 'stats' | 'traffic' | 'money' | 'data' | 'people' | 'keys' | 'switches' | 'queue' | 'jobs' | 'speed' | 'run' | 'import' | 'security' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
   { value: 'monitor', label: 'ניטור', icon: 'chart' },
   { value: 'stats', label: 'סטטיסטיקות', icon: 'farm' },
+  { value: 'traffic', label: 'ביקורים ושימוש', icon: 'nav' },
   { value: 'money', label: 'כסף ואירועים', icon: 'ticket' },
   { value: 'data', label: 'נתונים', icon: 'grid' },
   { value: 'people', label: 'אנשים', icon: 'people' },
@@ -33,6 +38,9 @@ const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'switches', label: 'מתגים', icon: 'sliders' },
   { value: 'queue', label: 'תור שליחה', icon: 'message' },
   { value: 'jobs', label: 'משימות מתוזמנות', icon: 'calendar' },
+  { value: 'speed', label: 'מהירות', icon: 'bolt' },
+  { value: 'run', label: 'הרצת פעולה', icon: 'edit' },
+  { value: 'import', label: 'ייבוא מאקסל', icon: 'file' },
   { value: 'security', label: 'אבטחה', icon: 'blocked' },
   { value: 'backups', label: 'גיבויים', icon: 'box' },
 ];
@@ -129,10 +137,14 @@ function Shell({ me }: { me: Me }) {
         {tab === 'security' && <SecurityScreen />}
         {tab === 'data' && <DataScreen notify={notice.show} />}
         {tab === 'stats' && <StatsScreen />}
+        {tab === 'traffic' && <TrafficScreen />}
         {tab === 'money' && <MoneyScreen />}
         {tab === 'switches' && <SwitchesScreen notify={notice.show} />}
         {tab === 'queue' && <QueueScreen notify={notice.show} />}
         {tab === 'jobs' && <JobsScreen notify={notice.show} />}
+        {tab === 'speed' && <SpeedScreen />}
+        {tab === 'run' && <RunScreen notify={notice.show} />}
+        {tab === 'import' && <ImportScreen notify={notice.show} />}
       </main>
       {notice.view}
     </div>

@@ -717,6 +717,67 @@ try {
     await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: true } });
     check((await api('POST', '/v1/console/jobs/push/run', { ...C(own), body: {} })).status === 400 && (await api('GET', '/v1/console/jobs', C(own))).json.data.jobs.find((j) => j.id === 'push').paused === true, 'jobs: a paused job shows as paused and does not run by hand');
     await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: false } });
+
+    // ---------- site visits and app usage (traffic.ts): public beacons, counters only ----------
+    const hitP = (body, origin = 'http://localhost:5173') => fetch(BASE + '/v1/hit', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8', ...(origin ? { origin } : {}) }, body: typeof body === 'string' ? body : JSON.stringify(body) }).then((x) => x.status);
+    const statsDay = () => docOf('site_stats/' + todayIL);
+    const s1 = await hitP({ t: 'view', page: 'home', source: 'google', device: 'mobile', newToday: true, returning: false, name: 'should not be kept' });
+    const d1 = await statsDay();
+    check(s1 === 204 && d1?.hits === 1 && d1.site.views === 1 && d1.site.page.home === 1 && d1.site.source.google === 1 && d1.site.device.mobile === 1 && d1.site.visitors === 1 && !JSON.stringify(d1).includes('should not'), 'hit: a site visit adds to today\'s counters, nothing else is kept', d1);
+    const hourKeys = Object.keys(d1?.site?.hour || {});
+    check(hourKeys.length === 1 && /^h([01]\d|2[0-3])$/.test(hourKeys[0]), 'hit: the hour of the visit, Israel time', hourKeys);
+    await hitP({ t: 'leave', sections: ['story', 'visit', 'bogus', 'story'], clicks: ['waze', 'phone', 'javascript:alert(1)'], depth: 'd75', time: 't60' });
+    const d2 = await statsDay();
+    check(d2.site.section.story === 1 && d2.site.section.visit === 1 && !('bogus' in d2.site.section) && d2.site.click.waze === 1 && d2.site.click.phone === 1 && Object.keys(d2.site.click).length === 2 && d2.site.depth.d75 === 1 && d2.site.time.t60 === 1, 'hit: sections, clicks, depth and time, only names on the list, each once per visit', d2.site);
+    await hitP({ t: 'view', app: true, device: 'installed', role: 'staff', newToday: true, returning: true });
+    await hitP({ t: 'leave', app: true, screens: { tasks: 3, shopping: 999, evil: 5, home: -2 } });
+    const d3 = await statsDay();
+    check(d3.app.opens === 1 && d3.app.visitors === 1 && d3.app.returning === 1 && d3.app.role.staff === 1 && d3.app.device.installed === 1 && d3.app.screen.tasks === 3 && d3.app.screen.shopping === 50 && !('evil' in d3.app.screen) && !('home' in d3.app.screen), 'hit: app opens and screens, capped per beacon, unknown screens dropped', d3.app);
+    const hitsBefore = (await statsDay()).hits;
+    const foreign = await hitP({ t: 'view', page: 'home' }, 'https://evil.example');
+    const previewHit = await hitP({ t: 'view', page: 'home' }, 'https://havat-ravve--pr-9-abc.web.app');
+    const broken = await hitP('{not json');
+    const huge = await hitP({ t: 'view', pad: 'x'.repeat(3000) });
+    const wrongT = await hitP({ t: 'delete' });
+    check([foreign, previewHit, broken, huge, wrongT].every((s) => s === 204) && (await statsDay()).hits === hitsBefore, 'hit: another site, a preview channel, broken or huge bodies all answer 204 and write nothing');
+    check((await fetch(BASE + '/v1/hit')).status === 405 && (await fetch(BASE + '/v1/hit', { method: 'OPTIONS', headers: { origin: 'http://localhost:5173' } })).status === 204, 'hit: only POST (and the CORS preflight)');
+    const trf = await api('GET', '/v1/console/traffic?days=7', C(own));
+    const tv = trf.json?.data;
+    check(trf.status === 200 && tv.perDay.length === 7 && tv.today.day === todayIL && tv.totals.views === 1 && tv.totals.visitors === 1 && tv.totals.opens === 1 && tv.totals.users === 1 && tv.site.sources[0]?.key === 'google' && tv.site.sections.some((x) => x.key === 'story') && tv.app.screens[0]?.key === 'shopping' && tv.site.hours.length === 24, 'traffic: the console\'s view of the week', tv);
+    check((await api('GET', '/v1/console/traffic?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/traffic', C(mgr))).status === 403, 'traffic: a week, a month or 3 months; owners only');
+    await seed('site_stats/' + todayIL, { hits: 5999, site: { views: 3 } });
+    await hitP({ t: 'view', page: 'home' });
+    await hitP({ t: 'view', page: 'home' });
+    const cappedDay = await statsDay();
+    const tcap = (await api('GET', '/v1/console/traffic?days=7', C(own))).json?.data;
+    check(cappedDay.hits === 6000 && cappedDay.site.views === 4 && tcap.today.capped === true, 'hit: the daily cap stops counting for the day (the free writes stay for the farm)', cappedDay);
+
+    // ---------- limited keys (keys.ts scopes): only part of what the person may do ----------
+    const ro = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'קריאה בלבד', actor: 'user:syn-mgr', scopes: ['tasks:read', 'shopping:read', 'people:read', 'overview:read'] } });
+    const roKey = ro.json?.data?.key, roId = ro.json?.data?.id;
+    const roTask = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'לא אמור להיווצר' } });
+    check(ro.status === 201 && (await api('GET', '/v1/tasks', { key: roKey })).status === 200 && (await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: roKey })).status === 200 && roTask.status === 403 && roTask.json?.error?.details?.requiredScope === 'tasks:create', 'a read-only key reads, and cannot write', roTask.json?.error);
+    const roListed = (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === roId);
+    check(JSON.stringify(roListed?.scopes) === JSON.stringify(['overview:read', 'people:read', 'shopping:read', 'tasks:read']) && (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId)?.scopes === null, 'the list says what each key may do (null: everything its person may)', roListed?.scopes);
+    const sh = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'רק קניות', actor: 'user:syn-staff', scopes: ['shopping:read', 'shopping:write', 'people:read'] } });
+    const shKey = sh.json?.data?.key, shId = sh.json?.data?.id;
+    const shAdd = await api('POST', '/v1/actions/shopping.add', { key: shKey, idem: randomUUID(), body: { title: 'חציר' } });
+    check(shAdd.status >= 200 && shAdd.status < 300 && (await api('GET', '/v1/tasks', { key: shKey })).status === 403, 'a shopping-only key adds to shopping, and cannot read tasks', shAdd.json?.error);
+    check((await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: shKey })).status === 403, 'a key never gets more than its person\'s role (staff has no people:read)');
+    check((await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: ['root:all'] } })).status === 400 && (await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: [] } })).status === 400, 'unknown scopes or an empty list → 400');
+    const widen = await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: null } });
+    const roTask2 = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'עכשיו מותר' } });
+    check(widen.status === 200 && roTask2.status >= 200 && roTask2.status < 300, 'scopes: null gives the key back everything its person may do', roTask2.json?.error);
+    await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: ['tasks:read'] } });
+    check((await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'שוב אסור' } })).status === 403 && (await api('POST', `/v1/console/keys/${shId}/scopes`, { ...C(mgr), body: { scopes: null } })).status === 403, 'scopes can be narrowed again; a manager cannot change them');
+
+    // ---------- speed (speed.ts): from the assistant log's own timings ----------
+    const sp = await api('GET', '/v1/console/speed?days=7', C(own));
+    const spd = sp.json?.data;
+    check(sp.status === 200 && spd.total.count > 0 && spd.total.p95 >= spd.total.p50 && spd.ops.length > 0 && spd.ops.every((o) => o.count > 0 && o.max >= o.p95) && spd.perDay.length === 7 && Array.isArray(spd.cron.jobs), 'speed: per operation and per day, from the log', spd?.total);
+    const cat = await api('GET', '/v1/console/catalog', C(own));
+    check(cat.status === 200 && cat.json.data.operations.length > 50 && cat.json.data.operations.some((o) => o.name === 'tasks.create' && o.body?.title?.required) && (await api('GET', '/v1/console/catalog', C(mgr))).status === 403, 'catalog: every operation with its fields, for the console\'s "run any operation"');
+    check((await api('GET', '/v1/console/speed?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/speed', C(mgr))).status === 403, 'speed: a day, a week or a month; owners only');
   }
 
   section('the app\'s Rules accept what the API wrote');

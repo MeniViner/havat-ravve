@@ -1,5 +1,5 @@
 // /admin?demo: the console over made-up people, keys and numbers, kept in memory only. No Firestore, no Worker.
-import type { AlertSettings, Backup, DataDoc, Jobs, Queue, Stats, Switches, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
+import type { AlertSettings, Backup, CatalogOp, DataDoc, Jobs, Queue, Speed, Stats, Switches, Traffic, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const DAY = 24 * 60;
@@ -17,10 +17,10 @@ const people: Person[] = [
 ];
 
 const keys: KeyView[] = [
-  { id: 'cred-assistant', label: 'האינסטינקט של מני', actors: ['user:d-owner'], status: 'active', expiresAt: null, rotating: false, previousUntil: null, source: 'secret', createdAt: null, createdBy: null, updatedAt: null },
-  { id: 'cred-beni', label: 'האינסטינקט של בני', actors: ['user:d-beni'], status: 'active', expiresAt: null, rotating: true, previousUntil: ago(-18 * 60), source: 'console', createdAt: ago(12 * DAY), createdBy: 'מני בעלים', updatedAt: ago(6 * 60) },
-  { id: 'cred-stageb', label: 'בדיקות אוטומטיות', actors: ['user:d-owner'], status: 'active', expiresAt: ago(-80 * DAY), rotating: false, previousUntil: null, source: 'secret', createdAt: null, createdBy: null, updatedAt: null },
-  { id: 'cred-old', label: 'מפתח ישן לניסוי', actors: ['user:d-matan'], status: 'revoked', expiresAt: null, rotating: false, previousUntil: null, source: 'console', createdAt: ago(40 * DAY), createdBy: 'מני בעלים', updatedAt: ago(20 * DAY) },
+  { id: 'cred-assistant', label: 'האינסטינקט של מני', actors: ['user:d-owner'], status: 'active', expiresAt: null, rotating: false, previousUntil: null, source: 'secret', createdAt: null, createdBy: null, updatedAt: null, scopes: null },
+  { id: 'cred-beni', label: 'האינסטינקט של בני', actors: ['user:d-beni'], status: 'active', expiresAt: null, rotating: true, previousUntil: ago(-18 * 60), source: 'console', createdAt: ago(12 * DAY), createdBy: 'מני בעלים', updatedAt: ago(6 * 60), scopes: null },
+  { id: 'cred-stageb', label: 'בדיקות אוטומטיות', actors: ['user:d-owner'], status: 'active', expiresAt: ago(-80 * DAY), rotating: false, previousUntil: null, source: 'secret', createdAt: null, createdBy: null, updatedAt: null, scopes: ['tasks:read', 'shopping:read', 'events:read', 'overview:read', 'system:read'] },
+  { id: 'cred-old', label: 'מפתח ישן לניסוי', actors: ['user:d-matan'], status: 'revoked', expiresAt: null, rotating: false, previousUntil: null, source: 'console', createdAt: ago(40 * DAY), createdBy: 'מני בעלים', updatedAt: ago(20 * DAY), scopes: null },
 ];
 const lastUse: Record<string, string | null> = { 'cred-assistant': ago(3), 'cred-beni': ago(95), 'cred-stageb': ago(2 * DAY), 'cred-old': ago(21 * DAY) };
 
@@ -168,6 +168,92 @@ const demoStats = (days: number): Stats => {
   };
 };
 
+// visits and usage (round 6): a small farm site, busier on Fridays and around the coming event
+const demoTraffic = (days: number): Traffic => {
+  const perDay = Array.from({ length: days }, (_, i) => {
+    const day = dayKey(days - 1 - i);
+    const wd = new Date(day + 'T12:00:00Z').getUTCDay();
+    const visitors = (wd === 5 ? 46 : wd === 6 ? 31 : 18) + ((i * 7) % 9) + (i > days - 8 ? 12 : 0);
+    const users = (wd === 6 ? 4 : 11) + ((i * 5) % 4);
+    return { day, views: Math.round(visitors * 1.35), visitors, opens: Math.round(users * 2.6), users };
+  });
+  const sum = (k: 'views' | 'visitors' | 'opens' | 'users') => perDay.reduce((a, d) => a + d[k], 0);
+  const v = sum('visitors'), views = sum('views'), opens = sum('opens');
+  const share = (total: number, parts: [string, number][]) => parts.map(([key, p]) => ({ key, count: Math.round(total * p) }));
+  const today = perDay[perDay.length - 1];
+  return {
+    days, from: perDay[0].day, cap: 6000,
+    today: { ...today, capped: false },
+    totals: { views, visitors: v, returning: Math.round(v * 0.28), opens, users: sum('users'), appReturning: Math.round(sum('users') * 0.8), hits: views * 2 + opens },
+    perDay,
+    site: {
+      pages: share(views, [['home', 0.93], ['archive', 0.07]]),
+      sources: share(views, [['direct', 0.34], ['whatsapp', 0.27], ['google', 0.2], ['facebook', 0.11], ['instagram', 0.05], ['qr', 0.02], ['other', 0.01]]),
+      sections: share(views, [['home', 0.97], ['story', 0.61], ['experiences', 0.48], ['heritage', 0.39], ['events', 0.36], ['visit', 0.31], ['contact', 0.22]]),
+      clicks: share(views, [['app', 0.14], ['whatsapp', 0.09], ['waze', 0.07], ['phone', 0.05], ['calendar', 0.03], ['share', 0.02], ['install', 0.01]]),
+      devices: share(views, [['mobile', 0.78], ['desktop', 0.19], ['installed', 0.03]]),
+      depth: share(views, [['d25', 0.32], ['d50', 0.24], ['d75', 0.18], ['d100', 0.26]]),
+      time: share(views, [['t10', 0.29], ['t60', 0.38], ['t180', 0.21], ['tlong', 0.12]]),
+      hours: [1, 0, 0, 0, 0, 1, 3, 6, 9, 11, 12, 13, 14, 12, 11, 12, 14, 17, 21, 24, 22, 16, 9, 4].map((x) => Math.round((x * views) / 238)),
+    },
+    app: {
+      screens: share(opens, [['day', 0.9], ['tasks', 0.82], ['shopping', 0.44], ['home', 0.3], ['people', 0.18], ['event', 0.15], ['manage', 0.12], ['notifications', 0.09], ['me', 0.06]]),
+      devices: share(sum('users'), [['installed', 0.55], ['mobile', 0.37], ['desktop', 0.08]]),
+      roles: share(sum('users'), [['staff', 0.48], ['guest', 0.22], ['manager', 0.14], ['owner', 0.1], ['vendor', 0.06]]),
+      hours: [0, 0, 0, 0, 0, 2, 8, 14, 16, 12, 9, 8, 10, 8, 7, 9, 11, 12, 10, 8, 6, 4, 2, 1].map((x) => Math.round((x * opens) / 157)),
+    },
+  };
+};
+
+// ---------- speed, run any operation (round 7) ----------
+const demoSpeed = (days: number): Speed => {
+  const perDay = days > 1 ? Array.from({ length: days }, (_, i) => ({ day: dayKey(days - 1 - i), count: 30 + ((i * 11) % 40), p50: 180 + ((i * 37) % 90), p95: 620 + ((i * 53) % 700) })) : [];
+  const ops: Speed['ops'] = [
+    { op: 'console.backups.download', he: 'הורדת גיבוי', kind: 'read', count: 3, p50: 2100, p95: 3400, max: 3400, errors: 0 },
+    { op: 'console.stats', he: 'סטטיסטיקות', kind: 'read', count: 14, p50: 940, p95: 1610, max: 1720, errors: 0 },
+    { op: 'tasks.create', he: 'יצירת משימה חדשה', kind: 'write', count: 46, p50: 420, p95: 980, max: 1350, errors: 0 },
+    { op: 'shopping.add', he: 'הוספת פריט לרשימת הקניות', kind: 'write', count: 22, p50: 390, p95: 860, max: 1100, errors: 0 },
+    { op: 'overview.get', he: 'מבט כללי על החווה', kind: 'read', count: 61, p50: 310, p95: 720, max: 1900, errors: 1 },
+    { op: 'tasks.list', he: 'רשימת משימות', kind: 'read', count: 118, p50: 190, p95: 450, max: 820, errors: 0 },
+    { op: 'people.search', he: 'חיפוש אדם לפי שם', kind: 'read', count: 37, p50: 160, p95: 380, max: 510, errors: 0 },
+  ];
+  const total = ops.reduce((a, o) => a + o.count, 0);
+  return {
+    days, from: ago(days * DAY), slowMs: 2000, truncated: false,
+    total: { count: total, p50: 230, p95: 910, max: 3400, slow: 2, errors: 1 },
+    ops, perDay,
+    slowest: [
+      { at: ago(2 * DAY), op: 'console.backups.download', he: 'הורדת גיבוי', ms: 3400, status: 200, key: 'קונסולה · מני' },
+      { at: ago(4 * DAY + 300), op: 'console.backups.download', he: 'הורדת גיבוי', ms: 2100, status: 200, key: 'קונסולה · מני' },
+    ],
+    cron: { at: ago(3), wallMs: 2400, jobs: [{ id: 'email', ms: 820, at: ago(3), ok: true }, { id: 'accounts', ms: 140, at: ago(3), ok: true }, { id: 'push', ms: 0, at: ago(3), ok: true }, { id: 'backup', ms: 1310, at: ago(9 * 60), ok: true }, { id: 'cleanup', ms: 960, at: ago(8 * 60), ok: true }, { id: 'monitor', ms: 0, at: ago(3), ok: true }] },
+    site: { checks: 96, p50: 180, p95: 340 },
+  };
+};
+const date = (he: string) => ({ type: 'date', format: 'YYYY-MM-DD', he });
+const demoCatalog: CatalogOp[] = [
+  { name: 'tasks.list', kind: 'read', he: 'רשימת משימות', method: 'GET', path: '/v1/tasks', requiredScope: 'tasks:read', params: { status: { type: 'enum', values: ['open', 'done', 'all'], default: 'open', he: 'אילו משימות' }, assignee: { type: 'uid', he: 'רק של אדם אחד' }, limit: { type: 'int', min: 1, max: 100, default: 25 } } },
+  { name: 'tasks.get', kind: 'read', he: 'משימה אחת', method: 'GET', path: '/v1/tasks/{id}', requiredScope: 'tasks:read', pathParams: { id: { type: 'id', required: true } } },
+  { name: 'people.search', kind: 'read', he: 'חיפוש אדם לפי שם', method: 'GET', path: '/v1/people', requiredScope: 'people:read', params: { q: { type: 'string', required: true, min: 1, max: 80, he: 'שם או חלק משם' } } },
+  { name: 'shopping.list', kind: 'read', he: 'רשימת הקניות', method: 'GET', path: '/v1/shopping', requiredScope: 'shopping:read', params: { bought: { type: 'bool', default: false } } },
+  { name: 'overview.get', kind: 'read', he: 'מבט כללי על החווה', method: 'GET', path: '/v1/overview', requiredScope: 'overview:read' },
+  { name: 'tasks.create', kind: 'write', he: 'יצירת משימה חדשה, אופציונלי עם שיוך לאחראי', method: 'POST', path: '/v1/actions/tasks.create', idempotency: 'required', requiredScope: 'tasks:create',
+    body: { title: { type: 'string', required: true, min: 1, max: 200, he: 'כותרת המשימה' }, dueDate: date('תאריך יעד'), urgent: { type: 'bool', default: false }, note: { type: 'string', max: 4000, he: 'הערה / פירוט' } } },
+  { name: 'shopping.add', kind: 'write', he: 'הוספת פריט לרשימת הקניות', method: 'POST', path: '/v1/actions/shopping.add', idempotency: 'required', requiredScope: 'shopping:write',
+    body: { title: { type: 'string', required: true, min: 1, max: 200, he: 'מה לקנות' }, qty: { type: 'string', max: 40, he: 'כמות' }, category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], default: 'super' }, urgent: { type: 'bool', default: false } } },
+];
+let demoSeq = 0;
+const demoRun = (method: string, path: string, body?: Record<string, unknown>) => {
+  if (method === 'POST') {
+    const id = 'demo-' + (++demoSeq);
+    if (!String(body?.title || '').trim()) return { status: 400, ms: 120, json: { ok: false, error: { code: 'VALIDATION_FAILED', message: 'title is required', he: 'חסר שדה חובה', details: { field: 'title' } } } };
+    return { status: 201, ms: 430, json: { ok: true, data: { verified: true, record: { id, ...body }, replayed: false }, meta: { requestId: 'req_demo' + demoSeq } } };
+  }
+  if (path.startsWith('/v1/people')) return { status: 200, ms: 160, json: { ok: true, data: { items: [{ uid: 'd-yoav', name: 'יואב פרץ', role: 'staff' }] } } };
+  if (path.startsWith('/v1/tasks')) return { status: 200, ms: 190, json: { ok: true, data: { items: [{ id: 't-1', title: 'להאכיל את העזים', done: false, assignee: { name: 'יואב פרץ' }, dueDate: dayKey(0) }, { id: 't-2', title: 'לתקן את הגדר בצפון', done: false, urgent: true }] } } };
+  return { status: 200, ms: 240, json: { ok: true, data: { note: 'בהדגמה: תשובה לדוגמה' } } };
+};
+
 // ---------- switches, the send queue, scheduled jobs (round 5) ----------
 const demoSwitches: Switches = {
   emailPaused: false, pushPaused: false, keysStopped: false, readOnly: false, maintenance: false, maintenanceText: '', registrationClosed: false,
@@ -213,9 +299,9 @@ export const demoSource: Source = {
   me: () => wait({ uid: 'd-owner', name: 'מני בעלים', role: 'owner' as const }),
   overview: () => wait(overview()),
   keys: () => wait(keys),
-  createKey: async ({ label, actor, expiresAt }) => {
+  createKey: async ({ label, actor, expiresAt, scopes }) => {
     const id = 'cred-demo-' + (keys.length + 1);
-    keys.push({ id, label, actors: [actor], status: 'active', expiresAt, rotating: false, previousUntil: null, source: 'console', createdAt: ago(0), createdBy: 'מני בעלים', updatedAt: ago(0) });
+    keys.push({ id, label, actors: [actor], status: 'active', expiresAt, rotating: false, previousUntil: null, source: 'console', createdAt: ago(0), createdBy: 'מני בעלים', updatedAt: ago(0), scopes: scopes?.length ? [...scopes].sort() : null });
     lastUse[id] = null;
     return wait({ id, key: fakeKey() });
   },
@@ -225,6 +311,7 @@ export const demoSource: Source = {
     k.updatedAt = ago(0);
     k.source = 'console';
     if (action === 'rename') k.label = String(body.label);
+    if (action === 'scopes') k.scopes = Array.isArray(body.scopes) ? [...(body.scopes as string[])].sort() : null;
     if (action === 'revoke') k.status = 'revoked';
     if (action === 'restore') k.status = k.expiresAt && Date.parse(k.expiresAt) < Date.now() ? 'expired' : 'active';
     if (action === 'expire') { k.expiresAt = (body.expiresAt as string) || null; k.status = k.status === 'revoked' ? 'revoked' : k.expiresAt && Date.parse(k.expiresAt) < Date.now() ? 'expired' : 'active'; }
@@ -302,6 +389,10 @@ export const demoSource: Source = {
   deleteDoc: (path) => { const i = recs.findIndex((x) => x.path === path); const r = recs[i]; recs.splice(i, 1); trash.unshift({ key: `trash/d/${Date.now()}-dddddddd.json`, path, collection: groupOfPath(path), title: titleOfRec(r.fields), by: 'קונסולה · מני', who: 'מני בעלים', requestId: 'req_demo', deletedAt: ago(0) }); return wait({ path, deleted: true }); },
   exportCsv: async () => { await wait(null); throw new Error('demo'); },
   stats: (days) => wait(demoStats(days)),
+  traffic: (days) => wait(demoTraffic(days)),
+  speed: (days) => wait(demoSpeed(days)),
+  catalog: () => wait(demoCatalog),
+  runOp: async (method, path, body) => wait(demoRun(method, path, body)),
   switches: () => wait({ switches: demoSwitches, server: { email: { on: true, configured: true }, push: { mode: 'webpush' } } }),
   setSwitches: (b) => { Object.assign(demoSwitches, b, { updatedAt: ago(0), updatedBy: 'מני בעלים' }); return wait({ switches: demoSwitches, server: { email: { on: true, configured: true }, push: { mode: 'webpush' } } }); },
   queue: () => wait({ ...demoQueue, switches: demoSwitches }),

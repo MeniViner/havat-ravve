@@ -139,6 +139,13 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 .c-money .k-barrow, .c-flat .k-barrow { padding: 0; }
 .c-money .k-barrow__label { width: 112px; }
 .c-money .k-barrow__value { width: auto; min-width: 64px; }
+/* ביקורים ושימוש: a count and its share on one line ("172 · 14%"), and longer names ("ישירות (קישור שמור או הקלדה)") */
+.c-pct .k-barrow__label { width: 132px; line-height: 1.25; }
+.c-pct .k-barrow__value { width: auto; min-width: 76px; white-space: nowrap; font-weight: 400; }
+.c-pct .k-barrow__value b { font-weight: 700; }
+/* two lists in one card (how long, how far): room between them */
+.k-barlist + .c-card-title { margin-top: 18px; }
+@media (max-width: 480px) { .c-pct .k-barrow__label { width: 104px; font-size: 14px; } }
 .c-event { display: flex; flex-direction: column; }
 .c-event__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .c-event__foot { margin: 12px 0 0; font-size: 14px; line-height: 1.5; }
@@ -166,3 +173,31 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 }
 .c-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--soft); }
 .c-qrow__actions { align-items: center; }
+
+/* ---------- round 7: limited keys, speed, run any operation, import ---------- */
+/* a key's areas: name, then none / see / see and change; on a phone the choice goes under the name */
+.c-areas { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.c-area { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+.c-area + .c-area { border-top: 1px solid var(--line); }
+.c-area__name { font-size: 15px; font-weight: 600; }
+@media (max-width: 520px) { .c-area { flex-direction: column; align-items: stretch; gap: 6px; } .c-area .k-seg { width: 100%; } }
+.c-grid2 > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.c-tablewrap { overflow-x: auto; margin: 0 -4px; }
+/* run any operation: the list beside the form on a wide screen, above it on a phone */
+.c-run { display: grid; gap: 20px; align-items: start; }
+@media (min-width: 980px) { .c-run { grid-template-columns: minmax(280px, 380px) 1fr; } .c-run__list { max-height: 70vh; overflow-y: auto; } }
+@media (max-width: 979px) { .c-run__list { max-height: 46vh; overflow-y: auto; } }
+.c-row-on { background: var(--bg); box-shadow: inset -4px 0 0 var(--action); }
+.c-param { display: flex; flex-direction: column; gap: 6px; }
+.c-param__label { font-size: 15px; font-weight: 600; }
+.c-select { min-height: 44px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; padding: 0 10px; }
+.c-json { margin: 0; max-height: 420px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; text-align: left; }
+.c-notes summary { cursor: pointer; font-size: 14px; color: var(--soft); }
+.c-notes ul { margin: 8px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--soft); }
+/* import from Excel */
+.c-filerow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.c-filepick { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 15px; font-weight: 600; cursor: pointer; }
+.c-filepick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.c-filepick:focus-within { outline: 2px solid var(--action); outline-offset: 2px; }
+.c-map { display: grid; gap: 12px; }
+@media (min-width: 700px) { .c-map { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
