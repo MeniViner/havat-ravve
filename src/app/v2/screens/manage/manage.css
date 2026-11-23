@@ -60,19 +60,6 @@
   font-size: 14px; font-weight: 600; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px;
 }
 
-/* G1 / G2 editable rows */
-.manage-editrow {
-  display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 4px 6px 4px 10px; border-top: 1px solid var(--line);
-  box-sizing: content-box; list-style: none; background: var(--surface);
-}
-.manage-editrow:first-child { border-top: 0; }
-.manage-editinput {
-  box-sizing: border-box; flex: 1; min-width: 0; height: 44px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface);
-  padding: 0 12px; font: inherit; font-size: 16px; font-weight: 500; color: var(--ink);
-}
-.manage-editinput--amount { flex: none; width: 84px; text-align: center; font-variant-numeric: tabular-nums; }
-.v2 .manage-editinput:focus-visible { outline: none; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
-.manage-editinput[aria-invalid="true"] { border-color: var(--red); }
 .manage-list { list-style: none; margin: 0; padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .manage-list > li { transition: transform .12s ease; }

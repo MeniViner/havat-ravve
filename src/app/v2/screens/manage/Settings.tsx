@@ -4,14 +4,14 @@
 // templates, guestIntro and contact.phone/whatsapp keep their meaning. New keys (donationOptions, contactMore, payment.bitNumber,
 // payment.payboxLink) are optional extras (see docs/redesign-data/manage.md).
 // Tidy round: Q19 groups the index in two cards; recurring tasks (Tasks tab) and the Instinct log (Manage root) are not here.
-// A sign-up question's removal is in its row sheet behind the Q8 confirmation (rule 6); a donation amount opens its edit sheet,
-// whose ⋯ holds "מחיקה" (rules 4 and 6). The managers page lists owners and
+// A sign-up question's removal is in its row sheet behind the Q8 confirmation (rule 6); a donation amount and a visit type open
+// their edit sheet, whose ⋯ holds "מחיקה" (rules 4 and 6). The managers page lists owners and
 // managers only: the team list lives in People (?filter=team) and role changes in Activity ("אנשים").
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
 import {
-  ActionSheet, Avatar, BottomBar, Button, Card, DragHandle, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, MoreMenu, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
+  ActionSheet, Avatar, BottomBar, Button, Card, DragHandle, EmptyState, Field, FormHeader, Icon, ListCard, MoreMenu, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
   TextLink, Toggle, TopBar, useReorder, type ActionItem,
 } from '../../kit';
 import { daysFromToday, money } from '../../format';
@@ -268,6 +268,8 @@ function GuestsPage({ ctx }: ScreenProps) {
 // ---------- G2 ----------
 function VisitTypesPage({ ctx }: ScreenProps) {
   const [rows, setRows] = useState(() => ctx.settings.visitTypes.map((t) => ({ key: rowKey(), text: t })));
+  // the type being edited in its sheet; key '' is a new one ("סוג נוסף")
+  const [edit, setEdit] = useState<{ key: string; text: string } | null>(null);
   const toGuests = () => go(GUESTS);
   const save = useSave(toGuests);
   const toast = useToast();
@@ -277,25 +279,50 @@ function VisitTypesPage({ ctx }: ScreenProps) {
     if (!types.length) { toast.refused('לא נשמר. צריך לפחות סוג ביקור אחד.'); return; }
     save(() => saveSettings(ctx.actor, { visitTypes: types }, 'סוגי הביקור עודכנו'), 'סוגי הביקור נשמרו');
   };
+  const editOk = !!edit && !!edit.text.trim();
+  const keep = () => {
+    if (!edit || !editOk) return;
+    const next = { ...edit, text: edit.text.trim() };
+    setRows((x) => (next.key ? x.map((r) => (r.key === next.key ? next : r)) : [...x, { ...next, key: rowKey() }]));
+    setEdit(null);
+  };
+  const drop = (key: string) => { setRows((x) => x.filter((r) => r.key !== key)); setEdit(null); };
+  const saved = edit?.key ? rows.find((r) => r.key === edit.key)?.text || '' : '';
+  const editMore = edit?.key ? (
+    <MoreMenu title={saved || 'סוג ביקור'} items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: { title: 'למחוק את סוג הביקור?', text: `"${saved}" יוסר מטופס הביקור כשתלחצו "שמירה". ביקורים שכבר נקבעו לא משתנים.`, confirmLabel: 'מחיקה', onConfirm: () => drop(edit.key) },
+    }]} />
+  ) : undefined;
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow onClick={submit}>שמירה</Button></BottomBar>}>
       <FormHeader title="סוגי ביקור" onCancel={toGuests} />
       {rows.length > 0 && (
+        // rules 4 and 6: a row is the handle and the type; it opens its sheet, where ⋯ holds "מחיקה"
         <section className="k-card k-card--list">
           <ul className="manage-list">
             {rows.map((r, i) => (
-              <li key={r.key} className="manage-editrow" style={rowStyle(i)}>
+              <li key={r.key} className="manage-qrow" style={rowStyle(i)}>
                 <DragHandle {...handle(i, r.text || 'סוג ביקור')} />
-                <label className="k-sr" htmlFor={r.key}>סוג ביקור</label>
-                <input id={r.key} className="manage-editinput" value={r.text} maxLength={60} onChange={(e) => setRows((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} />
-                <IconButton variant="quiet" icon="close" label={`הסרה: ${r.text}`} onClick={() => setRows((x) => x.filter((_, j) => j !== i))} />
+                <button type="button" className="manage-qrow__hit" onClick={() => setEdit(r)} aria-haspopup="dialog">
+                  <span className="manage-qrow__body"><span className="manage-qrow__title">{r.text}</span></span>
+                  <span className="manage-chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>
+                </button>
               </li>
             ))}
           </ul>
         </section>
       )}
-      <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setRows((x) => [...x, { key: rowKey(), text: '' }])}>סוג נוסף</Button>
+      <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setEdit({ key: '', text: '' })}>סוג נוסף</Button>
       <span className="manage-hint">הסדר כאן הוא הסדר שהאורח רואה.</span>
+      <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.key ? 'עריכת סוג ביקור' : 'סוג ביקור חדש'} aside={editMore}>
+        {edit && (
+          <div className="manage-sheet">
+            <Field label="סוג ביקור" placeholder="למשל: ביקור משפחות" value={edit.text} maxLength={60} onChange={(e) => setEdit({ ...edit, text: e.target.value })} />
+            <Button size="lg" block onClick={keep} disabled={!editOk}>{edit.key ? 'עדכון' : 'הוספה'}</Button>
+          </div>
+        )}
+      </Sheet>
     </AppScreen>
   );
 }
