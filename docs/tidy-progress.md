@@ -108,7 +108,7 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   now names the sign-in page entry: "אפשר לחזור לדמו בכל רגע מעמוד הכניסה, ב״לראות איך האפליקציה עובדת״".
 - Removed as duplicates: the claimed-donation strip (the U7 tag shows it), the ticket dots ("כרטיס i מתוך n" instead).
 
-## Stage 7: demo and verification (in progress)
+## Stage 7: demo and verification (done)
 - First independent verifier pass (a session that wrote no screen), 28 Q screens against their PNGs plus a rules walk as owner,
   manager and staff on the regular and event days (about 430 page loads): 15 match, 5 minor, 8 defects; no console errors.
   Defects and rule findings handed to a fixer (`tidy/fix-verify`): Q7 empty purpose in the donation preview, Q17 extra field and
@@ -140,6 +140,14 @@ edit details; blocked page; demo: U12 quiet link and /demo).
     C3 also "להעביר"); G3 "ענו: X מתוך N"; M4 "פתוח להרשמה"; N12 per-line times; V3 files newest first and "הוספת קישור";
     S8 "מחפשים" chip; T6 ⋯ "סיכום היום"; Z3 "קישור להדגמה". X2 (team suspended) has no demo persona; the blocked persona is a
     guest.
+- Final round, on commit 925e171, with no fixes in between: the emulator smoke cycle (`docs/smoke/tidy/README.md`) passed
+  329 of 329, items 1-12 including every audience read by each kind of recipient, the phone link claimed once and then
+  refused, recurring create/edit/switch-off from the add form, each payment confirmation kind, and one delete of each of 14
+  entities through ⋯; 29 non-localhost requests, all aborted. The second independent walk (`docs/tidy-check/README.md`)
+  covered 367 screens (owner 124, manager 122, volunteer 58, vendor 20, guest 27, signed-out 16) and the 119 earlier screens:
+  no new findings, no console errors.
+- Not covered by automation: the Worker's e-mail send and lock-screen push (no such services on the emulators; the app's
+  recorded state is checked), the real Google redirect, WhatsApp itself (the built link and text are checked).
 
 ## Decisions (log)
 - `main` is merged into `tidy/placement` (not rebased): the area builders' branches are cut from it, and a rebase would rewrite
