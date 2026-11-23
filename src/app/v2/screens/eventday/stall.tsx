@@ -3,7 +3,7 @@
 // Q28/Q29: "כבר בחשבון: …" under the buyer opens the account sheet, where the crew removes a line, marks the account paid,
 // and clears the cart (with the undo toast). E9 rows open the account; they carry no buttons (rule 4).
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, TextLink, Chip, ChipRow, EmptyState, GateCamera, StatRow, StatTile, UnderlineLink } from '../../kit';
+import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, TextLink, Chip, ChipRow, EmptyState, GateCamera, UnderlineLink } from '../../kit';
 import { gw } from '../../gender';
 import { AppScreen, useToast } from '../../core';
 import { hhmm, money, firstName } from '../../format';
@@ -14,7 +14,7 @@ import type { Product, Tab } from '../../../types';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
   useEventTickets, useEventTabs, useTab, useStallProducts, ticketGuest, tabFor, sellToTab, sellToGuest, tabQty, tabLast, tabName,
-  isWalkInTab, itemsWord, shortInitials, isEventClosed, qrPayload, DEMO_QR, digits, findOpenTab, stallPeople, stallSummary, ticketWord,
+  isWalkInTab, itemsWord, shortInitials, isEventClosed, qrPayload, DEMO_QR, digits, findOpenTab, stallPeople, ticketWord,
   rememberBuyer, pendingBuyer, forgetBuyer, removeTabItem, setTabStatus, type EventV2, type StallGuest,
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to, moduleOff } from './common';
@@ -265,18 +265,11 @@ export function StallTabs({ ctx, params }: ScreenProps): ReactNode {
   // Guests with a ticket first, largest amount first (who to remind); walk-ins at the end.
   const shown = [...groups[filter]].sort((a, b) => Number(isWalkInTab(a)) - Number(isWalkInTab(b)) || b.total - a.total);
   const toTab = (t: Tab) => (ctx.manager ? `/manage/events/${id}/tabs/${t.id}` : `/event/stall/${t.id}${qs}`);
-  const sum = ctx.manager ? stallSummary(tabs.items, ctx.today) : null;
+  // the managers' totals are the Q12 stats (חשבונות, שולמו, פתוחים) and the Q15 "דוכן" stat, not repeated here (tidy plan row 181)
   return (
     <AppScreen variant="detail">
       <TopBar back={managed ? { label: event.title, ...to(`/manage/events/${id}`) } : { label: 'דוכן', ...to('/event/stall' + qs) }} />
       <PageTitle>חשבונות הדוכן</PageTitle>
-      {sum && (
-        <StatRow>
-          <StatTile value={money(sum.openTotal)} label="פתוחים" small />
-          <StatTile value={sum.openCount} label="חשבונות פתוחים" small />
-          <StatTile value={money(sum.soldToday)} label="נמכרו היום" small />
-        </StatRow>
-      )}
       <ChipRow label="סינון חשבונות">
         <Chip selected={filter === 'open'} onClick={() => setFilter('open')}>פתוחים · {groups.open.length}</Chip>
         <Chip selected={filter === 'claimed'} onClick={() => setFilter('claimed')}>סימנו ששילמו{groups.claimed.length ? ` · ${groups.claimed.length}` : ''}</Chip>

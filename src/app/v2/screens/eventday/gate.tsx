@@ -15,7 +15,7 @@ import { navigate } from '../../../router';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
   useEventTickets, useScans, useCounters, judge, judgeCode, admit, logRejected, admitWalkIn, ensureCounters, groupOrders, orderName, ticketMatcher,
-  ticketWord, isUnpaid, qrPayload, DEMO_QR, isEventClosed, liveNumbers, type EventV2, type TicketV2, type Verdict, type ScanV2, type Counters,
+  ticketWord, isUnpaid, qrPayload, DEMO_QR, isEventClosed, type EventV2, type TicketV2, type Verdict, type ScanV2,
 } from '../../data/eventday';
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to, moduleOff } from './common';
 
@@ -105,13 +105,9 @@ function ResultPage({ view, place, origin, onNext, onPaid, onLater, onRefuse, on
 }
 
 const gateQuery = (ctx: V2Ctx, id: string, from?: string) => (id === ctx.eventToday?.id && !from ? '' : `?e=${id}${from ? `&from=${from}` : ''}`);
-/** The gate header and result: "שער · <event>", and for managers how many arrived of all tickets (the old gate's count). */
-function gatePlace(ctx: V2Ctx, event: EventV2, tickets: TicketV2[], counters: Counters | null): ReactNode {
-  const place = `שער · ${event.title}`;
-  if (!ctx.manager) return place;
-  const n = liveNumbers(tickets, counters);
-  return <span className="eventday-gateplace"><span>{place}</span><span className="eventday-gateplace__count">{n.entered} נכנסו מתוך {n.total}</span></span>;
-}
+/** The gate header and result: "שער · <event>". The managers' "נכנסו מתוך" count is the Y1 live hero (opened from E1), and the
+ *  stall is the E1 "דוכן" entry; neither is repeated on the gate (tidy plan rows 171, 172). */
+const gatePlace = (event: EventV2): ReactNode => `שער · ${event.title}`;
 
 /** E2-E5 */
 export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
@@ -127,11 +123,7 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   useEffect(() => { if (id && !counters.loading && !counters.item && event && !isEventClosed(event)) ensureCounters(id); }, [id, counters.loading, counters.item, event]);
   if (!event || isEventClosed(event) || event.entry === false) return <NoEvent loading={loading} closed={isEventClosed(event)} off={moduleOff(event, 'entry')} back="/event" backLabel="אירוע" />;
   const q = gateQuery(ctx, id, params.from);
-  const place = gatePlace(ctx, event, tickets.items, counters.item);
-  // the old gate's quick "לדוכן" next to the title, when the event has a stall
-  const header = event.stall !== false
-    ? <span className="eventday-gatehead">{place}<button type="button" className="eventday-gatelink" onClick={() => navigate('/event/stall' + q)}>לדוכן</button></span>
-    : place;
+  const place = gatePlace(event);
   const onCode = (code: string) => { if (!gate.view && fresh(code)) gate.scan(code); };
   const tap = (code: string) => { if (!gate.view) gate.scan(code); }; // demo buttons: a deliberate tap, no camera debounce
   if (gate.view) {
@@ -145,7 +137,7 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   const demoCode = (tid: string) => { const t = tickets.items.find((x) => x.id === tid); return t ? qrPayload(t) : `HR1|${tid}|00`; };
   return (
     <>
-      <GateCamera place={header} onExit={() => navigate(params.from === 'live' || ctx.eventToday?.id !== id ? `/manage/events/${id}/live` : '/event')}
+      <GateCamera place={place} onExit={() => navigate(params.from === 'live' || ctx.eventToday?.id !== id ? `/manage/events/${id}/live` : '/event')}
         hint={cam.error || undefined} showHint={demo || !!cam.error}
         lastScan={l ? { text: `הקודם: ${l.name} · ${waiting ? SAVED_ON_PHONE : RESULT_WORD[l.result]}`, time: hhmm(l.at), tone: l.result === 'rejected' ? 'bad' : l.result === 'payLater' ? 'pay' : 'ok' } : undefined}
         onSearch={() => navigate('/event/gate/search' + q)}>
@@ -175,7 +167,7 @@ export function GateSearch({ ctx, params }: ScreenProps): ReactNode {
   if (!event || isEventClosed(event) || event.entry === false) return <NoEvent loading={loading} closed={isEventClosed(event)} off={moduleOff(event, 'entry')} back="/event" backLabel="אירוע" />;
   const qs = gateQuery(ctx, id, params.from);
   if (gate.view) {
-    return <ResultPage view={gate.view} place={gatePlace(ctx, event, tickets.items, counters.item)} origin="search" onNext={gate.clear} onPaid={gate.paid} onLater={gate.later} onRefuse={gate.refuse} onSearch={gate.clear} />;
+    return <ResultPage view={gate.view} place={gatePlace(event)} origin="search" onNext={gate.clear} onPaid={gate.paid} onLater={gate.later} onRefuse={gate.refuse} onSearch={gate.clear} />;
   }
   const match = ticketMatcher(q);
   const found = q.trim() ? orders.filter((o) => o.tickets.some(match)).sort((a, b) => a.first.createdAt.localeCompare(b.first.createdAt)).slice(0, 8) : [];

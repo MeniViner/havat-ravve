@@ -300,12 +300,6 @@ export function stallPeople(tickets: Ticket[], query: string) {
   }
   return [...people.entries()].filter(([, g]) => g.some(match)).map(([key, g]) => ({ key, guest: ticketGuest(g[0]), tickets: g }));
 }
-/** E9 for managers: open amount, open accounts, sold today (lines added today). */
-export function stallSummary(tabs: Tab[], today: string) {
-  const open = tabs.filter((t) => t.status === 'open' && hasTabPurchases(t));
-  const soldToday = tabs.reduce((s, t) => s + t.items.filter((i) => dateKeyOf(new Date(i.at)) === today).reduce((x, i) => x + i.price * i.qty, 0), 0);
-  return { openTotal: Math.round(open.reduce((s, t) => s + t.total, 0) * 100) / 100, openCount: open.length, soldToday: Math.round(soldToday * 100) / 100 };
-}
 export { removeTabItem, setTabStatus };
 /** My sales today: one per "רישום לחשבון" (lines added together share the same second). */
 export function mySales(tabs: Tab[], uid: string, today: string) {
