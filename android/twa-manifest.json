@@ -15,14 +15,14 @@
   "enableNotifications": false,
   "startUrl": "/app",
   "iconUrl": "https://havat-ravve.web.app/assets/app-icon-512.png",
-  "maskableIconUrl": "https://havat-ravve.web.app/assets/app-icon-512.png",
+  "maskableIconUrl": "https://havat-ravve.web.app/assets/app-icon-maskable-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "~/.havat-ravve/android/havat-ravve-upload.keystore",
     "alias": "upload"
   },
-  "appVersion": "1.0.1",
-  "appVersionCode": 2,
+  "appVersion": "1.0.2",
+  "appVersionCode": 3,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://havat-ravve.web.app/app.webmanifest",
