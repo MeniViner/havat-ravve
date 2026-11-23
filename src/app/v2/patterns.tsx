@@ -88,11 +88,12 @@ export function payConfirmText(template: string | undefined, v: { name: string; 
   const purpose = v.purpose.trim(), event = (v.event || '').trim() || purpose;
   const filled = fillTemplate(t, { 'שם': v.name.trim(), 'סכום': money(v.amount), 'עבור': purpose, 'אירוע': event });
   return filled
-    .replace(/(?:\s+(?:עבור|על|בשביל))?\s*\[[^\]]*\]/g, '')
-    .replace(/\s+(?:עבור|על|בשביל)\s*(?=[.,!?]|$)/g, '')
-    .replace(/\s+([.,!?])/g, '$1')
-    .replace(/,\s*([.!?])/g, '$1')
-    .replace(/\s{2,}/g, ' ')
+    // spaces and tabs only: the template's line breaks and paragraphs stay as written
+    .replace(/(?:[ \t]+(?:עבור|על|בשביל))?[ \t]*\[[^\]]*\]/g, '')
+    .replace(/[ \t]+(?:עבור|על|בשביל)[ \t]*(?=[.,!?]|$)/gm, '')
+    .replace(/[ \t]+([.,!?])/g, '$1')
+    .replace(/,[ \t]*([.!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 

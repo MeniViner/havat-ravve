@@ -115,6 +115,15 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   missing footnote, Q31 name-chip grid (rule 9), Q12 missing nav, Q20 failed entry missing from the default view, the stall
   screen's text beside the back link, donation amounts' X on rows, Q24 chip wrap, Q9 columns and formats, Q5 print/history,
   Q2 red meta, Q3 "הוספה, ועוד אחת". Findings that are logged decisions stay (Q14/Q4 tiles, Q20 search, edit-form ⋯).
+- Fixed and merged (`tidy/fix-verify`): Q7 reads "קיבלנו 180 ₪ על תרומה לחווה. תודה!" (one fill for preview, WhatsApp and
+  the Worker's e-mail; [אירוע] falls back to the purpose; an empty slot drops its lead-in word; line breaks stay); Q17 "הערה
+  לצוות" inside "עוד פרטים" when registering for someone else (F4 keeps it, as designed) and the managers' footnote; Q31 picker
+  with check boxes beyond five people (`PickerSheet multiple`); Q12 nav; Q20 failed changes in "שינויים"; E7 "4 חשבונות פתוחים"
+  is a body row; donation amounts open an edit sheet (delete through ⋯ and Q8, reorder kept); Q9 columns first, every table and
+  CSV dates dd.mm.yyyy and money "180 ₪", sort by value; Q5 "הדפסה" and "היסטוריית שינויים" (activity filtered to money); Q2
+  overdue meta no longer red.
+- Left as designed or decided: Q24 chips wrap (the "בלי תאריך" chip; Q3 wraps the same), C1 trip row with "הוספה" (approved C1),
+  Q3 "הוספה, ועוד אחת" (approved T5-Add).
 - Demo coverage for the 46 Q and U screens is being added (`tidy/s7-demo`).
 
 ## Decisions (log)
@@ -148,6 +157,8 @@ edit details; blocked page; demo: U12 quiet link and /demo).
 - Q24: "בלי תאריך" stays among the "מתי" chips (Q24 leaves it out), so with "חוזרת" the chips wrap to two lines. "הוספה, ועוד
   אחת" stays under the add button (approved T5).
 - The add-note and add-photo buttons after a task is done stay in T3's body (its top bar keeps "עריכה").
+- E7: the open stall accounts link was beside the back link in the approved E7; it is now a row in the body (rule 5), like
+  the M2/C1 links question.
 - Event-file image preview is gone; "פתיחה" opens the file.
 - Consent for update messages to all users: opt-in only (`updatesOptIn`).
 - A signed-in guest has no demo entry on U7 (the design's footer is יציאה, התקנה, האתר, תנאים). The way back is the sign-in
@@ -165,3 +176,4 @@ edit details; blocked page; demo: U12 quiet link and /demo).
 - From the guest builder: the team-only "מה יש לי בחווה" row on the team tickets page; the visit and donation detail pages
   reached from U7's list.
 - G5 "מנהלים ובעלים" lists pending e-mail invites only; a pending manager link sent by phone is not shown there.
+- G2 visit types still has rows with inputs and an X (same shape as donation amounts had); not in the verifier's list.
