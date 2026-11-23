@@ -214,5 +214,22 @@ assert.equal(lines.payments, 'ביט · PayBox · מזומן בשער');
 assert.equal(lines.amounts, '18 · 180 · 360 · סכום אחר');
 assert.equal(lines.questions, 'יישוב, איך שמעתם, תאריך לידה');
 assert.equal(lines.managers, '2 בעלים · 3 מנהלים');
+assert.equal(lines.typesQuestions, '4 סוגים · 3 שאלות');
 
-console.log('PASS: v2 manage helpers (periods, donations, debts, reports, inbox, visits, roles, activity lines, settings)');
+// ---- Q20 Instinct log in Hebrew ----
+const CODES = ['VALIDATION_FAILED', 'UNAUTHENTICATED', 'FORBIDDEN', 'NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'STALE_WRITE', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'UPSTREAM_ERROR', 'OUTCOME_UNKNOWN', 'PRODUCTION_LOCKED', 'INTERNAL'];
+for (const k of CODES) assert.ok(c.INSTINCT_REASON[k] && !/[A-Z_]{3,}/.test(c.INSTINCT_REASON[k]), `Hebrew reason for ${k}`);
+const log = (o) => ({ op: 'tasks.create', opHe: 'יצירת משימה חדשה, אופציונלי עם שיוך', verb: 'יצר', kind: 'write', ok: true, code: '', count: null, body: '{}', result: '{}', replayed: false, refs: [], ...o });
+assert.deepEqual(c.instinctLine(log({ body: JSON.stringify({ title: 'להאכיל את העזים' }) })), { title: 'יצר משימה', meta: 'להאכיל את העזים', failed: false });
+assert.deepEqual(c.instinctLine(log({ op: 'tasks.edit', verb: 'ערך', ok: false, code: 'STALE_WRITE' })), { title: 'ניסה לערוך משימה', meta: 'המשימה השתנתה בינתיים, לא נשמר', failed: true });
+assert.deepEqual(c.instinctLine(log({ op: 'shopping.add', verb: 'יצר', ok: false, code: 'OUTCOME_UNKNOWN' })), { title: 'ניסה ליצור פריט בקניות', meta: 'לא ברור אם זה נשמר', failed: true });
+assert.equal(c.instinctLine(log({ op: 'shopping.add', body: JSON.stringify({ text: 'קפה שחור', category: 'super' }) })).meta, 'קפה שחור · סופר');
+assert.deepEqual(c.instinctLine(log({ op: 'tasks.list', opHe: 'רשימת משימות: פתוחות או כולן', verb: 'קרא', kind: 'read', count: 12 })), { title: 'קרא רשימת משימות', meta: '12 רשומות', failed: false });
+assert.match(c.instinctLine(log({ replayed: true })).meta, /בקשה חוזרת/);
+// a row never shows the operation key or an error code
+for (const k of CODES) { const l = c.instinctLine(log({ ok: false, code: k })); assert.ok(!/[A-Za-z_]{4,}/.test(l.title + l.meta), `${k}: ${l.title} ${l.meta}`); }
+assert.equal(c.instinctTarget(log({ refs: [{ col: 'tasks', id: 't1' }] })), '/tasks/t1');
+assert.equal(c.instinctTarget(log({ op: 'tasks.delete', verb: 'מחק', refs: [{ col: 'tasks', id: 't1' }] })), '');
+assert.equal(c.instinctTarget(log({ kind: 'read', refs: [{ col: 'tasks', id: 't1' }] })), '');
+
+console.log('PASS: v2 manage helpers (periods, donations, debts, reports, inbox, visits, roles, activity lines, settings, Instinct log)');

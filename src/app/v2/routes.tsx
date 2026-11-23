@@ -104,6 +104,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/people/invite', manage.InviteScreen, 'manage', 'page', { manager: true }),
   R('/manage/people/:uid', manage.PersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports', manage.ReportsScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/reports/:section', manage.ReportsScreen, 'manage', 'tab', { manager: true }), // Q14 drill-ins: people, events
   R('/manage/visits', manage.VisitsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/visits/:id', manage.VisitScreen, 'manage', 'page', { manager: true }),
   R('/manage/donations', manage.DonationsScreen, 'manage', 'tab', { manager: true }),
@@ -185,11 +186,15 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
 
 export type Resolved = { screen: Screen; params: Record<string, string>; tab: NavTab; kind: Route['kind']; route: Route } | null;
 export function resolve(routes: Route[], route: string, search: URLSearchParams): Resolved {
+  // Q9: "<list>/table" is the list's own table view; the list screen renders it (useTableView in patterns.tsx). Checked first,
+  // so "/manage/donations/table" is the donations list and not a donation whose id is "table" ("/manage/donations/:id").
+  if (route.endsWith('/table')) {
+    const base = resolve(routes, route.slice(0, -'/table'.length) || '/', search);
+    if (base) return base;
+  }
   for (const r of routes) {
     const m = match(route, r.path);
     if (m) return { screen: r.screen, params: { ...Object.fromEntries(search.entries()), ...m }, tab: r.tab, kind: r.kind, route: r };
   }
-  // Q9: "<list>/table" is the list's own table view; the list screen renders it (useTableView in patterns.tsx)
-  if (route.endsWith('/table')) return resolve(routes, route.slice(0, -'/table'.length) || '/', search);
   return null;
 }

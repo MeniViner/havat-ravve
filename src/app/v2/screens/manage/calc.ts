@@ -2,6 +2,7 @@
 import { isFemale as sharedIsFemale } from '../../gender';
 // so tests/v2-manage.mjs can check it without a browser. "today" is always passed in (YYYY-MM-DD from clock.ts).
 import type { Activity, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, RegistrationField } from '../../../types';
+export * from './instinct';
 
 // ---------- money and periods ----------
 export const isPaid = (s: string) => s === 'paid' || s === 'paid_onsite';
@@ -351,6 +352,8 @@ export function settingsLines(s: Settings & { donationOptions?: { custom?: boole
     payments: pay,
     amounts,
     types: `${s.visitTypes.length} סוגים`,
+    /** Q19 "סוגי ביקור ושאלות הרשמה" */
+    typesQuestions: `${s.visitTypes.length} סוגים · ${s.registrationFields.length} שאלות`,
     questions: s.registrationFields.length ? s.registrationFields.map((f) => f.label.replace(/[?؟]/g, '').trim().split(/\s+/).slice(0, 2).join(' ')).join(', ') : 'אין שאלות נוספות',
     messages: 'אישור ביקור, תודה, תזכורת חוב',
     contact: s.contact?.phone || s.contact?.whatsapp || 'לא הוגדר',
