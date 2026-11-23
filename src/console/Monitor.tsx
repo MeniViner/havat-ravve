@@ -6,9 +6,12 @@ import { hhmm } from '../app/v2/format';
 import { ago, fmt, Section, useLoad } from './shared';
 import { size } from './labels';
 import { errorText, source, type HealthState, type Monitor } from './source';
+import { sec } from './Speed';
 
 const GRANT = 'gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:api-worker@havat-ravve.iam.gserviceaccount.com --role=roles/monitoring.viewer';
 const STATE: Record<HealthState, string> = { ok: 'תקין', warn: 'לשים לב', bad: 'לטפל', unknown: 'לא ידוע' };
+/** The morning check's lines by their id, in plain words (the server's own names mention its providers). */
+const HEALTH_HE: Record<string, string> = { quota: 'המכסה החינמית של מסד הנתונים', storage: 'אחסון קבצים וגיבויים' };
 
 function StateMark({ state }: { state: HealthState }) {
   return <span className={`c-state c-state--${state}`} role="img" aria-label={STATE[state]} />;
@@ -34,8 +37,9 @@ export function MonitorScreen({ notify }: { notify: (t: string, tone?: 'info' | 
         <Button variant="neutral" onClick={checkNow} disabled={busy || !m}>{busy ? 'בודק…' : 'בדיקה עכשיו'}</Button>
       </div>
       {mon.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא את הניטור. {mon.error}</Card>}
+      {mon.loading && !m && <p className="c-soft">טוען…</p>}
       {m && (
-        <>
+        <div className={mon.loading || busy ? 'c-stack c-loading' : 'c-stack'}>
           <SiteCard m={m} />
           <QuotaSection m={m} notify={notify} />
           <Section title="בדיקת הבוקר" aside={m.health ? <span className="c-soft">{ago(m.health.at)}{m.health.by !== 'cron' ? ` · ${m.health.by}` : ''}</span> : undefined}>
@@ -43,13 +47,13 @@ export function MonitorScreen({ notify }: { notify: (t: string, tone?: 'info' | 
             {m.health && (
               <ListCard>
                 {m.health.items.map((i) => (
-                  <Row key={i.id} leading={<StateMark state={i.state} />} title={i.he} meta={i.detail} value={<span className={`c-state-text c-state-text--${i.state}`}>{STATE[i.state]}</span>} />
+                  <Row key={i.id} leading={<StateMark state={i.state} />} title={HEALTH_HE[i.id] || i.he} meta={i.detail} value={<span className={`c-state-text c-state-text--${i.state}`}>{STATE[i.state]}</span>} />
                 ))}
               </ListCard>
             )}
           </Section>
           <AlertsSection m={m} onChange={(alerts) => mon.setData({ ...m, alerts })} notify={notify} />
-        </>
+        </div>
       )}
     </>
   );
@@ -69,7 +73,7 @@ function SiteCard({ m }: { m: Monitor }) {
             <b>{!last ? 'עוד לא נבדק' : down ? `האתר לא עונה מאז ${hhmm(s.downSince!)}` : last.ok ? 'האתר עונה' : 'הבדיקה האחרונה לא עברה'}</b>
             <span className="c-soft">
               <span className="k-ltr">{s.url}</span>
-              {last && <> · נבדק {ago(last.at)}{last.ok && <> · <span className="k-ltr k-num" dir="ltr">{last.ms} ms</span></>}</>}
+              {last && <> · נבדק {ago(last.at)}{last.ok && <> · ענה תוך <bdi className="k-num">{sec(last.ms)}</bdi></>}</>}
               {s.uptime !== null && <> · <span className="k-num">{s.uptime}%</span> ביממה</>}
             </span>
           </div>
@@ -77,7 +81,7 @@ function SiteCard({ m }: { m: Monitor }) {
         {!!s.checks.length && (
           <>
             <div className="c-strip" role="img" aria-label={`${s.checks.filter((c) => !c.ok).length} בדיקות שלא עברו ב־24 השעות האחרונות`}>
-              {s.checks.map((c) => <span key={c.at} className={c.ok ? '' : 'is-down'} title={`${hhmm(c.at)} · ${c.ok ? `${c.ms} ms` : 'לא ענה'}`} />)}
+              {s.checks.map((c) => <span key={c.at} className={c.ok ? '' : 'is-down'} title={`${hhmm(c.at)} · ${c.ok ? sec(c.ms) : 'לא ענה'}`} />)}
             </div>
             <div className="c-strip__axis"><span>לפני 24 שעות</span><span>עכשיו</span></div>
           </>
@@ -113,22 +117,28 @@ function QuotaSection({ m, notify }: { m: Monitor; notify: (t: string, tone?: 'i
       <Card pad="lg" className="c-meters">
         {q && !q.error && (
           <>
-            <Meter label="קריאות מ־Firestore היום" used={q.reads!} limit={m.limits.reads} />
-            <Meter label="כתיבות ל־Firestore היום" used={q.writes!} limit={m.limits.writes} />
-            <Meter label="מחיקות מ־Firestore היום" used={q.deletes!} limit={m.limits.deletes} />
+            <Meter label="קריאות ממסד הנתונים היום" used={q.reads!} limit={m.limits.reads} />
+            <Meter label="כתיבות למסד הנתונים היום" used={q.writes!} limit={m.limits.writes} />
+            <Meter label="מחיקות ממסד הנתונים היום" used={q.deletes!} limit={m.limits.deletes} />
           </>
         )}
         {q?.error === 'permission' && (
           <div className="c-grant">
-            <p><b>כדי לראות כמה מהמכסה של Firestore בשימוש, השרת צריך הרשאת צפייה אחת ב־Google Cloud.</b> זה בחינם, ואפשר לבטל בכל רגע. מריצים פעם אחת במחשב שמחובר לחשבון של החווה:</p>
+            <p><b>כדי לראות כמה מהמכסה של מסד הנתונים בשימוש, השרת צריך הרשאת צפייה אחת ב־Google Cloud.</b> זה בחינם, ואפשר לבטל בכל רגע. מריצים פעם אחת במחשב שמחובר לחשבון של החווה:</p>
             <code className="c-code" dir="ltr">{GRANT}</code>
             <Button variant="neutral" onClick={copy}>העתקת הפקודה</Button>
           </div>
         )}
-        {q && q.error && q.error !== 'permission' && <p className="c-soft">לא הצלחנו למדוד את המכסה של Firestore{q.detail ? ` (${q.detail})` : ''}. ננסה שוב בעוד שעה.</p>}
+        {q?.error === 'billing' && (
+          <div className="c-grant">
+            <p><b>Google מציג את המונה הזה רק בפרויקטים עם חיוב מופעל, והחווה בתוכנית החינמית.</b> את השימוש היומי אפשר לראות בקונסולת Firebase, בלשונית השימוש של מסד הנתונים. אם המכסה מתקרבת לסוף, האפליקציה עצמה מתחילה לסרב לשמירות עד 10:00 בבוקר.</p>
+            <a className="c-link" href="https://console.firebase.google.com/project/havat-ravve/firestore/usage" target="_blank" rel="noreferrer">לשימוש במסד הנתונים בקונסולת Firebase</a>
+          </div>
+        )}
+        {q && q.error && q.error !== 'permission' && q.error !== 'billing' && <p className="c-soft"><span title={q.detail || undefined}>לא הצלחנו למדוד את המכסה של מסד הנתונים. ננסה שוב בעוד שעה.</span></p>}
         {!q && <p className="c-soft">המדידה הראשונה תירשם בריצה הבאה של השרת.</p>}
-        {m.health?.r2Bytes !== null && m.health?.r2Bytes !== undefined && <Meter label="אחסון קבצים וגיבויים (R2)" used={m.health.r2Bytes} limit={m.limits.r2Bytes} unit={size} />}
-        <p className="c-note">המכסה של Firestore מתחדשת כל יום ב־10:00 (חצות בקליפורניה). כשהשימוש עובר 80% נשלחת התראה.</p>
+        {m.health?.r2Bytes !== null && m.health?.r2Bytes !== undefined && <Meter label="אחסון קבצים וגיבויים" used={m.health.r2Bytes} limit={m.limits.r2Bytes} unit={size} />}
+        <p className="c-note">המכסה של מסד הנתונים מתחדשת כל יום ב־10:00 (חצות בקליפורניה). כשהשימוש עובר 80% נשלחת התראה.</p>
       </Card>
     </Section>
   );

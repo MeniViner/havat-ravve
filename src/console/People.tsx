@@ -2,7 +2,7 @@
 // delete, a role set ahead for an email). Every change runs through the API as the signed-in owner, so it gets the
 // app's checks, its activity line ("דרך קונסולה · מני") and its notification, exactly like the app.
 import { useMemo, useState } from 'react';
-import { Avatar, Button, Card, Chip, ChipRow, ChoiceGroup, DetailList, DetailRow, Field, ListCard, Row, SearchField, Sheet, Tag, TextAreaField } from '../app/v2/kit';
+import { Avatar, Button, Card, Chip, ChipRow, ChoiceGroup, ConfirmSheet, DetailList, DetailRow, Field, ListCard, Row, SearchField, Sheet, Tag, TextAreaField } from '../app/v2/kit';
 import { ROLE_LABELS } from '../app/types';
 import { ddmm } from '../app/v2/format';
 import { Section } from './shared';
@@ -13,7 +13,7 @@ const FILTERS: { v: Filter; l: string }[] = [{ v: 'all', l: 'כולם' }, { v: '
 const ROLE_ORDER = ['owner', 'manager', 'staff', 'vendor', 'guest'];
 const OWNER_EMAIL = 'meniviner@gmail.com';
 type Role = 'guest' | 'staff' | 'manager' | 'owner';
-const ROLES: { value: Role; label: string }[] = [{ value: 'guest', label: 'אורח/ת' }, { value: 'staff', label: 'מתנדב/ת' }, { value: 'manager', label: 'מנהל/ת' }, { value: 'owner', label: 'בעלים' }];
+const ROLES: { value: Role; label: string }[] = (['guest', 'staff', 'manager', 'owner'] as const).map((value) => ({ value, label: ROLE_LABELS[value] }));
 
 export function PeopleScreen({ me, people, loading, error, reload, notify }: { me: Me; people: Person[]; loading: boolean; error: string | null; reload: () => void; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const [filter, setFilter] = useState<Filter>('all');
@@ -72,6 +72,7 @@ function PersonSheet({ p, me, onClose, onChanged, notify }: { p: Person; me: Me;
   const [role, setRole] = useState<Role>(p.role === 'vendor' ? 'guest' : p.role);
   const [notes, setNotes] = useState(p.notes || '');
   const [busy, setBusy] = useState(false);
+  const [askOwner, setAskOwner] = useState(false);
   const self = p.uid === me.uid;
   const farmOwner = p.email.toLowerCase() === OWNER_EMAIL;
   const run = async (op: string, body: Record<string, unknown>, done: string, close = false) => {
@@ -115,8 +116,13 @@ function PersonSheet({ p, me, onClose, onChanged, notify }: { p: Person; me: Me;
           {p.role === 'vendor' && <p className="c-note">בעל דוכן יכול רק לחזור להיות אורח. מצרפים דוכן דרך הזמנת דוכן באפליקציה.</p>}
           <ChoiceGroup options={p.role === 'vendor' ? ROLES.filter((r) => r.value === 'guest') : ROLES} value={role} onChange={setRole} />
           {role !== 'guest' && role !== p.role && <p className="c-note">{p.displayName} יקבל/תקבל הודעה באפליקציה על התפקיד החדש.</p>}
-          <Button size="lg" block disabled={busy || role === p.role} onClick={() => run('people.setRole', { role }, 'התפקיד עודכן')}>שמירה</Button>
+          {role === 'owner' && p.role !== 'owner' && <p className="c-warn">בעלים מקבלים גישה מלאה לכל החווה, כולל הקונסולה הזאת.</p>}
+          <Button size="lg" block disabled={busy || role === p.role} onClick={() => (role === 'owner' ? setAskOwner(true) : run('people.setRole', { role }, 'התפקיד עודכן'))}>שמירה</Button>
           <Button variant="quiet" block onClick={() => setMode('view')}>חזרה</Button>
+          <ConfirmSheet open={askOwner} onClose={() => setAskOwner(false)} cancelLabel="חזרה" confirmLabel="כן, לתת תפקיד בעלים"
+            title={`לתת ל${p.displayName || p.email} תפקיד בעלים?`}
+            text="בעלים רואים ומשנים הכל באפליקציה, ונכנסים גם לקונסולה הזאת: אנשים ותפקידים, מפתחות API, מתגים, גיבויים ומחיקת נתונים."
+            onConfirm={async () => { await run('people.setRole', { role: 'owner' }, 'התפקיד עודכן'); setAskOwner(false); }} />
         </div>
       )}
       {mode === 'notes' && (
@@ -131,14 +137,14 @@ function PersonSheet({ p, me, onClose, onChanged, notify }: { p: Person; me: Me;
           <p className="c-sub">{blocked ? `${p.displayName} יוכל/תוכל להיכנס לאפליקציה שוב.` : `${p.displayName} לא יוכל/תוכל להיכנס לאפליקציה עד שתשחררו.`}</p>
           <Button size="lg" variant={blocked ? 'primary' : 'danger'} className={blocked ? undefined : 'c-danger'} block disabled={busy}
             onClick={() => run('people.setStatus', { status: blocked ? 'active' : 'blocked' }, blocked ? 'החסימה שוחררה' : 'נחסם/ה')}>{blocked ? 'כן, לשחרר' : 'כן, לחסום'}</Button>
-          <Button variant="quiet" block onClick={() => setMode('view')}>ביטול</Button>
+          <Button variant="quiet" block onClick={() => setMode('view')}>חזרה</Button>
         </div>
       )}
       {mode === 'delete' && (
         <div className="c-form">
           <p className="c-sub">החשבון של {p.displayName} יימחק מהאפליקציה. כרטיסים, תרומות וביקורים נשארים. אם יתחבר/תתחבר שוב, יתחיל/תתחיל מההתחלה. כדי רק למנוע כניסה, עדיף לחסום.</p>
           <Button size="lg" variant="danger" className="c-danger" block disabled={busy} onClick={() => run('people.delete', {}, 'נמחק/ה', true)}>{busy ? 'מוחק…' : 'כן, למחוק'}</Button>
-          <Button variant="quiet" block onClick={() => setMode('view')}>ביטול</Button>
+          <Button variant="quiet" block onClick={() => setMode('view')}>חזרה</Button>
         </div>
       )}
     </Sheet>

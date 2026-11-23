@@ -51,7 +51,7 @@ export function MoneyScreen() {
             </Section>
           )}
           {!!open.length && (
-            <Section title={`מחכים לתשלום · ${open.length}`}>
+            <Section title={`מחכים לתשלום · ${open.length}${m.waiting.count > m.debts.length ? ` (מוצגים ${fmt(m.debts.length)} הראשונים מתוך ${fmt(m.waiting.count)})` : ''}`}>
               <ListCard>{open.map((d) => <DebtRow key={d.kind + d.id} d={d} />)}</ListCard>
             </Section>
           )}
@@ -62,7 +62,7 @@ export function MoneyScreen() {
                 const total = x.tickets + x.donations + x.tabs;
                 return { key: x.month, value: total, tip: `${monthName(x.month)}: ${ils(total)} (כרטיסים ${ils(x.tickets)}, תרומות ${ils(x.donations)}, דוכנים ${ils(x.tabs)})`, axis: (m.months.length - 1 - i) % 2 === 0 ? monthName(x.month) : '' };
               })} />
-              <p className="c-note">מעבר עם העכבר על חודש מראה את הפירוט.</p>
+              <p className="c-note">נגיעה בחודש (או מעבר עם העכבר) מראה את הפירוט שלו מתחת לגרף.</p>
             </Card>
           </Section>
 

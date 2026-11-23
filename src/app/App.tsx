@@ -57,6 +57,7 @@ function MaintenancePage({ text }: { text: string }) {
       <div className="title">האפליקציה בתחזוקה</div>
       <div className="splash-text">{text || 'אנחנו עובדים על שיפור קטן. נחזור בקרוב.'}</div>
       <button type="button" className="btn ghost" onClick={() => location.reload()}>לבדוק שוב</button>
+      <a className="splash-text" href="/admin" style={{ textDecoration: 'underline' }}>כניסת בעלים</a>
     </div>
   );
 }

@@ -16,7 +16,7 @@ const DEVICE: Record<string, string> = { mobile: 'טלפון', desktop: 'מחש�
 const DEPTH: Record<string, string> = { d25: 'רק ההתחלה', d50: 'עד האמצע', d75: 'רוב הדף', d100: 'עד הסוף' };
 const TIME: Record<string, string> = { t10: 'פחות מ־10 שניות', t60: 'עד דקה', t180: 'דקה עד 3', tlong: 'יותר מ־3 דקות' };
 const SCREEN: Record<string, string> = { home: 'בית', day: 'היום', tasks: 'משימות', shopping: 'קניות', farm: 'החווה', manage: 'ניהול', event: 'אירוע (צוות)', events: 'אירועים', people: 'אנשים', places: 'מקומות', projects: 'פרויקטים', notifications: 'התראות', me: 'הכרטיסים והחשבון', new: 'הוספה', search: 'חיפוש', vendor: 'דוכנים', welcome: 'ברוכים הבאים', install: 'התקנה', visit: 'בקשת ביקור', donate: 'תרומה', contact: 'יצירת קשר', login: 'כניסה', calendar: 'יומן', more: 'עוד', terms: 'תנאים', offline: 'בלי חיבור', other: 'אחר' };
-const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'צוות', vendor: 'דוכנים', guest: 'אורחים', signedout: 'בלי חשבון' };
+const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'מתנדבים', vendor: 'דוכנים', guest: 'אורחים', signedout: 'בלי חשבון' };
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 /** A ranked list as bars: the count, and its share of `whole` (visits or opens). */
@@ -59,7 +59,7 @@ export function TrafficScreen() {
 
           <Section title={`האתר · ${fmt(d.totals.visitors)} מבקרים`}>
             <StatRow grid>
-              <StatTile value={fmt(d.totals.visitors)} label="מבקרים" />
+              <StatTile value={fmt(d.totals.visitors)} label="מבקרים (לפי יום)" />
               <StatTile value={fmt(d.totals.views)} label="כניסות" />
               <StatTile value={`${pct(d.totals.returning, d.totals.visitors)}%`} label="חזרו שוב" />
               <StatTile value={`${pct(mobile, d.totals.views)}%`} label="מהטלפון" />
@@ -94,7 +94,7 @@ export function TrafficScreen() {
             </div>
             <Card pad="lg">
               <p className="c-card-title">באיזו שעה נכנסים</p>
-              <Columns label="כניסות לאתר לפי שעה ביום" height={80} data={d.site.hours.map((v, h) => ({ key: String(h), value: v, tip: `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59: ${v} כניסות`, axis: hourAxis(h) }))} />
+              <Columns pick="max" label="כניסות לאתר לפי שעה ביום" height={80} data={d.site.hours.map((v, h) => ({ key: String(h), value: v, tip: `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59: ${v} כניסות`, axis: hourAxis(h) }))} />
             </Card>
           </Section>
 
@@ -124,7 +124,7 @@ export function TrafficScreen() {
             </div>
             <Card pad="lg">
               <p className="c-card-title">באיזו שעה משתמשים</p>
-              <Columns label="פתיחות של האפליקציה לפי שעה ביום" height={80} data={d.app.hours.map((v, h) => ({ key: String(h), value: v, tip: `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59: ${v} פתיחות`, axis: hourAxis(h) }))} />
+              <Columns pick="max" label="פתיחות של האפליקציה לפי שעה ביום" height={80} data={d.app.hours.map((v, h) => ({ key: String(h), value: v, tip: `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59: ${v} פתיחות`, axis: hourAxis(h) }))} />
             </Card>
           </Section>
           <p className="c-note">איך זה נספר: כל כניסה שולחת לשרת שלנו רק מספרים (איזה חלק בדף, מאיזה סוג אתר הגיעו, טלפון או מחשב). לא נשמרים שמות, כתובות או מזהים. מבקר נספר פעם אחת ביום בכל דפדפן. ההדגמה, בדיקות ומסכי התצוגה המקדימה לא נספרים.</p>

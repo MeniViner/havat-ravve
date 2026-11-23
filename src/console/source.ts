@@ -37,7 +37,7 @@ export type BackupDoc = { path: string; then: Record<string, unknown>; now: Reco
 export type TrashItem = { key: string; path: string; collection: string; title: string; by: string; who: string; requestId: string; deletedAt: string };
 
 export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
-export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'unavailable' | 'failed'; detail?: string };
+export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'billing' | 'unavailable' | 'failed'; detail?: string };
 export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
 export type Health = { at: string; date: string; by: string; worst: HealthState; items: { id: string; he: string; state: HealthState; detail: string }[]; r2Bytes: number | null };
 export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
@@ -171,8 +171,13 @@ export class ConsoleError extends Error {
 const PROD = 'https://havat-ravve-api.meniviner.workers.dev';
 const LOCAL_KEY = 'farm-console-api';
 // Local testing only: /admin?api=http://127.0.0.1:8787 talks to a Worker under `wrangler dev`.
+// Only on a developer's own machine: on the live site a crafted link must never send the owner's sign-in token elsewhere,
+// so there ?api= and any stored override are ignored and cleared.
+// (the build is plain esbuild, no import.meta.env: a local address is the developer's machine)
+const localDev = () => location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 function apiBase() {
   try {
+    if (!localDev()) { sessionStorage.removeItem(LOCAL_KEY); return PROD; }
     const q = new URLSearchParams(location.search).get('api');
     if (q && /^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(q)) sessionStorage.setItem(LOCAL_KEY, q);
     return sessionStorage.getItem(LOCAL_KEY) || PROD;
@@ -284,6 +289,7 @@ const liveSource: Source = {
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };
 export const source: Source = isDemo() ? demoSource : liveSource;
 
+const FALLBACK = 'משהו השתבש בשרת. נסו שוב בעוד רגע.';
 /** The Hebrew line for a failure. */
 export function errorText(e: unknown): string {
   if (e instanceof ConsoleError) {
@@ -291,7 +297,10 @@ export function errorText(e: unknown): string {
       FORBIDDEN: 'אין הרשאה לפעולה הזאת', STALE_WRITE: 'מישהו שינה את זה בינתיים. רעננו ונסו שוב', NETWORK: 'אין חיבור לשרת. בדקו את האינטרנט ונסו שוב',
       RATE_LIMITED: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד דקה', NOT_FOUND: 'לא נמצא', UNAUTHENTICATED: 'צריך להתחבר מחדש',
     };
-    return known[e.code] || (e.he ? `${e.he} (${e.message})` : e.message);
+    // the technical words stay out of sight: in the browser console for whoever debugs, never on the screen
+    console.warn('[console]', e.code, e.message);
+    return known[e.code] || e.he || FALLBACK;
   }
+  console.warn('[console]', e);
   return 'משהו השתבש. נסו שוב';
 }

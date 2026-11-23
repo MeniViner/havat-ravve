@@ -2,6 +2,7 @@
 // what waits, what someone said they paid and an owner still has to confirm, by month), and each event as a funnel
 // (orders → tickets → paid → came in). Computed on request from Firestore, reading only the fields it needs (no photos),
 // a few hundred reads out of the free 50,000 a day.
+import { lastIlDays } from './util';
 import type { Firestore } from './firestore';
 import { invalid } from './http';
 
@@ -21,8 +22,11 @@ const since = (field: string, iso: string) => ({ fieldFilter: { field: { fieldPa
 
 const PAID = new Set(['paid', 'paid_onsite']);
 const WAITING = new Set(['pending', 'claimed']);
-/** When money came in: the confirmation time, else the last update. */
-const paidAt = (r: Row) => str((r.paymentConfirmation as { at?: unknown } | undefined)?.at) || str(r.updatedAt) || str(r.createdAt);
+/**
+ * When money came in: the paidAt the app and the API stamp when a payment is settled; for older records the confirmation
+ * time, else when it was made. Never updatedAt: a gate scan or a deleted account moves that.
+ */
+const paidAt = (r: Row) => str(r.paidAt) || str((r.paymentConfirmation as { at?: unknown } | undefined)?.at) || str(r.createdAt);
 
 export async function stats(fs: Firestore, daysIn: number) {
   if (![7, 30, 90, 365].includes(daysIn)) throw invalid('days', '7, 30, 90 or 365');
@@ -34,9 +38,9 @@ export async function stats(fs: Firestore, daysIn: number) {
     read(fs, 'tasks', ['createdAt', 'done', 'doneAt', 'doneBy', 'dueDate', 'urgent']),
     read(fs, 'shopping', ['createdAt', 'bought', 'boughtAt']),
     read(fs, 'visits', ['status', 'people', 'date', 'createdAt']),
-    read(fs, 'donations', ['name', 'amount', 'label', 'paymentStatus', 'paymentConfirmation', 'createdAt', 'updatedAt']),
-    read(fs, 'tickets', ['eventId', 'eventTitle', 'orderId', 'ownerName', 'price', 'paymentStatus', 'status', 'entries', 'paymentConfirmation', 'createdAt', 'updatedAt']),
-    read(fs, 'tabs', ['eventId', 'eventTitle', 'guestName', 'total', 'status', 'paymentConfirmation', 'claimedAt', 'createdAt', 'updatedAt']),
+    read(fs, 'donations', ['name', 'amount', 'label', 'paymentStatus', 'paymentConfirmation', 'paidAt', 'createdAt', 'updatedAt']),
+    read(fs, 'tickets', ['eventId', 'eventTitle', 'orderId', 'ownerName', 'price', 'paymentStatus', 'status', 'entries', 'paymentConfirmation', 'paidAt', 'createdAt', 'updatedAt']),
+    read(fs, 'tabs', ['eventId', 'eventTitle', 'guestName', 'total', 'status', 'paymentConfirmation', 'paidAt', 'claimedAt', 'createdAt', 'updatedAt']),
     read(fs, 'events', ['title', 'start', 'capacity', 'price', 'published', 'open']),
     read(fs, 'activity', ['at', 'kind'], since('at', from)),
   ]);
@@ -52,8 +56,7 @@ export async function stats(fs: Firestore, daysIn: number) {
   const days: { day: string; actions: number; tasksDone: number }[] = [];
   const doneByDay: Record<string, number> = {};
   for (const t of tasks) if (t.done && inPeriod(t.doneAt)) { const d = dayOf(str(t.doneAt)); doneByDay[d] = (doneByDay[d] || 0) + 1; }
-  for (let i = Math.min(daysIn, 90) - 1; i >= 0; i--) {
-    const d = dayOf(new Date(now.getTime() - i * 86400_000).toISOString());
+  for (const d of lastIlDays(Math.min(daysIn, 90), now)) {
     days.push({ day: d, actions: perDay[d] || 0, tasksDone: doneByDay[d] || 0 });
   }
   const weekday = [0, 0, 0, 0, 0, 0, 0];

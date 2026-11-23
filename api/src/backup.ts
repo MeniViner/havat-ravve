@@ -241,9 +241,18 @@ export async function restoreFromBackup(env: Env, date: string, paths: string[],
   const want = new Set(paths);
   const docs = await docsOf(bucket(env), date, (p) => want.has(p));
   if (!docs.length) throw new ApiError('NOT_FOUND', 'none of those documents are in this backup');
-  const writes: Write[] = docs.map((d) => ({ update: { name: d.name, fields: d.fields || {} } }));
+  // what is there now goes to the recycle bin first (30 days), so a restore can itself be undone
+  const now: RawDoc[] = [];
+  for (let i = 0; i < docs.length; i += 100) now.push(...await fs.rawGet(docs.slice(i, i + 100).map((d) => d.name)));
+  const current = new Map(now.map((d) => [d.name, d]));
+  // a person's profile (role, status) is changed in the people screen: a restore only brings back one that is gone
+  const people = docs.filter((d) => lastCollection(pathOf(d.name)) === 'users' && current.has(d.name));
+  const todo = docs.filter((d) => !people.includes(d));
+  const keep = todo.map((d) => current.get(d.name)).filter((d): d is RawDoc => !!d);
+  if (keep.length && fs.trash) await fs.trash.put(keep);
+  const writes: Write[] = todo.map((d) => ({ update: { name: d.name, fields: d.fields || {} } }));
   for (let i = 0; i < writes.length; i += 400) await fs.commit(writes.slice(i, i + 400));
-  return { restored: docs.length, missing: paths.length - docs.length, paths: docs.map((d) => pathOf(d.name)) };
+  return { restored: todo.length, missing: paths.length - docs.length, skippedPeople: people.map((d) => pathOf(d.name)), keptInTrash: keep.length, paths: todo.map((d) => pathOf(d.name)) };
 }
 
 // ---------- the recycle bin ----------

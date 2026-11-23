@@ -2,11 +2,11 @@
 // (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, מתגים, תור שליחה, משימות מתוזמנות,
 // אבטחה, גיבויים.
 // /admin?demo shows the same screens over made-up data, without signing in and without reading or writing anything.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { Avatar, Button, EmptyState, Icon, type IconName, Tabs } from '../app/v2/kit';
 import { readyAuth, signIn, signOutUser, inAppBrowser } from '../app/firebase';
-import { useLoad, useNotice } from './shared';
+import { outHref, useLoad, useNotice } from './shared';
 import { ConsoleError, errorText, source, type Me } from './source';
 import { OverviewScreen } from './Overview';
 import { KeysScreen } from './Keys';
@@ -115,8 +115,8 @@ function Shell({ me }: { me: Me }) {
           ))}
         </nav>
         <div className="c-side__links">
-          <a className="c-link" href="/app">לאפליקציה</a>
-          <a className="c-link" href="/edit">לעריכת האתר</a>
+          <a className="c-link" href={outHref('/app')}>לאפליקציה</a>
+          <a className="c-link" href={outHref('/edit')}>לעריכת האתר</a>
         </div>
         <div className="c-me">
           <Avatar name={me.name} size={36} tone="me" />
@@ -126,7 +126,7 @@ function Shell({ me }: { me: Me }) {
       </aside>
       <div className="c-top">
         <div className="c-brand"><Icon name="server" size={22} /><span>חוות רווה · שרת</span></div>
-        <Tabs label="קונסולה" options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={go} />
+        <PhoneTabs tab={tab} onChange={go} />
       </div>
       <main className="c-main">
         {tab === 'overview' && <OverviewScreen />}
@@ -147,6 +147,45 @@ function Shell({ me }: { me: Me }) {
         {tab === 'import' && <ImportScreen notify={notice.show} />}
       </main>
       {notice.view}
+    </div>
+  );
+}
+
+/** The phone's tab strip: 16 tabs scroll sideways. The open one is always scrolled into view (also on a direct link to
+ *  one screen), and a fade on an edge says there are more tabs that way. */
+function PhoneTabs({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ start: false, end: true });
+  const strip = () => wrap.current?.querySelector<HTMLElement>('.k-tabs') || null;
+  const measure = () => {
+    const el = strip();
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const pos = Math.abs(el.scrollLeft); // RTL: 0 at the start (right), negative toward the end
+    setMore({ start: pos > 4, end: pos < max - 4 });
+  };
+  useEffect(() => {
+    const el = strip();
+    if (!el) return;
+    el.addEventListener('scroll', measure, { passive: true });
+    addEventListener('resize', measure);
+    return () => { el.removeEventListener('scroll', measure); removeEventListener('resize', measure); };
+  }, []);
+  const first = useRef(true);
+  useEffect(() => {
+    const el = strip();
+    const on = el?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (el && on && el.scrollWidth > el.clientWidth) {
+      // center the open tab inside the strip only (scrollIntoView would also move the page)
+      const box = el.getBoundingClientRect(), b = on.getBoundingClientRect();
+      el.scrollBy({ left: b.left + b.width / 2 - (box.left + box.width / 2), behavior: first.current ? 'auto' : 'smooth' });
+    }
+    first.current = false;
+    measure();
+  }, [tab]);
+  return (
+    <div ref={wrap} className={`c-tabs${more.start ? ' c-tabs--start' : ''}${more.end ? ' c-tabs--end' : ''}`}>
+      <Tabs label="קונסולה" options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={onChange} />
     </div>
   );
 }

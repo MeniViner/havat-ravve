@@ -64,6 +64,25 @@ export function useList<T extends Row>(path: string, spec: Spec, enabled = true)
     return fs;
   }, [fs, local, path, specKey, enabled, v]);
 }
+/**
+ * The owners' switches (settings/switches). A copy from the phone's offline store may be hours old, so maintenance and
+ * read-only count only once the server confirms them: a phone in the field never stays locked after the owners turn
+ * them off, and an offline phone is not locked by a switch it cannot check.
+ */
+export function useSwitchesSnapshot<T extends Row & { maintenance?: boolean; readOnly?: boolean }>(): { item: T | null; loading: boolean } {
+  const demo = useDemo();
+  const [st, setSt] = useState<{ item: T | null; loading: boolean }>({ item: null, loading: !demo.on });
+  useEffect(() => {
+    if (demo.on) { setSt({ item: null, loading: false }); return; }
+    return onSnapshot(doc(db, 'settings/switches'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists()) { setSt({ item: null, loading: false }); return; }
+      const d = { id: snap.id, ...(snap.data() as DocumentData) } as unknown as T;
+      setSt({ item: snap.metadata.fromCache ? { ...d, maintenance: false, readOnly: false } : d, loading: false });
+    }, () => setSt({ item: null, loading: false }));
+  }, [demo.on]);
+  return st;
+}
+
 export function useDoc<T extends Row>(path: string, enabled = true): { item: T | null; loading: boolean; error?: string } {
   const demo = useDemo(); const v = useDemoVersion();
   const local = demo.on;
@@ -277,5 +296,6 @@ async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>)
 }
 async function readCached(col: string, id: string): Promise<Row | null> {
   const { getDocFromCache } = await import('firebase/firestore');
-  try { const snap = await getDocFromCache(real(col, id)); return snap.exists() ? { id: snap.id, ...(snap.data() as DocumentData) } : null; } catch { return null; }
+  // a plain read of the phone's copy: read-only (real() refuses) must not make a queued change see "not found"
+  try { const snap = await getDocFromCache(doc(db, col, id)); return snap.exists() ? { id: snap.id, ...(snap.data() as DocumentData) } : null; } catch { return null; }
 }

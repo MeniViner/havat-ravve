@@ -584,8 +584,17 @@ try {
     await seed('users/syn-staff2', { ...(await docOf('users/syn-staff2')), displayName: 'שם ששונה אחרי הגיבוי' });
     const one = await api('GET', `/v1/console/backups/${day}/doc?path=users/syn-staff2`, C(own));
     check(one.status === 200 && one.json.data.then.displayName === 'יואב כהן' && one.json.data.now.displayName === 'שם ששונה אחרי הגיבוי', 'one document: then and now side by side', one.json?.data && { then: one.json.data.then.displayName, now: one.json.data.now?.displayName });
-    const rsb = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: ['users/syn-staff2', 'users/not-there'] } });
-    check(rsb.status === 200 && rsb.json.data.restored === 1 && rsb.json.data.missing === 1 && (await docOf('users/syn-staff2')).displayName === 'יואב כהן', 'restore from the backup writes it back as it was', rsb.json);
+    // a person who still exists is changed in the people screen, never overwritten by a restore (role, status)
+    const rsp = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: ['users/syn-staff2', 'users/not-there'] } });
+    check(rsp.status === 200 && rsp.json.data.restored === 0 && rsp.json.data.missing === 1 && rsp.json.data.skippedPeople?.includes('users/syn-staff2') && (await docOf('users/syn-staff2')).displayName === 'שם ששונה אחרי הגיבוי', 'restore never overwrites a person who still exists', rsp.json);
+    await seed('users/syn-staff2', { ...(await docOf('users/syn-staff2')), displayName: 'יואב כהן' });
+    // any other record comes back as it was, and what was there goes to the recycle bin first
+    const other = rows.find((d) => /\/documents\/(tasks|places|shopping|events)\/[^/]+$/.test(d.name) && d.fields.title?.stringValue);
+    const otherPath = other.name.slice(other.name.indexOf('/documents/') + 11);
+    const was = other.fields.title.stringValue;
+    await seed(otherPath, { ...(await docOf(otherPath)), title: 'כותרת ששונתה אחרי הגיבוי' });
+    const rsb = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: [otherPath] } });
+    check(rsb.status === 200 && rsb.json.data.restored === 1 && rsb.json.data.keptInTrash === 1 && (await docOf(otherPath)).title === was, 'restore from the backup writes it back as it was, the current version kept in the recycle bin', rsb.json);
     const LB = await (async () => { for (let i = 0; i < 30; i++) { const d = await docOf('api_log/' + rsb.json.meta.requestId); if (d) return d; await new Promise((res) => setTimeout(res, 100)); } return null; })();
     check(LB && LB.op === 'console.backups.restore' && LB.verb === 'שחזר' && LB.keyLabel === 'קונסולה · נועה', 'a restore is logged as the console', LB && { op: LB.op, verb: LB.verb });
     check((await api('GET', '/v1/console/backups/2020-01-01/download', C(own))).status === 404, 'a day without a backup → 404');

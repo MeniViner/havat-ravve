@@ -338,10 +338,11 @@ export class Firestore {
     if (this.fault('commit-lost')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated commit that never arrived');
     // the recycle bin (backup.ts): what a request deletes is read just before, and kept once the commit succeeds
     const doomed = this.trash ? writes.map((w) => w.delete).filter((n): n is string => typeof n === 'string' && this.trash!.keep(n)) : [];
-    const before = doomed.length ? await this.rawGet(doomed).catch(() => [] as RawDoc[]) : [];
+    // a delete that cannot be read first is refused: it would skip the recycle bin without anyone knowing
+    const before = doomed.length ? await this.rawGet(doomed) : [];
     const r = await this.call('POST', ':commit', { writes, ...(transaction ? { transaction } : {}) }, 10000, this.fault('commit-body-lost'));
     if (this.fault('commit-timeout')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated lost commit acknowledgement');
-    if (before.length) await this.trash!.put(before).catch(() => {});
+    if (before.length) await this.trash!.put(before).catch((e) => console.log(JSON.stringify({ trashFailed: before.length, error: String(e).slice(0, 160) })));
     return r;
   }
 
