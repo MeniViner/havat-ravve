@@ -2,7 +2,7 @@
 // edit and delete in ⋯ (rules 5 and 6: one control in the top bar, delete only through ⋯ and the confirmation).
 import { useEffect, useMemo, useRef } from 'react';
 import { AppScreen, go, useExternal, useToast } from '../../core';
-import { BottomBar, Button, DetailList, DetailRow, EmptyState, History, MoreMenu, PageTitle, SectionTitle, Stepper, Tag, TopBar } from '../../kit';
+import { BottomBar, Button, DetailList, DetailRow, EmptyState, History, PageTitle, SectionTitle, Stepper, Tag, TopBar } from '../../kit';
 import { dayTime, ddmm } from '../../format';
 import { back } from '../../../router';
 import { compressPhoto } from '../../../store';
@@ -10,7 +10,7 @@ import { storePhoto } from '../../../upload';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem } from '../../../types';
 import {
-  deleteShopItem, doneWord, g, keyOfCat, listLabel, logQtyChange, parseQty, qtyText, setItemBought, setItemPhoto, setItemQty,
+  doneWord, g, keyOfCat, listLabel, logQtyChange, parseQty, qtyText, setItemBought, setItemPhoto, setItemQty,
   stepQty, timeline, useItemActivity, useShopItem, useShopping,
 } from '../../data/shopping';
 import { agoLong } from './common';
@@ -53,11 +53,6 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
     if (bought) toast.show({ text: `${doneWord(item.category)}: ${item.title}`, actions: [{ label: 'ביטול', onClick: () => { setItemBought(ctx.actor, { ...item, bought: true }, false, null).catch(fail); } }] });
     onBack();
   };
-  const remove = () => {
-    const undo = deleteShopItem(ctx.actor, item);
-    toast.show({ text: `נמחק: ${item.title}`, check: false, duration: 6000, actions: [{ label: 'ביטול', onClick: undo }] });
-    onBack();
-  };
   const pickPhoto = async (file: File | undefined) => {
     if (!file) return;
     try { await setItemPhoto(ctx.actor, item, await storePhoto(await compressPhoto(file), 'shopping')); } catch (e) { fail(e); }
@@ -70,10 +65,7 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
       </BottomBar>
     }>
       <TopBar back={{ label: 'קניות', onClick: onBack }}
-        end={<MoreMenu title={item.title} items={[
-          { label: 'עריכה', icon: 'edit', onSelect: () => go(`/shopping/${item.id}/edit`) },
-          { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: { title: 'למחוק מהרשימה?', text: `"${item.title}" יימחק מהרשימה של כולם.`, confirmLabel: 'מחיקה', onConfirm: remove } },
-        ]} />} />
+        end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/shopping/${item.id}/edit`)}>עריכה</Button>} />
       <PageTitle size="detail" className="shopping-title">{item.title}{item.urgent && !item.bought && <Tag tone="urgent">דחוף</Tag>}</PageTitle>
       <DetailList>
         <DetailRow term="כמות" action={<Stepper value={parseQty(item.qty).n} min={1} onChange={(n) => step(n - parseQty(item.qty).n)} />}>{qtyText(item.qty)}</DetailRow>
