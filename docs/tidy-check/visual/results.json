@@ -1,0 +1,462 @@
+{
+ "Q1-ManageRoot": {
+  "id": "Q1-ManageRoot",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage",
+  "steps": "",
+  "diff": 0.069,
+  "errors": [],
+  "at": "2026-11-23T02:01:52.800Z"
+ },
+ "Q2-TasksTime": {
+  "id": "Q2-TasksTime",
+  "persona": "staff",
+  "scenario": "regular",
+  "route": "/tasks?view=time",
+  "steps": "click:קראתי",
+  "diff": 0.087,
+  "errors": [],
+  "at": "2026-11-23T02:01:54.414Z"
+ },
+ "Q3-AddMore": {
+  "id": "Q3-AddMore",
+  "persona": "staff",
+  "scenario": "regular",
+  "route": "/new?text=להכין שלטי חניה&event=demo-e-festival",
+  "steps": "click:אחר; click:ליד הכניסה",
+  "diff": 0.248,
+  "errors": [],
+  "at": "2026-11-23T02:03:22.698Z"
+ },
+ "Q24-AddRecurring": {
+  "id": "Q24-AddRecurring",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/new?text=להשקות את שורת העציצים",
+  "steps": "click:חוזרת; exact:ב׳; exact:ד׳; exact:ו׳; exact:ש׳; fill:עד איזו שעה=07:00",
+  "diff": 0.169,
+  "errors": [],
+  "at": "2026-11-23T02:01:59.540Z"
+ },
+ "Q22-ShopSuggest": {
+  "id": "Q22-ShopSuggest",
+  "persona": "staff",
+  "scenario": "regular",
+  "route": "/shopping",
+  "steps": "",
+  "diff": 0.09,
+  "errors": [],
+  "at": "2026-11-23T02:02:00.791Z"
+ },
+ "Q17-PresenceFor": {
+  "id": "Q17-PresenceFor",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/farm/presence",
+  "steps": "click:החלפה; click:אורלי לוי; exact:22; click:בוקר",
+  "diff": 0.048,
+  "errors": [],
+  "at": "2026-11-23T02:02:03.227Z"
+ },
+ "Q18-Profile": {
+  "id": "Q18-Profile",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/me",
+  "steps": "",
+  "diff": 0.007,
+  "errors": [],
+  "at": "2026-11-23T02:02:04.500Z"
+ },
+ "Q4-Donations": {
+  "id": "Q4-Donations",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations",
+  "steps": "",
+  "diff": 0.111,
+  "errors": [],
+  "at": "2026-11-23T02:02:05.751Z"
+ },
+ "Q5-MoreMenu": {
+  "id": "Q5-MoreMenu",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations",
+  "steps": "button:עוד פעולות",
+  "diff": 0.218,
+  "errors": [],
+  "at": "2026-11-23T02:02:07.288Z"
+ },
+ "Q9-TableView": {
+  "id": "Q9-TableView",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations/table",
+  "steps": "",
+  "diff": 0.054,
+  "errors": [],
+  "at": "2026-11-23T02:02:08.541Z"
+ },
+ "Q6-Donation": {
+  "id": "Q6-Donation",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations/demo-d-michal",
+  "steps": "",
+  "diff": 0.059,
+  "errors": [],
+  "at": "2026-11-23T02:02:09.796Z"
+ },
+ "Q7-PayConfirm": {
+  "id": "Q7-PayConfirm",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations/demo-d-michal",
+  "steps": "click:אישור תשלום",
+  "diff": 0.152,
+  "errors": [],
+  "at": "2026-11-23T02:02:11.417Z"
+ },
+ "Q8-ConfirmDelete": {
+  "id": "Q8-ConfirmDelete",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations/demo-d-michal",
+  "steps": "button:עוד פעולות; click:מחיקה",
+  "diff": 0.034,
+  "errors": [],
+  "at": "2026-11-23T02:02:13.253Z"
+ },
+ "Q10-EventVendors": {
+  "id": "Q10-EventVendors",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-festival/vendors",
+  "steps": "",
+  "diff": 0.005,
+  "errors": [],
+  "at": "2026-11-23T02:02:14.508Z"
+ },
+ "Q11-VendorSheet": {
+  "id": "Q11-VendorSheet",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-festival/vendors",
+  "steps": "click:דבש הגבעה",
+  "diff": 0.016,
+  "errors": [],
+  "at": "2026-11-23T02:02:16.097Z"
+ },
+ "Q12-StallTabs": {
+  "id": "Q12-StallTabs",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-october/tabs",
+  "steps": "",
+  "diff": 0.022,
+  "errors": [],
+  "at": "2026-11-23T02:02:17.329Z"
+ },
+ "Q21-Products": {
+  "id": "Q21-Products",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-festival/products",
+  "steps": "",
+  "diff": 0.089,
+  "errors": [],
+  "at": "2026-11-23T02:02:18.584Z"
+ },
+ "Q15-EventSummary": {
+  "id": "Q15-EventSummary",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-october?tab=summary",
+  "steps": "",
+  "diff": 0.047,
+  "errors": [],
+  "at": "2026-11-23T02:02:19.839Z"
+ },
+ "Q23-People": {
+  "id": "Q23-People",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/people",
+  "steps": "",
+  "diff": 0.079,
+  "errors": [],
+  "at": "2026-11-23T02:02:21.126Z"
+ },
+ "Q25-Messages": {
+  "id": "Q25-Messages",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/people?tab=messages",
+  "steps": "",
+  "diff": 0.121,
+  "errors": [],
+  "at": "2026-11-23T02:02:22.373Z"
+ },
+ "Q26-ComposeAll": {
+  "id": "Q26-ComposeAll",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/broadcasts/new",
+  "steps": "fill:תוכן ההודעה=פסטיבל הסתיו: הפתיחה נדחתה ל־17:00 בגלל הגשם.; click:נרשמי פסטיבל הסתיו; exact:פסטיבל הסתיו; click:דחופה; click:לשלוח גם במייל",
+  "diff": 0.093,
+  "errors": [],
+  "at": "2026-11-23T02:02:25.077Z"
+ },
+ "Q27-InviteAhead": {
+  "id": "Q27-InviteAhead",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/people/invite",
+  "steps": "fill:מספר הטלפון=052-000-0188",
+  "diff": 0.01,
+  "errors": [],
+  "at": "2026-11-23T02:02:26.613Z"
+ },
+ "Q13-Person": {
+  "id": "Q13-Person",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/people/demo-u-michal",
+  "steps": "",
+  "diff": 0.077,
+  "errors": [],
+  "at": "2026-11-23T02:02:27.870Z"
+ },
+ "Q14-Reports": {
+  "id": "Q14-Reports",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/reports",
+  "steps": "",
+  "diff": 0.062,
+  "errors": [],
+  "at": "2026-11-23T02:02:29.129Z"
+ },
+ "Q16-Activity": {
+  "id": "Q16-Activity",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/activity",
+  "steps": "",
+  "diff": 0.093,
+  "errors": [],
+  "at": "2026-11-23T02:02:30.389Z"
+ },
+ "Q19-Settings": {
+  "id": "Q19-Settings",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/settings",
+  "steps": "",
+  "diff": 0.067,
+  "errors": [],
+  "at": "2026-11-23T02:02:31.622Z"
+ },
+ "Q20-InstinctLog": {
+  "id": "Q20-InstinctLog",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/instinct",
+  "steps": "",
+  "diff": 0.079,
+  "errors": [],
+  "at": "2026-11-23T02:02:32.879Z"
+ },
+ "Q28-StallSell": {
+  "id": "Q28-StallSell",
+  "persona": "staff",
+  "scenario": "eventDay",
+  "route": "/event/stall/demo-tab-roni-fest",
+  "steps": "click:לימונדה; click:לימונדה; click:עוגת תפוחים",
+  "diff": 0.012,
+  "errors": [],
+  "at": "2026-11-23T02:02:35.000Z"
+ },
+ "Q29-StallAccount": {
+  "id": "Q29-StallAccount",
+  "persona": "staff",
+  "scenario": "eventDay",
+  "route": "/event/stall/demo-tab-roni-fest",
+  "steps": "click:לימונדה; click:לימונדה; click:עוגת תפוחים; click:כבר בחשבון",
+  "diff": 0.13,
+  "errors": [],
+  "at": "2026-11-23T02:02:37.421Z"
+ },
+ "Q30-Calendar": {
+  "id": "Q30-Calendar",
+  "persona": "staff",
+  "scenario": "regular",
+  "route": "/farm/calendar",
+  "steps": "",
+  "diff": 0.006,
+  "errors": [],
+  "at": "2026-11-23T02:02:38.692Z"
+ },
+ "Q31-CalItem": {
+  "id": "Q31-CalItem",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/farm/calendar/new",
+  "steps": "fill:מה קורה=פגישת צוות לפני הפסטיבל; click:פגישה; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה",
+  "diff": 0.085,
+  "errors": [],
+  "at": "2026-11-23T02:02:42.446Z"
+ },
+ "Q32-EventForm": {
+  "id": "Q32-EventForm",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/events/demo-e-festival/edit",
+  "steps": "",
+  "diff": 0.005,
+  "errors": [],
+  "at": "2026-11-23T02:02:43.700Z"
+ },
+ "U1-GuestHome": {
+  "id": "U1-GuestHome",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/",
+  "steps": "",
+  "diff": 0.251,
+  "errors": [],
+  "at": "2026-11-23T02:02:44.989Z"
+ },
+ "U2-GuestEvent": {
+  "id": "U2-GuestEvent",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/events/demo-e-festival",
+  "steps": "",
+  "diff": 0.278,
+  "errors": [],
+  "at": "2026-11-23T02:02:46.266Z"
+ },
+ "U3-GuestOrder": {
+  "id": "U3-GuestOrder",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/events/demo-e-festival/order",
+  "steps": "button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים",
+  "diff": 0.163,
+  "errors": [],
+  "at": "2026-11-23T02:02:48.367Z"
+ },
+ "U4-GuestPay": {
+  "id": "U4-GuestPay",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/events/demo-e-festival/order",
+  "steps": "button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים; click:הזמנה · 150",
+  "diff": 0.051,
+  "errors": [],
+  "at": "2026-11-23T02:02:50.779Z"
+ },
+ "U5-GuestTickets": {
+  "id": "U5-GuestTickets",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me",
+  "steps": "",
+  "diff": 0.097,
+  "errors": [],
+  "at": "2026-11-23T02:02:52.028Z"
+ },
+ "U6-GuestTicketUnpaid": {
+  "id": "U6-GuestTicketUnpaid",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me/orders/demo-o-19",
+  "steps": "",
+  "diff": 0.085,
+  "errors": [],
+  "at": "2026-11-23T02:02:53.278Z"
+ },
+ "U7-GuestAccount": {
+  "id": "U7-GuestAccount",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me/account",
+  "steps": "",
+  "diff": 0.083,
+  "errors": [],
+  "at": "2026-11-23T02:02:54.536Z"
+ },
+ "U10-GuestStall": {
+  "id": "U10-GuestStall",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me/stall/demo-tab-michal-unpaid-summer",
+  "steps": "",
+  "diff": 0.119,
+  "errors": [],
+  "at": "2026-11-23T02:02:55.767Z"
+ },
+ "U14-GuestMessages": {
+  "id": "U14-GuestMessages",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me/messages",
+  "steps": "",
+  "diff": 0.05,
+  "errors": [],
+  "at": "2026-11-23T02:02:56.996Z"
+ },
+ "U8-GuestVisit": {
+  "id": "U8-GuestVisit",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/visit",
+  "steps": "click:לבחור תאריך; exact:27; button:עוד; button:עוד; button:עוד; button:עוד; fill:סבא וסבתא עם הנכדים, מעדיפים בוקר.=סבא וסבתא עם הנכדים, מעדיפים בוקר.",
+  "diff": 0.047,
+  "errors": [],
+  "at": "2026-11-23T02:03:00.263Z"
+ },
+ "U9-GuestDonate": {
+  "id": "U9-GuestDonate",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/donate",
+  "steps": "fill:הנצחה=לזכר יוסף ברק",
+  "diff": 0.186,
+  "errors": [],
+  "at": "2026-11-23T02:03:01.782Z"
+ },
+ "U11-GuestContact": {
+  "id": "U11-GuestContact",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/contact",
+  "steps": "fill:נושא=חניה נגישה בפסטיבל; fill:מה רצית לשאול=יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים.",
+  "diff": 0.022,
+  "errors": [],
+  "at": "2026-11-23T02:03:03.564Z"
+ },
+ "U12-GuestSignIn": {
+  "id": "U12-GuestSignIn",
+  "persona": "anon",
+  "scenario": "regular",
+  "route": "/login",
+  "steps": "",
+  "diff": 0.063,
+  "errors": [],
+  "at": "2026-11-23T02:03:04.796Z"
+ },
+ "U13-GuestRegister": {
+  "id": "U13-GuestRegister",
+  "persona": "new",
+  "scenario": "regular",
+  "route": "/welcome",
+  "steps": "",
+  "diff": 0.129,
+  "errors": [],
+  "at": "2026-11-23T02:03:06.047Z"
+ }
+}

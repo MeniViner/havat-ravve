@@ -62,8 +62,9 @@ const named: Profile[] = [
   person(U.raz, 402, 'רז כהן', 'raz.cheese@gmail.com', '052-000-0471', 'vendor', 40, { vendorId: 'demo-v-raz' }),
   person(U.tamar, 415, 'תמר כהן', 'tamar.c@gmail.com', '052-000-0472', 'vendor', 4, { vendorId: 'demo-v-raz', helper: true, addedBy: U.raz, createdAt: '2026-11-17T10:00:00.000Z' }),
 ];
-// The people directory holds 155 people; the rest are plausible fictional guests.
-const FIRST = ['אבי', 'אורית', 'איתי', 'אלון', 'אסף', 'בתיה', 'גלית', 'גדי', 'הדס', 'הילה', 'זיו', 'חן', 'טל', 'יעל', 'יונתן', 'יפית', 'כרמל', 'לירון', 'מאיר', 'מורן', 'מירב', 'משה', 'נגה', 'נדב', 'ניר', 'סיגל', 'עדי', 'עמית', 'ענבל', 'פזית', 'צחי', 'קרן', 'רונית', 'רותם', 'שגיא', 'שלומית', 'שני', 'תומר', 'תהל', 'אלה'];
+// The people directory holds 155 people; the rest are plausible fictional guests. No filler first name starts with א, so the
+// A-Z directory (Q23) opens on the named people under א and Beni under ב.
+const FIRST = ['דורון', 'רינת', 'חגי', 'שחר', 'עוז', 'בתיה', 'גלית', 'גדי', 'הדס', 'הילה', 'זיו', 'חן', 'טל', 'יעל', 'יונתן', 'יפית', 'כרמל', 'לירון', 'מאיר', 'מורן', 'מירב', 'משה', 'נגה', 'נדב', 'ניר', 'סיגל', 'עדי', 'עמית', 'ענבל', 'פזית', 'צחי', 'קרן', 'רונית', 'רותם', 'שגיא', 'שלומית', 'שני', 'תומר', 'תהל', 'ליאת'];
 const LAST = ['אזולאי', 'ביטון', 'גבאי', 'דהן', 'חדד', 'וקנין', 'זילברמן', 'טל', 'ישראלי', 'כהן', 'לוי', 'מלכה', 'נחמיאס', 'סויסה', 'עמר', 'פרידמן', 'צור', 'קפלן', 'רוזנברג', 'שושן', 'תורג׳מן', 'אוחיון', 'בן דוד', 'גולדשטיין'];
 const fillers: Profile[] = Array.from({ length: 155 - named.filter((p) => p.role !== 'vendor').length }, (_, i) => {
   const name = `${FIRST[(i * 7) % FIRST.length]} ${LAST[(i * 5 + 3) % LAST.length]}`;

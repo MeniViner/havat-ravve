@@ -12,7 +12,14 @@ const TODAY = '2026-11-19';
 
 const slice: Slice = (seed) => {
   // her payment confirmations go to WhatsApp (U3, U7 "נשלח אליי בוואטסאפ"); her registration answer stays
-  patch(seed, 'users', U.michal, { updatesOptIn: true, fields: { city: 'טנא עומרים', receiptPreference: 'whatsapp' } });
+  // U7: every registration question answered, so no "נשאר לענות" nudge on her account
+  patch(seed, 'users', U.michal, { updatesOptIn: true, fields: { city: 'טנא עומרים', source: 'חברים', birthday: '1988-05-12', receiptPreference: 'whatsapp' } });
+  // Q13: the managers' note on her card
+  patch(seed, 'users', U.michal, { notes: 'מגיעה עם אמא בכיסא גלגלים. לשמור חניה ליד השער.' });
+  // U7 "הכל · 6": the October stall account was Naama's (Q12 keeps its counts and total); Q13 Michal shows her festival items only
+  patch(seed, 'tabs', 'demo-tab-michal-oct', { guestUid: U.naama, guestName: 'נעמה כהנא', guestPhone: '054-000-0199' });
+  // U2: the description as designed, without the stall line
+  patch(seed, 'events', E.fall, { description: 'אחר צהריים של סתיו בחווה: דוכני תוצרת ואומנות, סיורים מודרכים בין העצים, פינת חי לילדים ומוזיקה חיה עם השקיעה.' });
   // the messages themselves (demo-b-r1 festival, demo-b-e1 Hanukkah) are in the broadcast slice, which runs first
   put(seed, 'broadcasts/demo-b-e1/reads', [{ id: U.michal, uid: U.michal, name: 'מיכל ברק', at: at('2026-11-16', '19:05'), seenAt: at('2026-11-16', '19:05') }]);
   put(seed, 'visits', [
