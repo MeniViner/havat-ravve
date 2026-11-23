@@ -186,3 +186,5 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
 | W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
 | W4-DemoFirstVisit | owner | regular | /manage/settings/demo |  |
+| U15-GuestVisitStatus | guest | eventDay | /me/visits/demo-vi-michal |  |
+| U16-GuestDonation | guest | eventDay | /me/donations/demo-d-michal |  |

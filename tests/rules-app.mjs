@@ -379,6 +379,11 @@ try{
  await assertFails(updateDoc(doc(vol,'visits','v1'),{status:'approved',managerNote:'',handledBy:actor('vol'),updatedAt:now}));
  await assertSucceeds(updateDoc(doc(beni,'visits','v1'),{status:'approved',managerNote:'בשער',handledBy:actor('beni'),updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'visits','v1'),{status:'cancelled',updatedAt:now}));         // only from 'new'
+ // U15: the guest cancels her own request while it waits for an answer, and nothing else on it
+ await assertSucceeds(setDoc(doc(guest,'visits','v3'),vs));
+ await assertFails(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',people:9,updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'visits','v3'),{status:'cancelled',updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',updatedAt:now}));
 
  // donations
  const dn={uid:'guest',name:'אורח',phone:'',amount:180,label:'חי',note:'',memorial:'',receiptWanted:true,receiptName:'אורח',receiptSent:false,paymentStatus:'pending',createdAt:now,updatedAt:now};
