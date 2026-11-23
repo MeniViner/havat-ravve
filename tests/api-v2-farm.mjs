@@ -538,6 +538,58 @@ try {
     await new Promise((res) => setTimeout(res, 600));
     check(!(await docOf('api_log/' + rd.json.meta.requestId)) && !(await docOf('api_log/' + ov.json.meta.requestId)), 'the console\'s own reads are not logged (only what it did)');
     check((await api('GET', '/v1/console/api/people', C(mgr))).status === 403, 'a manager cannot use the console\'s API either');
+
+    // ---------- recycle bin (whatever an API request deletes is kept for 30 days) ----------
+    const placeIdOf = (res) => res.json?.data?.placeId || res.json?.data?.refs?.[0]?.id || res.json?.data?.record?.id;
+    const pDel = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לסל המחזור', lat: 31.4, lng: 34.5 }));
+    const placeBefore = await docOf('places/' + pDel);
+    const del = await w(MGR, 'places.delete', { placeId: pDel });
+    check(del.status === 200 && !(await docOf('places/' + pDel)), 'a key deletes a place', del.json?.error);
+    const tr = await api('GET', '/v1/console/trash', C(own));
+    const item = tr.json?.data?.items?.find((x) => x.path === 'places/' + pDel);
+    check(tr.status === 200 && item && item.by === 'האינסטינקט של הבדיקה' && item.who === 'מנהלת בדיקה' && item.title === 'מקום לסל המחזור' && item.collection === 'places' && item.requestId === del.json.meta.requestId, 'the deleted place is in the recycle bin, with the key and the person', item);
+    check(!tr.json.data.items.some((x) => /^(api_idempotency|push_jobs|api_log)\//.test(x.path)), 'the API\'s own housekeeping is not kept in the bin');
+    check((await api('GET', '/v1/console/trash', C(mgr))).status === 403, 'a manager cannot open the recycle bin');
+    const back = await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: [item.key] } });
+    const placeAfter = await docOf('places/' + pDel);
+    check(back.status === 200 && back.json.data.restored[0] === 'places/' + pDel && placeAfter && placeAfter.name === placeBefore.name && placeAfter.lat === placeBefore.lat && placeAfter.createdAt === placeBefore.createdAt, 'restore: the place is back exactly as it was', back.json);
+    check(!(await api('GET', '/v1/console/trash', C(own))).json.data.items.some((x) => x.key === item.key), 'a restored item leaves the bin');
+    const again = await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: [item.key] } });
+    check(again.status === 200 && again.json.data.gone.length === 1 && again.json.data.restored.length === 0, 'restoring twice does nothing the second time');
+    // a document created again since the delete is never overwritten
+    const pDel2 = placeIdOf(await api('POST', '/v1/console/api/actions/places.add', { ...C(own), idem: randomUUID(), body: { name: 'יימחק ויחזור', lat: 31.3, lng: 34.4 } }));
+    const del2 = await api('POST', '/v1/console/api/actions/places.delete', { ...C(own), idem: randomUUID(), body: { placeId: pDel2 } });
+    const it2 = (await api('GET', '/v1/console/trash', C(own))).json.data.items.find((x) => x.path === 'places/' + pDel2);
+    check(del2.status === 200 && it2 && it2.by === 'קונסולה · נועה', 'a console delete is kept too, under the console\'s name', it2);
+    await seed('places/' + pDel2, { name: 'נוצר מחדש', lat: 1, lng: 1 });
+    const clash = await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: [it2.key] } });
+    check(clash.status === 200 && clash.json.data.exists[0] === 'places/' + pDel2 && (await docOf('places/' + pDel2)).name === 'נוצר מחדש', 'a document created again since is left alone', clash.json);
+    check((await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: ['../users/x'] } })).status === 400, 'only recycle-bin keys are accepted');
+
+    // ---------- daily backup to R2 ----------
+    check((await api('POST', '/v1/console/backups/run', C(mgr))).status === 403, 'a manager cannot run a backup');
+    let run, steps = 0;
+    do { run = await api('POST', '/v1/console/backups/run', C(own)); steps++; } while (run.status === 200 && run.json.data.done === false && steps < 40);
+    const day = run.json?.data?.date;
+    check(run.status === 200 && run.json.data.done === true && /^\d{4}-\d{2}-\d{2}$/.test(day) && run.json.data.docs > 0, `backup now: done in ${steps} steps`, run.json);
+    const list = await api('GET', '/v1/console/backups', C(own));
+    const man = list.json?.data?.items?.find((x) => x.date === day);
+    check(list.status === 200 && man && man.docs === run.json.data.docs && man.collections.users >= 10 && man.collections['events/*/vendors'] >= 0 && !('api_idempotency' in man.collections) && man.by === 'נועה בעלים' && list.json.data.running === null, 'the backup is listed with counts per collection (no replay cache)', man && { ...man, collections: Object.keys(man.collections) });
+    const dl = await fetch(BASE + `/v1/console/backups/${day}/download`, { headers: { authorization: 'Bearer ' + own.idToken } });
+    const text = await dl.text();
+    const rows = text.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    check(dl.status === 200 && /attachment; filename="havat-ravve-backup-/.test(dl.headers.get('content-disposition') || '') && rows.length === man.docs && rows.some((d) => d.name.endsWith('/users/syn-mgr') && d.fields.displayName.stringValue === 'מנהלת בדיקה'), 'download: one file, every document with its Firestore types', { status: dl.status, rows: rows.length, docs: man.docs });
+    const col = await api('GET', `/v1/console/backups/${day}/docs?collection=users`, C(own));
+    check(col.status === 200 && col.json.data.items.some((x) => x.path === 'users/syn-staff2' && x.title === 'יואב כהן'), 'a collection as it was that day', col.json?.data?.total);
+    await seed('users/syn-staff2', { ...(await docOf('users/syn-staff2')), displayName: 'שם ששונה אחרי הגיבוי' });
+    const one = await api('GET', `/v1/console/backups/${day}/doc?path=users/syn-staff2`, C(own));
+    check(one.status === 200 && one.json.data.then.displayName === 'יואב כהן' && one.json.data.now.displayName === 'שם ששונה אחרי הגיבוי', 'one document: then and now side by side', one.json?.data && { then: one.json.data.then.displayName, now: one.json.data.now?.displayName });
+    const rsb = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: ['users/syn-staff2', 'users/not-there'] } });
+    check(rsb.status === 200 && rsb.json.data.restored === 1 && rsb.json.data.missing === 1 && (await docOf('users/syn-staff2')).displayName === 'יואב כהן', 'restore from the backup writes it back as it was', rsb.json);
+    const LB = await (async () => { for (let i = 0; i < 30; i++) { const d = await docOf('api_log/' + rsb.json.meta.requestId); if (d) return d; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(LB && LB.op === 'console.backups.restore' && LB.verb === 'שחזר' && LB.keyLabel === 'קונסולה · נועה', 'a restore is logged as the console', LB && { op: LB.op, verb: LB.verb });
+    check((await api('GET', '/v1/console/backups/2020-01-01/download', C(own))).status === 404, 'a day without a backup → 404');
+    check((await api('GET', `/v1/console/backups/${day}/docs?collection=${encodeURIComponent('../x')}`, C(own))).status === 400, 'a bad collection name → 400');
   }
 
   section('the app\'s Rules accept what the API wrote');

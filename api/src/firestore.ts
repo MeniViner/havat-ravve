@@ -63,7 +63,7 @@ export class FsError extends Error {
 }
 
 // ---------- values ----------
-type V = Record<string, unknown>;
+export type V = Record<string, unknown>;
 export function enc(v: unknown): V {
   if (v === null || v === undefined) return { nullValue: null };
   if (typeof v === 'boolean') return { booleanValue: v };
@@ -89,6 +89,8 @@ export function dec(v: V): unknown {
 export const decFields = (f: Record<string, V>) => Object.fromEntries(Object.entries(f).map(([k, x]) => [k, dec(x)]));
 
 export type Doc = { name: string; id: string; data: Record<string, unknown>; updateTime?: string };
+/** A document exactly as the Firestore REST API returns it (backups keep this, so a restore writes back the same types). */
+export type RawDoc = { name: string; fields?: Record<string, V>; createTime?: string; updateTime?: string };
 const toDoc = (d: { name: string; fields?: Record<string, V>; updateTime?: string }): Doc =>
   ({ name: d.name, id: d.name.split('/').pop()!, data: decFields(d.fields || {}), updateTime: d.updateTime });
 
@@ -111,7 +113,7 @@ async function signingKey(pem: string): Promise<CryptoKey> {
 }
 
 export type TokenSource = 'emulator' | 'cache' | 'shared' | 'fresh';
-type KV = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> };
+type KV = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void>; delete?(k: string): Promise<void> };
 
 let saCache: { json: string; sa: ServiceAccount } | null = null;
 /** One signing in flight per isolate: parallel queries on a cold isolate share it instead of each signing. */
@@ -304,9 +306,29 @@ export class Firestore {
    */
   async commit(writes: Write[], transaction?: string) {
     if (this.fault('commit-lost')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated commit that never arrived');
+    // the recycle bin (backup.ts): what a request deletes is read just before, and kept once the commit succeeds
+    const doomed = this.trash ? writes.map((w) => w.delete).filter((n): n is string => typeof n === 'string' && this.trash!.keep(n)) : [];
+    const before = doomed.length ? await this.rawGet(doomed).catch(() => [] as RawDoc[]) : [];
     const r = await this.call('POST', ':commit', { writes, ...(transaction ? { transaction } : {}) }, 10000, this.fault('commit-body-lost'));
     if (this.fault('commit-timeout')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated lost commit acknowledgement');
+    if (before.length) await this.trash!.put(before).catch(() => {});
     return r;
+  }
+
+  /** The recycle bin for this request's deletes (set by the request handler; cron jobs and the log never use it). */
+  trash: { keep(name: string): boolean; put(docs: RawDoc[]): Promise<void> } | null = null;
+
+  /** Documents by full resource name, as the REST API returns them (missing ones are left out). */
+  async rawGet(names: string[]): Promise<RawDoc[]> {
+    if (!names.length) return [];
+    const rows = await this.call<{ found?: RawDoc }[]>('POST', ':batchGet', { documents: names });
+    return rows.filter((r) => r.found).map((r) => r.found!);
+  }
+
+  /** A query's documents as the REST API returns them. */
+  async rawQuery(structuredQuery: Record<string, unknown>, parent = ''): Promise<RawDoc[]> {
+    const rows = await this.call<{ document?: RawDoc }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery }, 20000);
+    return rows.filter((r) => r.document).map((r) => r.document!);
   }
 
   /** Runs a query. `parent` is a document path ("events/abc") for a subcollection query. */

@@ -62,9 +62,10 @@ export function verbOf(name: string, kind: 'read' | 'write'): string {
   const a = name.slice(name.lastIndexOf('.') + 1);
   if (/^(delete|remove)/.test(a)) return 'מחק';
   if (/^(cancel|undo)/.test(a)) return 'ביטל';
+  if (/^restore/.test(a)) return 'שחזר';
   if (/^(send|resend|invite|remind)/.test(a) || name === 'vendors.addPerson') return 'שלח';
   if (/^(create|add|open|copy|split|startTrip|postUpdate|saveQuestion)/.test(a) || name === 'presence.save') return 'יצר';
-  if (/^(complete|close|admit|confirm|pay|markRead|markConfirmation|setHandled|stamp|setBought|take|keep|reject|reopen)/.test(a) || name.startsWith('gate.')) return 'ביצע';
+  if (/^(complete|close|admit|confirm|pay|markRead|markConfirmation|setHandled|stamp|setBought|take|keep|reject|reopen|run)/.test(a) || name.startsWith('gate.')) return 'ביצע';
   return 'ערך';
 }
 
