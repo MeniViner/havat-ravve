@@ -66,7 +66,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
       <div className="c-title">
         <div>
           <h1 className="c-h1">מפתחות API</h1>
-          <p className="c-sub">כל מפתח פועל בשם אדם מהצוות, עם ההרשאות שלו, וכל מה שהוא עושה נרשם ביומן בשם המפתח.</p>
+          <p className="c-sub">כל מפתח פועל בשם מישהו מהצוות (בעלים, מנהל/ת או מתנדב/ת), עם ההרשאות שלו, וכל מה שהוא עושה נרשם ביומן בשם המפתח.</p>
         </div>
         <Button icon="plus" onClick={() => setCreating(true)}>מפתח חדש</Button>
       </div>
@@ -233,7 +233,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
         <div className="c-form">
           <p className="c-sub">"{k.label || k.id}" יפסיק לעבוד תוך דקה וחצי. אפשר להחזיר אותו אחר כך מכאן.</p>
           <Button size="lg" variant="danger" className="c-danger" block disabled={busy} onClick={() => run('revoke', {}, 'המפתח בוטל')}>{busy ? 'מבטל…' : 'כן, לבטל'}</Button>
-          <Button variant="quiet" block onClick={() => setMode('view')}>ביטול</Button>
+          <Button variant="quiet" block onClick={() => setMode('view')}>חזרה</Button>
         </div>
       )}
     </Sheet>

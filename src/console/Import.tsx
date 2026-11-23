@@ -90,7 +90,10 @@ function checkRow(kind: Kind, map: Record<string, number>, cells: string[], n: n
   return { n, body, error: null, warn };
 }
 
-/** A fixed UUID for row `i` of this paste: the same paste imported again replays instead of adding. */
+/**
+ * A fixed UUID for a row, from what the row says (not where it sits or what else was pasted): importing again after
+ * fixing one row, adding a line or changing a column replays the rows already in instead of adding them twice.
+ */
 async function rowKey(seed: string, i: number): Promise<string> {
   const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed + '\n#' + i)))].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${'89ab'[parseInt(h[16], 16) % 4]}${h.slice(17, 20)}-${h.slice(20, 32)}`;
@@ -126,12 +129,24 @@ export function ImportScreen({ notify }: { notify: (t: string, tone?: 'info' | '
     if (!f) return;
     if (/\.xlsx?$/i.test(f.name)) { notify('קובץ אקסל צריך להישמר קודם בתור CSV, או פשוט להעתיק את השורות ולהדביק כאן', 'alert'); return; }
     if (f.size > 512 * 1024) { notify('הקובץ גדול מדי (עד חצי מגה)', 'alert'); return; }
-    setText(await f.text()); setOutcomes(null); setOverrides({});
+    // a CSV saved by Excel in Hebrew Windows is often Windows-1255, not UTF-8
+    const buf = await f.arrayBuffer();
+    let t: string;
+    try { t = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { t = new TextDecoder('windows-1255').decode(buf); }
+    setText(t.replace(/^\uFEFF/, '')); setOutcomes(null); setOverrides({});
   };
   const run = async () => {
     setAsk(false);
     const op = kind === 'tasks' ? 'tasks.create' : 'shopping.add';
-    const seed = kind + '\n' + text;
+    // identical rows stay apart by how many times the same row came before
+    const seen = new Map<string, number>();
+    const seedOf = new Map<number, string>();
+    for (const c of good) {
+      const base = kind + '\n' + JSON.stringify(Object.keys(c.body).sort().map((k) => [k, c.body[k]]));
+      const i = seen.get(base) || 0;
+      seen.set(base, i + 1);
+      seedOf.set(c.n, base + '\n' + i);
+    }
     const out: Outcome[] = [];
     setProgress({ done: 0, total: good.length });
     // three at a time: quick, and far below the server's 240 a minute
@@ -139,7 +154,7 @@ export function ImportScreen({ notify }: { notify: (t: string, tone?: 'info' | '
       const part = good.slice(i, i + 3);
       const res = await Promise.all(part.map(async (c) => {
         try {
-          const r = await source.runOp('POST', `/v1/actions/${op}`, c.body, await rowKey(seed, c.n));
+          const r = await source.runOp('POST', `/v1/actions/${op}`, c.body, await rowKey(seedOf.get(c.n)!, 0));
           const j = r.json as { data?: { replayed?: boolean }; error?: { he?: string; message?: string } } | null;
           return { n: c.n, ok: r.status < 300, replayed: !!j?.data?.replayed, error: r.status < 300 ? '' : j?.error?.he || j?.error?.message || `HTTP ${r.status}` };
         } catch (e) { return { n: c.n, ok: false, replayed: false, error: errorText(e) }; }
@@ -221,8 +236,8 @@ export function ImportScreen({ notify }: { notify: (t: string, tone?: 'info' | '
         </Section>
       )}
       {ask && (
-        <ConfirmSheet open title={`להוסיף ${fmt(good.length)} ${noun}?`} confirmLabel="כן, להוסיף" onClose={() => setAsk(false)} onConfirm={run}
-          text={`הן ייכנסו ל${kind === 'tasks' ? 'משימות' : 'רשימת הקניות'} באפליקציה עכשיו.${kind === 'shopping' && good.some((c) => c.body.urgent) ? ' על הפריטים הדחופים כל הצוות יקבל התראה.' : ''} אם תייבאו שוב את אותה הדבקה, שום דבר לא ייכנס פעמיים.`} />
+        <ConfirmSheet open tone="primary" title={`להוסיף ${fmt(good.length)} ${noun}?`} confirmLabel="כן, להוסיף" onClose={() => setAsk(false)} onConfirm={run}
+          text={`${kind === 'tasks' ? 'הן ייכנסו' : 'הם ייכנסו'} ל${kind === 'tasks' ? 'משימות' : 'רשימת הקניות'} באפליקציה עכשיו.${kind === 'shopping' && good.some((c) => c.body.urgent) ? ' על הפריטים הדחופים כל הצוות יקבל התראה.' : ''} אם תייבאו שוב אותן שורות, גם אחרי תיקון, מה שכבר נכנס לא ייכנס פעמיים.`} />
       )}
     </>
   );

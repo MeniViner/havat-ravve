@@ -1,9 +1,9 @@
-// גיבויים: the nightly copy of all the data in R2 (download it, look inside, put a document back as it was), and the
+// גיבויים: the nightly copy of all the data in the storage service (R2) (download it, look inside, put a document back as it was), and the
 // recycle bin of what API requests deleted in the last 30 days (Instinct, the console, any key).
 import { useMemo, useState } from 'react';
 import { Button, Card, DetailList, DetailRow, ListCard, Row, SearchField, Sheet, Tag } from '../app/v2/kit';
 import { ddmm, dayName, hhmm, daysFromToday } from '../app/v2/format';
-import { ago, Section, useLoad } from './shared';
+import { ago, FieldName, Section, useLoad } from './shared';
 import { collectionName, size, valueText } from './labels';
 import { errorText, source, type Backup, type BackupDoc, type TrashItem } from './source';
 
@@ -21,11 +21,13 @@ export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 
   const runNow = async () => {
     setRunning('מתחיל…');
     try {
-      for (let i = 0; i < 60; i++) {
+      let done = false;
+      for (let i = 0; i < 60 && !done; i++) {
         const r = await source.runBackup();
-        if (r.done) { notify(`הגיבוי נשמר: ${r.docs.toLocaleString('he-IL')} רשומות`); break; }
+        if (r.done) { done = true; notify(`הגיבוי נשמר: ${r.docs.toLocaleString('he-IL')} רשומות`); break; }
         setRunning(`נשמרו ${r.docs.toLocaleString('he-IL')} רשומות…`);
       }
+      if (!done) notify('הגיבוי עוד לא הסתיים. הוא ממשיך ברקע מעצמו, ויופיע כאן כשיסתיים (אפשר לרענן בעוד כמה דקות).');
       list.reload();
     } catch (e) { notify(errorText(e), 'alert'); }
     finally { setRunning(null); }
@@ -35,11 +37,12 @@ export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 
       <div className="c-title">
         <div>
           <h1 className="c-h1">גיבויים</h1>
-          <p className="c-sub">כל לילה אחרי 03:00 השרת שומר עותק של כל הנתונים ב־R2, בחינם. נשמרים 30 הימים האחרונים, והראשון של כל חודש לשנה.</p>
+          <p className="c-sub">כל לילה אחרי 03:00 השרת שומר עותק של כל הנתונים בשירות האחסון, בחינם. נשמרים 30 הימים האחרונים, והראשון של כל חודש לשנה.</p>
         </div>
         <Button variant="neutral" onClick={runNow} disabled={!!running}>{running || 'גיבוי עכשיו'}</Button>
       </div>
       {list.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא את הגיבויים. {list.error}</Card>}
+      {list.loading && !list.data && <p className="c-soft">טוען…</p>}
       {list.data && (
         <Card pad="lg" className="c-health">
           <span className={`k-dot ${stale ? '' : 'k-dot--green'}`} aria-hidden="true" />
@@ -55,6 +58,7 @@ export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 
 
       <Section title={`סל המחזור${bin.data ? ` · ${bin.data.length}` : ''}`}>
         {bin.error && <Card pad="md" className="c-error">{bin.error}</Card>}
+        {bin.loading && !bin.data && <p className="c-soft">טוען…</p>}
         {bin.data && !bin.data.length && <Card pad="md" className="c-soft">סל המחזור ריק. מה שנמחק דרך אינסטינקט או הקונסולה נשמר כאן 30 יום.</Card>}
         {!!bin.data?.length && (
           <ListCard>
@@ -67,6 +71,7 @@ export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 
       </Section>
 
       <Section title={`גיבויים שמורים${list.data ? ` · ${list.data.items.length}` : ''}`}>
+        {list.data && !list.data.items.length && <Card pad="md" className="c-soft">עוד אין גיבויים שמורים. הראשון יישמר הלילה אחרי 03:00, או עכשיו בכפתור "גיבוי עכשיו".</Card>}
         {!!list.data?.items.length && (
           <ListCard>
             {list.data.items.map((b) => (
@@ -183,16 +188,16 @@ function DocView({ date, path, notify }: { date: string; path: string; notify: (
         <div className="c-compare__row c-compare__head" role="row"><span role="columnheader">שדה</span><span role="columnheader">בגיבוי</span><span role="columnheader">היום</span></div>
         {keys.map((k) => (
           <div key={k} role="row" className={`c-compare__row${changed.includes(k) ? ' c-compare__row--diff' : ''}`}>
-            <span role="cell" className="k-ltr" dir="ltr">{k}</span><span role="cell">{show(d.then[k])}</span><span role="cell">{d.now ? show(d.now[k]) : '—'}</span>
+            <span role="cell"><FieldName k={k} /></span><span role="cell">{show(d.then[k])}</span><span role="cell">{d.now ? show(d.now[k]) : '—'}</span>
           </div>
         ))}
       </div>
       {(!d.now || changed.length > 0) && !confirm && <Button size="lg" block onClick={() => setConfirm(true)}>שחזור למצב בגיבוי</Button>}
       {confirm && (
         <>
-          <p className="c-warn">{d.now ? 'הרשומה תוחלף במה שהיה בגיבוי, ושינויים שנעשו בה מאז יימחקו.' : 'הרשומה תחזור בדיוק כמו שהייתה בגיבוי.'}</p>
+          <p className="c-warn">{d.now ? `הרשומה תוחלף בגרסה מהגיבוי של ${dayTitle(date)}. הגרסה של היום נשמרת בסל המחזור ל־30 יום.` : 'הרשומה תחזור בדיוק כמו שהייתה בגיבוי.'}</p>
           <Button size="lg" block disabled={busy} onClick={restore}>{busy ? 'משחזר…' : 'כן, לשחזר'}</Button>
-          <Button variant="quiet" block onClick={() => setConfirm(false)}>ביטול</Button>
+          <Button variant="quiet" block onClick={() => setConfirm(false)}>חזרה</Button>
         </>
       )}
     </div>

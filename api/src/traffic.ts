@@ -3,6 +3,7 @@
 // site_stats/<YYYY-MM-DD>, with Firestore increments (one write, no read). Only counters are kept: never an address,
 // a cookie, an id, a name or the page's own text. Every name is checked against the lists below, so a stranger cannot
 // grow the document with fields of their own, and a daily cap plus a rate limit keep the free 20,000 writes for the farm.
+import { lastIlDays } from './util';
 import type { Env, Firestore } from './firestore';
 import { invalid } from './http';
 
@@ -133,8 +134,7 @@ const ranked = (c: Counts, order: string[]) => order.map((key) => ({ key, count:
 export async function trafficStats(fs: Firestore, daysIn: number) {
   if (![7, 30, 90].includes(daysIn)) throw invalid('days', '7, 30 or 90');
   const now = new Date();
-  const ids: string[] = [];
-  for (let i = daysIn - 1; i >= 0; i--) ids.push(dayOf(new Date(now.getTime() - i * 86400_000)));
+  const ids = lastIlDays(daysIn, now);
   const docs = new Map((await fs.getMany('site_stats', ids)).map((d) => [d.id, d.data]));
   const site = { page: {} as Counts, section: {} as Counts, click: {} as Counts, source: {} as Counts, device: {} as Counts, depth: {} as Counts, time: {} as Counts, hour: {} as Counts };
   const app = { screen: {} as Counts, device: {} as Counts, role: {} as Counts, hour: {} as Counts };

@@ -1415,7 +1415,13 @@ export function Sheet({ open, onClose, title, aside, sub, children, contained, c
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     panel.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // only the sheet on top closes: Escape on a confirm opened inside another sheet must not close both
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const open = document.querySelectorAll('.k-sheet');
+      if (open.length && open[open.length - 1] !== panel.current?.closest('.k-sheet')) return;
+      onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
@@ -1449,11 +1455,16 @@ export interface ConfirmSheetProps extends Base {
   /** The red button. Default "מחיקה" ("הסרה" for taking something off a list). */
   confirmLabel?: string;
   cancelLabel?: string;
+  /** 'primary' for a confirmation that adds or changes without losing anything (not red). Default 'danger'. */
+  tone?: 'danger' | 'primary';
   /** Runs once per press; both buttons wait while it runs. */
   onConfirm: () => unknown;
 }
-/** Q8, the one delete confirmation: the question, one soft line, a red filled "מחיקה" with a bin and an outlined "ביטול". */
-export function ConfirmSheet({ open, onClose, title, text, confirmLabel = 'מחיקה', cancelLabel = 'ביטול', onConfirm, className, style }: ConfirmSheetProps) {
+/**
+ * Q8, the one confirmation: the question, one soft line, a filled button and an outlined "ביטול". Red with a bin for a
+ * delete (the default); tone 'primary' for a confirmation that adds or changes without losing anything.
+ */
+export function ConfirmSheet({ open, onClose, title, text, confirmLabel = 'מחיקה', cancelLabel = 'ביטול', tone = 'danger', onConfirm, className, style }: ConfirmSheetProps) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!open) setBusy(false); }, [open]);
   const go = async () => {
@@ -1464,7 +1475,9 @@ export function ConfirmSheet({ open, onClose, title, text, confirmLabel = 'מח�
   return (
     <Sheet open={open} onClose={busy ? () => {} : onClose} title={title} sub={text} className={cx('k-confirm', className)} style={style}>
       <div className="k-confirm__actions">
-        <button type="button" className="k-confirm__go" disabled={busy} onClick={go}><Icon name="trash" size={20} />{confirmLabel}</button>
+        {tone === 'danger'
+          ? <button type="button" className="k-confirm__go" disabled={busy} onClick={go}>{/מחיק|למחוק|הסר/.test(confirmLabel) && <Icon name="trash" size={20} />}{confirmLabel}</button>
+          : <Button variant="primary" size="lg" block disabled={busy} onClick={go}>{confirmLabel}</Button>}
         <button type="button" className="k-confirm__cancel" disabled={busy} onClick={onClose}>{cancelLabel}</button>
       </div>
     </Sheet>

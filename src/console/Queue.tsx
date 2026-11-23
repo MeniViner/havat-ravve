@@ -1,7 +1,7 @@
-// תור שליחה: payment emails and phone pushes that wait or failed, with send again / cancel, and the payment email as a
-// guest gets it. Addresses never show here: only the name on the payment.
+// תור שליחה: payment emails and phone pushes that wait or failed, with send again / don't send (asks first: it cannot be
+// undone), and the payment email as a guest gets it. Addresses never show here: only the name on the payment.
 import { useState } from 'react';
-import { Button, Card, EmptyState, ListCard, Strip, Tag } from '../app/v2/kit';
+import { Button, Card, ConfirmSheet, EmptyState, ListCard, Strip, Tag } from '../app/v2/kit';
 import { ago, QRow, Section, useLoad } from './shared';
 import { errorText, source, type QueueEmail, type QueuePush } from './source';
 
@@ -17,6 +17,7 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
   const q = useLoad(() => source.queue());
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
+  const [drop, setDrop] = useState<{ kind: 'email'; e: QueueEmail } | { kind: 'push'; p: QueuePush } | null>(null);
   const act = async (id: string, run: () => Promise<unknown>, done: string) => {
     setBusy(id);
     try { await run(); notify(done); await q.reload(); }
@@ -43,18 +44,30 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
             {!d.email.on && <p className="c-note">המיילים כבויים בהגדרות השרת, אז כלום לא נשלח מכאן.</p>}
             {d.emails.length ? <ListCard>{d.emails.map((e) => <EmailRow key={e.id} e={e} busy={busy === e.id}
               retry={() => act(e.id, () => source.emailAction(e.id, 'retry', e.updateTime), 'נכנס לתור, יישלח בסבב הבא (עד 5 דקות)')}
-              cancel={() => act(e.id, () => source.emailAction(e.id, 'cancel', e.updateTime), 'בוטל. המייל לא יישלח')} />)}</ListCard>
+              cancel={() => setDrop({ kind: 'email', e })} />)}</ListCard>
               : <EmptyState variant="card" icon="check" title="אין מיילים שמחכים או נכשלו" text="כל מייל על תשלום יוצא תוך כמה דקות." />}
           </Section>
           <Section title={`התראות לטלפון · ${d.pushes.length}`}>
             {d.pushes.length ? <ListCard>{d.pushes.map((p) => <PushRow key={p.id} p={p} busy={busy === p.id}
-              cancel={() => act(p.id, () => source.cancelPush(p.id, p.updateTime), 'בוטלה. ההתראה באפליקציה נשארת')} />)}</ListCard>
+              cancel={() => setDrop({ kind: 'push', p })} />)}</ListCard>
               : <EmptyState variant="card" icon="check" title="אין התראות שמחכות" text="התראות לטלפון יוצאות בסבב של כל 5 דקות." />}
           </Section>
           <Section title="המייל שאורחים מקבלים">
             {preview ? <Preview /> : <Button variant="neutral" onClick={() => setPreview(true)}>הצגת המייל</Button>}
           </Section>
         </div>
+      )}
+      {drop && (
+        <ConfirmSheet open cancelLabel="חזרה" onClose={() => setDrop(null)}
+          title={drop.kind === 'email' ? `לא לשלוח את המייל ל${drop.e.who || 'אורח'}?` : 'לא לשלוח את ההתראה לטלפון?'}
+          text={drop.kind === 'email' ? 'המייל יוצא מהתור ולא יישלח. אי אפשר להחזיר אותו לתור מכאן.' : 'מי שעוד לא קיבל את ההתראה לא יקבל אותה בטלפון. ההתראה בתוך האפליקציה נשארת.'}
+          confirmLabel="כן, לא לשלוח"
+          onConfirm={async () => {
+            const x = drop;
+            setDrop(null);
+            if (x.kind === 'email') await act(x.e.id, () => source.emailAction(x.e.id, 'cancel', x.e.updateTime), 'המייל לא יישלח');
+            else await act(x.p.id, () => source.cancelPush(x.p.id, x.p.updateTime), 'ההתראה לא תישלח לטלפון. ההתראה באפליקציה נשארת');
+          }} />
       )}
     </>
   );
@@ -68,7 +81,7 @@ function EmailRow({ e, busy, retry, cancel }: { e: QueueEmail; busy: boolean; re
   return (
     <QRow title={<><b>{e.who || 'בלי שם'}</b> · {KIND[e.kind] || e.kind}</>} meta={meta} tag={failed ? <Tag tone="urgent">נכשל</Tag> : <Tag tone="neutral">מחכה</Tag>}>
       {failed && <Button variant="neutral" disabled={busy} onClick={retry}>שליחה שוב</Button>}
-      {e.status !== 'sending' && <Button variant="quiet" disabled={busy} onClick={cancel}>ביטול</Button>}
+      {e.status !== 'sending' && <Button variant="quiet" disabled={busy} onClick={cancel}>לא לשלוח</Button>}
     </QRow>
   );
 }
@@ -76,9 +89,9 @@ function EmailRow({ e, busy, retry, cancel }: { e: QueueEmail; busy: boolean; re
 function PushRow({ p, busy, cancel }: { p: QueuePush; busy: boolean; cancel: () => void }) {
   return (
     <QRow title={<><b>{p.title || 'התראה'}</b>{p.body ? ` · ${p.body}` : ''}</>}
-      meta={<>{PUSH_KIND[p.kind] || p.kind} · ל־{p.to} אנשים{p.done ? `, נשלחה ל־${p.done}` : ''}{p.by ? ` · מאת ${p.by}` : ''} · {ago(p.createdAt)}</>}
+      meta={<>{PUSH_KIND[p.kind] || p.kind} · {p.to === 1 ? 'לאדם אחד' : `ל־${p.to} אנשים`}{p.done ? `, נשלחה ל־${p.done}` : ''}{p.by ? ` · מאת ${p.by}` : ''} · {ago(p.createdAt)}</>}
       tag={p.stale ? <Tag tone="outline">ישנה מדי לטלפון</Tag> : <Tag tone="neutral">מחכה</Tag>}>
-      <Button variant="quiet" disabled={busy} onClick={cancel}>ביטול</Button>
+      <Button variant="quiet" disabled={busy} onClick={cancel}>לא לשלוח</Button>
     </QRow>
   );
 }

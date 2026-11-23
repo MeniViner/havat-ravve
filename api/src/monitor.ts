@@ -27,7 +27,7 @@ const SAME_ALERT_MS = 12 * 3600_000;
 
 export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
 export type Uptime = { checks: SiteCheck[]; downSince: string | null; incidents: { from: string; to: string | null }[] };
-export type Quota = { at: string; since: string; reads: number; writes: number; deletes: number; error?: undefined } | { at: string; error: 'permission' | 'unavailable' | 'failed'; detail?: string };
+export type Quota = { at: string; since: string; reads: number; writes: number; deletes: number; error?: undefined } | { at: string; error: 'permission' | 'billing' | 'unavailable' | 'failed'; detail?: string };
 export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
 export type HealthItem = { id: string; he: string; state: HealthState; detail: string };
 export type Health = { at: string; date: string; by: string; worst: HealthState; items: HealthItem[]; r2Bytes: number | null };
@@ -138,7 +138,8 @@ export async function readQuota(env: Env): Promise<Quota> {
     if (res.status === 403) {
       // Google's own reason (role missing, API off, wrong project): a short message, never a token
       const why = await res.json().then((j: { error?: { message?: string } }) => String(j?.error?.message || ''), () => '');
-      return { at, error: 'permission', detail: why.slice(0, 200) };
+      // Google serves these numbers only to projects with billing on: the farm's free (Spark) plan never gets them
+      return { at, error: /billing/i.test(why) ? 'billing' : 'permission', detail: why.slice(0, 200) };
     }
     if (!res.ok) { await res.body?.cancel(); return { at, error: 'failed', detail: `Cloud Monitoring ${res.status}` }; }
     const j = (await res.json()) as { timeSeries?: { points?: { value?: { int64Value?: string } }[] }[] };
@@ -204,7 +205,7 @@ export async function healthCheck(env: Env, fs: Firestore, st: MonitorState, by:
   } catch { add('keys', 'מפתחות API', 'unknown', 'לא הצלחנו לקרוא'); }
   // the free quota
   const q = st.quota; const s = share(q);
-  if (!q || q.error) add('quota', 'מכסת Firestore החינמית', 'unknown', q?.error === 'permission' ? 'חסרה הרשאת צפייה (פרטים במסך)' : 'לא נמדדה');
+  if (!q || q.error) add('quota', 'מכסת Firestore החינמית', 'unknown', q?.error === 'billing' ? 'Google לא מציג את המונה בתוכנית החינמית (קישור לשימוש במסך)' : q?.error === 'permission' ? 'חסרה הרשאת צפייה (פרטים במסך)' : 'לא נמדדה');
   else add('quota', 'מכסת Firestore החינמית', s! >= 0.9 ? 'bad' : s! >= 0.7 ? 'warn' : 'ok', `${pct(s!)} מהמכסה היומית בשימוש`);
   // storage
   let bytes: number | null = null;
@@ -287,7 +288,9 @@ export async function monitorStep(env: Env, prev: MonitorState): Promise<Monitor
     }
   }
   // hourly; every quarter hour while it fails, so a fix (a role granted) shows soon
-  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= (st.quota.error ? 14 : 55) * 60_000) {
+  // (no billing: once a day, in case the plan changes)
+  const every = st.quota?.error === 'billing' ? 24 * 60 : st.quota?.error ? 14 : 55;
+  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= every * 60_000) {
     st.quota = await readQuota(env);
     const s = share(st.quota);
     if (s !== null && s >= 0.8) await sendAlert(env, fs, st, { id: 'quota-' + ilDate(now), title: 'המכסה החינמית של Firestore מתקרבת לסוף', sub: `${pct(s)} מהמכסה של היום כבר בשימוש. היא מתחדשת ב־10:00 בבוקר.` }).catch(() => false);

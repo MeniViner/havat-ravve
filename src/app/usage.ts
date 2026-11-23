@@ -25,18 +25,23 @@ function flush() {
 /** From App.tsx: `ready` once the account is known; `role` null when nobody is signed in; `off` in the demo. */
 export function useUsage(route: string, ready: boolean, role: string | null, off: boolean) {
   useEffect(() => {
-    if (!ready || off || opened || !hitsOn()) return;
-    opened = true;
-    sendHit({ t: 'view', app: true, device: device(), role: role || 'signedout', ...firstToday('app') });
-    if (!listening) {
-      listening = true;
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-      addEventListener('pagehide', flush);
-    }
+    // counting never breaks the app: anything it throws (an old WebView, blocked storage) is swallowed
+    try {
+      if (!ready || off || opened || !hitsOn()) return;
+      opened = true;
+      sendHit({ t: 'view', app: true, device: device(), role: role || 'signedout', ...firstToday('app') });
+      if (!listening) {
+        listening = true;
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+        addEventListener('pagehide', flush);
+      }
+    } catch { /* not counted */ }
   }, [ready, off, role]);
   useEffect(() => {
-    if (off || !hitsOn()) return;
-    const s = screenOf(route);
-    screens[s] = (screens[s] || 0) + 1;
+    try {
+      if (off || !hitsOn()) return;
+      const s = screenOf(route);
+      screens[s] = (screens[s] || 0) + 1;
+    } catch { /* not counted */ }
   }, [route, off]);
 }

@@ -1,5 +1,5 @@
 // Data access for events, tickets, visits, donations, stalls, settings, notifications and calendar.
-import { useList, useDoc, write, newId, push, pull, inc, serverNow } from './db';
+import { useList, useDoc, useSwitchesSnapshot, write, newId, push, pull, inc, serverNow } from './db';
 import { nowIso } from './firebase';
 import { logActivity } from './activity';
 import type {
@@ -31,7 +31,7 @@ export function useSettings() {
 }
 
 /** The owners' switches from the console (switches.ts); written only by the Worker. */
-export const useSwitchesDoc = () => useDoc<{ id: string; maintenance?: boolean; maintenanceText?: string; registrationClosed?: boolean; readOnly?: boolean }>('settings/switches', true);
+export const useSwitchesDoc = () => useSwitchesSnapshot<{ id: string; maintenance?: boolean; maintenanceText?: string; registrationClosed?: boolean; readOnly?: boolean }>();
 
 /** Merge a section of settings, including when the document has never been saved. */
 export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, what = 'ההגדרות עודכנו') {

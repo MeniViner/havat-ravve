@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Toast } from '../app/v2/kit';
 import { ddmm, hhmm, daysFromToday } from '../app/v2/format';
-import { errorText } from './source';
+import { errorText, source } from './source';
+import { fieldLabel } from './labels';
 
 export function useLoad<T>(load: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -85,4 +86,17 @@ export function QRow({ title, meta, tag, children }: { title: ReactNode; meta: R
       <div className="c-qrow__actions">{children}</div>
     </div>
   );
+}
+
+/** "בקשה אחת" / "3 בקשות": the one form for 1, the number and the plural for anything else. */
+export const many = (n: number, one: string, other: string) => (n === 1 ? one : `${fmt(n)} ${other}`);
+
+/** A link out of the console (to the app, the site editor, the full log). In the demo it stays in the demo. */
+export const outHref = (path: string) => (source.demo ? `${path}${path.includes('?') ? '&' : '?'}${path.startsWith('/app') ? 'demo=owner' : 'demo'}` : path);
+
+/** A stored field by its Hebrew name, with the stored name small beside it; a field we have no name for stays as stored. */
+export function FieldName({ k }: { k: string }) {
+  const he = fieldLabel(k);
+  if (!he) return <bdi className="k-ltr" dir="ltr">{k}</bdi>;
+  return <span className="c-fname">{he} <bdi className="c-fname__raw" dir="ltr">{k}</bdi></span>;
 }

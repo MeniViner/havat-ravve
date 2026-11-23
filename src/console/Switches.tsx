@@ -12,7 +12,7 @@ const ASK: Partial<Record<Key, { title: string; text: string; go: string }>> = {
   keysStopped: { title: 'לעצור את כל מפתחות ה־API?', text: 'כל בקשה עם מפתח תיענה בסירוב, גם של אינסטינקט, עד שתפעילו שוב. הקונסולה ממשיכה לעבוד.', go: 'כן, לעצור' },
   registrationClosed: { title: 'לסגור את ההרשמה?', text: 'מי שאין לו עדיין חשבון יראה "ההרשמה סגורה כרגע". מי שכבר רשום נכנס כרגיל.', go: 'כן, לסגור' },
 };
-const ON_NOW: [Key, string][] = [
+export const ON_NOW: [Key, string][] = [
   ['maintenance', 'מצב תחזוקה'], ['readOnly', 'קריאה בלבד'], ['keysStopped', 'מפתחות ה־API עצורים'], ['registrationClosed', 'ההרשמה סגורה'],
   ['emailPaused', 'מיילים בהשהיה'], ['pushPaused', 'התראות לטלפון בהשהיה'],
 ];
@@ -42,7 +42,7 @@ export function SwitchesScreen({ notify }: { notify: (t: string, tone?: 'info' |
       {st.loading && !v && <p className="c-soft">טוען…</p>}
       {v && <Body v={v} busy={busy} flip={flip} set={set} />}
       {ask && v && (
-        <ConfirmSheet open title={ASK[ask]!.title} text={ASK[ask]!.text} confirmLabel={ASK[ask]!.go} onClose={() => setAsk(null)}
+        <ConfirmSheet open title={ASK[ask]!.title} text={ASK[ask]!.text} confirmLabel={ASK[ask]!.go} cancelLabel="חזרה" onClose={() => setAsk(null)}
           onConfirm={async () => { await set({ [ask]: true }); setAsk(null); }} />
       )}
     </>
@@ -62,8 +62,8 @@ function Body({ v, busy, flip, set }: { v: SwitchesView; busy: boolean; flip: (k
       <Section title="מה אנשים רואים באפליקציה">
         <ListCard>
           <Row title="מצב תחזוקה" meta="כולם חוץ מהבעלים רואים מסך תחזוקה" value={<Toggle checked={s.maintenance} onChange={(x) => flip('maintenance', x)} label="מצב תחזוקה" disabled={busy} />} />
-          <Row title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
-          <Row title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
+          <Row title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם באפליקציה (נאכף באפליקציה עצמה)" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
+          <Row title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום באפליקציה ובמפתחות. נאכף בגרסה העדכנית של האפליקציה, לא בכללי מסד הנתונים" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
         </ListCard>
         {s.maintenance && (
           <Card pad="lg" className="c-stack c-stack--sm">
