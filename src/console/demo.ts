@@ -1,5 +1,5 @@
 // /admin?demo: the console over made-up people, keys and numbers, kept in memory only. No Firestore, no Worker.
-import type { KeyView, LogEntry, Overview, Person, Source } from './source';
+import type { Backup, KeyView, LogEntry, Overview, Person, Source, TrashItem } from './source';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const DAY = 24 * 60;
@@ -43,6 +43,23 @@ const overview = (): Overview => ({
   switches: { email: { on: false, configured: false, brevo: false, resend: false }, push: { mode: 'webpush' }, files: { r2: true } },
 });
 
+const dayKey = (daysAgo: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date(Date.now() - daysAgo * 86400_000));
+const COLS = { activity: 168, users: 9, notifications: 18, push_jobs: 14, tasks: 9, tickets: 4, events: 2, 'events/*/vendors': 3, vendors: 3, places: 2, settings: 1, shopping: 6, calendar: 4, visits: 1, donations: 2 };
+const backups: Backup[] = Array.from({ length: 12 }, (_, i) => {
+  const docs = 246 - i * 3;
+  return { date: dayKey(i), startedAt: ago(i * DAY + 180), finishedAt: ago(i * DAY + 175), docs, bytes: docs * 610, parts: 1, collections: COLS, by: 'cron' };
+});
+const trash: TrashItem[] = [
+  { key: 'trash/d/1-aaaaaaaa.json', path: 'tasks/t-fence', collection: 'tasks', title: 'לתקן את הגדר בחלקה הצפונית', by: 'האינסטינקט של מני', who: 'מני בעלים', requestId: 'req_1', deletedAt: ago(35) },
+  { key: 'trash/d/2-bbbbbbbb.json', path: 'shopping/s-hay', collection: 'shopping', title: 'חבילות חציר', by: 'האינסטינקט של בני', who: 'בני גוטמן', requestId: 'req_2', deletedAt: ago(5 * 60) },
+  { key: 'trash/d/3-cccccccc.json', path: 'places/p-old', collection: 'places', title: 'מחסן ישן', by: 'קונסולה · מני', who: 'מני בעלים', requestId: 'req_3', deletedAt: ago(2 * DAY) },
+];
+const demoDocs = [
+  { path: 'tasks/t-fence', title: 'לתקן את הגדר בחלקה הצפונית' }, { path: 'tasks/t-water', title: 'לבדוק את השוקת' },
+  { path: 'tasks/t-feed', title: 'להזמין מזון לעיזים' }, { path: 'users/d-orly', title: 'אורלי כהן' }, { path: 'users/d-yoav', title: 'יואב פרץ' },
+];
+const restoredDocs = new Set<string>(); // put back in this demo session: "now" matches the backup again
+
 const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 180));
 const fakeKey = () => 'hr_DEMO_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 56]).join('');
 
@@ -84,5 +101,29 @@ export const demoSource: Source = {
     if (op === 'people.delete' && p) people.splice(people.indexOf(p), 1);
     if (p) p.updatedAt = ago(0);
     return wait({ changed: true });
+  },
+  backups: () => wait({ items: backups, running: null }),
+  runBackup: async () => {
+    const b = { ...backups[0], startedAt: ago(0), finishedAt: ago(0), by: 'מני בעלים' };
+    backups[0] = b;
+    return wait({ done: true, date: b.date, docs: b.docs });
+  },
+  downloadBackup: async () => { await wait(null); throw new Error('demo'); },
+  backupDocs: (_date, collection) => {
+    const items = demoDocs.filter((d) => d.path.startsWith(collection + '/')).map((d) => ({ ...d, updateTime: ago(3 * DAY) }));
+    return wait({ items, total: items.length });
+  },
+  backupDoc: (_date, path) => {
+    const d = demoDocs.find((x) => x.path === path);
+    const then = { title: d?.title || path, place: 'החלקה הצפונית', done: false, assignee: { uid: 'd-yoav', name: 'יואב פרץ' }, createdAt: ago(9 * DAY) };
+    const now = restoredDocs.has(path) ? { ...then } : path === 'tasks/t-fence' ? null : { ...then, done: true, doneAt: ago(DAY) };
+    return wait({ path, then, now, thenUpdated: ago(3 * DAY), nowUpdated: now ? ago(DAY) : null });
+  },
+  restoreBackup: (_date, paths) => { paths.forEach((p) => restoredDocs.add(p)); return wait({ restored: paths.length, missing: 0 }); },
+  trash: () => wait(trash),
+  restoreTrash: (keys) => {
+    const restored = trash.filter((t) => keys.includes(t.key)).map((t) => t.path);
+    for (const k of keys) { const i = trash.findIndex((t) => t.key === k); if (i >= 0) trash.splice(i, 1); }
+    return wait({ restored, exists: [], gone: [] });
   },
 };

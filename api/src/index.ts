@@ -18,6 +18,7 @@ import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
 import { consoleCaller, consoleCors, consoleRoute, isConsolePath, recordCron } from './console';
 import { storedKeys } from './keys';
+import { runBackup, trashFor } from './backup';
 
 const MAX_BODY = 16 * 1024;
 
@@ -41,7 +42,7 @@ function faultsOf(req: Request, env: Env): Set<string> {
   return new Set((req.headers.get('x-test-fault') || '').split(',').map((s) => s.trim()).filter(Boolean));
 }
 
-async function route(req: Request, env: Env, url: URL, log: Record<string, unknown>, audit: Audit): Promise<{ status?: number; data: unknown }> {
+async function route(req: Request, env: Env, url: URL, log: Record<string, unknown>, audit: Audit): Promise<{ status?: number; data: unknown; raw?: Response }> {
   let path = url.pathname.replace(/\/+$/, '') || '/';
   const m = req.method;
 
@@ -71,6 +72,8 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     // the app's activity lines written through the API say which key did it
     audit.label = caller.label;
     fs.via = { credential: caller.credentialId, label: keyLabel(env, caller.credentialId, caller.actor.person.name, caller.label) };
+    // the recycle bin (backup.ts): whatever this request deletes is kept for 30 days, with who deleted it
+    fs.trash = trashFor(env, { credential: caller.credentialId, label: fs.via.label, name: caller.actor.person.name, requestId: String(log.requestId) });
     if (caller.keyVersion === 'previous') log.keyVersion = 'previous'; // shows when a client still uses a rotated key
     // one key in a loop (a confused assistant) must not burn the farm's daily Firestore quota
     if (env.RATE_LIMITER && !(await env.RATE_LIMITER.limit({ key: 'cred:' + caller.credentialId + (consoleSub !== null ? ':' + caller.actor.person.uid : '') })).success) {
@@ -80,7 +83,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
       if (!consoleSub.startsWith('/api/')) {
         const c = await consoleRoute(req, env, consoleSub, caller, fs, () => readBody(req));
         log.op = c.op.name; audit.op = c.op.name; audit.body = c.logBody as Record<string, unknown> | undefined; audit.result = c.logResult ?? c.data;
-        return { status: c.status, data: c.data };
+        return { status: c.status, data: c.data, raw: c.raw };
       }
       // any API operation, as the signed-in owner
       path = '/v1' + consoleSub.slice('/api'.length);
@@ -142,7 +145,7 @@ export default {
       const r = await route(req, env, url, log, audit);
       if (req.method === 'GET') audit.result = r.data;
       if (log.credential) meta.keyVersion = log.keyVersion === 'previous' ? 'previous' : 'current';
-      res = ok(meta, r.data, r.status ?? 200);
+      res = r.raw || ok(meta, r.data, r.status ?? 200);
     } catch (e) {
       const err = toApiError(e);
       if (!(e instanceof ApiError)) log.internal = e instanceof Error ? e.message.slice(0, 600) : String(e);
@@ -182,6 +185,9 @@ export default {
     // phone push (push.ts): nothing is read while PUSH_MODE is unset; counts only, never endpoints or message text
     try { console.log(JSON.stringify(await runPush(env))); }
     catch (e) { console.log(JSON.stringify({ cron: 'push', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
+    // the nightly backup to R2 (backup.ts): nothing before 03:00 Israel time or once today's is done; one page per run
+    try { const b = await runBackup(env); if (b) console.log(JSON.stringify(b)); }
+    catch (e) { console.log(JSON.stringify({ cron: 'backup', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
     // the console's "last cron run" (console.ts): when it ran and how long it took
     await recordCron(env, { wallMs: Date.now() - started }).catch(() => {});
   },
