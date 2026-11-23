@@ -110,7 +110,7 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
     return { bought: pick(trip.bought, live.bought).sort(byListOrder), missing: pick(trip.missing, live.missing).sort(byListOrder) };
   }, [trip, all]);
   const back = async () => {
-    try { await reopenTrip(trip); go('/shopping/trip', true); } catch (e) { fail(e); }
+    try { await reopenTrip(ctx.actor, trip); go('/shopping/trip', true); } catch (e) { fail(e); }
   };
   const done = (i: ShoppingItem) => {
     const parts = [i.qty];
@@ -133,7 +133,7 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
             label: 'מחיקה', icon: 'trash', tone: 'danger',
             confirm: {
               title: 'למחוק את הקנייה?', text: 'הקנייה תימחק. מה שנקנה נשאר מסומן כנקנה, ומה שלא היה נשאר ברשימה.', confirmLabel: 'מחיקה',
-              onConfirm: () => remove(() => deleteTrip(trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) }),
+              onConfirm: () => remove(() => deleteTrip(ctx.actor, trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) }),
             },
           }]} />
         </div>

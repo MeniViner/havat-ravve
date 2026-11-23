@@ -352,6 +352,7 @@ async function setTaskDone(fs: Firestore, caller: Caller, op: 'tasks.complete' |
     const writes = [fs.patch('tasks', t.id, patch, t.updateTime)];
     const subject = cur?.uid || me.uid;
     if (wasDone !== done) writes.push(activity(fs, caller, t.id, done ? 'done' : 'undone', activityText(data), subject, kindOf(data)));
+    if (withDetails && !photo && wasDone === done) writes.push(activity(fs, caller, t.id, 'note', short(data.title), '', kindOf(data)));
     if (photo) writes.push(activity(fs, caller, t.id, 'photo', `${short(data.title)}${input.doneNote ? ': ' + input.doneNote : ''}`, '', kindOf(data)));
     const expected: Record<string, unknown> = done ? { done: true, doneBy: wasDone ? data.doneBy : me } : { done: false, doneBy: null };
     if ('assignee' in patch) expected.assignee = me;

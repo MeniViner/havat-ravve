@@ -7,6 +7,9 @@
 //   push_jobs/{id}               the outbox the Worker drains (notify.ts, api/src/push.ts)
 //   email_outbox/bc_<id>_<uid>   "לשלוח גם במייל" (Q26): one job per person without push, drained by the Worker cron (api/src/email.ts)
 //   users/{uid}.updatesOptIn     "לקבל עדכונים מהחווה": a message to all users reaches only people with true
+import { saveAccountChange } from '../../account-activity';
+import { messageActivityText } from '../../../../shared/message-activity';
+import { activityOp } from '../../activity';
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId } from '../../db';
 import { nowIso, todayKey } from '../../clock';
@@ -141,7 +144,7 @@ export const useRoleInvites = (enabled: boolean) => useList<RoleInvite>('role_in
 export const cardEligible = (b: Broadcast) => b.urgent || keyOf(b.createdAt) === todayKey();
 
 // ---------- writes ----------
-export type Draft = { text: string; audience: BroadcastAudience; urgent: boolean; eventId?: string };
+export type Draft = { text: string; audience: BroadcastAudience; urgent: boolean; eventId?: string; includeSelf?: boolean };
 
 /** One e-mail job in the Worker's outbox (api/src/email.ts, broadcast lane). Only these fields: the Worker reads the text from
  *  the broadcast itself and skips the job when the broadcast was deleted. Shape checked by firestore.rules (email_outbox). */
@@ -163,9 +166,9 @@ export async function sendBroadcast(actor: Actor, d: Draft, recipients: string[]
   const b: Broadcast = { id, text, audience: d.audience, urgent: !!d.urgent, by: actor, createdAt, recipients: to, recipientCount: to.length, resentAt: null, ...(d.eventId ? { eventId: d.eventId } : {}) };
   const ops: Parameters<typeof write.batch>[0] = [{ op: 'set', col: 'broadcasts', id, data: b as unknown as Record<string, unknown> }];
   // the sender wrote it, so it is read for them (and no card shows on their own phone)
-  if (to.includes(actor.uid)) ops.push({ op: 'set', col: `broadcasts/${id}/reads`, id: actor.uid, data: { id: actor.uid, uid: actor.uid, name: actor.name, at: createdAt, seenAt: createdAt } });
-  await write.batch(ops);
-  await notify(to, notice(b, actor));
+  if (!d.includeSelf && to.includes(actor.uid)) ops.push({ op: 'set', col: `broadcasts/${id}/reads`, id: actor.uid, data: { id: actor.uid, uid: actor.uid, name: actor.name, at: createdAt, seenAt: createdAt } });
+  ops.push(activityOp(actor, 'message', id, 'message_sent', messageActivityText(b.audience, to.length, b.urgent, b.text), { eventId: b.eventId }));
+  await notify(to, { ...notice(b, actor), includeSelf: d.includeSelf }, ops);
   const mail = [...new Set((o.email || []).filter((u) => u && u !== actor.uid && to.includes(u)))].slice(0, EMAIL_CAP);
   const jobs = mail.map((uid) => {
     const job: BroadcastMailJob = { kind: 'broadcast', broadcastId: id, uid, status: 'queued', createdBy: actor, createdAt };
@@ -187,15 +190,20 @@ export async function resendBroadcast(actor: Actor, b: Broadcast, receipts: Rece
   const read = new Set(receipts.filter(isRead).map((r) => r.uid));
   const to = b.recipients.filter((u) => !read.has(u) && u !== actor.uid);
   if (!to.length) return 0;
-  await write.update('broadcasts', b.id, { resentAt: nowIso() });
-  await notify(to, notice(b, actor));
+  await notify(to, notice(b, actor), [
+    { op: 'update', col: 'broadcasts', id: b.id, data: { resentAt: nowIso() } },
+    activityOp(actor, 'message', b.id, 'message_resent', messageActivityText(b.audience, to.length, b.urgent), { eventId: b.eventId }),
+  ]);
   return to.length;
 }
 
 /** The card appeared on this phone: a receipt without `at` (B3 tells "עוד לא נכנס לאפליקציה" from "ראה ולא קרא"). */
 /** The owner deletes a broadcast. The read receipts under it are left (nobody can list them without the broadcast), and so are
  *  the copies in each person's notifications: those belong to the person. */
-export const deleteBroadcast = (b: Broadcast) => write.remove('broadcasts', b.id);
+export const deleteBroadcast = (actor: Actor, b: Broadcast) => write.batch([
+  { op: 'remove', col: 'broadcasts', id: b.id },
+  activityOp(actor, 'message', b.id, 'message_deleted', b.id, { eventId: b.eventId }),
+]);
 export async function markSeen(actor: Actor, broadcastId: string) {
   // a merge, so a "read" written meanwhile on another phone is never turned back into "seen"
   await write.merge(`broadcasts/${broadcastId}/reads`, actor.uid, { id: actor.uid, uid: actor.uid, name: actor.name, seenAt: nowIso() });
@@ -216,4 +224,4 @@ export const useBroadcastNotification = (uid: string, broadcastId: string, enabl
 
 // ---------- updates consent ----------
 /** "לקבל עדכונים מהחווה" (/me/edit, the guest account page): the person's own choice, written on its own. */
-export const setUpdatesOptIn = (uid: string, on: boolean) => write.update('users', uid, { updatesOptIn: on, updatedAt: nowIso() });
+export const setUpdatesOptIn = (uid: string, on: boolean) => saveAccountChange(uid, 'updates_changed', { updatesOptIn: on, updatedAt: nowIso() });

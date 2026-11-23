@@ -229,6 +229,34 @@ try {
   check((await mg.page.getByRole('button', { name: 'עוד פעולות' }).count()) === 0 && (await mg.page.getByRole('button', { name: 'מחיקה' }).count()) === 0, 'manager: no delete of a message (owners only)');
   await mg.ctx.close();
 
+  section('Q26 send to myself and team activity');
+  const self = await fresh('owner');
+  const selfMessage = 'בדיקת קבלה גם לשולח';
+  await go(self.page, '/manage/broadcasts/new');
+  const selfToggle = self.page.getByRole('switch', { name: 'גם אלי' });
+  check((await selfToggle.getAttribute('aria-checked')) === 'false', 'including myself is opt-in');
+  await selfToggle.click();
+  await self.page.getByLabel('תוכן ההודעה').fill(selfMessage);
+  await self.page.locator('.k-bottombar button').click();
+  const selfCard = self.page.locator('a.broadcast-sent', { hasText: selfMessage });
+  await selfCard.waitFor();
+  check((await selfCard.innerText()).includes('קראו 0 מתוך 12'), 'the author’s copy starts unread');
+  const selfData = await self.page.evaluate(() => JSON.parse(localStorage.getItem('farm-demo-overrides') || '{}'));
+  const sentToMe = Object.values(selfData.broadcasts).find((b) => b?.text === selfMessage);
+  check(selfData[`users/${sentToMe.by.uid}/notifications`]?.[`b_${sentToMe.id}`]?.readAt === null
+    && Object.values(selfData.push_jobs).some((j) => j.refId === sentToMe.id && j.to.includes(sentToMe.by.uid) && j.includeSelf),
+  'the author gets an inbox notification and a push job');
+  await selfCard.click();
+  await self.page.getByRole('button', { name: 'עוד פעולות' }).click();
+  await self.page.getByRole('dialog').getByRole('button', { name: 'מחיקה', exact: true }).click();
+  await self.page.getByRole('dialog', { name: 'למחוק את ההודעה?' }).getByRole('button', { name: 'מחיקה', exact: true }).click();
+  await self.page.waitForURL('**/app/manage/people?tab=messages');
+  await become(self.page, 'staff');
+  await go(self.page, '/manage/activity?filter=messages');
+  const feed = await text(self.page);
+  check(feed.includes(selfMessage) && feed.includes('שלח הודעה') && feed.includes('מחק הודעה') && feed.includes(sentToMe.id), 'a volunteer sees both activity entries, including the deleted broadcast id');
+  await self.ctx.close();
+
   // ---------- /me/edit: the consent switch ----------
   section('/me/edit "לקבל עדכונים מהחווה"');
   const me = await fresh('staff');

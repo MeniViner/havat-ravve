@@ -1,11 +1,13 @@
 // Broadcasts (B1-B3) and personal notifications (C1), written exactly as src/app/v2/data/broadcast.ts and notify.ts do.
 // The audience is resolved here the way useAudiences() resolves it in the app at send time. Model: docs/redesign-data/broadcast.md.
+import { messageActivityText, notificationTargets, OUTSIDE_AUDIENCES, type BroadcastAudience } from '../../../shared/message-activity';
+import { requireScope, TEAM_ROLES } from '../auth';
 import { ApiError, invalid } from '../http';
 import type { Firestore, Write } from '../firestore';
-import { type Person, forbidden, isOwner, mustGet, nowIso, project, todayIL } from '../core';
+import { type Person, activity, forbidden, isOwner, mustGet, nowIso, project, todayIL } from '../core';
 import { notifyWrites, appLink } from '../notify';
 import { autoId } from '../util';
-import { bool, def, en, farmTime, opt, req, str } from '../writes';
+import { bool, def, type Ctx, en, farmTime, opt, req, str } from '../writes';
 
 export const AUDIENCES = ['all', 'farmToday', 'managers', 'crew', 'vendors'] as const;
 const AUDIENCE_HE = 'all כל הצוות, farmToday מי שבחווה היום (רשום בנוכחות), managers מנהלים ובעלים, crew צוות האירוע (שיבוץ), vendors בעלי הדוכנים של האירוע';
@@ -60,6 +62,11 @@ export async function resolveAudience(fs: Firestore, audience: string, eventId: 
   return { members, event: event ? { id: event.id, title: String(event.data.title || ''), start: event.data.start ?? null } : null, date: today };
 }
 
+function requireBroadcastScopes(c: Ctx, audience: BroadcastAudience, urgent: boolean) {
+  if (OUTSIDE_AUDIENCES.includes(audience) && !c.caller.legacyExternalBroadcasts) requireScope(c.caller, 'notify:all');
+  if (urgent) requireScope(c.caller, 'broadcasts:urgent');
+}
+
 const notice = (b: { id: string; text: string; audience: string; urgent: boolean; by: Person }, by: Person) => ({
   id: 'b_' + b.id, kind: 'broadcast', title: pushTitle(b.by), sub: b.text, link: b.audience === 'vendors' ? '/vendor' : '/tasks',
   refId: b.id, by, urgent: b.urgent, tag: 'b_' + b.id,
@@ -69,9 +76,11 @@ const notice = (b: { id: string; text: string; audience: string; urgent: boolean
 def('broadcasts.send', 'broadcasts:write', 'שליחת הודעה לצוות (מגיעה כהתראה באפליקציה ובטלפון)', {
   text: str(200, 'ההודעה', true, 1), audience: en([...AUDIENCES], AUDIENCE_HE, true), urgent: bool('דחוף: נשארת בראש המסך עד שקוראים', false),
   eventId: opt('לצוות האירוע / בעלי הדוכנים: איזה אירוע (ברירת מחדל: של היום או הבא)'),
+  includeSelf: { type: 'bool', default: false, omitWhenFalse: true, he: 'גם לשולח, אם הוא בקהל' },
   preview: bool('true: רק מחזיר למי זה יגיע, בלי לשלוח', false),
 }, async (c) => {
   const i = c.input;
+  requireBroadcastScopes(c, i.audience, !!i.urgent);
   if ((i.audience === 'crew' || i.audience === 'vendors') === false && i.eventId) throw invalid('eventId', 'eventId is only for the crew and vendors audiences');
   const { members, event } = await resolveAudience(c.fs, i.audience, i.eventId);
   const to = [...new Set(members.map((m) => m.uid))];
@@ -83,24 +92,33 @@ def('broadcasts.send', 'broadcasts:write', 'שליחת הודעה לצוות (מ
   const b = { id, text: i.text, audience: i.audience, urgent: !!i.urgent, by: c.me, createdAt, recipients: to, recipientCount: to.length, resentAt: null, ...(event ? { eventId: event.id } : {}) };
   const writes: Write[] = [c.fs.create('broadcasts', id, b)];
   // the sender wrote it, so it is read for them (and no card shows on their own phone)
-  if (to.includes(c.me.uid)) writes.push(c.fs.set(`broadcasts/${id}/reads`, c.me.uid, { id: c.me.uid, uid: c.me.uid, name: c.me.name, at: createdAt, seenAt: createdAt }));
-  writes.push(...notifyWrites(c.fs, to, notice(b, c.me)));
-  return { status: 201, writes, refs: [{ col: 'broadcasts', id, expected: { text: b.text, recipientCount: b.recipientCount } }], data: { broadcastId: id, recipientCount: to.length, notified: to.filter((u) => u !== c.me.uid).length, event } };
+  if (!i.includeSelf && to.includes(c.me.uid)) writes.push(c.fs.set(`broadcasts/${id}/reads`, c.me.uid, { id: c.me.uid, uid: c.me.uid, name: c.me.name, at: createdAt, seenAt: createdAt }));
+  const notified = notificationTargets(to, c.me.uid, i.includeSelf);
+  writes.push(
+    activity(c.fs, c.me, 'message', id, 'message_sent', messageActivityText(b.audience, b.recipientCount, b.urgent, b.text), { eventId: event?.id }),
+    ...notifyWrites(c.fs, notified, { ...notice(b, c.me), includeSelf: i.includeSelf }),
+  );
+  return { status: 201, writes, refs: [{ col: 'broadcasts', id, expected: { text: b.text, recipientCount: b.recipientCount } }], data: { broadcastId: id, recipientCount: to.length, notified: notified.length, event } };
 }, [
   'Confirm the text and the audience with the user first; preview=true shows who it reaches without sending (then send with a new Idempotency-Key).',
-  'Each recipient gets an in-app notification and a phone push (urgent: high priority, stays on screen). The sender is counted as a recipient when in the audience, but is not notified.',
+  'Urgent messages require broadcasts:urgent. Broadcasts outside the team require notify:all.',
+  'Each recipient gets an in-app notification and a phone push (urgent: high priority, stays on screen). The sender is counted when in the audience. By default their copy starts read and they receive no notification. Set includeSelf=true for an unread copy, an in-app notification and a push.',
 ]);
 
 // resendBroadcast()
 def('broadcasts.resend', 'broadcasts:write', 'שליחה חוזרת של הודעה לצוות, רק למי שעוד לא קרא', { broadcastId: req() }, async (c) => {
   const b = await mustGet(c.fs, 'broadcasts', c.input.broadcastId, c.tx, 'broadcast');
+  const audience = String(b.data.audience) as BroadcastAudience;
+  const urgent = b.data.urgent === true;
+  requireBroadcastScopes(c, audience, urgent);
   const reads = await c.fs.query({ from: [{ collectionId: 'reads' }], limit: 1000 }, `broadcasts/${b.id}`);
   const read = new Set(reads.filter((r) => !!r.data.at).map((r) => String(r.data.uid || r.id)));
   const to = ((b.data.recipients as string[]) || []).filter((u) => !read.has(u) && u !== c.me.uid);
   if (!to.length) return { writes: [], refs: [{ col: 'broadcasts', id: b.id }], data: { notified: 0, changed: false } };
   const now = nowIso();
   const writes: Write[] = [c.fs.patch('broadcasts', b.id, { resentAt: now }, b.updateTime),
-    ...notifyWrites(c.fs, to, notice({ id: b.id, text: String(b.data.text), audience: String(b.data.audience), urgent: !!b.data.urgent, by: b.data.by as Person }, c.me))];
+    activity(c.fs, c.me, 'message', b.id, 'message_resent', messageActivityText(audience, to.length, urgent), { eventId: String(b.data.eventId || '') }),
+    ...notifyWrites(c.fs, to, notice({ id: b.id, text: String(b.data.text), audience, urgent, by: b.data.by as Person }, c.me))];
   return { writes, refs: [{ col: 'broadcasts', id: b.id, expected: { resentAt: now } }], data: { notified: to.length, changed: true } };
 }, ['Their notification comes back as new (same notification, not a second one). Nobody unread: "changed": false and nothing is sent.']);
 
@@ -108,7 +126,7 @@ def('broadcasts.resend', 'broadcasts:write', 'שליחה חוזרת של הוד�
 def('broadcasts.delete', 'broadcasts:write', 'מחיקת הודעה לצוות (בעלים בלבד)', { broadcastId: req() }, async (c) => {
   if (!isOwner(c.caller)) throw forbidden('only the owner deletes a broadcast');
   const b = await mustGet(c.fs, 'broadcasts', c.input.broadcastId, c.tx, 'broadcast');
-  return { writes: [c.fs.remove('broadcasts', b.id, b.updateTime)], refs: [{ col: 'broadcasts', id: b.id, gone: true }], data: { deleted: project('broadcasts', b.id, b.data) } };
+  return { writes: [c.fs.remove('broadcasts', b.id, b.updateTime), activity(c.fs, c.me, 'message', b.id, 'message_deleted', b.id, { eventId: String(b.data.eventId || '') })], refs: [{ col: 'broadcasts', id: b.id, gone: true }], data: { deleted: project('broadcasts', b.id, b.data) } };
 }, ['Destructive: confirm with the user first. The copies in each person\'s notifications stay (they belong to the person), as in the app.']);
 
 // ======================= personal notifications (C1) =======================
@@ -130,9 +148,10 @@ def('me.notifications.markRead', 'me:write', 'סימון ההתראות האיש
 }, ['Already-read notifications are left as they are ("marked" counts the ones changed).']);
 
 // notify(): a direct message to chosen people, for the assistant (kind "system", in the app's bell and as a phone push)
-def('notifications.send', 'notify:write', 'שליחת התראה אישית לאנשים מסוימים (בפעמון באפליקציה ובטלפון)', {
+def('notifications.send', 'notify:team', 'שליחת התראה אישית לאנשים מסוימים (בפעמון באפליקציה ובטלפון)', {
   uids: { type: 'stringList', maxItems: 200, maxLength: 128, required: true, he: 'uid של הנמענים (people.search / profiles.list)' },
   title: str(120, 'כותרת', true, 1), sub: str(240, 'טקסט'), link: str(200, 'נתיב באפליקציה שמתחיל ב־/ (לא קישור https), למשל /tasks/abc או /farm', true, 1),
+  includeSelf: { type: 'bool', default: false, omitWhenFalse: true, he: 'גם לשולח, אם הוא ברשימת הנמענים' },
   push: bool('גם התראה בטלפון', true), urgent: bool('דחוף (בטלפון: נשאר על המסך)', false),
 }, async (c) => {
   const i = c.input;
@@ -143,9 +162,10 @@ def('notifications.send', 'notify:write', 'שליחת התראה אישית לא
   if (missing.length) throw invalid('uids', `unknown uid: ${missing.join(', ')}`);
   const inactive = people.filter((p) => p.data.status !== 'active').map((p) => p.id);
   if (inactive.length) throw invalid('uids', `not active: ${inactive.join(', ')}`);
+  if (people.some((p) => !TEAM_ROLES.has(String(p.data.role)))) requireScope(c.caller, 'notify:all');
+  const to = notificationTargets(uids, c.me.uid, i.includeSelf);
+  if (!to.length) throw invalid('uids', 'nobody to notify (you do not notify yourself)');
   const id = autoId();
-  const writes = notifyWrites(c.fs, uids, { id, kind: 'system', title: i.title, sub: i.sub || '', link: appLink(i.link), by: c.me, push: i.push, urgent: i.urgent });
-  if (!writes.length) throw invalid('uids', 'nobody to notify (you do not notify yourself)');
-  const to = uids.filter((u) => u !== c.me.uid);
+  const writes = notifyWrites(c.fs, to, { id, kind: 'system', title: i.title, sub: i.sub || '', link: appLink(i.link), by: c.me, push: i.push, urgent: i.urgent, includeSelf: i.includeSelf });
   return { status: 201, writes, refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { title: i.title.slice(0, 120) } })), data: { notificationId: id, notified: to.length } };
-}, ['Confirm the text and the people with the user first. The person sees it in the app\'s notifications (and on the phone when push is on and they allow it).', 'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.']);
+}, ['Confirm the text and the people with the user first. The person sees it in the app\'s notifications (and on the phone when push is on and they allow it).', 'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.', 'notify:team limits recipients to active team members. notify:all also allows other active profiles. includeSelf=true includes the sender when listed.'], ['notify:all']);

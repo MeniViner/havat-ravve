@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, readOnce, ConflictError } from '../../db';
 import { nowIso, nowMs } from '../../clock';
-import { logActivity, taskKind } from '../../activity';
+import { activityOp, logActivity, taskKind } from '../../activity';
 import { setTaskDone } from '../../store';
 import { getDemo } from '../../demo/store';
 import type { Actor, CalendarItem, FarmEvent, Profile, Project, ProjectStep, ShoppingItem, Staffing, Task } from '../../types';
@@ -58,12 +58,17 @@ export const useStepsOn = (projectId: string, uid: string, enabled: boolean) =>
 
 // ---------- writes ----------
 /** F4: one entry per chosen day for `who` (the signed-in person, or the person a manager picked), as one batch (works offline). */
-export async function savePresence(who: Actor, days: string[], items: CalItem[], hours: Hours, note: string) {
+export async function savePresence(actor: Actor, who: Actor, days: string[], items: CalItem[], hours: Hours, note: string) {
   const ops = presencePlan(days, items, who, hours, note, () => newId('calendar'), nowIso());
-  await write.batch(ops.map((o) => ({ op: o.op, col: 'calendar', id: o.id, data: o.data })));
+  await write.batch(ops.flatMap((o) => [
+    { op: o.op, col: 'calendar', id: o.id, data: o.data },
+    activityOp(actor, 'calendar', o.id, o.op === 'set' ? 'created' : 'edited', `נוכחות · ${o.data.date}`, { subjectUid: who.uid }),
+  ]));
   return ops.length;
 }
-export const removePresence = (id: string) => write.remove('calendar', id);
+export const removePresence = (actor: Actor, id: string) => write.batch([
+  { op: 'remove', col: 'calendar', id }, activityOp(actor, 'calendar', id, 'deleted', 'נוכחות'),
+]);
 
 export type CalDraft = { title: string; date: string; from: string; to: string; audience: 'all' | 'managers'; participants: string[]; reminder: boolean; kind?: TeamKind };
 /** C11: add or edit a calendar item (managers). The old `time` text is kept next to from/to for old screens and the Worker.
@@ -76,12 +81,19 @@ export async function saveCalItem(actor: Actor, d: CalDraft, existing?: FarmCalI
     audience: d.audience, participants: d.participants, reminder: d.reminder ? '60' : '', remindAt: at, reminderSentAt: null,
   };
   const kind = kindToSave(d.kind, existing ? existing.kind : undefined);
-  if (existing) { await write.update('calendar', existing.id, kind ? { ...fields, kind } : fields); return existing.id; }
-  const id = newId('calendar');
-  await write.set('calendar', id, { ...fields, kind: kind || 'manual', ownerUid: actor.uid, ownerName: actor.name, refId: '', createdAt: nowIso() });
+  const id = existing?.id ?? newId('calendar');
+  const record = existing ? (kind ? { ...fields, kind } : fields)
+    : { ...fields, kind: kind || 'manual', ownerUid: actor.uid, ownerName: actor.name, refId: '', createdAt: nowIso() };
+  await write.batch([
+    { op: existing ? 'update' : 'set', col: 'calendar', id, data: record },
+    activityOp(actor, d.audience === 'managers' ? 'calendar_private' : 'calendar', id, existing ? 'edited' : 'created', 'פריט ביומן'),
+  ]);
   return id;
 }
-export const deleteCalItem = (id: string) => write.remove('calendar', id);
+export const deleteCalItem = (actor: Actor, item: FarmCalItem) => write.batch([
+  { op: 'remove', col: 'calendar', id: item.id },
+  activityOp(actor, item.audience === 'managers' ? 'calendar_private' : 'calendar', item.id, 'deleted', 'פריט ביומן'),
+]);
 
 /** F6 "לקחת": take a prep task only if it is still free (X1 on conflict). */
 export async function takeTask(actor: Actor, task: Task) {

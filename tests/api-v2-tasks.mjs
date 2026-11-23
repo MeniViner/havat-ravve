@@ -596,7 +596,7 @@ try {
     check((await w(MGR, 'projects.delete', { projectId })).status === 403, 'a manager cannot delete a project (owner only)');
     const del = await w(OWNER, 'projects.delete', { projectId });
     check(del.status === 200 && del.json.data.verified && !(await docOf('projects/' + projectId)) && !(await listOf(`projects/${projectId}/steps`)).length, 'the owner deletes it with every step', del.json);
-    check((await acts(projectId)).length === 0, 'projects log no activity, as in the app');
+    check((await acts(projectId)).some((a) => a.kind === 'project' && a.action === 'created'), 'project creation has a manager-only activity entry');
   }
 
   section('compatibility with the app and its Rules');

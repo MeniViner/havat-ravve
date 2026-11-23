@@ -1,6 +1,7 @@
 // Data for the system area: my profile (L6, C12, C13), profile photo (A1, A2), global search (C2), first entry (C9),
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
+import { saveAccountChange } from '../../account-activity';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useList, useDoc, write, type Spec } from '../../db';
 import { nowIso, todayKey, nowMs } from '../../clock';
@@ -89,11 +90,11 @@ export async function cropToDataUrl(img: HTMLImageElement, view: { size: number;
   return compressPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }), OUT, 80_000);
 }
 /** The cropped photo goes to R2 when it can (a short link in the profile); otherwise the small data URL, as before. */
-export const saveCustomPhoto = async (uid: string, photo: string) => write.update('users', uid, { photo: await storePhoto(photo, 'avatar'), photoSource: 'custom', updatedAt: nowIso() });
+export const saveCustomPhoto = async (uid: string, photo: string) => saveAccountChange(uid, 'photo_updated', { photo: await storePhoto(photo, 'avatar'), photoSource: 'custom', updatedAt: nowIso() });
 export async function savePhotoSource(uid: string, source: PhotoSource) {
   const patch: Record<string, unknown> = { photoSource: source, updatedAt: nowIso() };
   if (source === 'google') { const g = await googlePhotoUrl(); if (g) patch.googlePhoto = g; }
-  return write.update('users', uid, patch);
+  return saveAccountChange(uid, 'photo_updated', patch);
 }
 /** Keeps the copy of the Google picture fresh (quiet: the rules may still refuse it, which must not alarm anyone). */
 export function useGooglePhotoSync(profile: Profile) {
@@ -150,7 +151,7 @@ export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4
 const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
 export function saveProfile(p: Profile, d: ProfileDraft) {
-  return write.update('users', p.uid, {
+  return saveAccountChange(p.uid, 'profile_updated', {
     displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), birthDate: parseBirth(d.birthDate) || '',
     fields: { ...(p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
@@ -195,7 +196,7 @@ export const INVITE_ROLE_WORD: Record<RoleInvite['role'], string> = { staff: 'כ
 export const firstName = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
 /** `fields`: the whole answers map to store (the profile's fields with the new answers); left out, fields stay untouched. */
 export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string> }) =>
-  write.update('users', uid, { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
+  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
 
 // ---------- install (C10) ----------
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };

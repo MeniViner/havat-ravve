@@ -187,9 +187,10 @@ function WithSheet({ title, sub, open, confirm, children }: { title: string; sub
 }
 
 function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
+  const { actor } = useV2();
   return (
     <WithSheet title={`${r.vendorName} · ${VREQ[r.kind]}`} sub={`בקשה מדוכן · ${agoLong(r.createdAt)}`} open={eventId ? `/manage/events/${eventId}/vendors/today` : undefined}
-      confirm={{ title: 'למחוק את הבקשה?', text: `הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`, run: () => deleteVendorRequest(r) }}>
+      confirm={{ title: 'למחוק את הבקשה?', text: `הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`, run: () => deleteVendorRequest(actor, r) }}>
       <CardShell icon="stall" over={`בקשה מדוכן · ${agoLong(r.createdAt)}`} title={`${r.vendorName} · ${VREQ[r.kind]}`} meta={r.text || undefined}>
         <Button {...lnk(`/manage/events/${eventId}/vendors/today`)}>פרטים</Button>
       </CardShell>
@@ -198,9 +199,10 @@ function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
 }
 
 function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+  const { actor } = useV2();
   return (
     <WithSheet title={p.n.title} sub={agoLong(p.n.createdAt)} open={detailOf(p.n, p.r) || undefined}
-      confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(p.n) }}>
+      confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(actor, p.n) }}>
       <InboxCardBody {...p} />
     </WithSheet>
   );

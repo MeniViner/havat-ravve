@@ -122,7 +122,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
       else {
         const d = WRITE_DEFS.find((x) => x.op.name === action[1]);
         if (!d) throw new ApiError('NOT_FOUND', `no such operation: ${action[1]}`);
-        requireScope(caller, d.op.requiredScope as Scope);
+        if (!d.op.alternativeScopes?.some((scope) => caller.scopes.has(scope as Scope))) requireScope(caller, d.op.requiredScope as Scope);
         r = await d.run(fs, caller, validate(d.op.body!, body), key);
       }
       log.replayed = r.replayed;

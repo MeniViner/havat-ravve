@@ -61,7 +61,7 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
     confirm: {
       title: 'למחוק את ההודעה?', confirmLabel: 'מחיקה',
       text: 'ההודעה תימחק מהרשימה ומהמסך של מי שקיבל אותה. מי שכבר קיבל אותה עדיין רואה אותה בהתראות שלו.',
-      onConfirm: () => remove(() => deleteBroadcast(b), { text: 'ההודעה נמחקה', after: () => go(MESSAGES_PATH, true) }),
+      onConfirm: () => remove(() => deleteBroadcast(ctx.actor, b), { text: 'ההודעה נמחקה', after: () => go(MESSAGES_PATH, true) }),
     },
   }] : [];
   const backBar = <TopBar back={{ label: 'הודעות', onClick: () => go(MESSAGES_PATH) }} end={<MoreMenu title="הודעה" items={more} />} />;

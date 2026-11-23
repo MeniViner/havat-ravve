@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
-import { logActivity, taskKind } from '../../activity';
+import { activityOp, logActivity, taskKind } from '../../activity';
 import { addTask, editTask, editShopping, type NewTask } from '../../store';
 import { addShopItem, setItemPhoto } from './shopping';
 import { notify } from './notify';
@@ -508,7 +508,7 @@ export async function doneWithPhoto(actor: Actor, t: Task, photo: string, note: 
   if (!t.done) Object.assign(patch, { done: true, doneBy: actor, doneAt: now }, !t.assignee && !t.templateId ? { assignee: actor } : {});
   await write.update('tasks', t.id, patch);
   if (!t.done) logActivity(actor, taskKind(t), t.id, 'done', short(t.title), { subjectUid: t.assignee?.uid || actor.uid });
-  if (photo) logActivity(actor, taskKind(t), t.id, 'photo', `${short(t.title)}${note.trim() ? ': ' + note.trim() : ''}`);
+  if (photo || t.done) logActivity(actor, taskKind(t), t.id, photo ? 'photo' : 'note', short(t.title));
 }
 /** After done (old T3): add or replace the done photo, add or edit the done note. The done stamp itself stays. */
 export async function setDoneDetails(actor: Actor, t: Task, data: { donePhoto?: string; doneNote?: string }) {
@@ -638,13 +638,21 @@ export async function saveTemplateV2(actor: Actor, data: TemplateInput, existing
   const base: Record<string, unknown> = { title: data.title.trim(), note: data.note, days: daysToSave(data.days), time: data.time.trim(), active: data.active, managersOnly: data.managersOnly, updatedAt: now };
   if (data.assignee || (existing && 'assignee' in existing)) base.assignee = data.managersOnly ? null : data.assignee;
   if (data.placeId || (existing && 'placeId' in existing)) base.placeId = data.placeId;
-  if (existing) { await write.update('task_templates', existing.id, base); return existing.id; }
-  const id = newId('task_templates');
-  await write.set('task_templates', id, { ...base, createdBy: actor, createdAt: now });
+  const id = existing?.id ?? newId('task_templates');
+  await write.batch([
+    { op: existing ? 'update' : 'set', col: 'task_templates', id, data: existing ? base : { ...base, createdBy: actor, createdAt: now } },
+    activityOp(actor, 'task_private', id, existing ? 'edited' : 'created', 'משימה חוזרת'),
+  ]);
   return id;
 }
-export const setTemplateActive = (t: Template, active: boolean) => write.update('task_templates', t.id, { active, updatedAt: nowIso() });
-export const removeTemplate = (id: string) => write.remove('task_templates', id);
+export const setTemplateActive = (actor: Actor, t: Template, active: boolean) => write.batch([
+  { op: 'update', col: 'task_templates', id: t.id, data: { active, updatedAt: nowIso() } },
+  activityOp(actor, 'task_private', t.id, 'edited', 'זמינות משימה חוזרת'),
+]);
+export const removeTemplate = (actor: Actor, id: string) => write.batch([
+  { op: 'remove', col: 'task_templates', id },
+  activityOp(actor, 'task_private', id, 'deleted', 'משימה חוזרת'),
+]);
 
 // ---------- places (L3, L4) ----------
 export type PlaceV2 = Place & { photo?: string; accuracy?: number; updatedAt?: string };

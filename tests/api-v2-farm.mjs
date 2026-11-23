@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import net from 'node:net';
 import fs from 'node:fs';
+import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -780,6 +781,70 @@ try {
     await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: ['tasks:read'] } });
     check((await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'שוב אסור' } })).status === 403 && (await api('POST', `/v1/console/keys/${shId}/scopes`, { ...C(mgr), body: { scopes: null } })).status === 403, 'scopes can be narrowed again; a manager cannot change them');
 
+    {
+      // Use the same preset the console saves, with a real synthetic staff profile.
+      const { outputFiles } = await build({ entryPoints: ['api/src/presets.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+      const { PRESETS } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+      const volunteer = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'אינסטינקט רונית', actor: 'user:syn-staff', scopes: PRESETS.volunteer } });
+      const vk = { key: volunteer.json.data.key };
+      const deniedDonation = await r(vk, '/v1/donations');
+      check(deniedDonation.status === 403 && deniedDonation.json.error.details.requiredScope === 'donations:read'
+        && (await r(OWNER, '/v1/donations')).status === 200, 'volunteer donations forbidden with requiredScope; unrestricted owner can read');
+      const ownTask = await w(vk, 'tasks.create', { title: 'משימת מתנדבת' });
+      ok(ownTask, 'the volunteer can create a task');
+      check((await w(vk, 'tasks.delete', { taskId: ownTask.json.data.taskId })).json.error.details.requiredScope === 'tasks:delete', 'the volunteer cannot delete their own task');
+      const added = await w(vk, 'shopping.add', { title: 'קניות מתנדבת' });
+      ok(added, 'the volunteer can add a shopping item');
+      check((await w(vk, 'shopping.delete', { itemId: added.json.data.itemId })).json.error.details.requiredScope === 'shopping:delete', 'the volunteer cannot delete shopping items');
+      const noticeLog = await logOf(deniedDonation.json.meta.requestId);
+      check(noticeLog?.keyLabel === 'אינסטינקט רונית' && noticeLog.actor.uid === 'syn-staff', 'a refused volunteer request appears under the key label');
+      const badScope = await api('POST', `/v1/console/keys/${volunteer.json.data.id}/scopes`, { ...C(own), body: { scopes: ['invented:scope'] } });
+      check(badScope.status === 400 && badScope.json.error.message.includes('invented:scope'), 'scope validation names the unknown scope');
+
+      const limited = await api('POST', '/v1/console/keys', { ...C(own), body: {
+        label: 'צוות בלבד', actor: 'user:syn-mgr', scopes: ['notify:team', 'broadcasts:write', 'presence:write'],
+      } });
+      const lk = { key: limited.json.data.key };
+      const day = addDays(todayIL, 18);
+      ok(await w(lk, 'presence.save', { dates: [day] }), 'an own-presence scope can save the manager’s own dates');
+      const otherPresence = await w(lk, 'presence.save', { dates: [day], uid: 'syn-staff2' });
+      check(otherPresence.status === 403 && otherPresence.json.error.details.requiredScope === 'presence:write:any', 'a limited manager cannot register another person');
+      const urgent = await w(lk, 'broadcasts.send', { text: 'דחוף', audience: 'all', urgent: true });
+      check(urgent.status === 403 && urgent.json.error.details.requiredScope === 'broadcasts:urgent', 'a normal broadcast grant does not allow urgent broadcasts');
+      const out = await w(lk, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
+      check(out.status === 403 && out.json.error.details.requiredScope === 'notify:all', 'team-only scope denies broadcasts to external audiences');
+      const outsideNotice = await w(lk, 'notifications.send', { title: 'פרטי', link: '/farm', uids: ['syn-guest'] });
+      check(outsideNotice.status === 403 && outsideNotice.json.error.details.requiredScope === 'notify:all', 'team-only scope denies personal notifications to external recipients');
+
+      const toSelf = { title: 'private-acceptance-title', sub: 'private-acceptance-body', link: '/farm', uids: ['syn-mgr'] };
+      check((await w(lk, 'notifications.send', toSelf)).status === 400, 'by default a self-only personal notification is rejected');
+      const delivered = await w(lk, 'notifications.send', { ...toSelf, includeSelf: true });
+      const mineId = delivered.json.data.notificationId;
+      const mine = await docOf(`users/syn-mgr/notifications/${mineId}`);
+      check(delivered.status === 201 && delivered.json.data.notified === 1 && mine?.readAt === null
+        && (await pushJobs()).some((job) => job.includeSelf === true && job.to.join() === 'syn-mgr'), 'an explicit self notification is unread and queued for push');
+      const privateLog = await logOf(delivered.json.meta.requestId);
+      check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
+      check(!(await listCol('activity')).some((row) => JSON.stringify(row).includes('private-acceptance-')), 'personal notification data is absent from team activity');
+
+      const sameKey = randomUUID();
+      const body = { text: 'הודעת קבלה לצוות', audience: 'all', includeSelf: true };
+      const sent = await w(lk, 'broadcasts.send', body, sameKey);
+      const bid = sent.json.data.broadcastId;
+      check(sent.status === 201 && sent.json.data.notified === sent.json.data.recipientCount
+        && (await docOf(`users/syn-mgr/notifications/b_${bid}`))?.readAt === null
+        && !(await docOf(`broadcasts/${bid}/reads/syn-mgr`))
+        && (await pushJobs()).some((job) => job.refId === bid && job.includeSelf && job.to.includes('syn-mgr')), 'includeSelf reaches the sender’s bell and push queue without a read receipt');
+      const replay = await w(lk, 'broadcasts.send', body, sameKey);
+      check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'idempotent broadcast replay keeps one sent activity row');
+      ok(await w(lk, 'broadcasts.resend', { broadcastId: bid }), 'resends a normal team broadcast');
+      ok(await w(OWNER, 'broadcasts.delete', { broadcastId: bid }), 'owner deletes the broadcast');
+      const feed = await r(STAFF, '/v1/activity?kind=message&refId=' + bid);
+      const byAction = new Map(feed.json.data.items.map((row) => [row.action, row]));
+      check(byAction.get('message_sent')?.text.includes(body.text) && byAction.has('message_resent')
+        && byAction.get('message_deleted')?.refId === bid, 'send, resend and deletion are visible in volunteer activity, with the deleted id');
+    }
+
     // ---------- speed (speed.ts): from the assistant log's own timings ----------
     const sp = await api('GET', '/v1/console/speed?days=7', C(own));
     const spd = sp.json?.data;
@@ -791,9 +856,9 @@ try {
 
   section('the app\'s Rules accept what the API wrote');
   {
-    const { initializeTestEnvironment, assertSucceeds } = require('@firebase/rules-unit-testing');
+    const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
     require('firebase/compat/firestore');
-    const { doc, setDoc, getDocs, collection } = require('firebase/firestore');
+    const { doc, setDoc, getDoc, getDocs, collection, query, where: filter } = require('firebase/firestore');
     rulesEnv = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') } });
     const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
     const as = (uid) => rulesEnv.authenticatedContext(uid, claims(uid + '@synthetic.invalid')).firestore();
@@ -813,7 +878,20 @@ try {
     const { id: _j, ...jobData } = job;
     await tryIt('push job (manager)', setDoc(doc(mgr, 'push_jobs', 'copyjob'), { ...jobData, id: 'copyjob' }));
     await tryIt('settings/app rewritten unchanged by a manager', setDoc(doc(mgr, 'settings', 'app'), await docOf('settings/app')));
-    check(tries.length === 7 && tries.every(Boolean), `the app's Rules accept every shape (${tries.filter(Boolean).length}/7)`);
+    await tryIt('a manager can queue their own broadcast push', setDoc(doc(mgr, 'push_jobs', 'copyjob-self'), {
+      ...jobData, id: 'copyjob-self', to: ['syn-mgr'], includeSelf: true,
+    }));
+    await assertFails(setDoc(doc(staff, 'push_jobs', 'copyjob-self-staff'), {
+      ...jobData, id: 'copyjob-self-staff', to: ['syn-staff'], includeSelf: true, createdBy: { uid: 'syn-staff', name: 'רונית' },
+    }));
+    const account = doc(staff, 'account_activity', 'copy-private');
+    await tryIt('personal metadata can be written by the profile owner', setDoc(account, { uid: 'syn-staff', action: 'push_changed', at: now }));
+    await assertFails(getDoc(doc(mgr, 'account_activity', 'copy-private')));
+    await assertFails(getDoc(account));
+    await tryIt('owner can read private account activity', getDoc(doc(as('synthetic-owner'), 'account_activity', 'copy-private')));
+    await tryIt('the staff rules allow the team feed', getDocs(query(collection(staff, 'activity'),
+      filter('kind', 'in', ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar']))));
+    check(tries.length === 11 && tries.every(Boolean), `the app's Rules accept the write and visibility shapes (${tries.filter(Boolean).length}/11)`);
   }
 } catch (e) {
   failures++;

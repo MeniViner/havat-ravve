@@ -232,3 +232,14 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 .c-tech p { margin: 6px 0 0; }
 .c-tech .c-json { margin-top: 8px; }
 .c-raw { font-size: 12px; color: var(--soft); }
+
+.c-permissions { min-width: 0; }
+.c-permissions summary { cursor: pointer; padding: 10px 0; min-height: 40px; font-weight: 600; }
+.c-scope-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.c-scope-table :is(th, td) { padding: 6px; text-align: start; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.c-scope-table label { display: flex; align-items: center; gap: 6px; min-height: 40px; cursor: pointer; }
+.c-scope-table code { unicode-bidi: isolate; }
+@media (max-width: 520px) {
+  .c-scope-table :is(th, td) { padding-inline: 3px; }
+  .c-scope-table label { align-items: flex-start; justify-content: center; flex-direction: column; }
+}

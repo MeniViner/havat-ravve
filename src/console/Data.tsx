@@ -9,7 +9,7 @@ import { collectionName, fieldLabel, valueText } from './labels';
 import { errorText, source, type DataCollection, type DataDoc, type DocVersion } from './source';
 
 type Notify = (t: string, tone?: 'info' | 'alert') => void;
-const SYSTEM = new Set(['api_log', 'api_failures', 'api_idempotency', 'push_jobs', 'email_outbox', 'account_deletions', 'counters']);
+const SYSTEM = new Set(['api_log', 'api_failures', 'api_idempotency', 'push_jobs', 'email_outbox', 'account_deletions', 'account_activity', 'counters']);
 const SIMPLE = new Set(['string', 'integer', 'double', 'boolean', 'null']);
 type Place = { group: string; parent?: string; label?: string };
 

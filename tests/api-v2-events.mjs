@@ -171,7 +171,7 @@ try {
     check((await acts(eventId)).some((a) => a.text === 'מוצר עודכן: קפה · 14 ₪'), 'activity "מוצר עודכן: קפה · 14 ₪"');
     const nActs = (await acts(eventId)).length;
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: tea, active: false }), 'saveProduct active=false');
-    check((await acts(eventId)).length === nActs, 'the availability toggle writes no activity (as the app)');
+    check((await acts(eventId)).length === nActs + 1, 'the availability toggle writes activity');
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: coffee, unit: '' }), 'unit "" removes it');
     check(!('unit' in (await docOf(`events/${eventId}/products/${coffee}`))), 'the unit field is gone');
     check((await w(STAFF, 'events.saveProduct', { eventId, name: 'x', price: 1 })).status === 403, 'staff cannot change products');

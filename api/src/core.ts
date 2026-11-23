@@ -68,7 +68,7 @@ export async function idempotent(
   }
 }
 
-export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings';
+export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings' | 'message' | 'project' | 'calendar' | 'calendar_private' | 'inbox';
 /** The same record logActivity() in src/app/activity.ts writes. */
 /** A managers-only task logs under its own kind, which the Rules keep from volunteers (src/app/activity.ts taskKind). */
 /** A payment that becomes settled gets paidAt = the server's commit time, which the confirmation email cron follows. */

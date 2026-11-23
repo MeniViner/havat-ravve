@@ -5,7 +5,7 @@ import { isFemale as sharedIsFemale } from '../gender';
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId } from '../../db';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
-import { logActivity, useActivityFor } from '../../activity';
+import { activityOp, logActivity, useActivityFor } from '../../activity';
 import { useDemo, useDemoStates } from '../../demo/store';
 import { notify } from './notify';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
@@ -238,7 +238,7 @@ export async function setItemMissing(actor: Actor, item: ShoppingItem, trip: Sho
   await write.update('shopping', item.id, missing
     ? { notAvailable: true, notAvailableAt: now, tripId: trip.id, updatedAt: now }
     : { notAvailable: false, notAvailableAt: null, updatedAt: now });
-  if (missing) logActivity(actor, 'shopping', item.id, 'unavailable', `${item.title}${qtyPart(item.qty)}`);
+  logActivity(actor, 'shopping', item.id, missing ? 'unavailable' : 'edited', missing ? `${item.title}${qtyPart(item.qty)}` : 'בוטל סימון פריט שלא היה במלאי');
 }
 export async function setItemQty(item: ShoppingItem, qty: string) {
   await write.update('shopping', item.id, { qty: qty.slice(0, 40), updatedAt: nowIso() });
@@ -268,7 +268,10 @@ export async function startTrip(actor: Actor, list: ShoppingCategory, trips: Sho
   const id = newId('shopping_trips');
   const ops: Parameters<typeof write.batch>[0] = trips.filter((t) => t.by?.uid === actor.uid && !t.closedAt).map((t) => ({ op: 'update' as const, col: 'shopping_trips', id: t.id, data: { closedAt: now } }));
   const trip: ShoppingTrip = { id, by: actor, list, startedAt: now, closedAt: null, bought: [], missing: [] };
-  ops.push({ op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> });
+  ops.push(
+    { op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> },
+    activityOp(actor, 'shopping', id, 'opened', 'קנייה'),
+  );
   await write.batch(ops);
   const name = first(actor.name);
   void notify(teamUids(team), {
@@ -280,13 +283,21 @@ export async function startTrip(actor: Actor, list: ShoppingCategory, trips: Sho
 /** "סיימתי לקנות": closes the trip with what was bought and what was missing, and tells the team (C1, no push). */
 export async function closeTrip(actor: Actor, trip: ShoppingTrip, view: TripView, team: Profile[]) {
   const bought = view.bought.map((i) => i.id); const missing = view.missing.map((i) => i.id);
-  await write.update('shopping_trips', trip.id, { closedAt: nowIso(), bought, missing });
+  await write.batch([
+    { op: 'update', col: 'shopping_trips', id: trip.id, data: { closedAt: nowIso(), bought, missing } },
+    activityOp(actor, 'shopping', trip.id, 'closed', 'קנייה'),
+  ]);
   void notify(teamUids(team), {
     kind: 'trip', title: `הקנייה ב${listLabel(trip.list)} נסגרה`, sub: tripSummary(bought.length, view.missing.map((i) => i.title)),
     link: `/shopping/trip/done?id=${trip.id}`, refId: trip.id, by: actor, push: false,
   });
 }
 /** A manager deletes a trip (from S7). The items keep what happened to them: bought stays bought. */
-export const deleteTrip = (trip: ShoppingTrip) => write.remove('shopping_trips', trip.id);
+export const deleteTrip = (actor: Actor, trip: ShoppingTrip) => write.batch([
+  { op: 'remove', col: 'shopping_trips', id: trip.id }, activityOp(actor, 'shopping', trip.id, 'deleted', 'קנייה'),
+]);
 /** S7 "טעות? לחזור לקנייה". */
-export const reopenTrip = (trip: ShoppingTrip) => write.update('shopping_trips', trip.id, { closedAt: null });
+export const reopenTrip = (actor: Actor, trip: ShoppingTrip) => write.batch([
+  { op: 'update', col: 'shopping_trips', id: trip.id, data: { closedAt: null } },
+  activityOp(actor, 'shopping', trip.id, 'reopened', 'קנייה'),
+]);

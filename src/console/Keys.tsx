@@ -6,7 +6,7 @@ import { ROLE_LABELS } from '../app/types';
 import { ddmm } from '../app/v2/format';
 import { ago, Section, until, useLoad } from './shared';
 import { errorText, source, type KeyView, type Person } from './source';
-import { AREAS, allLevels, isReadOnly, LEVELS, type Level, type Levels, levelsFrom, scopesFrom, scopesText } from './scopes';
+import { AREAS, areaLevel, LEVELS, PRESETS, PRESET_LABELS, presetOf, SCOPE_ROWS, scopesText, setAreaLevel, type Preset } from './scopes';
 
 const STATUS: Record<KeyView['status'], { l: string; tone: 'paid' | 'urgent' | 'neutral' }> = {
   active: { l: 'פעיל', tone: 'paid' }, revoked: { l: 'בוטל', tone: 'urgent' }, expired: { l: 'פג תוקף', tone: 'neutral' },
@@ -18,24 +18,50 @@ const inDays = (d: Expiry) => (d === 'none' ? null : new Date(Date.now() + Numbe
 const usedText = (at: string | null | undefined) => { if (!at) return 'לא היה בשימוש'; const t = ago(at); return `בשימוש ${/^\d/.test(t) ? 'ב־' + t : t}`; };
 type Grace = '0' | '24' | '72';
 const GRACE: { value: Grace; label: string }[] = [{ value: '24', label: 'יום' }, { value: '72', label: '3 ימים' }, { value: '0', label: 'מיד' }];
-type Access = 'all' | 'read' | 'custom';
-const ACCESS: { value: Access; label: string }[] = [{ value: 'all', label: 'כל מה שהאדם יכול' }, { value: 'read', label: 'צפייה בלבד' }, { value: 'custom', label: 'לבחור תחומים' }];
-const accessOf = (scopes: string[] | null): Access => (!scopes ? 'all' : isReadOnly(scopes) && AREAS.every((a) => a.read.every((x) => scopes.includes(x))) ? 'read' : 'custom');
-/** The scopes to send for a choice: null (everything the person may), all the reading ones, or the areas picked. */
-const scopesFor = (access: Access, levels: Levels): string[] | null => (access === 'all' ? null : access === 'read' ? scopesFrom(allLevels('read')) : scopesFrom(levels));
+const PRESET_OPTIONS = (Object.keys(PRESET_LABELS) as Preset[]).map((value) => ({ value, label: PRESET_LABELS[value] }));
+type Grant = { preset: Preset; scopes: string[] | null };
+const grantOf = (scopes: string[] | null): Grant => ({ preset: presetOf(scopes), scopes });
+const changedScopes = (before: string[] | null, after: string[] | null) => {
+  if (!before || !after) return before !== after;
+  return before.length !== after.length || before.some((scope) => !after.includes(scope));
+};
 
-/** Per area of the farm: nothing, see, or see and change. A key never gets more than its person's role, whatever is picked. */
-function AreaPicker({ levels, onChange }: { levels: Levels; onChange: (l: Levels) => void }) {
-  return (
-    <div className="c-areas">
-      {AREAS.map((a) => (
-        <div key={a.id} className="c-area">
-          <span className="c-area__name">{a.he}</span>
-          <Segmented mode="radio" size="md" label={a.he} options={LEVELS} value={levels[a.id] || 'none'} onChange={(v: Level) => onChange({ ...levels, [a.id]: v })} />
-        </div>
-      ))}
-    </div>
-  );
+function Permissions({ grant, onChange }: { grant: Grant; onChange: (g: Grant) => void }) {
+  const scopes = grant.scopes ?? SCOPE_ROWS.map((row) => row.scope);
+  const update = (scopes: string[]) => onChange({ preset: 'custom', scopes });
+  return <>
+    <ChoiceGroup label="מה המפתח יכול" options={PRESET_OPTIONS} value={grant.preset} onChange={(preset) => {
+      if (preset === 'custom') update(grant.scopes ?? []);
+      else onChange({ preset, scopes: preset === 'owner' ? null : [...PRESETS[preset]] });
+    }} />
+    {grant.preset === 'volunteer' && <p className="c-note">למתנדב שמשתמש באינסטינקט בוחרים אותו בשדה ״פועל בשם״ ויוצרים עבורו מפתח אישי.</p>}
+    <details className="c-permissions" open={grant.preset === 'custom' || undefined}>
+      <summary>הרשאות לפי תחום</summary>
+      <div className="c-areas">
+        {AREAS.map((area) => {
+          const level = areaLevel(area, scopes);
+          return <div key={area.id} className="c-area">
+            <span className="c-area__name">{area.he}{level === '' && <small> · בחירה חלקית</small>}</span>
+            <Segmented mode="radio" label={area.he} options={LEVELS} value={level} onChange={(value) => { if (value) update(setAreaLevel(area, scopes, value)); }} />
+          </div>;
+        })}
+      </div>
+    </details>
+    <details className="c-permissions">
+      <summary>הרשאות מפורטות לפי תפקיד</summary>
+      <table className="c-scope-table">
+        <thead><tr><th>הרשאה</th><th>מה היא מאפשרת</th><th>תפקידים</th></tr></thead>
+        <tbody>{SCOPE_ROWS.map(({ scope, description, roles }) => (
+          <tr key={scope}>
+            <td><label><input type="checkbox" checked={scopes.includes(scope)} aria-label={scope}
+              onChange={(e) => update(e.target.checked ? [...scopes, scope] : scopes.filter((s) => s !== scope))} />
+              <code dir="ltr">{scope}</code></label></td>
+            <td>{description}</td><td>{roles}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </details>
+  </>;
 }
 
 export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: string, tone?: 'info' | 'alert') => void }) {
@@ -57,7 +83,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
   const open = keys.find((k) => k.id === openId) || null;
   const row = (k: KeyView) => (
     <Row key={k.id} leading={<IconTile icon="key" tone={k.status === 'active' ? 'pine' : 'ink'} />} title={k.label || k.id}
-      tags={<>{k.status !== 'active' && <Tag tone={STATUS[k.status].tone}>{STATUS[k.status].l}</Tag>}{k.rotating && <Tag tone="warm">בהחלפה</Tag>}{k.scopes && <Tag tone="outline">{isReadOnly(k.scopes) ? 'צפייה בלבד' : 'מוגבל'}</Tag>}</>}
+      tags={<>{k.status !== 'active' && <Tag tone={STATUS[k.status].tone}>{STATUS[k.status].l}</Tag>}{k.rotating && <Tag tone="warm">בהחלפה</Tag>}{k.scopes && <Tag tone="outline">{scopesText(k.scopes)}</Tag>}</>}
       meta={<>{who(k).split(' · ')[0]}{used.data && <> · {usedText(used.data[k.id])}</>}</>}
       chevron onClick={() => setOpenId(k.id)} muted={k.status !== 'active'} />
   );
@@ -74,7 +100,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
       {list.loading && !list.data && <Card pad="md" className="c-soft">טוען…</Card>}
       {!!active.length && <Section title={`פעילים · ${active.length}`}><ListCard>{active.map(row)}</ListCard></Section>}
       {!!inactive.length && <Section title={`לא פעילים · ${inactive.length}`}><ListCard>{inactive.map(row)}</ListCard></Section>}
-      <p className="c-note">ביטול מפתח נכנס לתוקף תוך דקה וחצי לכל היותר בכל השרתים.</p>
+      <p className="c-note">ביטול מפתח נכנס לתוקף בדרך כלל תוך כדקה וחצי.</p>
 
       <CreateSheet open={creating} onClose={() => setCreating(false)} people={people}
         onCreated={(label, key) => { setCreating(false); setRevealed({ title: `המפתח "${label}" מוכן`, key }); list.reload(); }} notify={notify} />
@@ -93,18 +119,17 @@ function CreateSheet({ open, onClose, people, onCreated, notify }: { open: boole
   const [label, setLabel] = useState('');
   const [uid, setUid] = useState('');
   const [expiry, setExpiry] = useState<Expiry>('none');
-  const [access, setAccess] = useState<Access>('all');
-  const [levels, setLevels] = useState<Levels>(() => allLevels('none'));
+  const [grant, setGrant] = useState<Grant>(() => grantOf(null));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const person = team.find((p) => p.uid === uid);
-  const reset = () => { setLabel(''); setUid(''); setExpiry('none'); setAccess('all'); setLevels(allLevels('none')); setErr(''); };
+  const reset = () => { setLabel(''); setUid(''); setExpiry('none'); setGrant(grantOf(null)); setErr(''); };
   const close = () => { reset(); onClose(); };
   const create = async () => {
     if (!label.trim()) return setErr('צריך שם למפתח');
     if (!person) return setErr('בחרו בשם מי המפתח פועל');
-    const scopes = scopesFor(access, levels);
-    if (scopes && !scopes.length) return setErr('בחרו לפחות תחום אחד שהמפתח יכול לראות');
+    const { scopes } = grant;
+    if (scopes && !scopes.length) return setErr('בחרו לפחות הרשאה אחת למפתח');
     setBusy(true); setErr('');
     try {
       const made = await source.createKey({ label: label.trim(), actor: 'user:' + person.uid, expiresAt: inDays(expiry), scopes });
@@ -118,11 +143,14 @@ function CreateSheet({ open, onClose, people, onCreated, notify }: { open: boole
     <Sheet open={open} onClose={close} title="מפתח חדש">
       <div className="c-form">
         <Field label="שם המפתח" hint="השם שיופיע ביומן, למשל: האינסטינקט של בני" value={label} maxLength={60} onChange={(e) => setLabel(e.target.value)} />
-        <ChoiceGroup label="פועל בשם" options={team.map((p) => ({ value: p.uid, label: p.displayName }))} value={uid} onChange={setUid} />
+        <ChoiceGroup label="פועל בשם" options={team.map((p) => ({ value: p.uid, label: p.displayName }))} value={uid} onChange={(uid) => {
+          setUid(uid);
+          if (grant.preset === 'owner' && team.find((p) => p.uid === uid)?.role === 'staff') {
+            setGrant({ preset: 'volunteer', scopes: [...PRESETS.volunteer] });
+          }
+        }} />
         {person && <p className="c-note">המפתח יקבל את ההרשאות של {person.displayName} ({ROLE_LABELS[person.role]}), או חלק מהן. כשהתפקיד משתנה, גם ההרשאות של המפתח משתנות.</p>}
-        <ChoiceGroup label="מה המפתח יכול" options={ACCESS} value={access} onChange={setAccess} />
-        {access === 'read' && <p className="c-note">המפתח יוכל לקרוא הכל ולא לשנות כלום.</p>}
-        {access === 'custom' && <AreaPicker levels={levels} onChange={setLevels} />}
+        <Permissions grant={grant} onChange={setGrant} />
         <ChoiceGroup label="תוקף" options={EXPIRY} value={expiry} onChange={setExpiry} />
         {err && <p className="c-err" role="alert">{err}</p>}
         <Button size="lg" block onClick={create} disabled={busy}>{busy ? 'יוצר…' : 'יצירת המפתח'}</Button>
@@ -156,8 +184,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
   const [label, setLabel] = useState(k.label);
   const [grace, setGrace] = useState<Grace>('24');
   const [expiry, setExpiry] = useState<Expiry>('90');
-  const [access, setAccess] = useState<Access>(accessOf(k.scopes));
-  const [levels, setLevels] = useState<Levels>(() => (k.scopes ? levelsFrom(k.scopes) : allLevels('none')));
+  const [grant, setGrant] = useState<Grant>(() => grantOf(k.scopes));
   const [busy, setBusy] = useState(false);
   const run = async (action: Parameters<typeof source.changeKey>[1], body: Record<string, unknown>, done: string) => {
     setBusy(true);
@@ -185,7 +212,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
           {k.rotating && k.previousUntil && <p className="c-note">המפתח הקודם ממשיך לעבוד {until(k.previousUntil)}, כדי שהאינסטינקט יספיק לעבור לחדש.</p>}
           <div className="c-grid2">
             <Button variant="neutral" icon="edit" onClick={() => { setLabel(k.label); setMode('rename'); }}>שינוי שם</Button>
-            <Button variant="neutral" icon="sliders" onClick={() => { setAccess(accessOf(k.scopes)); setLevels(k.scopes ? levelsFrom(k.scopes) : allLevels('none')); setMode('scopes'); }}>מה מותר לו</Button>
+            <Button variant="neutral" icon="sliders" onClick={() => { setGrant(grantOf(k.scopes)); setMode('scopes'); }}>מה מותר לו</Button>
             <Button variant="neutral" icon="key" onClick={() => setMode('rotate')}>החלפת המפתח</Button>
             <Button variant="neutral" icon="calendar" onClick={() => setMode('expire')}>תוקף</Button>
             {k.status === 'revoked'
@@ -196,12 +223,10 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
       )}
       {mode === 'scopes' && (
         <div className="c-form">
-          <ChoiceGroup options={ACCESS} value={access} onChange={setAccess} />
-          {access === 'read' && <p className="c-note">המפתח יוכל לקרוא הכל ולא לשנות כלום.</p>}
-          {access === 'custom' && <AreaPicker levels={levels} onChange={setLevels} />}
-          <p className="c-note">מפתח לעולם לא מקבל יותר ממה שהתפקיד של {who.split(' · ')[0]} מאפשר. השינוי נכנס לתוקף תוך דקה וחצי.</p>
-          <Button size="lg" block disabled={busy || (access === 'custom' && !scopesFrom(levels).length)}
-            onClick={() => run('scopes', { scopes: scopesFor(access, levels) }, 'ההרשאות נשמרו')}>{busy ? 'שומר…' : 'שמירה'}</Button>
+          <Permissions grant={grant} onChange={setGrant} />
+          <p className="c-note">מפתח לעולם לא מקבל יותר ממה שהתפקיד של {who.split(' · ')[0]} מאפשר. השינוי נכנס לתוקף בדרך כלל תוך כדקה וחצי.</p>
+          <Button size="lg" block disabled={busy || grant.scopes?.length === 0 || !changedScopes(k.scopes, grant.scopes)}
+            onClick={() => run('scopes', { scopes: grant.scopes }, 'ההרשאות נשמרו')}>{busy ? 'שומר…' : 'שמירה'}</Button>
           <Button variant="quiet" block onClick={() => setMode('view')}>חזרה</Button>
         </div>
       )}

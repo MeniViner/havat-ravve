@@ -95,6 +95,8 @@ export function auditDoc(env: Env, a: Audit, req: { requestId: string; method: s
   const kind: 'read' | 'write' = op?.kind || (req.method === 'GET' ? 'read' : 'write');
   const name = op?.name || a.op || `${req.method} ${req.path}`;
   const ok = req.status < 400;
+  const privateNotification = name === 'notifications.send';
+  const notified = (a.result as { notified?: number } | undefined)?.notified;
   const items = a.result && typeof a.result === 'object' && Array.isArray((a.result as { items?: unknown }).items) ? (a.result as { items: unknown[] }).items.length : null;
   return {
     id: req.requestId, at: nowIso(),
@@ -102,11 +104,11 @@ export function auditDoc(env: Env, a: Audit, req: { requestId: string; method: s
     actor: { id: a.actor.id, role: a.actor.role, uid: a.actor.uid || '', name: a.actor.name || '' },
     kind, op: name, opHe: op?.he || '', verb: verbOf(name, kind),
     method: req.method, path: req.path, query: cap(req.query, 500),
-    body: kind === 'write' ? cap(a.body || {}, 4000) : '',
+    body: kind === 'write' && !privateNotification ? cap(a.body || {}, 4000) : '',
     // a read keeps only how many records it returned; a write keeps its answer (a delete's answer is what was deleted)
-    result: kind === 'write' && ok ? cap(a.result, 4000) : '', count: items,
-    refs: kind === 'write' && ok ? refsOf(a.result) : [],
-    status: req.status, ok, code: req.error?.code || '', message: req.error ? `${HE[req.error.code]}: ${req.error.message}`.slice(0, 300) : '',
+    result: kind === 'write' && ok ? cap(privateNotification ? { notified } : a.result, 4000) : '', count: items,
+    refs: kind === 'write' && ok && !privateNotification ? refsOf(a.result) : [],
+    status: req.status, ok, code: req.error?.code || '', message: req.error ? `${HE[req.error.code]}: ${privateNotification ? op?.he || 'שליחת התראה אישית' : req.error.message}`.slice(0, 300) : '',
     replayed: !!a.replayed, idempotencyKey: a.idempotencyKey || '', ms: req.ms,
   };
 }

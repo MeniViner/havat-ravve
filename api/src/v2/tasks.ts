@@ -182,7 +182,7 @@ def('shopping.closeTrip', 'shopping:write', 'סיימתי לקנות: סגירת
 }, ['Only the person on the trip can close it. The team gets an in-app notification (no push).']);
 
 // deleteTrip(): a manager deletes a trip; the items keep what happened to them
-def('shopping.deleteTrip', 'shopping:write', 'מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם', { tripId: req() }, async (c) => {
+def('shopping.deleteTrip', 'shopping:delete', 'מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם', { tripId: req() }, async (c) => {
   if (!isManager(c.caller)) throw forbidden('only managers can delete a shopping trip');
   const t = await mustGet(c.fs, 'shopping_trips', c.input.tripId, c.tx, 'shopping trip');
   return { writes: [c.fs.remove('shopping_trips', t.id, t.updateTime)], refs: [{ col: 'shopping_trips', id: t.id, gone: true }], data: { deleted: project('shopping_trips', t.id, t.data) } };

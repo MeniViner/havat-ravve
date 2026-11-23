@@ -2,6 +2,7 @@
 // notify() writes users/{uid}/notifications/{id} for each recipient and one push_jobs/{id} the Worker drains (docs/push-design.md).
 // Offline-first: batched writes, nothing waits for the server. The in-app notification is the source of truth;
 // the push is a best-effort copy for the lock screen (the Worker skips people who turned it off).
+import { notificationTargets } from '../../../../shared/message-activity';
 import { write, newId } from '../../db';
 import { nowIso } from '../../clock';
 import type { Actor, PushJob, UserNotification, UserNotificationKind } from '../../types';
@@ -11,6 +12,7 @@ export type NotifySpec = {
   action?: UserNotification['action']; by?: Actor;
   /** Also queue a phone push (default true). */
   push?: boolean;
+  includeSelf?: boolean;
   /** A stable notification id (same for every recipient), so a later write can find it again: e.g. `b_<broadcastId>`.
    *  Sending again with the same id brings the notification back as new instead of adding a second one. */
   id?: string;
@@ -21,7 +23,7 @@ export type NotifySpec = {
 };
 
 /** What the Worker reads from push_jobs/{id} (types.ts PushJob plus the optional delivery hints). */
-export type PushJobDoc = PushJob & { urgent?: boolean; tag?: string; refId?: string };
+export type PushJobDoc = PushJob & { urgent?: boolean; tag?: string; refId?: string; includeSelf?: boolean };
 
 /** A notification link is always an in-app path (never another site): "/tasks/abc" -> "/tasks/abc". */
 export const appLink = (link: string) => (/^\/(?!\/)/.test(link) ? link : '/' + link.replace(/^[a-z]+:\/\/[^/]*\/?/i, '').replace(/^\/+/, ''));
@@ -29,12 +31,11 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…'
 /** Firestore takes at most 500 writes per batch. */
 const CHUNK = 450;
 
-export async function notify(uids: string[], n: NotifySpec): Promise<void> {
-  const to = [...new Set(uids.filter(Boolean))].filter((u) => u !== n.by?.uid);
-  if (!to.length) return;
+export async function notify(uids: string[], n: NotifySpec, changes: Parameters<typeof write.batch>[0] = []): Promise<void> {
+  const to = notificationTargets(uids, n.by?.uid, n.includeSelf);
   const createdAt = nowIso();
   const link = appLink(n.link);
-  const ops: Parameters<typeof write.batch>[0] = [];
+  const ops = [...changes];
   for (const uid of to) {
     const col = `users/${uid}/notifications`;
     const id = n.id || newId(col);
@@ -45,7 +46,8 @@ export async function notify(uids: string[], n: NotifySpec): Promise<void> {
     // one job per send; `to` is the list of uids, the Worker looks up each person's devices and preferences
     for (let i = 0; i < to.length; i += 200) {
       const id = newId('push_jobs');
-      const job: PushJobDoc = { id, kind: n.kind, title: clip(n.title, 80), body: clip(n.sub || '', 180), link, to: to.slice(i, i + 200), createdBy: n.by, createdAt, sentAt: null, urgent: !!n.urgent, tag: n.tag || id, refId: n.refId || '' };
+      const targets = to.slice(i, i + 200);
+      const job: PushJobDoc = { id, kind: n.kind, title: clip(n.title, 80), body: clip(n.sub || '', 180), link, to: targets, ...(n.includeSelf && targets.includes(n.by.uid) ? { includeSelf: true } : {}), createdBy: n.by, createdAt, sentAt: null, urgent: !!n.urgent, tag: n.tag || id, refId: n.refId || '' };
       ops.push({ op: 'set', col: 'push_jobs', id, data: job as unknown as Record<string, unknown> });
     }
   }

@@ -23,12 +23,14 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
   const [audience, setAudience] = useState<BroadcastAudience>(wanted);
   const [eventId, setEventId] = useState(params.event || '');
   const [urgent, setUrgent] = useState(params.urgent === '1');
+  const [includeSelf, setIncludeSelf] = useState(false);
   const [mail, setMail] = useState(false);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const { members, event, candidates } = useAudiences(ctx, eventId || undefined);
   const to = members[audience];
   const n = to.length;
+  const inAudience = to.some((p) => p.uid === ctx.user.uid);
   const targets = emailTargets(to, ctx.user.uid);
   const canSend = !busy && text.trim().length > 0 && n > 0;
 
@@ -43,7 +45,7 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
     setBusy(true);
     try {
       const withEvent = (audience === 'crew' || audience === 'vendors' || audience === 'registrants') && event;
-      await sendBroadcast(ctx.actor, { text, audience, urgent, ...(withEvent ? { eventId: event.id } : {}) }, to.map((p) => p.uid),
+      await sendBroadcast(ctx.actor, { text, audience, urgent, includeSelf: inAudience && includeSelf, ...(withEvent ? { eventId: event.id } : {}) }, to.map((p) => p.uid),
         { email: mail ? targets.send.map((p) => p.uid) : [] });
       toast.show({ text: n === 1 ? 'נשלח לאדם אחד' : `נשלח ל־${n} אנשים` });
       go(MESSAGES_PATH, true);
@@ -76,6 +78,8 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
       <ChoiceGroup<'normal' | 'urgent'> label="איך" value={urgent ? 'urgent' : 'normal'} onChange={(v) => setUrgent(v === 'urgent')}
         options={[{ value: 'normal', label: 'רגילה' }, { value: 'urgent', label: 'דחופה, נשארת בראש עד שרואים' }]} />
       <ListCard>
+        {inAudience && <Row className="broadcast-mailrow" title="גם אלי"
+          actions={<Toggle checked={includeSelf} onChange={setIncludeSelf} label="גם אלי" />} />}
         <Row className="broadcast-mailrow" title="לשלוח גם במייל" meta={mailMeta}
           actions={<Toggle checked={mail && targets.mailable > 0} onChange={(v) => setMail(v && targets.mailable > 0)} label="לשלוח גם במייל" />} />
       </ListCard>

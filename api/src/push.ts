@@ -186,7 +186,7 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
     const rrole = String(u?.data.role || '');
     // who may receive: active people; a vendor only broadcasts (their event's) and nothing from another vendor
     const receives = !!u && u.data.status === 'active' && (TEAM.has(rrole) ? (role !== 'vendor' || MANAGERS.has(rrole)) : rrole === 'vendor' && kind === 'broadcast')
-      && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref)) && uid !== by.uid;
+      && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref)) && (uid !== by.uid || (j.includeSelf === true && (kind === 'broadcast' || kind === 'system')));
     const devices = receives && Array.isArray(p.devices) ? p.devices.slice(0, MAX_DEVICES) : [];
     // keep one call for the progress commit and one for a possible cleanup
     if (BUDGET - st.calls - 2 < devices.length) break;

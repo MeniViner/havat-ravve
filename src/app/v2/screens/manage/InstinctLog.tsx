@@ -99,7 +99,7 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
                     <span className="instinct-log__icon" aria-hidden="true"><Icon name="robot" size={20} /></span>
                     <span className="manage-feed__body">
                       <span className="manage-feed__title">{l.title}{l.failed && <Tag tone="urgent">לא הצליח</Tag>}</span>
-                      {l.meta && <span className="manage-feed__meta">{l.meta}</span>}
+                      <span className="manage-feed__meta">{[e.keyLabel, l.meta].filter(Boolean).join(' · ')}</span>
                     </span>
                   </button>
                 </li>

@@ -1,12 +1,18 @@
 // Activity log: one append-only record per meaningful change, so every screen can show "who did what, when".
 import { useList, write, newId, readOnce } from './db';
-import { nowIso } from './firebase';
 import { demoOnly } from './demo/store';
 import type { Activity, ActivityKind, Actor } from './types';
-import { now } from './clock';
+import { now, nowIso } from './clock';
 
-export function logActivity(by: Actor, kind: ActivityKind, refId: string, action: string, text: string, extra: { subjectUid?: string; eventId?: string } = {}) {
-  return write.set('activity', newId('activity'), { kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '' }).catch(() => {});
+type ActivityExtra = { subjectUid?: string; eventId?: string };
+export function activityOp(by: Actor, kind: ActivityKind, refId: string, action: string, text: string, extra: ActivityExtra = {}) {
+  return { op: 'set' as const, col: 'activity', id: newId('activity'), data: {
+    kind, refId, action, text: text.slice(0, 500), by, at: nowIso(), subjectUid: extra.subjectUid || '', eventId: extra.eventId || '',
+  } };
+}
+export function logActivity(by: Actor, kind: ActivityKind, refId: string, action: string, text: string, extra?: ActivityExtra) {
+  const { col, id, data } = activityOp(by, kind, refId, action, text, extra);
+  return write.set(col, id, data).catch(() => {});
 }
 
 /** A managers-only task logs under its own kind, so the rules can keep its title from volunteers in any list query. */
@@ -24,6 +30,7 @@ export const useActivityForEvent = (eventId: string, enabled: boolean) => useLis
 export const useActivityBy = (uid: string, enabled: boolean, max = 200) => useList<Activity>('activity', { where: [['by.uid', '==', uid]], orderBy: [['at', 'desc']], limit: max }, enabled && !!uid);
 
 export const ACTION_LABELS: Record<string, string> = {
+  message_sent: 'הודעה נשלחה', message_resent: 'הודעה נשלחה שוב', message_deleted: 'הודעה נמחקה',
   created: 'נוצר', edited: 'נערך', done: 'בוצע', undone: 'הוחזר לביצוע', deleted: 'נמחק', photo: 'תמונה נוספה', note: 'הערה נוספה', assigned: 'הוקצה', urgent: 'סומן דחוף',
   bought: 'נקנה', unbought: 'הוחזר לרשימה', found: 'נמצא', added: 'נוסף',
   scanned: 'נסרק', paid: 'סומן שולם', claimed: 'הועבר תשלום', cancelled: 'בוטל', ordered: 'הוזמן',

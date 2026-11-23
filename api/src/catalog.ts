@@ -14,7 +14,8 @@ export type Param =
   | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
   | { type: 'uid' | 'id'; required?: boolean; he?: string }
   | { type: 'date'; format: 'YYYY-MM-DD'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
-  | { type: 'bool'; required?: boolean; default?: boolean; he?: string }
+  // omitWhenFalse preserves the old idempotency fingerprint when adding a false-by-default flag.
+  | { type: 'bool'; required?: boolean; default?: boolean; omitWhenFalse?: boolean; he?: string }
   | { type: 'int'; min: number; max: number; default?: number; required?: boolean; he?: string }
   | { type: 'enum'; values: readonly string[]; required?: boolean; default?: string; he?: string }
   | { type: 'number'; min: number; max: number; required?: boolean; default?: number; he?: string }
@@ -35,6 +36,7 @@ export type Operation = {
   params?: Record<string, Param>;
   body?: Record<string, Param>;
   requiredScope: string;
+  alternativeScopes?: readonly string[];
   notes?: string[];
 };
 
@@ -233,7 +235,7 @@ export const CATALOG = {
   service: 'havat-ravve-api',
   conventions: {
     auth: 'Authorization: Bearer <api-key>. Each key is bound to its own actors; X-Actor-Id may only pick among them and never raises permissions. A real person acts with the name and role of their profile in the app, and only while that profile is an active team member.',
-    scopes: 'Roles mirror the app (firestore.rules); each operation names its requiredScope. owner: everything, including what only an owner may do (payment details and donation amounts in settings.update, making someone a manager or owner, people.delete, broadcasts.delete). manager: everything else: people and roles (up to staff), events, tickets, payments, visits, donations, the managers\' inbox, the calendar, broadcasts and notifications.send, settings. staff: tasks (list/get, create for themselves, complete/reopen, edit/delete their own), the shopping list, reading places, templates, events, tickets and tabs, the farm calendar (without items for managers only), their own presence (presence.save/remove), broadcasts sent to them and their own notifications (me.notifications); not people, visits, donations, the inbox, settings changes or assigning others. A refused operation is 403 and writes nothing.',
+    scopes: 'Roles mirror the app (firestore.rules); each operation names its requiredScope and any alternativeScopes. Separate scopes govern deletion of tasks, events, people, donations and shopping items, blocking people, urgent broadcasts, external notifications and managing others\' presence. owner: everything, including what only an owner may do (payment details and donation amounts in settings.update, making someone a manager or owner, people.delete, broadcasts.delete). manager: everything else: people and roles (up to staff), events, tickets, payments, visits, donations, the managers\' inbox, the calendar, broadcasts and notifications.send, settings. staff: tasks (list/get, create for themselves, complete/reopen, edit/delete their own), the shopping list, reading places, templates, events, tickets and tabs, the farm calendar (without items for managers only), their own presence (presence.save/remove, with their respective scopes), broadcasts sent to them and their own notifications (me.notifications); not people, visits, donations, the inbox, settings changes or assigning others. A refused operation is 403 and writes nothing.',
     idempotency: 'Every write needs an Idempotency-Key header (UUID). Same key + same body returns the stored result with "replayed": true. Same key + different body is 409. After a timeout or OUTCOME_UNKNOWN, resend with the same key.',
     dates: 'Absolute dates only, YYYY-MM-DD in Asia/Jerusalem. Resolve "today" / "tomorrow" before calling; the server does not parse natural language.',
     datesAndTimes: 'Every parameter states its format and time zone. date: YYYY-MM-DD (Asia/Jerusalem). datetime: YYYY-MM-DDTHH:mm, local Israel time, no offset (event start/end). time: HH:mm, Israel time. Stored timestamps (createdAt, updatedAt, at, doneAt, boughtAt) are ISO 8601 in UTC with a Z; convert to Israel time before telling the user.',

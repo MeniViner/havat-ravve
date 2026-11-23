@@ -677,7 +677,7 @@ try {
 
     // activity
     const as = await r(STAFF, '/v1/activity?limit=100');
-    check(as.status === 200 && as.json.data.items.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)), 'staff see only team activity');
+    check(as.status === 200 && as.json.data.items.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar'].includes(a.kind)), 'staff see only team activity');
     check((await r(STAFF, '/v1/activity?kind=donation')).status === 403, 'staff asking for donation activity → 403');
     check((await r(MGR, '/v1/activity?kind=donation')).json.data.items.length === 2, 'managers see it');
     const p1 = await r(MGR, '/v1/activity?limit=3');
@@ -757,7 +757,7 @@ try {
     check((await r(STAFF, '/v1/activity/syn-leak')).json.data.record.text !== 'סוד של המנהלים', 'activity.get: redacted too');
     check((await r(MGR, '/v1/activity?refId=syn-managers-only')).json.data.items.some((a) => a.text === 'סוד של המנהלים'), 'activity: managers see the real text');
     const all = (await r(STAFF, '/v1/activity?limit=100')).json.data.items;
-    check(all.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)) && !all.some((a) => String(a.text).includes('סוד של המנהלים')), 'activity: no manager-only text anywhere in staff\'s feed');
+    check(all.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar'].includes(a.kind)) && !all.some((a) => String(a.text).includes('סוד של המנהלים')), 'activity: no manager-only text anywhere in staff\'s feed');
 
     // concurrent edits: a change made in the app meanwhile is never overwritten
     const t = (await create(KEYS.users, { title: 'גיזום', urgent: false }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' })).json.data.task;
@@ -1283,6 +1283,13 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     const before = hits.length;
     await run(p2); await run(p2);
     check(hits.length === before, 'two more runs → nothing sent again (idempotent)', { extra: hits.length - before });
+
+    await seed('users', 'pu-mgr', person('pu-mgr', 'manager', { enabled: true, devices: [sub('ok-self')] }));
+    await job('pj-self-default', 'broadcast', 'pu-mgr', ['pu-mgr'], { tag: 'b_self_default' });
+    await job('pj-self-optin', 'broadcast', 'pu-mgr', ['pu-mgr'], { tag: 'b_self_optin', includeSelf: true });
+    await run(p2);
+    const self = hits.filter((h) => h.name === 'ok-self');
+    check(self.length === 1 && self[0].payload.tag === 'b_self_optin', 'push sends to the author only for an explicit includeSelf job');
 
     // a job bigger than one run's budget: continues from its cursor, every device exactly once
     const many = Array.from({ length: 40 }, (_, i) => 'pu-bulk-' + String(i).padStart(2, '0'));

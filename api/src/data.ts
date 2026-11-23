@@ -13,7 +13,7 @@ import { BACKUPS, groupOf, lastBackup, listBackups, pathOf, titleOf } from './ba
 const GROUP_RE = /^[A-Za-z0-9_]{1,100}(\/\*\/[A-Za-z0-9_]{1,100}){0,4}$/;
 // ids may hold Hebrew and punctuation, never what changes a URL (? # %) and never . or .. on their own
 const PATH_RE = /^[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}(\/[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}){0,4}$/;
-const READ_ONLY = new Set(['api_log', 'api_failures', 'api_idempotency', 'users']);
+const READ_ONLY = new Set(['api_log', 'api_failures', 'api_idempotency', 'account_activity', 'users']);
 const PAGE = 200;
 /** Fields that hold a person, a place or a confirmation when filled: never set to plain text from the browser. */
 const OBJECT_FIELDS = new Set(['assignee', 'doneBy', 'by', 'createdBy', 'updatedBy', 'claimedBy', 'place', 'location', 'paymentConfirmation', 'owner', 'vendor']);

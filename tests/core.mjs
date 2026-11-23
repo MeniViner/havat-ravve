@@ -21,3 +21,46 @@ assert.ok(/<link[^>]*href="https:[^"]+\/events\/archive"[^>]*rel="canonical"/.te
 assert.equal((archived.match(/<time datetime="2000-01-01">/g)||[]).length,1);
 assert.ok(render(defaults).includes('data-cms-field="f011"'));
 console.log('PASS: audit regression cases');
+
+const permissions = await build({
+  stdin: {
+    contents: "export { authenticate, ROLE_SCOPES } from './api/src/auth'; export { PRESETS, presetOf, setAreaLevel, AREAS } from './src/console/scopes';",
+    resolveDir: process.cwd(),
+  },
+  bundle: true, platform: 'node', format: 'esm', write: false,
+});
+const { authenticate, ROLE_SCOPES, PRESETS, presetOf, setAreaLevel, AREAS } =
+  await import('data:text/javascript;base64,' + Buffer.from(permissions.outputFiles[0].text).toString('base64'));
+assert.equal(presetOf([...PRESETS.volunteer].reverse()), 'volunteer');
+assert.equal(presetOf([...PRESETS.volunteer, 'tasks:delete']), 'custom');
+assert.equal(presetOf(null), 'owner');
+assert.deepEqual(PRESETS.manager, ROLE_SCOPES.manager.filter((scope) => scope !== 'settings:write'));
+const shoppingArea = AREAS.find((area) => area.id === 'shopping');
+assert.deepEqual(setAreaLevel(shoppingArea, ['presence:write', 'shopping:write'], 'read'), ['presence:write', 'shopping:read']);
+
+const { createHash } = await import('node:crypto');
+const plain = 'synthetic-scope-test-key';
+const sha256 = createHash('sha256').update(plain).digest('hex');
+const credential = { id: 'scope-test', actors: ['user:scope-test'], sha256 };
+const authRequest = new Request('https://synthetic.invalid/v1/activity', { headers: { Authorization: 'Bearer ' + plain } });
+let role = 'manager';
+const profile = async () => ({ displayName: 'בדיקה', status: 'active', role });
+const clock = Date.now;
+let fakeNow = clock();
+Date.now = () => fakeNow;
+try {
+  const limited = { ...credential, scopes: ['donations:read', 'presence:write', 'presence:write:any'], scopeVersion: 2 };
+  const caller = await authenticate(authRequest, JSON.stringify([limited]), profile);
+  assert.deepEqual(caller.scopes, new Set(limited.scopes));
+  const older = await authenticate(authRequest, JSON.stringify([{ ...credential, scopes: ['tasks:edit', 'notify:write'] }]), profile);
+  assert.deepEqual(older.scopes, new Set(['tasks:edit', 'tasks:delete', 'notify:team', 'notify:all']));
+  role = 'staff';
+  fakeNow += 60_001;
+  const downgraded = await authenticate(authRequest, JSON.stringify([limited]), profile);
+  assert.deepEqual(downgraded.scopes, new Set(['presence:write']));
+  const unrestricted = await authenticate(authRequest, JSON.stringify([credential]), profile);
+  assert.deepEqual(unrestricted.scopes, new Set(ROLE_SCOPES.staff));
+} finally {
+  Date.now = clock;
+}
+console.log('PASS: preset identity, precise area edits, legacy grants and role downgrade with the same credential.');

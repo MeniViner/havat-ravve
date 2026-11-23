@@ -254,7 +254,7 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
     label: 'מחיקה', icon: 'trash', tone: 'danger',
     confirm: {
       title: 'למחוק את המשימה החוזרת?', text: `"${template.title}" לא תיווצר יותר. משימות שכבר נוצרו נשארות.`,
-      onConfirm: () => remove(() => removeTemplate(template.id), { text: 'המשימה החוזרת נמחקה', after: () => go('/manage/recurring', true) }),
+      onConfirm: () => remove(() => removeTemplate(ctx.actor, template.id), { text: 'המשימה החוזרת נמחקה', after: () => go('/manage/recurring', true) }),
     },
   }] : task ? [deleteItem(task, canDeleteTask(task, ctx.user.uid, ctx.manager),
     () => remove(() => deleteTaskV2(ctx.actor, task, ctx.templates), { text: 'המשימה נמחקה', after: () => go('/tasks', true) }))]
