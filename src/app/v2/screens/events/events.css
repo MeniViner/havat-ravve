@@ -60,10 +60,10 @@
 
 /* N9 products */
 .events-prodhead { display: flex; justify-content: space-between; align-items: center; padding: 0 14px; min-height: 38px; font-size: 14px; font-weight: 600; color: var(--soft); }
-.events-prodrow { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 2px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
+.events-prodrow { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 2px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
 .events-prodrow__link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; text-decoration: none; color: var(--ink); }
 .events-prodrow__name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; }
-.events-prodrow--off .events-prodrow__link { color: var(--soft); }
+.events-prodrow--off .events-prodrow__name { color: var(--soft); }
 .events-fieldrow-12 { gap: 12px; }
 
 /* N11 form */
@@ -121,10 +121,12 @@
 /* payment confirmation (orders, donations, stall accounts) */
 .events-payconfirm { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .events-payconfirm__line { font-size: 14px; color: var(--soft); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; overflow-wrap: anywhere; }
-/* N9 order arrows and units sold */
-.events-prodrow__move { display: flex; flex-direction: column; margin-inline-start: -10px; flex: none; }
-.events-prodrow__move .k-iconbtn { width: 32px; height: 26px; }
-.events-up svg { transform: rotate(180deg); }
-.events-prodrow__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .events-itemrow__name { display: flex; flex-direction: column; }
 .events-itemrow__meta { font-size: 13px; color: var(--soft); }
+/* N12, orders: the payment confirmation's information lines (sending is the Q7 sheet) */
+.events-statuslines { display: flex; flex-direction: column; gap: 4px; }
+.events-sheet__meta .events-payconfirm__line { margin-top: 4px; }
+
+/* edit form header: ביטול and ⋯ (rule 6) */
+.events-formend { display: flex; align-items: center; gap: 12px; }
+.v2 .events-cancel { background: transparent; border: 0; font-family: inherit; }

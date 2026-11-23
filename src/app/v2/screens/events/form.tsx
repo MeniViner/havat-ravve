@@ -1,8 +1,9 @@
-// N11 Event edit / new event: the few fields that change most, three switches; picture, description and questions one tap away.
+// N11 / Q32 Event edit / new event: the few fields that change most ("מתאריך" and "עד תאריך", empty = the same day), three
+// switches; picture, description and questions one tap away. Deleting the event is in ⋯ beside "ביטול" (rule 6; M4 keeps "עריכה").
 import { useId, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
-import { AppScreen, go, useToast } from '../../core';
-import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton, ConfirmSheet } from '../../kit';
+import { AppScreen, go, useRemove, useToast } from '../../core';
+import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storePhoto } from '../../../upload';
@@ -10,7 +11,7 @@ import { back } from '../../../router';
 import { nowMs } from '../../../clock';
 import { saveEventV2, deleteEventV2 } from '../../data/events';
 import { dateFieldText, endDateOf, localOf, normTime, rangeFromForm } from './logic';
-import { Loading, Missing, useRun } from './shared';
+import { FormEnd, Loading, Missing, useRun } from './shared';
 import type { EventQuestion, FarmEvent } from '../../../types';
 
 export function EventForm({ ctx, params }: ScreenProps) {
@@ -24,13 +25,13 @@ export function EventForm({ ctx, params }: ScreenProps) {
 const DEFAULT_LOCATION = 'חוות רווה, ליד טנא עומרים';
 
 function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
-  const toast = useToast(); const run = useRun();
+  const toast = useToast(); const run = useRun(); const remove = useRemove();
   const s0 = localOf(existing?.start || ''); const e0 = localOf(existing?.end || '');
   const [title, setTitle] = useState(existing?.title || '');
   const [date, setDate] = useState(s0.date);
   const [from, setFrom] = useState(s0.time || '');
   const [to, setTo] = useState(e0.time || '');
-  // A multi-day event keeps its last day; the form still shows one date unless an end day is set (under "more").
+  // Q32 "עד תאריך": empty is the same day (an evening into the night stays one day); a multi-day event keeps its last day.
   const [endDate, setEndDate] = useState(endDateOf(existing?.start || '', existing?.end || ''));
   const [price, setPrice] = useState(String(existing?.price ?? ''));
   const [maxPerOrder, setMax] = useState(existing?.maxPerOrder ?? 5);
@@ -45,11 +46,11 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 0));
   const [questions, setQuestions] = useState<EventQuestion[]>(existing?.questions || []);
   const [busy, setBusy] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
   const [tried, setTried] = useState(false);
-  const dateId = useId(); const fileRef = useRef<HTMLInputElement>(null); const dateRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const range = rangeFromForm(date, from, to, endDate);
+  const until = endDate > date ? endDate : '';
+  const range = rangeFromForm(date, from, to, until);
   const priceN = Math.max(0, Math.round(Number(price.replace(/[^\d.]/g, '')) || 0));
   const ok = title.trim().length > 0 && !!range;
   const parent = existing ? `/manage/events/${existing.id}` : '/manage/events';
@@ -68,30 +69,24 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
     setBusy(false);
     if (id) go(`/manage/events/${id}`, true);
   };
-  const remove = async () => {
-    if (!existing) return;
-    const done = await run(async () => { await deleteEventV2(ctx.actor, existing); return true; });
-    if (done) { go('/manage/events', true); toast.show({ text: 'האירוע נמחק. הכרטיסים נשמרו.', check: true }); }
-  };
   const pickImage = async (f?: File) => {
     if (!f) return;
     try { setImage(await storePhoto(await compressPhoto(f), 'event')); } catch (err) { toast.show({ text: (err as Error).message, tone: 'error' }); }
   };
-  const openDate = () => { const el = dateRef.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
 
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow disabled={busy} onClick={save}>שמירה</Button></BottomBar>}>
-      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} onCancel={() => back(parent)} />
+      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} end={<FormEnd onCancel={() => back(parent)} title={existing?.title || ''} items={existing ? [
+        { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+          title: 'למחוק את האירוע?', text: `"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`,
+          onConfirm: () => remove(() => deleteEventV2(ctx.actor, existing), { text: 'האירוע נמחק. הכרטיסים נשמרו.', after: () => go('/manage/events', true) }),
+        } },
+      ] : undefined} />} />
       <Field label="שם האירוע" value={title} onChange={(ev) => setTitle(ev.target.value)} error={tried && !title.trim() ? 'צריך שם לאירוע' : undefined} />
-      <div className="k-fieldrow">
-        <div className="k-field k-field--grow events-datefield">
-          <label htmlFor={dateId} className="k-field__label">תאריך</label>
-          <input className="k-input" readOnly value={dateFieldText(date)} onClick={openDate} tabIndex={-1} aria-hidden="true" />
-          <input ref={dateRef} id={dateId} type="date" className="events-datefield__native" value={date} onChange={(ev) => setDate(ev.target.value)} />
-          {tried && !date && <span className="k-field__error" role="alert">בחרו תאריך</span>}
-        </div>
-      </div>
-      {endDate && !more && <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)} />}
+      <FieldRow>
+        <DateField label="מתאריך" value={date} onChange={setDate} error={tried && !date ? 'בחרו תאריך' : undefined} />
+        <DateField label="עד תאריך" value={until} min={date} placeholder="אותו יום" onChange={setEndDate} />
+      </FieldRow>
       <FieldRow>
         <Field grow label="משעה" ltr inputMode="numeric" value={from} onChange={(ev) => setFrom(ev.target.value)} onBlur={() => setFrom((v) => normTime(v) || v)}
           error={tried && !normTime(from) ? 'שעה כמו 16:00' : undefined} />
@@ -124,8 +119,6 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           </div>
           <TextAreaField label="תיאור לאורחים" value={description} onChange={(ev) => setDescription(ev.target.value)} placeholder="מה יהיה, למי זה מתאים, מה להביא" height={110} />
           <Field label="מקום" value={location} onChange={(ev) => setLocation(ev.target.value)} />
-          <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)}
-            hint={endDate && endDate > date ? dateFieldText(endDate) : undefined} />
           <Field label="מקומות (0 = בלי הגבלה)" ltr inputMode="numeric" value={capacity} onChange={(ev) => setCapacity(ev.target.value.replace(/\D/g, ''))} />
           <div className="events-questions">
             <span className="k-field__label">שאלות נוספות בהרשמה</span>
@@ -144,13 +137,23 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           <ListCard>
             <Row minHeight={58} title="פתוח להרשמה" meta="אורחים יכולים להזמין כרטיסים" actions={<Toggle checked={open} onChange={setOpen} label="פתוח להרשמה" />} />
           </ListCard>
-          {existing && <Button variant="danger" size="tall" onClick={() => setConfirmDel(true)}>מחיקת האירוע</Button>}
-          {existing && (
-            <ConfirmSheet open={confirmDel} onClose={() => setConfirmDel(false)} title="למחוק את האירוע?"
-              text={`"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`} confirmLabel="מחיקה" onConfirm={remove} />
-          )}
         </div>
       )}
     </AppScreen>
+  );
+}
+
+/** Q32 date field: reads "שבת 28.11.2026" and opens the phone's date picker (the native input lies over it, invisible).
+ *  Empty shows the placeholder ("אותו יום"); clearing the picker empties it. */
+function DateField({ label, value, onChange, min, placeholder, error }: { label: string; value: string; onChange: (v: string) => void; min?: string; placeholder?: string; error?: string }) {
+  const id = useId(); const ref = useRef<HTMLInputElement>(null);
+  const open = () => { const el = ref.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
+  return (
+    <div className="k-field k-field--grow events-datefield">
+      <label htmlFor={id} className="k-field__label">{label}</label>
+      <input className="k-input" readOnly value={dateFieldText(value)} placeholder={placeholder} onClick={open} tabIndex={-1} aria-hidden="true" />
+      <input ref={ref} id={id} type="date" className="events-datefield__native" value={value} min={min} onChange={(ev) => onChange(ev.target.value)} />
+      {error && <span className="k-field__error" role="alert">{error}</span>}
+    </div>
   );
 }

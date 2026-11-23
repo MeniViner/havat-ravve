@@ -102,7 +102,8 @@ console.log('staff · eventDay');
   await step('writes persist: my scans 46 after reload, Michal inside', async () => {
     await s.go('/event'); await s.reload();
     await s.see('46');
-    await s.see('סריקות אחרונות'); await s.see('אורח בדיקה · כרטיס 1/1'); // the old hub's last scans, for every staff member
+    // E1 has no "recent scans" list (tidy: the gate shows the previous scan, managers have Y2)
+    assert.equal(await s.page.getByText('סריקות אחרונות').count(), 0, 'no recent scans on E1');
     await s.go('/event/gate/search');
     await s.fill('שם או טלפון', 'נעמה');
     await s.see('כולם נכנסו').catch(async () => s.see('נכנס'));
@@ -147,29 +148,37 @@ console.log('staff · eventDay');
     await s.tap('נסגרו');
     await s.see('פתוחים · 5');
   });
-  await step('E8 lines already on the account, with time and who; a line can be removed', async () => {
+  await step('Q28/Q29 "כבר בחשבון" opens the account: lines with time and who; a line can be removed', async () => {
     await s.go('/event/stall');
     await s.fill('חיפוש בשם או טלפון', 'רוני');
     await s.tap('רוני לוי');
-    await s.see('כבר בחשבון: 4 פריטים · 46 ₪'); await s.see('בחשבון'); await s.see('לימונדה ×2');
-    await s.page.getByRole('button', { name: 'הסרה' }).first().click();
+    await s.tap('כבר בחשבון: 4 פריטים · 46 ₪');
+    await s.see('החשבון של רוני'); await s.see('לימונדה ×2'); await s.see('סך הכל בחשבון');
+    await s.page.getByRole('button', { name: /^הסרה: / }).first().click();
     await s.see('כבר בחשבון: 2 פריטים · 22 ₪');
     await s.reload();
     await s.see('כבר בחשבון: 2 פריטים · 22 ₪');
   });
-  await step('E8 clear the cart, undo brings it back', async () => {
+  await step('Q29 clear the cart from the account sheet, undo brings it back', async () => {
     await s.tap('הוספת זיתים');
+    await s.tap('כבר בחשבון: 2 פריטים · 22 ₪');
+    await s.see('בעגלה, עוד לא נרשם');
     await s.tap('נקה הכל');
     await s.see('העגלה נוקתה');
     await s.page.getByRole('button', { name: 'ביטול' }).first().click();
     await s.see('פריט אחד');
   });
-  await step('E9 the crew marks an account paid on the spot', async () => {
+  await step('E9 rows carry no button; Q29 "שילם עכשיו" marks the account paid on the spot', async () => {
     await s.go('/event/stall/tabs');
     await s.see('פתוחים · 5');
-    await s.page.getByRole('button', { name: 'שילם/ה במקום' }).first().click();
-    await s.see('שולם במקום'); await s.see('פתוחים · 4');
-    assert.equal(await s.page.getByText('נמכרו היום').count(), 0, 'the totals are for managers');
+    assert.equal(await s.page.getByRole('button', { name: 'שילם/ה במקום' }).count(), 0, 'rule 4: no button on the row');
+    assert.equal(await s.page.getByText('נמכרו היום').count(), 0, 'the totals are Q12 stats');
+    await s.page.locator('.k-card--list a').first().click();
+    await s.page.locator('.eventday-who__link').click();
+    await s.page.getByRole('button', { name: /^שילם עכשיו/ }).click();
+    await s.see('שולם במקום');
+    await s.go('/event/stall/tabs');
+    await s.see('פתוחים · 4');
   });
   await step('module off: the old messages, not "no event today"', async () => {
     await s.go('/event/gate?e=demo-e-tour');
@@ -231,7 +240,8 @@ console.log('manager · eventDay');
     await s.tap('הכל');
     await s.fill('שם או טלפון', 'נועם'); await s.see('כרטיס 2 מתוך 2');
     const dl = s.page.waitForEvent('download', { timeout: 5000 });
-    await s.tap('אקסל');
+    await s.page.getByRole('button', { name: 'עוד פעולות' }).click();
+    await s.tap('ייצוא לאקסל');
     assert.match((await dl).suggestedFilename(), /\.csv$/);
   });
   await step('Y4 waiting: stats, chips, WhatsApp', async () => {
@@ -252,15 +262,15 @@ console.log('manager · eventDay');
     await s.page.locator('.k-bottombar').getByText('דוכן').click();
     await s.see('מי קונה?'); await s.see('האירוע חי');
   });
-  await step('E2 for a manager: arrived of all tickets, and the quick link to the stall', async () => {
+  await step('E2 for a manager: no count and no stall link in the gate header (Y1 hero and E1 "דוכן" keep them)', async () => {
     await s.go('/event/gate');
-    await s.see('נכנסו מתוך');
-    await s.tap('לדוכן');
-    await s.see('מי קונה?');
+    await s.see('יציאה מהשער');
+    assert.equal(await s.page.getByText('נכנסו מתוך').count(), 0, 'the count is the Y1 hero');
+    assert.equal(await s.page.getByRole('button', { name: 'לדוכן' }).count(), 0, 'the stall is the E1 entry');
   });
-  await step('E9 stall accounts: the totals for a manager', async () => {
-    await s.go('/event/stall/tabs');
-    await s.see('נמכרו היום'); await s.see('חשבונות פתוחים');
+  await step('Q12 stall accounts: the totals for a manager', async () => {
+    await s.go(`/manage/events/${FEST}/tabs`);
+    await s.see('חשבונות'); await s.see('שולמו'); await s.see('פתוחים');
   });
   await step('E9 as manager links to the manager tab screen', async () => {
     await s.go(`/manage/events/${FEST}/tabs`);

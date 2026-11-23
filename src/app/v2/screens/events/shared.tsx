@@ -2,7 +2,7 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { href as hrefOf, back } from '../../../router';
 import { AppScreen, go } from '../../core';
-import { TopBar, EmptyState, Button, Icon, cx } from '../../kit';
+import { TopBar, EmptyState, Button, Icon, MoreMenu, cx, type ActionItem } from '../../kit';
 import { useToast } from '../../core';
 import { isConflict } from '../../../db';
 import './events.css';
@@ -47,6 +47,13 @@ export function TitleBlock({ over, title }: { over: ReactNode; title: ReactNode 
 export const Chev = () => <span className="events-chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>;
 
 /** Row of equal-height buttons, gap 8 (design button rows under cards). */
+/** The end of an edit form's header: "ביטול" and, when there is something to delete, ⋯ beside it (rules 5, 6; the detail keeps
+ *  its outlined "עריכה", so delete lives here). */
+export function FormEnd({ onCancel, title, items }: { onCancel: () => void; title: string; items?: ActionItem[] }) {
+  const cancel = <button type="button" className="k-quietlink events-cancel" onClick={onCancel}>ביטול</button>;
+  return items ? <div className="events-formend">{cancel}<MoreMenu title={title} items={items} /></div> : cancel;
+}
+
 export function ButtonRow({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx('events-btnrow', className)}>{children}</div>;
 }

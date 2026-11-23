@@ -1,13 +1,15 @@
-// N12 one stall tab: what is owed, what was recorded and by whom; approve the payment or let it go.
+// N12 one stall tab: what is owed, what was recorded and by whom; approve the payment (then Q7, usePayConfirm) or let it go.
+// The person's file, history, the payment confirmation and delete are in ⋯ (rules 5, 6).
 import { useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '../../core';
-import { TopBar, Hero, ListCard, SectionHeader, Tag, Button, BottomBar, Sheet, Field, ConfirmSheet, Row } from '../../kit';
+import { TopBar, Hero, ListCard, SectionHeader, Tag, Button, BottomBar, Sheet, Field, Row, MoreMenu } from '../../kit';
 import { useEvent, useTab, useNotifications, setTabStatus, removeTabItem } from '../../../data';
 import { useClockVersion } from '../../../clock';
 import { money, ddmm, ago, hhmm, firstName, dayTime } from '../../format';
 import { useActivityForEvent, ACTION_LABELS } from '../../../activity';
-import { PayConfirm } from './payconfirm';
+import { PayConfirmStatus } from './payconfirm';
+import { usePayConfirm } from '../../patterns';
 import { approveTab, stampReminder, tabClaimedAt, deleteTab } from '../../data/events';
 import { tabLines, tabUnits, itemsWord, recordedLine, fillDebtTemplate } from './logic';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, useRun } from './shared';
@@ -28,8 +30,10 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
   const notes = useNotifications(ctx.manager);
   const [waiving, setWaiving] = useState(false); const [reason, setReason] = useState('');
   const [line, setLine] = useState<number | null>(null);
-  const [askDelete, setAskDelete] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const remove = useRemove();
+  const pay = usePayConfirm();
+  const askPay = () => pay.ask({ collection: 'tabs', ids: [t.id], uid: t.guestUid, name: t.guestName, phone: t.guestPhone, amount: t.total, event: t.eventTitle, purpose: `חשבון הדוכן באירוע ${t.eventTitle}` });
   const lines = tabLines(t.items);
   const history = useActivityForEvent(t.eventId, ctx.manager).items.filter((a) => a.refId === t.id);
   /** "17:05 · נועה, 17:40 · אורי": when and by whom each unit of a line was recorded. */
@@ -39,7 +43,9 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
 
   const approve = async () => {
     const ok = await run(async () => { await approveTab(ctx.actor, t, notes.items); return true; });
-    if (ok) toast.show({ text: `${t.guestName} · ${TAB_LABELS.paid}`, check: true, actions: undo(t.status) });
+    if (!ok) return;
+    toast.show({ text: `${t.guestName} · ${TAB_LABELS.paid}`, check: true, actions: undo(t.status) });
+    if (t.total > 0) askPay();
   };
   const waive = async () => {
     const ok = await run(async () => { await setTabStatus(ctx.actor, t, 'waived', reason.trim()); return true; });
@@ -71,7 +77,15 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
   const chosen = line !== null ? t.items[line] : null;
   return (
     <AppScreen variant="detail" bar={bar}>
-      <TopBar back={backTo('חשבונות', parent)} end={<Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button>} />
+      <TopBar back={backTo('חשבונות', parent)} end={<MoreMenu title={t.guestName} items={[
+        { label: `התיק של ${firstName(t.guestName)}`, icon: 'people', hidden: !t.guestUid, onSelect: () => go(`/manage/people/${t.guestUid}`) },
+        { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => setShowHistory(true) },
+        { label: t.paymentConfirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום', icon: 'mail', hidden: t.status !== 'paid' || t.total <= 0, onSelect: askPay },
+        { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+          title: 'למחוק את החשבון?', text: `החשבון של ${t.guestName} על ${money(t.total)} יימחק לגמרי, גם מהדוחות. כדי לוותר על התשלום ולהשאיר תיעוד, יש מחילה.`,
+          onConfirm: () => remove(() => deleteTab(ctx.actor, t, notes.items), { text: 'החשבון נמחק', after: () => go(parent, true) }),
+        } },
+      ]} />} />
       <TitleBlock over={`${t.eventTitle} · ${ddmm(e?.start || t.createdAt)}`} title={t.guestName} />
       <Hero className="events-tabhero">
         <span className="events-tabhero__amount">
@@ -105,15 +119,14 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
           <Button variant="outline" size="tall" icon="phone" onClick={() => open(telUrl(t.guestPhone))}>התקשרות</Button>
         </ButtonRow>
       )}
-      {t.guestUid && <div><Button variant="quiet" onClick={() => go(`/manage/people/${t.guestUid}`)}>התיק של {firstName(t.guestName)}</Button></div>}
-      {t.total > 0 && t.status !== 'waived' && (
-        <PayConfirm collection="tabs" ids={[t.id]} uid={t.guestUid} name={t.guestName} phone={t.guestPhone} amount={t.total} event={t.eventTitle}
-          purpose={`חשבון הדוכן באירוע ${t.eventTitle}`} paid={t.status === 'paid'} confirmation={t.paymentConfirmation} emailJob={'tab_' + t.id} />
-      )}
-      <ListCard title="תשלום והיסטוריה">
-        {history.map((a) => <Row key={a.id} minHeight={50} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={`${a.text} · ${dayTime(a.at)}`} />)}
-        {!history.length && <Row minHeight={50} title={<span className="k-soft" style={{ fontWeight: 400 }}>נפתח {dayTime(t.createdAt)}</span>} />}
-      </ListCard>
+      {t.total > 0 && t.status === 'paid' && <div className="events-statuslines"><PayConfirmStatus paid confirmation={t.paymentConfirmation} emailJob={'tab_' + t.id} /></div>}
+      <Sheet open={showHistory} onClose={() => setShowHistory(false)} title="היסטוריית שינויים" sub={`${t.guestName} · ${money(t.total)}`}>
+        <ListCard>
+          {history.map((a) => <Row key={a.id} minHeight={50} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={`${a.text} · ${dayTime(a.at)}`} />)}
+          {!history.length && <Row minHeight={50} title={<span className="k-soft" style={{ fontWeight: 400 }}>נפתח {dayTime(t.createdAt)}</span>} />}
+        </ListCard>
+      </Sheet>
+      {pay.sheet}
       <Sheet open={waiving} onClose={() => setWaiving(false)} title={`מחילה · ${money(t.total)}`}>
         <div className="events-sheet">
           <Field label="למה? (תירשם בהיסטוריה)" value={reason} onChange={(ev) => setReason(ev.target.value)} />
@@ -126,9 +139,6 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
           <Button size="bar" block variant="danger" onClick={() => line !== null && removeLine(line)}>הסרה מהחשבון</Button>
         </div>
       </Sheet>
-      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את החשבון?"
-        text={`החשבון של ${t.guestName} על ${money(t.total)} יימחק לגמרי, גם מהדוחות. כדי לוותר על התשלום ולהשאיר תיעוד, יש מחילה.`} confirmLabel="מחיקה"
-        onConfirm={() => remove(() => deleteTab(ctx.actor, t, notes.items), { text: 'החשבון נמחק', after: () => go(parent, true) })} />
     </AppScreen>
   );
 }

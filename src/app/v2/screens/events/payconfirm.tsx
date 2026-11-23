@@ -20,6 +20,20 @@ function EmailStatus({ job }: { job: EmailJob }) {
   return <span className="events-payconfirm__line">מייל אוטומטי לא נשלח · {SKIP_TEXT[job.reason || ''] || 'לא נדרש'}</span>;
 }
 
+/** The information lines that stay on a paid order or stall account once sending moved into the Q7 sheet (usePayConfirm):
+ *  "אישור נשלח" with who and when, and the Worker's automatic e-mail status. Renders nothing when there is nothing to say. */
+export function PayConfirmStatus({ paid, confirmation, emailJob }: { paid: boolean; confirmation?: PaymentConfirmation; emailJob?: string }) {
+  const { manager } = useV2();
+  const job = useDoc<EmailJob>('email_outbox/' + (emailJob || '_'), manager && paid && !!emailJob).item;
+  if (!confirmation && !(paid && job)) return null;
+  return (
+    <>
+      {confirmation && <span className="events-payconfirm__line"><Tag tone="paid">אישור נשלח</Tag> {confirmation.by.name} · {dayTime(confirmation.at)}</span>}
+      {paid && job && <EmailStatus job={job} />}
+    </>
+  );
+}
+
 export type PayConfirmProps = {
   collection: 'tickets' | 'donations' | 'tabs'; ids: string[]; uid: string; name: string; phone: string;
   amount: number; purpose: string; event?: string; paid: boolean; confirmation?: PaymentConfirmation; emailJob?: string;
