@@ -21,14 +21,14 @@ and every "אקסל". The kit `ExcelButton` (`manage/shared.tsx:39`) draws both 
 Behaviour-only restorations that add no control (redirects, fallbacks, permissions) are listed once each so the parity
 record is complete. All of them are "Rule: keep".
 
-**Count per disposition** (149 rows):
+**Count per disposition** (219 rows):
 
 | Disposition | Rows |
 |---|---|
-| Q screen | 69 |
-| Rule | 54 |
-| Remove (duplicate) | 18 |
-| Needs a design | 8 |
+| Q screen | 98 |
+| Rule | 89 |
+| Remove (duplicate) | 21 |
+| Needs a design | 11 |
 
 No row removes a capability. Every "Remove (duplicate)" row names the entry point that stays.
 
@@ -134,7 +134,7 @@ Commit shorthand used in the table:
 | 82 | Donation | `manage/Money.tsx:209` | Top-bar "מחיקה" | Delete a donation | D-m | Q screen | Q6 top-bar ⋯ → מחיקה → Q8 "למחוק את התרומה?" | 3 |
 | 83 | Donation | `manage/Money.tsx:227` | Donor card | Contact the donor, past gifts | P | Q screen | Q6 actions "תודה בוואטסאפ", "התקשרות", "עוד ממיכל · לתיק שלה" | 3 |
 | 84 | Donation | `manage/Money.tsx:233` | PayConfirm | Confirm payment to the donor | P | Q screen | Q6 "אישור תשלום" → Q7 sheet | 3 |
-| 85 | Donation | `manage/Money.tsx:236` | "להחזיר לממתין" | Undo approval | P | Q screen | Q6 "עוד לא הגיע" (or ⋯ if it means un-approve after approval) | 3 |
+| 85 | Donation | `manage/Money.tsx:236` | "להחזיר לממתין" | Undo approval | P | Q screen | Q6 top-bar ⋯ → "להחזיר לממתין" (next to "עוד לא הגיע" on the detail) | 3 |
 | 86 | Donation | `manage/Money.tsx:248` | History card | Change history | P | Q screen | Q6 ⋯ → Q5 "היסטוריית שינויים" | 3 |
 | 87 | Reports | `manage/Money.tsx:47` | "צפייה בטבלה" | Report as a table | P | Q screen | Q14 top-bar ⋯ → Q5 → Q9 | 3 |
 | 88 | Reports | `manage/Money.tsx:47` | "אקסל" | Export the report | P | Q screen | Q14 ⋯ → "ייצוא לאקסל" | 3 |
@@ -189,7 +189,7 @@ Commit shorthand used in the table:
 | 137 | Order sheet | `events/event.tsx:252` | "הכרטיס של" link | Open the guest's ticket | P | Rule | Rule 4: an item in the row sheet (Q11 pattern) | 3 |
 | 138 | Order sheet | `events/event.tsx:253` | Red "ביטול ההזמנה" | Cancel an order | D-e | Rule | Row sheet, destructive group, red (Q11 pattern), then Q8 | 3 |
 | 139 | Order sheet | `events/event.tsx:254` | Quiet "מחיקת ההזמנה" | Delete an order | D-e | Rule | Same destructive group in the order sheet → Q8 | 3 |
-| 140 | Event summary | `events/event.tsx:376-377` | "הגעה" tile and "יצאו וחזרו" tile | Arrival and re-entry | P | Q screen | Q15 stat "הגיעו · 84%". "יצאו וחזרו" has no home, see row 141 | 3 |
+| 140 | Event summary | `events/event.tsx:376` | "הגעה" tile | Arrival rate | P | Q screen | Q15 stat "הגיעו · 84%" (merged into the stat) | 3 |
 | 141 | Event summary | `events/event.tsx:377` | "יצאו וחזרו" tile | Re-entry count | P | Needs a design | Not among the four Q15 stats | 3 |
 | 142 | Event summary | `events/event.tsx:379` | "כסף" card | Event money | P | Q screen | Q15 drill row "כסף" | 3 |
 | 143 | Event summary | `events/event.tsx:400` | "לעומת אירועים קודמים" | Compare to past events | P | Q screen | Q15 drill row "לעומת אירועים קודמים" (small additions row 7, report comparison) | 3 |
@@ -240,7 +240,7 @@ Commit shorthand used in the table:
 | 188 | Vendor pool | `vendor/manager.tsx:70` | fromEvent context | Back to the event | P | Rule | Behaviour only. Keep | 3 |
 | 189 | Vendor form | `vendor/manager.tsx:131` | Red "מחיקת בעל הדוכן" | Delete a stall from the pool | D-e | Rule | Rule 6. V2 keeps "עריכה" (`:183`), so ⋯ goes in the form header → Q8 (default, risks) | 2 |
 | 190 | Vendor card | `vendor/manager.tsx:285` | Red revoke in the access sheet | Revoke stall access | D-e | Rule | Row sheet destructive group (Q11 pattern) | 3 |
-| 191 | Event vendors | `vendor/manager.tsx:341`, `:365` | "אישרו" state | Who confirmed | P | Q screen | Q10 row tag | 3 |
+| 191 | Event vendors | `vendor/manager.tsx:341`, `:365` | Quiet "אישרו" button on invited rows | Record a confirmation that came by phone | P | Q screen | Q11 sheet "אישר בטלפון"; the row keeps one control (Q10) | 3 |
 | 192 | Event vendors | `vendor/manager.tsx:366-368` | Remind and WhatsApp icons on answered vendors | Message a vendor | P | Remove (duplicate) | Q10: only vendors who have not answered keep the WhatsApp icon. For the rest, messaging stays on the vendor card and in the Q11 sheet | 3 |
 | 193 | Event vendors | `vendor/manager.tsx:366-368` | Remind on rows of vendors who have not answered | Remind a vendor | P | Q screen | Q10 single WhatsApp icon. Q11 "תזכורת בוואטסאפ", "אישר בטלפון", "לא מגיע הפעם" | 3 |
 | 194 | Event vendors | `vendor/manager.tsx:369` | X on the row | Remove a stall from the event | D-e | Q screen | Q11 sheet "הסרה מהאירוע" | 3 |
@@ -268,3 +268,123 @@ Commit shorthand used in the table:
 | 216 | Guest | `screens/Guest.tsx:468` | Empty state | Nothing booked yet | P | Q screen | U-screens empty state | 6 |
 | 217 | Guest | `screens/Guest.tsx:476-478` | Account cards | My details, tickets | P | Q screen | U7 account | 6 |
 | 218 | Guest | `screens/Guest.tsx:480` | DemoSection when signed in | Demo switch | P | Remove (duplicate) | U7 has no demo switch. The demo stays as the U12 quiet link and /demo | 7 |
+| 219 | Event vendors | `data/vendor.ts` remindVendor, used from `vendor/manager.tsx:366` | Reminder sends the saved "הזמנת בעל דוכן" wording | Saved vendor template | P | Rule | Behaviour only. Small additions row 7: if the wording needs an entry point, it goes in ⋯ on Q10 ("נוסח ההזמנה"); today it is edited in Settings | 3 |
+
+## Small additions table (RULES.md)
+
+| # | RULES.md row | Plan rows |
+|---|---|---|
+| 1 | X on inbox cards | 17, 18 (and 19, the sender link inside the same cards). All three are Needs a design, because those items have no detail screen to hold ⋯ |
+| 2 | Recent scans on E1 | 169, 170 |
+| 3 | Scan saved on weak reception | 173 (the line still has to be built) |
+| 4 | Task header tags, note and photo after done | 34, 36 (33 is the row-level version under rule 4) |
+| 5 | Recurring note and 30-day record | 47, 48, 49 |
+| 6 | Calendar legend | 68 (69 is the designed Q30 month legend) |
+| 7 | Print, visit export, visit history, vendor export, saved vendor template, report comparison | Print 146. Visit export 96, 97. Visit history 101. Vendor export 186, 187 (Needs a design: V1 has no free top-bar slot). Saved vendor template 219. Report comparison 143 |
+| 8 | People filters: blocked, pending invites | 104, 105. The same pattern is used for 16, 60 and 134 |
+| 9 | Guest invite role | 110 |
+| 10 | Farm website link, demo link | 206, 207, 208 |
+| 11 | Staff stall powers, clearing the cart | 179, 180, 182 (Q29), 177 ("נקה הכל") |
+| 12 | Registration answers on the profile | 203, 204, 205 |
+| 13 | Places link on the Manage root | 12 (also 29 on the Tasks root, 65 for the Farm card that stays) |
+| 14 | Nav badges on every tab | 1 (done in `e9e0ab8`) |
+
+## Needs a design
+
+No rule or screen gives these a home. Each one stays exactly as it is until Meni decides. None is removed.
+
+1. **Install banner and its X** (rows 2, 3). The strip with an X shows on every team screen, roots included, which rule 2 does not allow. Q18 has an "התקנה" row, but the strip is the only nudge for people who never open the profile.
+2. **Contact messages and stall requests in the inbox** (rows 17, 18, 19). Small additions row 1 removes the card X and puts dismiss/delete in the item's detail behind ⋯. These two item kinds have no detail screen, and the sender link (rule 4) needs the same missing screen. A small M2 detail (message text, sender row, ⋯ with "טופל" and "מחיקה") would cover all three.
+3. **Managers' projects block on the Tasks root** (row 25). Q2 does not show it, and rule 2 keeps roots closed. It predates the parity commit, so it stays.
+4. **Donations "ממתין" sum tile** (row 79). Q4 shows three stats.
+5. **Reports tiles "חוזרות בזמן" and "פתוחות באיחור"** (row 89). Q14 has four stats and "מי ביצע". They could fit inside the "מי ביצע" drill-in, but no screen shows that.
+6. **Event summary "יצאו וחזרו" tile** (row 141). Not among the four Q15 stats. It could become a line inside the "הגיעו" drill-in.
+7. **Vendor pool export and table view** (rows 186, 187). Small additions row 7 says ⋯, but the V1 top bar already holds its primary "חדש", and rule 5 allows one control.
+
+## Questions / risks
+
+1. **Delete on detail screens that keep "עריכה", and on forms with no detail.** This covers T3 task (45), S4 shopping item (63), M4 event (148), P3 project (200), the vendor card (189), the calendar item (73), presence (76), the product (156) and recurring (50). Rule 5 gives the top bar one control, and the outlined "עריכה" was decided. Default: ⋯ in the edit form header next to ביטול (`FormHeader end`), with מחיקה → Q8. Delete is then one step deeper (detail → עריכה → ⋯). Needs Meni's nod. The alternative is ⋯ replacing "עריכה", with "עריכה" as the first ⋯ item.
+2. **Stage 1 already cuts extra row actions.** Since `d060644`, `Row` keeps only the first element of `actions`. Until stage 3 moves the rest, rows with several controls lose actions on screen: donations (`Money.tsx:166`), stall tabs (`tabs.tsx:71`) and event vendors (`vendor/manager.tsx:364-369`). Those are approve, receipt, remind, confirm and remove. Do not ship stage 1 alone. Check these three screens first in stage 3.
+3. **M2 "מה שטופל"** (row 15) is a text link beside back in the approved M2 design, but rule 5 says no text links. The screen wins under RULES' own precedence. It still needs Meni's word on whether it becomes ⋯ or stays.
+4. **Swipe-left delete with undo** (rows 30, 58) skips rule 6 (⋯ → Q8). It was approved in PR #23 and is kept. Log it in tidy-progress as a decision.
+5. **Q12 chips not pictured** (row 160): שולמו and נמחלו are assumed to continue in the scrolling chip row.
+6. **Q20 search and key filter not pictured** (rows 127, 128). Default: keep them, as a search field plus a dropdown in the Q16 pattern.
+7. **Done-task note and photo** (row 36). The timeline line is defined, but where the "add note / add photo" control sits after done is not. Default: ⋯ on T3 ("הוספת הערה", "הוספת תמונה").
+8. **Clearing the stall cart** (row 177). RULES says clearing the cart is the existing undo toast, but once "נקה הכל" leaves the Q28 bar nothing starts the clear. Default: an item in the Q29 account sheet, followed by the undo toast.
+9. **Resending a payment confirmation** after Q7 (rows 84, 136, 165). Default: a ⋯ item on the detail.
+10. **Hand-over on a free task** (row 35). Today the free task shows "לקחת" and "להעביר" side by side. Default: the "על מי" row opens C4, and "לקחת" stays the single button.
+11. **Gate manager count** (row 171) is removed as a duplicate of Y1. Managers at the gate lose the number in their line of sight. Watch for push-back.
+12. **Places `?from=manage`** (row 53) becomes dead code once row 12 goes. Leave the branch in place; it is harmless.
+13. **Rule 9 on the task form "מי" chips** (row 43) predates this round. Changing it is in scope (rule 9 applies to everything), but it is a visible change for every user.
+14. **Recurring note** (row 48). Q24 creates recurring tasks in the add form, and RULES puts the note in the recurring detail. The note is therefore editable after creation only. Check that is acceptable.
+15. **Guest invite role** (row 110). Add the "אורח" segment to Q27 only if guests can still be invited ahead; log the decision.
+16. **Open per PROMPT**: updates consent (default opt-in, `updatesOptIn`) and Web Push versus FCM.
+
+## Current tree: screens that break rules 4-6 today
+
+Every route in `src/app/v2/screens` that today has a top-bar text link, a row with more than one trailing control, a red
+text delete link, or an X on a row or card. Line numbers are against `7861644`.
+
+### Top-bar text links, or more than one top-bar control
+- `manage/Root.tsx:123`: M2 inbox, "מה שטופל"
+- `manage/People.tsx:51`: People, ExcelButton (two buttons)
+- `manage/People.tsx:135`: Person, "חסימה"
+- `manage/Money.tsx:47`: Reports, ExcelButton
+- `manage/Money.tsx:142`: Donations, ExcelButton
+- `manage/Money.tsx:209`: Donation, "מחיקה"
+- `manage/Visits.tsx:30`: Visits, ExcelButton
+- `manage/Visits.tsx:88`: Visit, "מחיקה"
+- `manage/Activity.tsx:63`: Activity, ExcelButton
+- `manage/InstinctLog.tsx:62`: Instinct log, ExcelButton
+- `events/tabs.tsx:48`: Stall tabs (Q12 route), ExcelButton
+- `events/tab.tsx:74`: Stall tab N12, "מחיקה"
+- `events/products.tsx:37`: Products, "העתקה מאירוע קודם"
+- `tasks/Places.tsx:114`: Place L4, "מחיקה"
+- `broadcast/Reads.tsx:54`: Broadcast reads, "מחיקה" (owner)
+- `eventday/live.tsx:173`: Scans log Y2, "אקסל"
+- `eventday/gate.tsx:119`: Gate, "לדוכן" link in the header
+
+### Export buttons in the screen body (not the top bar)
+- `tasks/Places.tsx:50` (ExcelButton at the bottom of L1)
+- `vendor/manager.tsx:59` (ExcelButton on V1)
+- `manage/Money.tsx:69` (ExcelButton in the "מי ביצע" header)
+- `events/event.tsx:181` (guests "אקסל")
+- `events/event.tsx:405-407` (ייצוא לאקסל / היסטוריית האירוע / הדפסה)
+
+### Rows with more than one trailing control
+- `manage/Money.tsx:166`: donation row, amount plus `rowActs` (130)
+- `events/tabs.tsx:71`: stall-tab row, link, remind icon, שולם / אישור
+- `vendor/manager.tsx:364-369`: event vendor row, אישרו, remind, WhatsApp, X
+- `vendor/parts.tsx:142-145`: contact row, two icon buttons
+- `eventday/stall.tsx:292`: stall row, chevron plus "שילם/ה במקום"
+- `tasks/Task.tsx:72`: "על מי" row, "לקחת" plus "להעביר"
+
+### Red text delete links, or delete buttons at the bottom of a screen or bar
+- `farm/presence.tsx:81` "הסרה מהיומן"
+- `farm/calitem.tsx:74` "מחיקה מהיומן"
+- `tasks/Add.tsx:227` "מחיקת המשימה"
+- `tasks/Recurring.tsx:111` bottom-bar "מחיקה"
+- `shopping/Item.tsx:71` bottom-bar "מחיקה"
+- `shopping/Trip.tsx:145` "מחיקת הקנייה"
+- `projects/index.tsx:377` "מחיקת הפרויקט"
+- `manage/People.tsx:171` "מחיקת X"
+- `events/form.tsx:147` "מחיקת האירוע"
+- `events/products.tsx:150` bottom-bar "מחיקה"
+- `vendor/manager.tsx:131` "מחיקת בעל הדוכן"
+
+Inside row sheets. The Q11 pattern allows these as a red group in the sheet:
+- `events/files.tsx:148`
+- `events/event.tsx:253-254`
+- `events/tab.tsx:126`
+- `events/staffing.tsx:153`
+- `manage/Settings.tsx:307`
+- `vendor/manager.tsx:285`
+- `vendor/stall.tsx:84`
+
+### X on a row or card
+- `manage/Root.tsx:159`: inbox cards (contact message at 196, stall request at 181)
+- `vendor/manager.tsx:369`: event vendor row
+- `eventday/stall.tsx:231`: "בחשבון" line on E8
+- `system/misc.tsx:147`: install strip
+
+Noted but not counted: the × on a selected filter chip, `tasks/Root.tsx:120` and `:126`.
