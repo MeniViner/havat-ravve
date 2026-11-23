@@ -5,7 +5,7 @@
 // volunteer persona who sees that same broadcast as an unread card (B4). The card is the designed screen for him, so
 // here he has not read it yet: B2/B3 start at 8 of 12 and reach the designed 9 of 12 once he taps "קראתי".
 import type { Slice, Row } from './types';
-import { put } from './types';
+import { put, patch } from './types';
 import { U, A, E } from '../data';
 
 const at = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00+02:00`).toISOString();
@@ -37,6 +37,30 @@ const slice: Slice = (seed) => {
   put(seed, 'broadcasts/demo-b-2/reads', [U.noa, U.beni, U.dana, U.yoav].map((u, i) => read(u, at(YESTERDAY, `11:${30 + i * 4}`))));
   put(seed, 'broadcasts/demo-b-3/reads', TEAM.filter((u) => u !== U.omer).map((u, i) => read(u, at('2026-10-26', `20:${String(16 + i * 3).padStart(2, '0')}`))));
   put(seed, 'broadcasts/demo-b-v2/reads', [read(U.raz, at('2026-11-12', '12:40')), read(U.tamar, at('2026-11-12', '13:05'))]);
+
+  // Tidy round (Q25, Q26): messages outside the team. Registrants are whoever holds a festival or tour ticket that is not
+  // cancelled (the events slice runs first); "כל המשתמשים" reaches the people who agreed to updates (updatesOptIn).
+  // A few teammates who are not personas have push on, so Q26 can say how many get no phone notification.
+  const tickets = seed.collections.tickets || [];
+  const owners = (eid: string) => [...new Set(tickets.filter((t) => t.eventId === eid && t.status !== 'cancelled' && t.paymentStatus !== 'cancelled').map((t) => String(t.ownerUid || '')).filter(Boolean))];
+  const users = seed.collections.users || [];
+  const optIn = [U.beni, U.noa, U.yoav, U.david, U.michal, U.ester, U.noam, U.rachel, U.naama,
+    ...users.filter((u) => /^demo-u-g\d+$/.test(String(u.uid)) && Number(String(u.uid).slice(8)) % 3 === 0).map((u) => String(u.uid))];
+  for (const uid of optIn) patch(seed, 'users', uid, { updatesOptIn: true });
+  for (const uid of [U.eliya, U.roi, U.orly, U.shira, U.gil, U.maya, U.avi]) {
+    patch(seed, 'users', uid, { push: { enabled: true, devices: [{ id: 'demo-device-' + uid.slice(7), kind: 'webpush' }], updatedAt: at('2026-11-01', '09:00') } });
+  }
+  const fall = owners(E.fall), tour = owners(E.tour);
+  const everyone = optIn.filter((u) => users.some((x) => x.uid === u && x.status !== 'blocked'));
+  put(seed, 'broadcasts', [
+    bc('demo-b-r1', A.noa, at(TODAY, '11:20'), 'registrants', 'פסטיבל הסתיו: החניה עברה לשדה הצפוני. יש שילוט מהכביש.', fall, { eventId: E.fall }),
+    bc('demo-b-r2', A.beni, at(YESTERDAY, '19:05'), 'registrants', 'סיור שבת בחווה בוטל בגלל הגשם. נעדכן על מועד חדש.', tour, { eventId: E.tour, urgent: true }),
+    bc('demo-b-e1', A.beni, at('2026-11-16', '12:00'), 'everyone', 'ערב חנוכה בחווה, 13.12. ההרשמה נפתחה.', everyone),
+  ]);
+  // the guest persona (Michal) has not seen the festival message yet: it is her U1 card
+  put(seed, 'broadcasts/demo-b-r1/reads', fall.filter((u) => u !== U.michal).slice(0, 5).map((u, i) => read(u, at(TODAY, `11:${String(24 + i * 6).padStart(2, '0')}`))));
+  put(seed, 'broadcasts/demo-b-r2/reads', tour.map((u, i) => read(u, at(YESTERDAY, `19:${String(12 + i * 9).padStart(2, '0')}`))));
+  put(seed, 'broadcasts/demo-b-e1/reads', everyone.filter((_, i) => i % 5 < 2).map((u, i) => read(u, at('2026-11-16', `${String(12 + Math.floor(i / 6)).padStart(2, '0')}:${String((i * 9) % 60).padStart(2, '0')}`))));
 
   // C1 for the volunteer persona (Yoav): three new, three earlier. The trip is someone else's (demo-data.json note).
   const n = (id: string, kind: string, title: string, sub: string, link: string, createdAt: string, readAt: string | null, extra: Row = {}): Row =>

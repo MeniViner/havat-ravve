@@ -36,3 +36,14 @@
 /* C1: the "מה לקבל" sheet */
 .broadcast-sheet { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
 .broadcast-sheet__note { margin: 0; font-size: 14px; line-height: 1.4; color: var(--soft); }
+
+/* Q26: "למי" holds two groups (הצוות / מחוץ לצוות) with a smaller label each; the e-mail switch row; the note line */
+.broadcast-audience { gap: 10px; }
+.broadcast-sub { gap: 6px; }
+.broadcast-sub > .k-group__label { font-size: 13px; font-weight: 400; color: var(--soft); }
+.broadcast-mailrow { min-height: 60px !important; }
+.broadcast-mailrow .k-row__body { gap: 0; }
+.broadcast-note { font-size: 14px; color: var(--soft); }
+
+/* Q25: the messages segment inside People */
+.broadcast-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }

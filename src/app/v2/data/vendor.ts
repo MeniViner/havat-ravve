@@ -342,6 +342,12 @@ export async function confirmForVendor(ctx: V2Ctx, eventId: string, rec: EventVe
   await write.update(`events/${eventId}/vendors`, rec.id, { status: 'confirmed', confirmed: true, answeredAt: at, updatedAt: at });
   logActivity(ctx.actor, 'event', eventId, 'edited', `${rec.name}: אישרו הגעה`, { eventId });
 }
+/** Q11 "לא מגיע הפעם": a manager records a no that came by phone or WhatsApp. */
+export async function declineForVendor(ctx: V2Ctx, eventId: string, rec: EventVendorDoc, fem?: boolean) {
+  const at = nowIso();
+  await write.update(`events/${eventId}/vendors`, rec.id, { status: 'declined', confirmed: false, answeredAt: at, updatedAt: at });
+  logActivity(ctx.actor, 'event', eventId, 'edited', `${rec.name}: ${g(fem, 'לא מגיע', 'לא מגיעה')} הפעם`, { eventId });
+}
 /** N8 "להזמין את מי שהיה ב...": invites in one batch everyone from a previous event who is not invited yet. */
 export async function inviteMany(ctx: V2Ctx, vendors: VendorDoc[], e: FarmEvent, info: VendorInfo | null) {
   for (const v of vendors) await inviteToEvent(ctx, v, e, info);

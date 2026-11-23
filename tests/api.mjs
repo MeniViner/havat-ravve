@@ -918,7 +918,7 @@ section('payment-confirmation email (cron outbox → mock Brevo)');
       const j = JSON.parse(body || '{}');
       const to = j.to?.[0]?.email || '';
       const key = j.headers?.idempotencyKey || '';
-      brevo.calls.push({ to, key, apiKey: req.headers['api-key'], subject: j.subject, html: j.htmlContent, text: j.textContent, sender: j.sender });
+      brevo.calls.push({ to, key, apiKey: req.headers['api-key'], subject: j.subject, html: j.htmlContent, text: j.textContent, sender: j.sender, tags: j.tags });
       const send = (status, o, h = {}) => { res.writeHead(status, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(o)); };
       if (to.startsWith('bad')) return send(400, { code: 'invalid_parameter', message: 'email is not valid in to' });
       if (to.startsWith('rate') && !brevo.rateLimited.has(to)) { brevo.rateLimited.add(to); return send(429, { code: 'too_many_requests', message: 'slow down' }, { 'retry-after': '1' }); }
@@ -1032,6 +1032,50 @@ section('payment-confirmation email (cron outbox → mock Brevo)');
     await run(onPort); await run(onPort);
     const jobs = await Promise.all(Array.from({ length: 51 }, (_, i) => outbox(`donation_em-bulk-${String(i).padStart(2, '0')}`)));
     check(bulk.ok && jobs.every(Boolean), '51 payments with the same server time → every one queued across two runs (paging never stalls)', { missing: jobs.filter((j) => !j).length });
+
+    // broadcast lane ("לשלוח גם במייל", app Q26): jobs the app queues as bc_<broadcastId>_<uid>, sent only on runs with no
+    // confirmation due, through Brevo, with the broadcast's text; deleted, stale, opted-out and non-recipient jobs are skipped
+    const bcPerson = (uid, email, extra = {}) => ({ ...person(uid, email), ...extra });
+    await seed('users', 'em-bc1', bcPerson('em-bc1', 'bc1@synthetic.test'));
+    await seed('users', 'em-bc2', bcPerson('em-bc2', 'badbc@synthetic.test'));
+    await seed('users', 'em-bc3', bcPerson('em-bc3', 'not-an-address'));
+    await seed('users', 'em-bc4', bcPerson('em-bc4', 'bc4@synthetic.test'));
+    await seed('users', 'em-bc6', bcPerson('em-bc6', 'bc6@synthetic.test', { updatesOptIn: true }));
+    await seed('users', 'em-bc7', bcPerson('em-bc7', 'bc7@synthetic.test', { updatesOptIn: false }));
+    const bcast = (id, audience, recipients, extra = {}) => ({ id, text: 'החניה עברה לשדה הצפוני', audience, urgent: false, by: { uid: 'em-mgr', name: 'נועה שחר' }, createdAt: new Date().toISOString(), recipients, recipientCount: recipients.length, resentAt: null, ...extra });
+    await seed('broadcasts', 'em-b1', bcast('em-b1', 'registrants', ['em-bc1', 'em-bc2', 'em-bc3'], { eventId: 'em-event' }));
+    await seed('broadcasts', 'em-b2', bcast('em-b2', 'everyone', ['em-bc6', 'em-bc7'], { text: 'ערב חנוכה בחווה' }));
+    await seed('broadcasts', 'em-b4', bcast('em-b4', 'all', ['em-bc1'], { createdAt: new Date(Date.now() - 13 * 3600_000).toISOString() }));
+    const mjob = (bid, uid) => ({ kind: 'broadcast', broadcastId: bid, uid, status: 'queued', createdBy: { uid: 'em-mgr', name: 'נועה שחר' }, createdAt: new Date().toISOString() });
+    for (const [bid, uid] of [['em-b1', 'em-bc1'], ['em-b1', 'em-bc2'], ['em-b1', 'em-bc3'], ['em-b1', 'em-bc4'], ['em-b2', 'em-bc6'], ['em-b2', 'em-bc7'], ['em-b3', 'em-bc1'], ['em-b4', 'em-bc1']]) await seed('email_outbox', `bc_${bid}_${uid}`, mjob(bid, uid));
+    // a payment settled at the same time: it goes first, and no broadcast mail leaves on a run that had one due
+    await seedPaid('donations', 'em-d-prio', donation('em-mail'));
+    const bcBase = brevo.calls.length;
+    let firstBroadcastRun = -1, prioRun = -1;
+    for (let i = 0; i < 16 && firstBroadcastRun < 0; i++) {
+      const n0 = brevo.calls.length;
+      await run(onPort);
+      const fresh = brevo.calls.slice(n0);
+      if (fresh.some((c) => c.to === 'mail@synthetic.test')) prioRun = i;
+      if (fresh.some((c) => c.tags?.[0] === 'broadcast')) firstBroadcastRun = i;
+      if (fresh.some((c) => c.tags?.[0] === 'broadcast') && fresh.some((c) => c.tags?.[0] !== 'broadcast')) prioRun = 99;
+    }
+    check(prioRun >= 0 && prioRun < firstBroadcastRun, 'a payment confirmation due goes first; broadcast mail waits for a run with none due (never the same run)', { prioRun, firstBroadcastRun });
+    const bcCalls = brevo.calls.slice(bcBase).filter((c) => c.tags?.[0] === 'broadcast');
+    const j = async (bid, uid) => outbox(`bc_${bid}_${uid}`);
+    const s1 = await j('em-b1', 'em-bc1'), s6 = await j('em-b2', 'em-bc6');
+    check(s1?.status === 'sent' && s6?.status === 'sent' && bcCalls.length === 3, 'recipients with an address get the broadcast by e-mail (2 sent, 1 refused by the provider)', { s1, s6, to: bcCalls.map((c) => c.to) });
+    const mb = bcCalls.find((c) => c.to === 'bc1@synthetic.test') || {};
+    check(mb.subject === 'הודעה מחוות רווה' && mb.text?.startsWith('החניה עברה לשדה הצפוני') && mb.text?.includes('נועה, חוות רווה') && mb.text?.includes('נרשמת לאירוע') && mb.sender?.email === 'sender@synthetic.test' && mb.html?.includes('dir="rtl"'), 'the mail: the broadcast text, the sender\'s first name, why it came, the farm sender, RTL', { subject: mb.subject, text: mb.text });
+    const m6 = bcCalls.find((c) => c.to === 'bc6@synthetic.test') || {};
+    check(m6.text?.includes('ביקשת לקבל עדכונים') && m6.text?.includes('אפשר להפסיק'), 'an update to all users says how to stop', m6.text);
+    check(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/.test(mb.key || '') && mb.key !== m.key && m.tags?.[0] === 'payment-confirmation', 'its own idempotency key; payment mails keep their tag', { key: mb.key, payTags: m.tags });
+    const reasons = { bad: (await j('em-b1', 'em-bc2'))?.status, noAddr: (await j('em-b1', 'em-bc3'))?.reason, notRecipient: (await j('em-b1', 'em-bc4'))?.reason, optedOut: (await j('em-b2', 'em-bc7'))?.reason, deleted: (await j('em-b3', 'em-bc1'))?.reason, stale: (await j('em-b4', 'em-bc1'))?.reason };
+    check(reasons.bad === 'failed' && reasons.noAddr === 'no_address' && reasons.notRecipient === 'not_recipient' && reasons.optedOut === 'opted_out' && reasons.deleted === 'deleted' && reasons.stale === 'stale', 'refused address fails; no address, not a recipient, opted out of updates, deleted and stale broadcasts are skipped and never sent', reasons);
+    check(!bcCalls.some((c) => ['bc4@synthetic.test', 'bc7@synthetic.test'].includes(c.to)) && bcCalls.filter((c) => c.to === 'bc1@synthetic.test').length === 1, 'nothing reaches a non-recipient, an opted-out person, or the deleted/stale broadcasts\' recipients');
+    const bcBefore = brevo.calls.length;
+    await run(onPort); await run(onPort);
+    check(brevo.calls.length === bcBefore && !(await j('em-b1', 'em-bc1')).nextAt, 'two more runs → nothing sent again; broadcast jobs never get nextAt (the payment lane never sees them)');
     const lines = on.logs.map((l) => JSON.stringify(l)).join('\n');
     check(!lines.includes('synthetic-brevo-key') && !lines.includes('@synthetic.test'), 'request logs carry no Brevo key and no addresses');
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(on).catch((e) => { failures++; console.error(e); }); brevoMock.close(); fs.rmSync(persist, { recursive: true, force: true }); }

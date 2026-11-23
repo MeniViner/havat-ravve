@@ -62,8 +62,9 @@ const named: Profile[] = [
   person(U.raz, 402, 'רז כהן', 'raz.cheese@gmail.com', '052-000-0471', 'vendor', 40, { vendorId: 'demo-v-raz' }),
   person(U.tamar, 415, 'תמר כהן', 'tamar.c@gmail.com', '052-000-0472', 'vendor', 4, { vendorId: 'demo-v-raz', helper: true, addedBy: U.raz, createdAt: '2026-11-17T10:00:00.000Z' }),
 ];
-// The people directory holds 155 people; the rest are plausible fictional guests.
-const FIRST = ['אבי', 'אורית', 'איתי', 'אלון', 'אסף', 'בתיה', 'גלית', 'גדי', 'הדס', 'הילה', 'זיו', 'חן', 'טל', 'יעל', 'יונתן', 'יפית', 'כרמל', 'לירון', 'מאיר', 'מורן', 'מירב', 'משה', 'נגה', 'נדב', 'ניר', 'סיגל', 'עדי', 'עמית', 'ענבל', 'פזית', 'צחי', 'קרן', 'רונית', 'רותם', 'שגיא', 'שלומית', 'שני', 'תומר', 'תהל', 'אלה'];
+// The people directory holds 155 people; the rest are plausible fictional guests. No filler first name starts with א, so the
+// A-Z directory (Q23) opens on the named people under א and Beni under ב.
+const FIRST = ['דורון', 'רינת', 'חגי', 'שחר', 'עוז', 'בתיה', 'גלית', 'גדי', 'הדס', 'הילה', 'זיו', 'חן', 'טל', 'יעל', 'יונתן', 'יפית', 'כרמל', 'לירון', 'מאיר', 'מורן', 'מירב', 'משה', 'נגה', 'נדב', 'ניר', 'סיגל', 'עדי', 'עמית', 'ענבל', 'פזית', 'צחי', 'קרן', 'רונית', 'רותם', 'שגיא', 'שלומית', 'שני', 'תומר', 'תהל', 'ליאת'];
 const LAST = ['אזולאי', 'ביטון', 'גבאי', 'דהן', 'חדד', 'וקנין', 'זילברמן', 'טל', 'ישראלי', 'כהן', 'לוי', 'מלכה', 'נחמיאס', 'סויסה', 'עמר', 'פרידמן', 'צור', 'קפלן', 'רוזנברג', 'שושן', 'תורג׳מן', 'אוחיון', 'בן דוד', 'גולדשטיין'];
 const fillers: Profile[] = Array.from({ length: 155 - named.filter((p) => p.role !== 'vendor').length }, (_, i) => {
   const name = `${FIRST[(i * 7) % FIRST.length]} ${LAST[(i * 5 + 3) % LAST.length]}`;
@@ -113,7 +114,9 @@ export const tasks: Task[] = [
   task('demo-t-flag', 'להחליף את הדגל', { location: loc('gate'), urgent: true, photo: PHOTO, createdAt: ago(18), dueDate: today }),
   task('demo-t-branches', 'לגזום ענפים נמוכים', { location: loc('gate'), createdAt: ago(30), createdBy: A.eliya }),
   task('demo-t-compost', 'להעביר שקי קומפוסט לחממה', { location: loc('greenhouse'), assignee: A.yoav, createdBy: A.eliya, createdAt: ago(22), dueDate: today, takenAt: ago(21) }),
-  task('demo-t-path', 'לפנות את השביל לחממה', { location: loc('greenhouse'), dueDate: '2026-12-04', createdAt: ago(26) }),
+  // Q2: one free task two days late, so the by-time view opens on the red "באיחור" group
+  task('demo-t-shed', 'לנקות את מחסן הכלים', { createdAt: ago(4 * 24), dueDate: key(-2) }),
+  task('demo-t-path', 'לפנות את השביל לחממה',{ location: loc('greenhouse'), dueDate: '2026-12-04', createdAt: ago(26) }),
   task('demo-t-tap', 'לתקן את הברז ליד החממה', { location: loc('greenhouse'), assignee: A.yoav, createdBy: A.beni, createdAt: ago(20 / 60), dueDate: today, takenAt: ago(20 / 60) }),
   task('demo-t-tables', 'להכין את שולחנות הדוכן', { location: loc('stall'), assignee: A.noa, createdBy: A.beni, createdAt: ago(3 * 24), dueDate: '2026-11-27', eventId: 'demo-e-festival', shoppingId: 'demo-s-tablecloths', takenAt: ago(3 * 24 - 1) }),
   task('demo-t-signs', 'להדפיס שלטי כניסה ודוכן', { eventId: 'demo-e-festival', createdAt: ago(3 * 24), dueDate: '2026-11-27' }),

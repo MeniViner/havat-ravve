@@ -130,7 +130,7 @@ const slice: Slice = (seed, scenario) => {
     [9, [CHEESE(1, T('16:44')), OLIVES(1, T('16:44')), L(1, T('16:44'))]], [10, [TEA(3, T('16:46'), Y), CAKE(1, T('16:46'), Y)]], [11, [OIL(1, T('16:49')), HONEY(1, T('16:49')), L(1, T('16:50'))]],
     [12, [CHEESE(1, T('16:57')), OLIVES(2, T('16:57')), L(1, T('16:57'))]],
   ];
-  const roniItems = after ? [L(1, T('16:52'), Y), L(1, T('17:21')), OLIVES(2, T('17:21'))] : [L(1, T('16:52'), Y), TEA(1, T('17:05'), Y)];
+  const roniItems = after ? [L(1, T('16:52'), Y), L(1, T('17:21')), OLIVES(2, T('17:21'))] : [L(1, T('17:05')), TEA(1, T('17:05'))]; // Q29: both by Noa at 17:05
   put(seed, 'tabs', [
     tab('demo-tab-roni-fest', roni, 'demo-o-1-1', roniItems, 'open'),
     tab('demo-tab-shirak-fest', shirak, 'demo-o-7-1', [OLIVES(2, T('16:12')), CAKE(1, T('16:30'))], 'open', A.noa),

@@ -38,6 +38,16 @@
         "scripts/dev.mjs"
       ],
       "port": 5193
+    },
+    {
+      "name": "tidy-dev",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=5211",
+        "node",
+        "scripts/dev.mjs"
+      ],
+      "port": 5211
     }
   ]
 }

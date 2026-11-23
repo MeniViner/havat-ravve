@@ -5,7 +5,7 @@ import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import {
   TopBar, PageTitle, FormHeader, Button, IconButton, Tag, Avatar, AvatarStack, Card, ProgressSegments, Chip, ChipRow,
-  Hero, Icon, DetailList, DetailRow, Quote, SectionHeader, Row, BottomBar, Field, TextAreaField, Sheet, RadioList, RadioRow, ConfirmSheet,
+  Hero, Icon, DetailList, DetailRow, Quote, SectionHeader, Row, BottomBar, Field, TextAreaField, Sheet, RadioList, RadioRow, MoreMenu,
 } from '../../kit';
 import { href as appHref, back, useParam } from '../../../router';
 import { isConflict } from '../../../db';
@@ -309,7 +309,6 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
   const [error, setError] = useState('');
   const [picking, setPicking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   const focusKey = useRef<number | null>(null);
   // managers and owners only: staff cannot read projects under the rules, so a step is never given to them
@@ -350,7 +349,18 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
   const pickedN = picked ? drafts.indexOf(picked) + 1 : 0;
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow disabled={busy || !ready} onClick={submit}>{editing ? 'שמירה' : 'יצירת הפרויקט'}</Button></BottomBar>}>
-      <FormHeader title={editing ? 'עריכת פרויקט' : 'פרויקט חדש'} onCancel={cancel} />
+      {/* rule 6: delete (owners) is ⋯ → "מחיקה" → Q8, in the header beside "ביטול" */}
+      <FormHeader title={editing ? 'עריכת פרויקט' : 'פרויקט חדש'} onCancel={cancel}
+        end={editing && ctx.owner && project.item ? (
+          <div className="projects-formend">
+            <MoreMenu title="פרויקט" items={[{
+              label: 'מחיקה', icon: 'trash', tone: 'danger',
+              confirm: { title: 'למחוק את הפרויקט?', text: `"${project.item.title}" יימחק עם כל הצעדים שלו, גם אלה שכבר בוצעו.`,
+                onConfirm: () => remove(() => deleteProject(project.item!, steps.items), { text: 'הפרויקט נמחק', after: () => go('/projects', true) }) },
+            }]} />
+            <button type="button" className="k-quietlink" onClick={cancel}>ביטול</button>
+          </div>
+        ) : undefined} />
       <Field label="לאן רוצים להגיע" value={title} error={error || undefined} onChange={(e) => { setTitle(e.target.value); if (error) setError(''); }} />
       <Field label="עד מתי" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
       <div className="projects-group">
@@ -374,12 +384,6 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
       </div>
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={addRow}>צעד נוסף</Button>
       <span className="projects-hint">צעד בלי מנהל נשאר פנוי, וכל מנהל יכול לקחת אותו.</span>
-      {editing && ctx.owner && project.item && <div><Button variant="danger" onClick={() => setAskDelete(true)}>מחיקת הפרויקט</Button></div>}
-      {editing && project.item && (
-        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את הפרויקט?"
-          text={`"${project.item.title}" יימחק עם כל הצעדים שלו, גם אלה שכבר בוצעו.`} confirmLabel="מחיקה"
-          onConfirm={() => remove(() => deleteProject(project.item!, steps.items), { text: 'הפרויקט נמחק', after: () => go('/projects', true) })} />
-      )}
       <Sheet open={!!picked} onClose={() => setPicking(null)} title={`על מי צעד ${pickedN}`}>
         <RadioList label="על מי">
           <RadioRow compact checked={!picked?.assignee} title="פנוי" meta="כל מנהל יכול לקחת אותו" onSelect={() => { if (picked) setRow(picked.key, { assignee: null }); setPicking(null); }} />

@@ -176,7 +176,8 @@ export function rowMeta(t: Task, o: { uid: string; view: RowView; today: string;
     case 'later': return [due, who].filter(Boolean).join(' · ');
     case 'mine': return t.assignee?.uid === o.uid ? [place || 'בלי מקום', !due ? until : due === 'היום' ? 'היום' : `עד ${due}`].filter(Boolean).join(' · ') : who;
     case 'placeList': return [t.assignee ? firstName(t.assignee.name) : 'פנויה', due || until].filter(Boolean).join(' · ');
-    case 'late': return [due, place, !t.assignee ? 'פנויה' : t.assignee.uid === o.uid ? 'עליך' : firstName(t.assignee.name)].filter(Boolean).join(' · ');
+    // Q2: "היה עד שלישי 17.11 · פנויה"
+    case 'late': return [due ? `היה עד ${due}` : '', place, !t.assignee ? 'פנויה' : t.assignee.uid === o.uid ? 'עליך' : firstName(t.assignee.name)].filter(Boolean).join(' · ');
   }
 }
 const daysAgo = (iso: string, today: string) => Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(dateKeyOf(new Date(iso)) + 'T12:00:00Z')) / DAY);

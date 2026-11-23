@@ -56,6 +56,8 @@ const slice: Slice = (seed, scenario) => {
 
   // ---------- raz's festival record ----------
   patch(seed, `events/${E.fall}/vendors`, V.raz, { invitedBy: A.beni, invitedAt: at(-9, '10:00'), withVehicle: true, note: '', guidelinesReadAt: null });
+  // Q11: Yair (honey) was invited on 10.11 and has not answered
+  patch(seed, `events/${E.fall}/vendors`, V.honey, { invitedAt: at(-9, '10:00') });
 
   // ---------- event day and after: honey and bakery confirmed, arrivals, one open request ----------
   if (scenario === 'eventDay' || scenario === 'afterEvent') {
