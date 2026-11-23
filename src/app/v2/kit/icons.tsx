@@ -87,6 +87,10 @@ const ICONS = {
   'chevron-down': [["path",{"d":"m6 9 6 6 6-6"}]],
   /** leave / log out (Z2-DemoBanner, Z3-DemoSwitch, Z4-DemoOwner) */
   'exit': [["path",{"d":"M10 5H5v14h5M14 8l4 4-4 4M18 12H9"}]],
+  /** an API key (owners' console). Drawn for the console in the same stroke style, not from the design HTML */
+  'key': [["circle",{"cx":8,"cy":15,"r":4}],["path",{"d":"m11 12 8-8M16 7l2.5 2.5M14 9l2 2"}]],
+  /** the server (owners' console). Drawn for the console in the same stroke style, not from the design HTML */
+  'server': [["rect",{"x":4,"y":4,"width":16,"height":7,"rx":1.5}],["rect",{"x":4,"y":13,"width":16,"height":7,"rx":1.5}],["path",{"d":"M8 7.5h.01M8 16.5h.01"}]],
 } satisfies Record<string, El[]>;
 
 export type IconName = keyof typeof ICONS;

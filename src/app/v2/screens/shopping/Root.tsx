@@ -8,7 +8,7 @@ import { useParam } from '../../../router';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingCategory, ShoppingItem } from '../../../types';
 import {
-  LISTS, addPlaceholder, addShopItem, catOfKey, doneThisMonth, doneToday, doneWord, first, g, listLabel, openOf, openOverline,
+  LISTS, addPlaceholder, addShopItem, catOfKey, deleteShopItem, doneThisMonth, doneToday, doneWord, first, g, listLabel, openOf, openOverline,
   openToBuy, startTrip, suggestions, useShopping, useTrips, SUGGESTED, type ListKey,
 } from '../../data/shopping';
 import { agoLong, link, useMarkBought } from './common';
@@ -54,6 +54,11 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
   const begin = async () => {
     try { await startTrip(ctx.actor, cat, trips.items, ctx.team); go('/shopping/trip'); } catch (e) { fail(e); }
   };
+  // swiping a row left and pressing "מחיקה": gone at once, with six seconds to take it back (the delete waits for them)
+  const remove = (i: ShoppingItem) => {
+    const undo = deleteShopItem(ctx.actor, i);
+    toast.show({ text: `נמחק: ${i.title}`, check: false, duration: 6000, actions: [{ label: 'ביטול', onClick: undo }] });
+  };
   const quick = (c: { title: string; qty: string; note: string; link: string }) => {
     addShopItem(ctx.actor, { ...c, category: cat }).catch(fail);
     toast.show({ text: `נוסף ל${listLabel(cat)}: ${c.title}`, duration: 2500 });
@@ -85,7 +90,11 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
                 {...link(`/shopping/${i.id}`)} chevron={false}
                 title={i.title} tags={i.urgent ? <Tag tone="urgent">דחוף</Tag> : undefined}
                 meta={[first(i.createdBy?.name || ''), agoLong(i.createdAt), shortNote(i.note)].filter(Boolean).join(' · ')}
-                value={i.qty || undefined} />
+                value={i.qty || undefined}
+                swipe={going ? undefined : {
+                  right: { label: doneWord(i.category), icon: 'check', tone: 'done', onAction: () => mark(i) },
+                  left: { label: 'מחיקה', icon: 'close', tone: 'danger', onAction: () => remove(i) },
+                }} />
             );
           })}
         </ListCard>
@@ -95,6 +104,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
           {done.map((i) => (
             <Row key={i.id} done
               check={<CheckButton checked onChange={() => unmark(i)} label={`להחזיר לרשימה: ${i.title}`} />}
+              swipe={{ right: { label: 'להחזיר', icon: 'back', tone: 'done', onAction: () => unmark(i) } }}
               {...link(`/shopping/${i.id}`)} chevron={false}
               title={i.title}
               meta={i.category === 'giveaway' ? [doneBy(i), i.foundWhere].filter(Boolean).join(' · ') : `${doneBy(i)} · ${hhmm(i.boughtAt!)}`}

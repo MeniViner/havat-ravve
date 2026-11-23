@@ -1,7 +1,8 @@
 # חוות רווה — מעבר ל־Firebase בחינם
 
 היעד: https://havat-ravve.web.app
-ניהול: https://havat-ravve.web.app/admin
+עריכת האתר: https://havat-ravve.web.app/edit
+קונסולת השרת (בעלים בלבד): https://havat-ravve.web.app/admin
 מנהל ראשי מאושר: meniviner@gmail.com
 
 החבילה נבנתה למסלול Spark בלבד: Firebase Hosting + Google Authentication + Cloud Firestore. אין Cloud Functions, Cloud Run, Cloud Scheduler או Cloud Storage, ולא נדרשת הפעלת חיוב. המכסות החינמיות של Firebase עדיין חלות; כשמגיעים למכסה עלולות להיות מגבלות שירות. אין כאן התחייבות לנפח בלתי מוגבל.
@@ -53,7 +54,7 @@ npm run dev
 - src/ — קוד המקור המלא, כולל תבנית האתר והניהול החדש.
 - public/assets/ — התמונות המקוריות והגופנים המקומיים.
 - firestore.rules — הרשאות הנאכפות בשרת: תוכן מפורסם ציבורי; טיוטות והיסטוריה למנהלים בלבד; אישור מנהלים רק לבעלים.
-- firebase.json — הגדרת Hosting והפניות ל־/admin ולארכיון.
+- firebase.json — הגדרת Hosting והפניות ל־/edit (עריכת האתר), ל־/admin (קונסולת השרת) ולארכיון.
 - package-lock.json — גרסאות תלויות נעולות.
 - tests/ — בדיקות תוכן ובדיקות הרשאות מול Firestore Emulator.
 
@@ -114,8 +115,8 @@ npx firebase deploy --only hosting,firestore --project havat-ravve
 ## העברת תוכן מהאתר הקיים
 החבילה כוללת את התוכן והתמונות המקוריים שבקוד. שינויים שנשמרו דרך הניהול לאחר מכן נמצאים במסד של Sites ואינם חלק אוטומטי מ־dist.
 
-1. באתר הקיים: /admin → גיבוי וייצוא → הורדת גיבוי מלא. הכפתור החדש כולל את הטקסטים, האירועים וקובצי התמונות שהועלו.
-2. פרסו את החבילה ב־Firebase והתחברו ל־/admin עם meniviner@gmail.com.
+1. באתר הקיים: /edit → גיבוי וייצוא → הורדת גיבוי מלא. הכפתור החדש כולל את הטקסטים, האירועים וקובצי התמונות שהועלו.
+2. פרסו את החבילה ב־Firebase והתחברו ל־/edit עם meniviner@gmail.com.
 3. גיבוי וייצוא → בחירת קובץ גיבוי. התוכן נטען לעורך, והתמונות מועלות ומקבלות כתובות חדשות.
 4. בדקו בתצוגה מקדימה, ואז לחצו פרסום באתר.
 5. בדקו בחלון פרטי את התוכן, התמונות, האירועים, ארכיון האירועים והחיפוש ב־Waze.

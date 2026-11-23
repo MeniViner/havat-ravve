@@ -16,6 +16,8 @@ import { runEmail } from './email';
 import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
+import { consoleCaller, consoleCors, consoleRoute, isConsolePath, recordCron } from './console';
+import { storedKeys } from './keys';
 
 const MAX_BODY = 16 * 1024;
 
@@ -40,7 +42,7 @@ function faultsOf(req: Request, env: Env): Set<string> {
 }
 
 async function route(req: Request, env: Env, url: URL, log: Record<string, unknown>, audit: Audit): Promise<{ status?: number; data: unknown }> {
-  const path = url.pathname.replace(/\/+$/, '') || '/';
+  let path = url.pathname.replace(/\/+$/, '') || '/';
   const m = req.method;
 
   if (m === 'GET' && path === '/v1/health') return { data: { status: 'ok', catalogVersion: CATALOG_VERSION } };
@@ -50,8 +52,10 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
   try {
     // a real person's role and name come from their profile in the app
     let caller;
+    const consoleSub = isConsolePath(path) ? path.slice('/v1/console'.length) || '/' : null;
     try {
-      caller = await authenticate(req, env.API_CREDENTIALS, async (uid) => (await fs.get('users', uid))?.data ?? null);
+      // the owners' console signs in with Google (console.ts); everyone else with an API key, from the secret or the console's keys in KV
+      caller = consoleSub !== null ? await consoleCaller(req, env, fs) : await authenticate(req, env.API_CREDENTIALS, async (uid) => (await fs.get('users', uid))?.data ?? null, await storedKeys(env));
     } catch (e) {
       // many failed authentications from one address: slow it down
       if (e instanceof ApiError && e.code === 'UNAUTHENTICATED' && env.AUTH_LIMITER) {
@@ -65,11 +69,22 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     audit.credential = caller.credentialId;
     audit.actor = { id: caller.actor.id, role: caller.actor.role, uid: caller.actor.person.uid, name: caller.actor.person.name };
     // the app's activity lines written through the API say which key did it
-    fs.via = { credential: caller.credentialId, label: keyLabel(env, caller.credentialId, caller.actor.person.name) };
+    audit.label = caller.label;
+    fs.via = { credential: caller.credentialId, label: keyLabel(env, caller.credentialId, caller.actor.person.name, caller.label) };
     if (caller.keyVersion === 'previous') log.keyVersion = 'previous'; // shows when a client still uses a rotated key
     // one key in a loop (a confused assistant) must not burn the farm's daily Firestore quota
-    if (env.RATE_LIMITER && !(await env.RATE_LIMITER.limit({ key: 'cred:' + caller.credentialId })).success) {
+    if (env.RATE_LIMITER && !(await env.RATE_LIMITER.limit({ key: 'cred:' + caller.credentialId + (consoleSub !== null ? ':' + caller.actor.person.uid : '') })).success) {
       throw new ApiError('RATE_LIMITED', 'too many requests for this key', { credential: caller.credentialId }, { 'retry-after': '60' });
+    }
+    if (consoleSub !== null) {
+      if (!consoleSub.startsWith('/api/')) {
+        const c = await consoleRoute(req, env, consoleSub, caller, fs, () => readBody(req));
+        log.op = c.op.name; audit.op = c.op.name; audit.body = c.logBody as Record<string, unknown> | undefined; audit.result = c.logResult ?? c.data;
+        return { status: c.status, data: c.data };
+      }
+      // any API operation, as the signed-in owner
+      path = '/v1' + consoleSub.slice('/api'.length);
+      audit.path = path;
     }
     if (m === 'GET' && path === '/v1/system/failures') return { data: await listFailures(fs, caller, url.searchParams) };
     if (m === 'GET' && path === '/v1/tasks') return { data: await listTasks(fs, caller, url.searchParams) };
@@ -117,6 +132,8 @@ export default {
     const url = new URL(req.url);
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
+    const consolePath = isConsolePath(url.pathname);
+    if (consolePath && req.method === 'OPTIONS') return new Response(null, { status: 204, headers: consoleCors(req) });
     const log: Record<string, unknown> = { requestId: meta.requestId, method: req.method, path: url.pathname };
     const audit: Audit = {};
     let res: Response;
@@ -133,14 +150,17 @@ export default {
       error = err;
       res = fail(meta, err);
     }
+    if (consolePath) for (const [k, v] of Object.entries(consoleCors(req))) res.headers.set(k, v);
     // one structured line per request, for `wrangler tail`; never contains keys, tokens or bodies
     log.status = res.status;
     log.wallMs = Date.now() - meta.started;
     console.log(JSON.stringify(log));
     // failures worth an alert are kept in Firestore (best effort, after the response) for system.failures
     // the owners' assistant log: every request of a recognised key, its body and answer (best effort, after the response)
-    const doc = auditDoc(env, audit, { requestId: meta.requestId, method: req.method, path: url.pathname, query: url.search.slice(1), status: res.status, ms: Date.now() - meta.started, error });
-    if (doc && log.code !== 'QUOTA_EXCEEDED') {
+    const doc = auditDoc(env, audit, { requestId: meta.requestId, method: req.method, path: audit.path || url.pathname, query: url.search.slice(1), status: res.status, ms: Date.now() - meta.started, error });
+    // the console's own successful reads (opening a screen, refreshing the overview) would only bury what was done
+    const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok;
+    if (doc && !quietRead && log.code !== 'QUOTA_EXCEEDED') {
       const p = writeAudit(env, doc).catch((e) => console.log(JSON.stringify({ requestId: meta.requestId, auditFailed: String(e).slice(0, 200) })));
       if (ctx) ctx.waitUntil(p); else await p;
     }
@@ -162,5 +182,7 @@ export default {
     // phone push (push.ts): nothing is read while PUSH_MODE is unset; counts only, never endpoints or message text
     try { console.log(JSON.stringify(await runPush(env))); }
     catch (e) { console.log(JSON.stringify({ cron: 'push', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
+    // the console's "last cron run" (console.ts): when it ran and how long it took
+    await recordCron(env, { wallMs: Date.now() - started }).catch(() => {});
   },
 };

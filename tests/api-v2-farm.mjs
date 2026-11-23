@@ -51,9 +51,10 @@ const CREDENTIALS = [
 // ---------- Worker under wrangler dev ----------
 const workers = new Set();
 const listening = (port) => new Promise((resolve) => { const s = net.connect({ host: '127.0.0.1', port }); s.once('connect', () => { s.destroy(); resolve(true); }); s.once('error', () => resolve(false)); });
-function startWorker(port, vars) {
+function startWorker(port, vars, extra = []) {
   const args = ['wrangler', 'dev', '--config', 'api/wrangler.toml', '--ip', '127.0.0.1', '--port', String(port), '--inspector-port', String(port + 1000), '--show-interactive-dev-session=false', '--log-level', 'log'];
   for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
+  args.push(...extra);
   const p = spawn('npx', args, { env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: '1', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   p.port = port;
   if (process.env.API_TEST_DEBUG) { p.stdout.on('data', (d) => process.stderr.write(d)); p.stderr.on('data', (d) => process.stderr.write(d)); } else { p.stdout.resume(); p.stderr.resume(); }
@@ -75,7 +76,7 @@ async function waitUp(base) {
 const PORT = 19000;
 const BASE = `http://127.0.0.1:${PORT}`;
 if (await listening(PORT)) { console.error(`port ${PORT} is busy`); process.exit(1); }
-const worker = startWorker(PORT, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false', KEY_LABELS: JSON.stringify({ 'cred-v2-users': 'האינסטינקט של הבדיקה' }) });
+const worker = startWorker(PORT, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false', KEY_LABELS: JSON.stringify({ 'cred-v2-users': 'האינסטינקט של הבדיקה' }), ...(process.env.FIREBASE_AUTH_EMULATOR_HOST ? { FIREBASE_AUTH_EMULATOR_HOST: process.env.FIREBASE_AUTH_EMULATOR_HOST } : {}) }, ['--persist-to', fs.mkdtempSync('/tmp/hr-farm-')]);
 async function api(method, path, { key, body, idem, headers = {} } = {}) {
   const r = await fetch(BASE + path, { method, headers: { ...(key ? { authorization: 'Bearer ' + key } : {}), ...(idem ? { 'idempotency-key': idem } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, json: await r.json().catch(() => null) };
@@ -446,6 +447,97 @@ try {
       try { await assertFails(require('firebase/firestore').setDoc(d2(as2('o1'), 'api_log', 'y'), { id: 'y' })); } catch { ownerCantWrite = false; }
       check(ownerReads && mgrBlocked && ownerCantWrite, 'Rules: only owners read the log, and nobody writes it from the app', { ownerReads, mgrBlocked, ownerCantWrite });
     } finally { await env2.cleanup(); }
+  }
+
+  section('owners\' console (/v1/console, Google sign-in)');
+  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) { failures++; console.error('FIREBASE_AUTH_EMULATOR_HOST is not set; run with npm run test:api'); } else {
+    const authBase = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1`;
+    const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json());
+    const now = new Date().toISOString();
+    const acct = async (name, role, status = 'active') => {
+      const a = await signUp(`console-${name}-${Date.now()}@synthetic.test`);
+      await seed('users/' + a.localId, { uid: a.localId, email: a.email, displayName: name === 'owner' ? 'נועה בעלים' : name, phone: '', role, status, customerNumber: 1, acceptedTermsAt: now, notes: '', createdAt: now, updatedAt: now });
+      return a;
+    };
+    const own = await acct('owner', 'owner'), mgr = await acct('manager', 'manager'), off = await acct('blocked-owner', 'owner', 'blocked');
+    const C = (a) => ({ key: a.idToken, headers: { origin: 'http://localhost:5173' } });
+    const me = await api('GET', '/v1/console/me', C(own));
+    check(me.status === 200 && me.json.data.uid === own.localId && me.json.data.role === 'owner' && me.json.data.name === 'נועה בעלים', 'an owner signed in with Google gets in', me.json);
+    check((await api('GET', '/v1/console/me', C(mgr))).status === 403, 'a manager is refused (403)');
+    check((await api('GET', '/v1/console/me', C(off))).status === 403, 'a blocked owner is refused (403)');
+    check((await api('GET', '/v1/console/me', {})).status === 401, 'no sign-in → 401');
+    check((await api('GET', '/v1/console/me', { key: KEYS.owner })).status === 401, 'an API key does not open the console');
+    const pre = await fetch(BASE + '/v1/console/keys', { method: 'OPTIONS', headers: { origin: 'https://havat-ravve.web.app', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
+    check(pre.status === 204 && pre.headers.get('access-control-allow-origin') === 'https://havat-ravve.web.app' && /authorization/.test(pre.headers.get('access-control-allow-headers') || ''), 'CORS preflight from the farm\'s site');
+    const evil = await fetch(BASE + '/v1/console/me', { headers: { origin: 'https://evil.example', authorization: 'Bearer ' + own.idToken } });
+    check(!evil.headers.get('access-control-allow-origin'), 'no CORS for another site');
+
+    const ov = await api('GET', '/v1/console/overview', C(own));
+    const o = ov.json?.data;
+    check(ov.status === 200 && o.server.catalogVersion === '3.0.0' && typeof o.last24h.requests === 'number' && o.last24h.requests > 0 && typeof o.queues.pushPending === 'number' && o.switches.email.on === false && typeof o.switches.push.mode === 'string', 'overview: server, last 24 hours, queues, switches', o);
+
+    const list0 = await api('GET', '/v1/console/keys', C(own));
+    const k0 = list0.json?.data?.items || [];
+    check(list0.status === 200 && k0.some((k) => k.id === 'cred-v2-users' && k.label === 'האינסטינקט של הבדיקה' && k.source === 'secret' && k.status === 'active') && !JSON.stringify(k0).includes('sha256'), 'keys: the secret\'s keys are listed with names, never their hashes', k0);
+    check((await api('GET', '/v1/console/keys', C(mgr))).status === 403, 'a manager cannot list keys');
+
+    const bad = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'מפתח', actor: 'user:syn-guest' } });
+    check(bad.status === 400, 'a key must act as an active team member (a guest is refused)', bad.json);
+    const mk = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'האינסטינקט של מנהלת', actor: 'user:syn-mgr' } });
+    const newId = mk.json?.data?.id, newKey1 = mk.json?.data?.key;
+    check(mk.status === 201 && /^cred-/.test(newId) && /^hr_[A-Za-z0-9_-]{40,}$/.test(newKey1), 'create: an id and the key, once', mk.json);
+    const use1 = await api('GET', '/v1/overview', { key: newKey1 });
+    check(use1.status === 200, 'the new key works right away', use1.json);
+    const logOf = async (rid) => { for (let i = 0; i < 30; i++) { const d = await docOf('api_log/' + rid); if (d) return d; await new Promise((res) => setTimeout(res, 100)); } return null; };
+    const LU = await logOf(use1.json.meta.requestId);
+    check(LU && LU.credential === newId && LU.keyLabel === 'האינסטינקט של מנהלת' && LU.actor.uid === 'syn-mgr' && LU.actor.role === 'manager', 'the new key is logged under its name, as the person it acts as', LU);
+    const LC = await logOf(mk.json.meta.requestId);
+    check(LC && LC.op === 'console.keys.create' && LC.keyLabel === 'קונסולה · נועה' && LC.actor.uid === own.localId && !JSON.stringify(LC).includes(newKey1) && LC.result.includes(newId), 'creating a key is logged as the console, without the key itself', LC);
+    const listed = (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId);
+    check(listed && listed.source === 'console' && listed.actors[0] === 'user:syn-mgr' && listed.createdBy === 'נועה בעלים' && listed.status === 'active', 'the new key is listed', listed);
+
+    const ren = await api('POST', `/v1/console/keys/${newId}/rename`, { ...C(own), body: { label: 'אינסטינקט ניסוי' } });
+    const LU2 = await logOf((await api('GET', '/v1/overview', { key: newKey1 })).json.meta.requestId);
+    check(ren.status === 200 && LU2?.keyLabel === 'אינסטינקט ניסוי', 'rename: the log uses the new name', LU2?.keyLabel);
+    const rot = await api('POST', `/v1/console/keys/${newId}/rotate`, { ...C(own), body: { graceHours: 1 } });
+    const newKey2 = rot.json?.data?.key;
+    check(rot.status === 200 && newKey2 && newKey2 !== newKey1, 'rotate: a new key, once', rot.json);
+    const oldStill = await api('GET', '/v1/overview', { key: newKey1 });
+    check(oldStill.status === 200 && oldStill.json.meta.keyVersion === 'previous' && (await api('GET', '/v1/overview', { key: newKey2 })).status === 200, 'during the grace period both keys work (the old one says "previous")', oldStill.json?.meta);
+    const rot0 = await api('POST', `/v1/console/keys/${newId}/rotate`, { ...C(own), body: { graceHours: 0 } });
+    const newKey3 = rot0.json?.data?.key;
+    check((await api('GET', '/v1/overview', { key: newKey2 })).status === 401 && (await api('GET', '/v1/overview', { key: newKey3 })).status === 200, 'rotate with no grace: only the newest key works');
+    const rv = await api('POST', `/v1/console/keys/${newId}/revoke`, { ...C(own), body: {} });
+    const after = await api('GET', '/v1/overview', { key: newKey3 });
+    check(rv.status === 200 && after.status === 401, 'revoke: the key stops working', after.json);
+    check((await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId)?.status === 'revoked', 'listed as revoked');
+    await api('POST', `/v1/console/keys/${newId}/restore`, { ...C(own), body: {} });
+    check((await api('GET', '/v1/overview', { key: newKey3 })).status === 200, 'restore: it works again');
+    const past = await api('POST', `/v1/console/keys/${newId}/expire`, { ...C(own), body: { expiresAt: new Date(Date.now() - 60_000).toISOString() } });
+    check(past.status === 200 && (await api('GET', '/v1/overview', { key: newKey3 })).status === 401 && (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId)?.status === 'expired', 'expire: past the date it stops working, listed as expired');
+    await api('POST', `/v1/console/keys/${newId}/expire`, { ...C(own), body: { expiresAt: null } });
+    check((await api('GET', '/v1/overview', { key: newKey3 })).status === 200, 'clearing the date: it works again');
+    // a key from the secret can be renamed (copied into the console's record); the secret's own key keeps working
+    const rs = await api('POST', '/v1/console/keys/cred-v2-users/rename', { ...C(own), body: { label: 'הבדיקה, שם חדש' } });
+    const LS = await logOf((await r(MGR, '/v1/overview')).json.meta.requestId);
+    check(rs.status === 200 && LS?.keyLabel === 'הבדיקה, שם חדש', 'a key from the secret can be renamed from the console, and keeps working', LS?.keyLabel);
+    await api('POST', '/v1/console/keys/cred-v2-users/rename', { ...C(own), body: { label: 'האינסטינקט של הבדיקה' } });
+    check((await api('POST', '/v1/console/keys/nope-nope/revoke', { ...C(own), body: {} })).status === 404, 'an unknown key → 404');
+    check((await api('POST', `/v1/console/keys/${newId}/revoke`, { ...C(mgr), body: {} })).status === 403, 'a manager cannot change keys');
+
+    // any operation, as the signed-in owner, without a key
+    const pa = await api('POST', '/v1/console/api/actions/places.add', { ...C(own), idem: randomUUID(), body: { name: 'מקום מהקונסולה', lat: 31.5, lng: 34.6 } });
+    const placeId = pa.json?.data?.placeId || pa.json?.data?.refs?.[0]?.id || pa.json?.data?.record?.id;
+    check(pa.status === 201 || pa.status === 200, 'console: an action runs as the owner', pa.json);
+    const LP = await logOf(pa.json.meta.requestId);
+    check(LP && LP.op === 'places.add' && LP.keyLabel === 'קונסולה · נועה' && LP.path === '/v1/actions/places.add' && LP.actor.uid === own.localId, 'logged as "קונסולה · <first name>", with the API path', LP);
+    const actP = (await where('activity', 'refId', placeId))[0];
+    check(actP && actP.via?.label === 'קונסולה · נועה' && actP.by?.uid === own.localId, 'the app\'s activity line says it came from the console', actP);
+    const rd = await api('GET', '/v1/console/api/tasks', C(own));
+    check(rd.status === 200 && Array.isArray(rd.json.data.items), 'console: a read runs too', rd.json?.error);
+    await new Promise((res) => setTimeout(res, 600));
+    check(!(await docOf('api_log/' + rd.json.meta.requestId)) && !(await docOf('api_log/' + ov.json.meta.requestId)), 'the console\'s own reads are not logged (only what it did)');
+    check((await api('GET', '/v1/console/api/people', C(mgr))).status === 403, 'a manager cannot use the console\'s API either');
   }
 
   section('the app\'s Rules accept what the API wrote');
