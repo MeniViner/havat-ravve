@@ -14,6 +14,11 @@
 //   POST /v1/console/backups/<day>/restore    { paths: [...] } writes them back as they were
 //   GET  /v1/console/trash                    what API requests deleted in the last 30 days
 //   POST /v1/console/trash/restore            { keys: [...] } puts them back (never over a document created since)
+//   GET  /v1/console/monitor                  site checks, free quota, the morning check, alert settings (monitor.ts)
+//   POST /v1/console/monitor/check            run the morning check now (and read the quota afresh)
+//   POST /v1/console/monitor/alerts           { on?, push? } alert settings
+//   POST /v1/console/monitor/test-alert       a test alert to the signed-in owner
+//   GET  /v1/console/security?days=7          refused requests, rate limits, and what was done from the console
 // Every console request lands in the assistant log (api_log) as "קונסולה · <first name>".
 import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
@@ -23,6 +28,7 @@ import { CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
+import { alertSettings, healthCheck, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
 import { backupCollection, backupDoc, downloadBackup, listBackups, listTrash, restoreFromBackup, restoreFromTrash, runBackup } from './backup';
 
 export const CONSOLE = 'console';
@@ -69,8 +75,8 @@ async function overview(env: Env, fs: Firestore) {
     count(fs, 'email_outbox', [['status', 'EQUAL', 'sent']]),
     count(fs, 'email_outbox', [['status', 'EQUAL', 'failed']]),
   ]);
-  let crons: unknown = null;
-  try { crons = JSON.parse((await env.TOKEN_KV?.get(CRON_KEY)) || 'null'); } catch { /* none recorded yet */ }
+  const mon = await readMonitor(env);
+  const crons = mon.at ? { at: mon.at, wallMs: mon.wallMs ?? null } : null;
   const v = env.CF_VERSION_METADATA;
   return {
     server: { status: 'ok', catalogVersion: CATALOG_VERSION, version: v?.id || null, deployedAt: v?.timestamp || null, project: env.FIRESTORE_PROJECT_ID || null },
@@ -85,11 +91,6 @@ async function overview(env: Env, fs: Firestore) {
   };
 }
 
-/** The last cron run, kept for the console (one small KV write per run: 288 a day, inside the free 1,000). */
-export const CRON_KEY = 'console:cron-last';
-export async function recordCron(env: Env, run: Record<string, unknown>) {
-  await env.TOKEN_KV?.put(CRON_KEY, JSON.stringify({ at: new Date().toISOString(), ...run }));
-}
 
 export type ConsoleOp = { name: string; he: string; kind: 'read' | 'write' };
 const OPS: Record<string, ConsoleOp> = {
@@ -109,6 +110,11 @@ const OPS: Record<string, ConsoleOp> = {
   'backups.restore': { name: 'console.backups.restore', he: 'שחזור מגיבוי', kind: 'write' },
   'trash.list': { name: 'console.trash.list', he: 'סל המחזור', kind: 'read' },
   'trash.restore': { name: 'console.trash.restore', he: 'שחזור מסל המחזור', kind: 'write' },
+  'monitor.read': { name: 'console.monitor.read', he: 'ניטור השרת', kind: 'read' },
+  'monitor.check': { name: 'console.monitor.check', he: 'בדיקת מצב עכשיו', kind: 'read' },
+  'monitor.alerts': { name: 'console.monitor.alerts', he: 'הגדרות התראות', kind: 'write' },
+  'monitor.testAlert': { name: 'console.monitor.testAlert', he: 'שליחת התראת בדיקה', kind: 'write' },
+  security: { name: 'console.security', he: 'יומן אבטחה', kind: 'read' },
 };
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
@@ -158,5 +164,31 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
     const done = await restoreFromTrash(env, b.keys as string[], fs);
     return { op: OPS['trash.restore'], data: done, logBody: b, logResult: done };
   }
+  // watching the server (monitor.ts)
+  if (m === 'GET' && path === '/monitor') return { op: OPS['monitor.read'], data: await monitorView(env) };
+  if (m === 'POST' && path === '/monitor/check') {
+    const st = await readMonitor(env);
+    st.quota = await readQuota(env);
+    st.health = await healthCheck(env, fs, st, by);
+    await saveMonitor(env, st);
+    return { op: OPS['monitor.check'], data: await monitorView(env) };
+  }
+  if (m === 'POST' && path === '/monitor/alerts') {
+    const b = await body();
+    const done = await saveAlertSettings(env, b, by);
+    return { op: OPS['monitor.alerts'], data: done, logBody: b, logResult: { on: done.on, push: done.push } };
+  }
+  if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
+  if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
   throw new ApiError('NOT_FOUND', `no console route for ${m} ${path}`);
+}
+
+async function monitorView(env: Env) {
+  const st = await readMonitor(env);
+  const u = st.uptime;
+  return {
+    site: { url: 'havat-ravve.web.app', checks: u?.checks || [], downSince: u?.downSince || null, incidents: u?.incidents || [], uptime: uptimePct(u) },
+    quota: st.quota || null, limits: LIMITS, health: st.health || null,
+    alerts: await alertSettings(env), cronAt: st.at || null,
+  };
 }

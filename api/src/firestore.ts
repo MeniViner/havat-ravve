@@ -156,11 +156,40 @@ async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ t
   return t;
 }
 
+const DATA_SCOPE = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit';
 async function signAndExchange(sa: ServiceAccount, tokenUrl: string): Promise<{ token: string; source: TokenSource }> {
+  const t = await exchange(sa, tokenUrl, DATA_SCOPE);
+  tokenCache = { email: sa.client_email, token: t.token, expiresAt: t.expiresAt };
+  return { token: t.token, source: 'fresh' };
+}
 
+let monCache: { email: string; token: string; expiresAt: number } | null = null;
+/**
+ * A token that may only read Cloud Monitoring (the console's free-quota meter), with its own scope and caches, so the
+ * data token never changes. Null in emulator mode. The service account also needs the "Monitoring Viewer" role;
+ * without it Google answers 403 and the meter says so.
+ */
+export async function monitoringToken(env: Env): Promise<string | null> {
+  if (env.FIRESTORE_EMULATOR_HOST || !env.GCP_SERVICE_ACCOUNT) return null;
+  let sa: ServiceAccount;
+  try { sa = JSON.parse(env.GCP_SERVICE_ACCOUNT); } catch { return null; }
+  if (monCache?.email === sa.client_email && Date.now() < monCache.expiresAt) return monCache.token;
+  const key = 'gmon1:' + sa.client_email;
+  try {
+    const hit = JSON.parse((await env.TOKEN_KV?.get(key)) || 'null') as { token: string; expiresAt: number } | null;
+    if (hit && hit.expiresAt - Date.now() > 120_000) { monCache = { email: sa.client_email, ...hit }; return hit.token; }
+  } catch { /* sign */ }
+  const t = await exchange(sa, 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/auth/monitoring.read');
+  monCache = { email: sa.client_email, ...t };
+  const ttl = Math.floor((t.expiresAt - Date.now()) / 1000);
+  if (ttl > 180) await env.TOKEN_KV?.put(key, JSON.stringify(t), { expirationTtl: ttl }).catch(() => {});
+  return t.token;
+}
+
+async function exchange(sa: ServiceAccount, tokenUrl: string, scope: string): Promise<{ token: string; expiresAt: number }> {
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64urlJson({ alg: 'RS256', typ: 'JWT', ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) }) + '.' +
-    b64urlJson({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+    b64urlJson({ iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await signingKey(sa.private_key), new TextEncoder().encode(unsigned));
   const assertion = unsigned + '.' + b64urlBytes(new Uint8Array(sig));
 
@@ -177,8 +206,7 @@ async function signAndExchange(sa: ServiceAccount, tokenUrl: string): Promise<{ 
   if (!res.ok) throw new ApiError('UPSTREAM_ERROR', `Google token exchange failed (${res.status})`);
   const j = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!j.access_token) throw new ApiError('UPSTREAM_ERROR', 'Google token exchange returned no token');
-  tokenCache = { email: sa.client_email, token: j.access_token, expiresAt: Date.now() + Math.max(0, (j.expires_in ?? 3600) - 60) * 1000 };
-  return { token: j.access_token, source: 'fresh' };
+  return { token: j.access_token, expiresAt: Date.now() + Math.max(0, (j.expires_in ?? 3600) - 60) * 1000 };
 }
 
 // ---------- client ----------

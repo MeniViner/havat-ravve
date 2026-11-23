@@ -1,5 +1,5 @@
 // /admin?demo: the console over made-up people, keys and numbers, kept in memory only. No Firestore, no Worker.
-import type { Backup, KeyView, LogEntry, Overview, Person, Source, TrashItem } from './source';
+import type { AlertSettings, Backup, Health, KeyView, LogEntry, Monitor, Overview, Person, SecurityEvent, Source, TrashItem } from './source';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const DAY = 24 * 60;
@@ -62,6 +62,43 @@ const restoredDocs = new Set<string>(); // put back in this demo session: "now" 
 
 const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 180));
 const fakeKey = () => 'hr_DEMO_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 56]).join('');
+
+// watching: 24 hours of site checks with one short outage, the free quota, this morning's check, alerts, the security log
+const checks = Array.from({ length: 96 }, (_, i) => {
+  const min = (95 - i) * 15 + 4;
+  const down = i === 40 || i === 41;
+  return { at: ago(min), ok: !down, ms: down ? 10_000 : 180 + ((i * 37) % 220), status: down ? 0 : 200 };
+});
+let alerts: AlertSettings = { on: true, push: true, updatedAt: null, updatedBy: null };
+const health = (): Health => ({
+  at: ago(80), date: dayKey(0), by: 'cron', worst: 'warn', r2Bytes: 38_400_000,
+  items: [
+    { id: 'site', he: 'האתר', state: 'ok', detail: 'עונה · 97.9% מהבדיקות ביממה האחרונה' },
+    { id: 'backup', he: 'גיבוי הלילה', state: 'ok', detail: 'נשמר · 246 רשומות' },
+    { id: 'failures', he: 'תקלות שרת ביממה', state: 'ok', detail: 'אין' },
+    { id: 'push', he: 'התראות לטלפון בתור', state: 'ok', detail: 'התור ריק' },
+    { id: 'keys', he: 'מפתחות API', state: 'warn', detail: 'בדיקות אוטומטיות: התוקף נגמר השבוע' },
+    { id: 'quota', he: 'מכסת Firestore החינמית', state: 'ok', detail: '18% מהמכסה היומית בשימוש' },
+    { id: 'storage', he: 'אחסון R2', state: 'ok', detail: '\u206636.6 MB\u2069 מתוך \u206610 GB\u2069' },
+    { id: 'cron', he: 'משימות מתוזמנות', state: 'ok', detail: 'רצות כל 5 דקות' },
+  ],
+});
+const monitor = (): Monitor => ({
+  site: { url: 'havat-ravve.web.app', checks, downSince: null, incidents: [{ from: checks[40].at, to: checks[42].at }], uptime: 97.9 },
+  quota: { at: ago(12), since: ago(14 * 60), reads: 8_930, writes: 1_210, deletes: 64 },
+  limits: { reads: 50_000, writes: 20_000, deletes: 20_000, r2Bytes: 10 * 1024 ** 3 },
+  health: health(), alerts, cronAt: ago(2),
+});
+const ev = (min: number, kind: SecurityEvent['kind'], who: string, what: string, detail = '', ok = kind === 'console'): SecurityEvent => ({ at: ago(min), kind, who, what, detail, ok });
+const security: SecurityEvent[] = [
+  ev(8, 'console', 'מני בעלים', 'כניסה לקונסולה'),
+  ev(42, 'console', 'מני בעלים', 'החלפת מפתח API'),
+  ev(95, 'refused', 'האינסטינקט של בני', 'שליחת הודעה לצוות', 'אין הרשאה: the key may not send broadcasts', false),
+  ev(6 * 60, 'limited', 'כתובת לא מוכרת', '/v1/tasks', 'יותר מדי בקשות בזמן קצר: נחסם לדקה', false),
+  ev(DAY + 30, 'console', 'בני גוטמן', 'כניסה לקונסולה'),
+  ev(2 * DAY, 'console', 'מני בעלים', 'שחזור מסל המחזור'),
+  ev(3 * DAY, 'refused', 'מפתח ישן לניסוי', 'רשימת משימות', 'לא מחובר: the key was revoked', false),
+];
 
 export const demoSource: Source = {
   demo: true,
@@ -126,4 +163,9 @@ export const demoSource: Source = {
     for (const k of keys) { const i = trash.findIndex((t) => t.key === k); if (i >= 0) trash.splice(i, 1); }
     return wait({ restored, exists: [], gone: [] });
   },
+  monitor: () => wait(monitor()),
+  checkNow: () => wait(monitor()),
+  setAlerts: (b) => { alerts = { ...alerts, ...b, updatedAt: ago(0), updatedBy: 'מני בעלים' }; return wait(alerts); },
+  testAlert: () => wait({ sent: true, push: alerts.push }),
+  security: (days) => wait({ since: ago(days * DAY), items: security.filter((e) => Date.now() - Date.parse(e.at) < days * DAY * 60_000) }),
 };
