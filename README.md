@@ -82,9 +82,9 @@ flowchart LR
   guest["אורחים"] --> web
   team["צוות ומנהלים"] --> web
   vendor["בעלי דוכנים"] --> web
-  web["האתר והאפליקציה<br/>Firebase Hosting · PWA"] --> fs["Cloud Firestore<br/>+ חוקי הרשאות"]
+  web["האתר והאפליקציה<br/>Firebase Hosting · PWA"] --> fs["Cloud Firestore<br/>עם חוקי הרשאות"]
   web --> auth["Google Sign-In"]
-  assistant["עוזר אישי"] --> worker["Cloudflare Worker<br/>API · קונסולה · גיבוי"]
+  assistant["עוזר אישי"] --> worker["Cloudflare Worker<br/>ה־API, הקונסולה והגיבוי"]
   worker --> fs
   worker --> r2["R2<br/>תמונות וגיבויים"]
 ```
