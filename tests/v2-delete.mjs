@@ -30,13 +30,26 @@ async function session(persona) {
   /** Presses the delete entry, checks the sheet's question, presses the red button in it. */
   const confirm = async (trigger, title, button = 'מחיקה', opts = {}) => {
     await (opts.locator || page.getByRole('button', { name: trigger, exact: true })).first().click(); await page.waitForTimeout(250);
-    const d = dialog();
+    const d = dialog().last();
     log(await d.isVisible() && (await d.innerText()).includes(title), `${opts.label || trigger}: the confirmation asks "${title}"`);
     if (opts.text) log((await d.innerText()).includes(opts.text), `${opts.label || trigger}: the confirmation says "${opts.text}"`);
     await d.getByRole('button', { name: button, exact: true }).click(); await page.waitForTimeout(400);
   };
   const reload = async () => { await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(300); };
-  return { ctx, page, errors, go, has, path, dialog, confirm, reload };
+  /** Tidy round: a detail screen's delete is an item in its ⋯ menu ("עוד פעולות"); opens the menu, then confirms like above. */
+  const more = async (item, title, button = 'מחיקה', opts = {}) => {
+    await page.getByRole('button', { name: 'עוד פעולות' }).first().click(); await page.waitForTimeout(250);
+    await confirm(item, title, button, { ...opts, locator: dialog().getByRole('button', { name: item, exact: true }) });
+  };
+  /** The items the ⋯ menu offers, read from its sheet (the sheet is closed again). */
+  const moreItems = async () => {
+    const b = page.getByRole('button', { name: 'עוד פעולות' });
+    if (!(await b.count())) return '';
+    await b.first().click(); await page.waitForTimeout(250);
+    const t = await dialog().last().innerText(); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    return t;
+  };
+  return { ctx, page, errors, go, has, path, dialog, confirm, reload, more, moreItems };
 }
 const step = async (name, fn) => { try { await fn(); } catch (e) { log(false, `${name}: ${String(e).split('\n')[0]}`); } };
 let today = '';
@@ -102,23 +115,23 @@ await step('owner', async () => {
 
   // visit with its calendar entry
   await s.go('/manage/visits/demo-vi-kindergarten');
-  await s.confirm('מחיקה', 'למחוק את הבקשה?', 'מחיקה', { text: 'וגם הביקור ביומן', label: 'visit' });
+  await s.more('מחיקה', 'למחוק את הבקשה?', 'מחיקה', { text: 'וגם הביקור ביומן', label: 'visit' });
   log(s.path() === '/manage/visits', 'visit: back on the list');
   await s.reload(); log(!(await s.has('בית ספר אורנים')), 'visit: gone after a reload');
   await s.go('/farm/calendar'); log(!(await s.has('ביקור: בית ספר אורנים')), 'visit: its calendar entry went with it');
 
   // donation
   await s.go('/manage/donations/demo-d-h-mar');
-  await s.confirm('מחיקה', 'למחוק את התרומה?', 'מחיקה', { label: 'donation' });
+  await s.more('מחיקה', 'למחוק את התרומה?', 'מחיקה', { label: 'donation' });
   log(s.path() === '/manage/donations', 'donation: back on the list');
   await s.go('/manage/donations/demo-d-h-mar'); log(await s.has('התרומה לא נמצאה'), 'donation: gone after a reload');
 
   // person (owner only)
   await s.go('/manage/people/demo-u-roni');
-  await s.confirm('מחיקת רוני לוי', 'למחוק את רוני לוי?', 'מחיקה', { text: 'עם אותו חשבון גוגל' });
+  await s.more('מחיקה', 'למחוק את רוני לוי?', 'מחיקה', { text: 'עם אותו חשבון גוגל', label: 'person' });
   log(s.path() === '/manage/people', 'person: back on the directory');
   await s.reload(); log(!(await s.has('רוני לוי')), 'person: gone from the directory after a reload');
-  await s.go('/manage/people/demo-u-beni'); log(!(await s.page.getByRole('button', { name: /^מחיקת / }).count()), 'person: no delete on my own file');
+  await s.go('/manage/people/demo-u-beni'); log(!(await s.moreItems()).includes('מחיקה'), 'person: no delete on my own file');
 
   // broadcast (owner only)
   await s.go('/manage/broadcasts/demo-b-1');
@@ -126,13 +139,15 @@ await step('owner', async () => {
   log(s.path() === '/manage/broadcasts', 'broadcast: back on the list');
   await s.go('/manage/broadcasts/demo-b-1'); log(await s.has('ההודעה לא נמצאה'), 'broadcast: gone after a reload');
 
-  // inbox item
+  // inbox item: the card's head opens its row sheet, "מחיקה מהרשימה" is in it (tidy round: no X on the card)
   await s.go('/manage/inbox');
-  const before = await s.page.getByRole('button', { name: 'מחיקה מהרשימה' }).count();
-  log(before > 0, 'inbox: every card has a delete');
+  const cards = s.page.locator('.manage-item__hit');
+  const before = await cards.count();
+  log(before > 0 && !(await s.page.getByRole('button', { name: /^מחיקה/ }).count()), 'inbox: every card opens its sheet, no delete button on the cards');
   if (before) {
-    await s.confirm('', 'למחוק מהרשימה?', 'מחיקה', { locator: s.page.getByRole('button', { name: 'מחיקה מהרשימה' }), label: 'inbox' });
-    await s.reload(); log((await s.page.getByRole('button', { name: 'מחיקה מהרשימה' }).count()) === before - 1, 'inbox: one card less after a reload');
+    await cards.first().click(); await s.page.waitForTimeout(250);
+    await s.confirm('', 'למחוק מהרשימה?', 'מחיקה', { locator: s.dialog().getByRole('button', { name: 'מחיקה מהרשימה', exact: true }), label: 'inbox' });
+    await s.reload(); log((await s.page.locator('.manage-item__hit').count()) === before - 1, 'inbox: one card less after a reload');
   }
 
   // stall tab
@@ -174,10 +189,10 @@ await step('owner', async () => {
 // ---------- manager: owner-only deletes are not offered ----------
 await step('manager', async () => {
   const s = await session('manager');
-  await s.go('/manage/people/demo-u-david'); log(await s.has('דוד כהן') && !(await s.page.getByRole('button', { name: /^מחיקת / }).count()), 'manager: no person delete (owner only)');
+  await s.go('/manage/people/demo-u-david'); log(await s.has('דוד כהן') && !(await s.moreItems()).includes('מחיקה'), 'manager: no person delete (owner only)');
   await s.go('/projects/demo-p-irrigation/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByRole('button', { name: 'מחיקת הפרויקט' }).count()), 'manager: no project delete (owner only)');
   await s.go('/manage/broadcasts/demo-b-2'); log(!(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'manager: no broadcast delete (owner only)');
-  await s.go('/manage/visits/demo-vi-photo'); log(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count() > 0, 'manager: visits are deletable');
+  await s.go('/manage/visits/demo-vi-photo'); log((await s.moreItems()).includes('מחיקה'), 'manager: visits are deletable');
   await clean(s, 'manager');
 });
 

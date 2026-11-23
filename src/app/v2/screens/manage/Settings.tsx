@@ -1,54 +1,65 @@
-// N5 settings index and its pages: N6 payments, N7 messages, G1 amounts, G2 visit types, G3 questions, G4 contact, G5 managers.
+// Q19 settings index and its pages: N6 payments, N7 messages, G1 amounts, "סוגי ביקור ושאלות הרשמה" (G2 visit types, G3
+// questions), G4 contact, G5 managers.
 // Storage stays compatible with the guest app: payment.bit/paybox/cash/note, donationPresets, visitTypes, registrationFields,
 // templates, guestIntro and contact.phone/whatsapp keep their meaning. New keys (donationOptions, contactMore, payment.bitNumber,
 // payment.payboxLink) are optional extras (see docs/redesign-data/manage.md).
+// Tidy round: Q19 groups the index in two cards; recurring tasks (Tasks tab) and the Instinct log (Manage root) are not here.
+// A sign-up question's removal is in its row sheet behind the Q8 confirmation (rule 6). The managers page lists owners and
+// managers only: the team list lives in People (?filter=team) and role changes in Activity ("אנשים").
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
 import {
-  Avatar, BottomBar, Button, Card, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
-  TextLink, Toggle, TopBar,
+  ActionSheet, Avatar, BottomBar, Button, Card, DragHandle, EmptyState, Field, FormHeader, IconButton, Icon, ListCard, PageTitle, Row, Segmented, Sheet, Tag, TextAreaField,
+  TextLink, Toggle, TopBar, useReorder, type ActionItem,
 } from '../../kit';
-import { dayTime, daysFromToday, firstName } from '../../format';
+import { daysFromToday } from '../../format';
 import { useRoute } from '../../../router';
 import { getDemo } from '../../../demo/store';
 import type { RegistrationField, Settings } from '../../../types';
 import {
-  usePeople, useRoleInvites, useActivityAll, useActivityByKind, saveSettings, useRun, donationOptionsOf, contactMoreOf, paymentForm, paymentPatch, numberOk,
+  usePeople, useRoleInvites, useActivityAll, saveSettings, useRun, donationOptionsOf, contactMoreOf, paymentForm, paymentPatch, numberOk,
   cleanPresets, cleanTypes, templateParts, questionMeta, fieldId, settingsLines, gw, isFemale, emailOk, type ManageSettings, type PresetRow, type PaymentForm,
 } from '../../data/manage';
-import { lnk, useReorder, Grip } from './shared';
+import { lnk } from './shared';
 
 const back = { label: 'הגדרות', ...lnk('/manage/settings') };
 const closeTo = () => go('/manage/settings');
+const GUESTS = '/manage/settings/guests';
 
-// ---------- N5 ----------
+// ---------- Q19 ----------
 export function SettingsScreen({ ctx }: ScreenProps) {
   const s = ctx.settings as ManageSettings;
   const people = usePeople(true).items;
   const invites = useRoleInvites(true).items;
   const toast = useToast();
+  const [siteSheet, setSiteSheet] = useState(false);
   const owners = people.filter((p) => p.role === 'owner' && p.status === 'active').length + invites.filter((i) => i.role === 'owner').length;
   const managers = people.filter((p) => p.role === 'manager' && p.status === 'active').length + invites.filter((i) => i.role === 'manager').length;
   const l = settingsLines(s, owners, managers);
   const site = () => { if (getDemo().on) toast.show({ text: 'עריכת האתר זמינה בחשבון האמיתי', duration: 3000 }); else window.open('/edit', '_blank', 'noopener'); };
+  const siteItems: ActionItem[] = [
+    { label: 'עריכת אתר החווה', icon: 'globe', meta: 'נפתח בחלון נפרד', onSelect: site },
+    { label: 'תנאי שימוש ופרטיות', icon: 'file', meta: 'הנוסח שהאורחים מאשרים', onSelect: () => go('/terms') },
+  ];
   return (
     <AppScreen variant="detail">
       <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} />
       <PageTitle>הגדרות</PageTitle>
-      <ListCard aria-label="הגדרות">
+      <ListCard title="כסף ואורחים">
         <Row {...lnk('/manage/settings/payments')} title="תשלומים" meta={l.payments} />
         <Row {...lnk('/manage/settings/donation-amounts')} title="סכומי תרומה" meta={l.amounts} />
-        <Row {...lnk('/manage/settings/visit-types')} title="סוגי ביקור" meta={l.types} />
-        <Row {...lnk('/manage/settings/questions')} title="שאלות הרשמה" meta={l.questions} />
+        <Row {...lnk(GUESTS)} title="סוגי ביקור ושאלות הרשמה" meta={l.typesQuestions} />
         <Row {...lnk('/manage/settings/messages')} title="הודעות מוכנות" meta={l.messages} />
+      </ListCard>
+      <ListCard title="מנהלים ומערכת">
         <Row {...lnk('/manage/settings/contact')} title="פרטי קשר לחווה" meta={<span dir="ltr">{l.contact}</span>} />
         {ctx.owner && <Row {...lnk('/manage/settings/managers')} title="מנהלים ובעלים" meta={l.managers} />}
+        {ctx.cmsEditor
+          ? <Row onClick={() => setSiteSheet(true)} title="אתר החווה ותנאי שימוש" meta="נפתח בחלון נפרד" />
+          : <Row {...lnk('/terms')} title="תנאי שימוש ופרטיות" meta="הנוסח שהאורחים מאשרים" />}
       </ListCard>
-      <ListCard aria-label="עוד">
-        {ctx.cmsEditor && <Row onClick={site} title="עריכת אתר החווה" meta="נפתח בחלון נפרד" />}
-        <Row {...lnk('/terms')} title="תנאי שימוש ופרטיות" meta="הנוסח שהאורחים מאשרים" />
-      </ListCard>
+      <ActionSheet open={siteSheet} onClose={() => setSiteSheet(false)} title="אתר החווה ותנאי שימוש" items={siteItems} />
     </AppScreen>
   );
 }
@@ -60,6 +71,7 @@ export function SettingsPage(p: ScreenProps) {
   if (page === 'payments') return <PaymentsPage {...p} />;
   if (page === 'messages') return <MessagesPage {...p} />;
   if (page === 'donation-amounts') return <AmountsPage {...p} />;
+  if (page === 'guests') return <GuestsPage {...p} />;
   if (page === 'visit-types') return <VisitTypesPage {...p} />;
   if (page === 'questions') return <QuestionsPage {...p} />;
   if (page === 'contact') return <ContactPage {...p} />;
@@ -72,10 +84,10 @@ export function SettingsPage(p: ScreenProps) {
   );
 }
 
-/** Saves and goes back to the settings index. */
-function useSave() {
+/** Saves and goes back (to the settings index, or to the page a sub-page belongs to). */
+function useSave(to: () => void = closeTo) {
   const run = useRun();
-  return async (fn: () => Promise<unknown>, text: string) => { if (await run(fn, text)) closeTo(); };
+  return async (fn: () => Promise<unknown>, text: string) => { if (await run(fn, text)) to(); };
 }
 
 // ---------- N6 ----------
@@ -172,7 +184,7 @@ function AmountsPage({ ctx }: ScreenProps) {
   const [opts, setOpts] = useState(() => donationOptionsOf(s));
   const save = useSave();
   const toast = useToast();
-  const { grip, rowStyle } = useReorder(rows, setRows);
+  const { handle, rowStyle } = useReorder(rows, setRows);
   const upd = (i: number, patch: Partial<PresetRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const submit = () => {
     const presets = cleanPresets(rows);
@@ -188,7 +200,7 @@ function AmountsPage({ ctx }: ScreenProps) {
           <ul className="manage-list">
             {rows.map((r, i) => (
               <li key={r.key} className="manage-editrow" style={rowStyle(i)}>
-                <button {...grip(i, r.amount || 'סכום')}><Grip /></button>
+                <DragHandle {...handle(i, r.amount || 'סכום')} />
                 <label className="k-sr" htmlFor={`${r.key}-a`}>סכום</label>
                 <input id={`${r.key}-a`} className="manage-editinput manage-editinput--amount" dir="ltr" inputMode="numeric" value={r.amount} aria-invalid={bad(r) || undefined} onChange={(e) => upd(i, { amount: e.target.value.replace(/[^\d]/g, '') })} />
                 <label className="k-sr" htmlFor={`${r.key}-l`}>כותרת</label>
@@ -209,12 +221,29 @@ function AmountsPage({ ctx }: ScreenProps) {
   );
 }
 
+// ---------- Q19 "סוגי ביקור ושאלות הרשמה" ----------
+function GuestsPage({ ctx }: ScreenProps) {
+  const s = ctx.settings;
+  const l = settingsLines(s, 0, 0);
+  return (
+    <AppScreen variant="detail">
+      <TopBar back={back} />
+      <PageTitle>סוגי ביקור ושאלות הרשמה</PageTitle>
+      <ListCard aria-label="סוגי ביקור ושאלות הרשמה">
+        <Row {...lnk('/manage/settings/visit-types')} title="סוגי ביקור" meta={s.visitTypes.join(', ') || l.types} />
+        <Row {...lnk('/manage/settings/questions')} title="שאלות הרשמה" meta={l.questions} />
+      </ListCard>
+    </AppScreen>
+  );
+}
+
 // ---------- G2 ----------
 function VisitTypesPage({ ctx }: ScreenProps) {
   const [rows, setRows] = useState(() => ctx.settings.visitTypes.map((t) => ({ key: rowKey(), text: t })));
-  const save = useSave();
+  const toGuests = () => go(GUESTS);
+  const save = useSave(toGuests);
   const toast = useToast();
-  const { grip, rowStyle } = useReorder(rows, setRows);
+  const { handle, rowStyle } = useReorder(rows, setRows);
   const submit = () => {
     const types = cleanTypes(rows.map((r) => r.text));
     if (!types.length) { toast.refused('לא נשמר. צריך לפחות סוג ביקור אחד.'); return; }
@@ -222,13 +251,13 @@ function VisitTypesPage({ ctx }: ScreenProps) {
   };
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow onClick={submit}>שמירה</Button></BottomBar>}>
-      <FormHeader title="סוגי ביקור" onCancel={closeTo} />
+      <FormHeader title="סוגי ביקור" onCancel={toGuests} />
       {rows.length > 0 && (
         <section className="k-card k-card--list">
           <ul className="manage-list">
             {rows.map((r, i) => (
               <li key={r.key} className="manage-editrow" style={rowStyle(i)}>
-                <button {...grip(i, r.text || 'סוג ביקור')}><Grip /></button>
+                <DragHandle {...handle(i, r.text || 'סוג ביקור')} />
                 <label className="k-sr" htmlFor={r.key}>סוג ביקור</label>
                 <input id={r.key} className="manage-editinput" value={r.text} maxLength={60} onChange={(e) => setRows((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} />
                 <IconButton variant="quiet" icon="close" label={`הסרה: ${r.text}`} onClick={() => setRows((x) => x.filter((_, j) => j !== i))} />
@@ -254,8 +283,9 @@ function QuestionsPage({ ctx }: ScreenProps) {
   };
   const run = useRun();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [rowOf, setRowOf] = useState<RegistrationField | null>(null);
   const store = (next: RegistrationField[], what: string, toast?: string) => run(() => saveSettings(ctx.actor, { registrationFields: next }, what), toast);
-  const { grip, rowStyle } = useReorder(fields, (next) => { store(next, 'סדר שאלות ההרשמה שונה'); });
+  const { handle, rowStyle } = useReorder(fields, (next) => { store(next, 'סדר שאלות ההרשמה שונה'); });
   const open = (f?: RegistrationField) => setDraft(f ? { id: f.id, label: f.label, type: f.type, options: f.options.join('\n'), required: f.required } : { id: '', label: '', type: 'text', options: '', required: false });
   const saveDraft = async () => {
     if (!draft || !draft.label.trim()) return;
@@ -263,14 +293,20 @@ function QuestionsPage({ ctx }: ScreenProps) {
     const next = draft.id ? fields.map((x) => (x.id === draft.id ? f : x)) : [...fields, f];
     if (await store(next, draft.id ? `שאלת הרשמה עודכנה: ${f.label}` : `שאלת הרשמה נוספה: ${f.label}`, 'השאלה נשמרה')) setDraft(null);
   };
-  const remove = async () => {
-    if (!draft?.id) return;
+  const remove = (q: RegistrationField) => {
     const old = fields;
-    if (await run(() => saveSettings(ctx.actor, { registrationFields: fields.filter((x) => x.id !== draft.id) }, `שאלת הרשמה הוסרה: ${draft.label}`), { text: 'השאלה הוסרה', undo: () => saveSettings(ctx.actor, { registrationFields: old }, 'שאלת הרשמה הוחזרה') })) setDraft(null);
+    return run(() => saveSettings(ctx.actor, { registrationFields: fields.filter((x) => x.id !== q.id) }, `שאלת הרשמה הוסרה: ${q.label}`), { text: 'השאלה הוסרה', undo: () => saveSettings(ctx.actor, { registrationFields: old }, 'שאלת הרשמה הוחזרה') });
   };
+  const rowItems: ActionItem[] = rowOf ? [
+    { label: 'עריכת השאלה', icon: 'edit', onSelect: () => open(rowOf) },
+    { label: 'הסרת השאלה', icon: 'trash', tone: 'danger', confirm: {
+      title: 'להסיר את השאלה?', text: `"${rowOf.label}" תוסר מטופס ההרשמה. תשובות שכבר נשמרו נשארות בכרטיס של כל אדם. ההסרה נרשמת בפעילות.`, confirmLabel: 'הסרה',
+      onConfirm: () => remove(rowOf),
+    } },
+  ] : [];
   return (
     <AppScreen variant="detail">
-      <TopBar back={back} />
+      <TopBar back={{ label: 'סוגי ביקור ושאלות הרשמה', ...lnk(GUESTS) }} />
       <PageTitle>שאלות הרשמה</PageTitle>
       <ListCard title="תמיד נשאלים">
         <Row title="שם בעברית, טלפון, מייל" meta="המייל מגיע מחשבון Google" />
@@ -278,8 +314,8 @@ function QuestionsPage({ ctx }: ScreenProps) {
       <ListCard title="השאלות שלכם" count={fields.length}>
         {fields.map((f, i) => (
           <li key={f.id} className="manage-qrow" style={rowStyle(i)}>
-            <button {...grip(i, f.label)}><Grip /></button>
-            <button type="button" className="manage-qrow__hit" onClick={() => open(f)}>
+            <DragHandle {...handle(i, f.label)} />
+            <button type="button" className="manage-qrow__hit" onClick={() => setRowOf(f)} aria-haspopup="dialog">
               <span className="manage-qrow__body">
                 <span className="manage-qrow__title">{f.label}</span>
                 <span className="k-meta">{questionMeta(f)} · {answered(f)}</span>
@@ -292,6 +328,7 @@ function QuestionsPage({ ctx }: ScreenProps) {
       </ListCard>
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => open()}>שאלה נוספת</Button>
       <span className="manage-hint">שאלת רשות מופיעה גם ב"השלמת פרטים" למי שכבר רשום.</span>
+      <ActionSheet open={!!rowOf} onClose={() => setRowOf(null)} title={rowOf?.label || ''} sub={rowOf ? `${questionMeta(rowOf)} · ${answered(rowOf)}` : undefined} items={rowItems} />
       <Sheet open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'עריכת שאלה' : 'שאלה חדשה'}>
         {draft && (
           <div className="manage-sheet">
@@ -304,8 +341,6 @@ function QuestionsPage({ ctx }: ScreenProps) {
             {draft.type === 'choice' && <TextAreaField label="אפשרויות, אחת בכל שורה" value={draft.options} onChange={(e) => setDraft({ ...draft, options: e.target.value })} height={110} />}
             <ul className="k-list k-card k-card--list"><Row minHeight={54} title="חובה" meta="בלי תשובה אי אפשר להירשם" actions={<Toggle label="חובה" checked={draft.required} onChange={(v) => setDraft({ ...draft, required: v })} />} /></ul>
             <Button size="lg" block onClick={saveDraft} disabled={!draft.label.trim()}>שמירה</Button>
-            {draft.id && <Button variant="danger" block onClick={remove}>הסרת השאלה</Button>}
-            {draft.id && <span className="manage-hint">תשובות שכבר נשמרו נשארות בכרטיס של כל אדם.</span>}
           </div>
         )}
       </Sheet>
@@ -367,8 +402,6 @@ function ManagersPage({ ctx }: ScreenProps) {
       : <Row key={p.uid} minHeight={56} {...lnk(`/manage/people/${p.uid}`)} leading={<Avatar name={p.displayName} />} title={p.displayName} meta={owner ? p.email : seen(p.uid, p.displayName, p.email)} />;
   };
   const ownerPending = pending('owner'), managerPending = pending('manager');
-  const staff = people.filter((p) => p.role === 'staff' && p.status === 'active');
-  const changes = useActivityByKind('user', true, 40).items.filter((a) => ['role', 'invited', 'blocked', 'unblocked'].includes(a.action)).slice(0, 8);
   return (
     <AppScreen variant="detail">
       <TopBar back={back} />
@@ -380,14 +413,6 @@ function ManagersPage({ ctx }: ScreenProps) {
       </ListCard>
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block {...lnk('/manage/people/invite')}>תפקיד לפי כתובת מייל</Button>
       <span className="manage-hint">בעלים יכולים למנות מנהלים ובעלים. מנהלים יכולים למנות מתנדבים.</span>
-      <ListCard title="צוות ומתנדבים" count={staff.length} end={<TextLink {...lnk('/manage/people?filter=team')}>כולם באנשים</TextLink>}>
-        <Row title={<span style={{ fontWeight: 400 }}>{staff.length ? staff.map((p) => firstName(p.displayName)).slice(0, 8).join(' · ') + (staff.length > 8 ? ` + ${staff.length - 8}` : '') : '—'}</span>} />
-      </ListCard>
-      {changes.length > 0 && (
-        <ListCard title="שינויים אחרונים">
-          {changes.map((a) => <Row key={a.id} title={<span style={{ fontWeight: 500 }}>{firstName(a.by.name)} · {a.text}</span>} meta={dayTime(a.at)} />)}
-        </ListCard>
-      )}
     </AppScreen>
   );
 }
