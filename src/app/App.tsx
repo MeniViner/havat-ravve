@@ -4,6 +4,7 @@ import { useSettings, useSwitchesDoc } from './data';
 import { publishSwitches, useAppSwitches } from './switches';
 import { signOutUser } from './firebase';
 import { useRoute, match } from './router';
+import { useUsage } from './usage';
 import { Icon, ToastProvider, useToast, A, Avatar, Empty, Top, useDesktop, usePageEnter } from './ui';
 import type { GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
@@ -170,6 +171,8 @@ export default function App() {
       else if (!user) localStorage.removeItem('farm-me');
     } catch { /* private mode */ }
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
+  // the owners' console counts app usage (usage.ts): opens and screens only, never in the demo
+  useUsage(route, !loading && !(user && profileLoading), user ? (owner ? 'owner' : profile?.role || 'guest') : null, demo.on);
   // Z1: the demo start page works for everyone, signed in or not, demo on or off
   if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;

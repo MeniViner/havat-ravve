@@ -717,6 +717,40 @@ try {
     await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: true } });
     check((await api('POST', '/v1/console/jobs/push/run', { ...C(own), body: {} })).status === 400 && (await api('GET', '/v1/console/jobs', C(own))).json.data.jobs.find((j) => j.id === 'push').paused === true, 'jobs: a paused job shows as paused and does not run by hand');
     await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: false } });
+
+    // ---------- site visits and app usage (traffic.ts): public beacons, counters only ----------
+    const hitP = (body, origin = 'http://localhost:5173') => fetch(BASE + '/v1/hit', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8', ...(origin ? { origin } : {}) }, body: typeof body === 'string' ? body : JSON.stringify(body) }).then((x) => x.status);
+    const statsDay = () => docOf('site_stats/' + todayIL);
+    const s1 = await hitP({ t: 'view', page: 'home', source: 'google', device: 'mobile', newToday: true, returning: false, name: 'should not be kept' });
+    const d1 = await statsDay();
+    check(s1 === 204 && d1?.hits === 1 && d1.site.views === 1 && d1.site.page.home === 1 && d1.site.source.google === 1 && d1.site.device.mobile === 1 && d1.site.visitors === 1 && !JSON.stringify(d1).includes('should not'), 'hit: a site visit adds to today\'s counters, nothing else is kept', d1);
+    const hourKeys = Object.keys(d1?.site?.hour || {});
+    check(hourKeys.length === 1 && /^h([01]\d|2[0-3])$/.test(hourKeys[0]), 'hit: the hour of the visit, Israel time', hourKeys);
+    await hitP({ t: 'leave', sections: ['story', 'visit', 'bogus', 'story'], clicks: ['waze', 'phone', 'javascript:alert(1)'], depth: 'd75', time: 't60' });
+    const d2 = await statsDay();
+    check(d2.site.section.story === 1 && d2.site.section.visit === 1 && !('bogus' in d2.site.section) && d2.site.click.waze === 1 && d2.site.click.phone === 1 && Object.keys(d2.site.click).length === 2 && d2.site.depth.d75 === 1 && d2.site.time.t60 === 1, 'hit: sections, clicks, depth and time, only names on the list, each once per visit', d2.site);
+    await hitP({ t: 'view', app: true, device: 'installed', role: 'staff', newToday: true, returning: true });
+    await hitP({ t: 'leave', app: true, screens: { tasks: 3, shopping: 999, evil: 5, home: -2 } });
+    const d3 = await statsDay();
+    check(d3.app.opens === 1 && d3.app.visitors === 1 && d3.app.returning === 1 && d3.app.role.staff === 1 && d3.app.device.installed === 1 && d3.app.screen.tasks === 3 && d3.app.screen.shopping === 50 && !('evil' in d3.app.screen) && !('home' in d3.app.screen), 'hit: app opens and screens, capped per beacon, unknown screens dropped', d3.app);
+    const hitsBefore = (await statsDay()).hits;
+    const foreign = await hitP({ t: 'view', page: 'home' }, 'https://evil.example');
+    const previewHit = await hitP({ t: 'view', page: 'home' }, 'https://havat-ravve--pr-9-abc.web.app');
+    const broken = await hitP('{not json');
+    const huge = await hitP({ t: 'view', pad: 'x'.repeat(3000) });
+    const wrongT = await hitP({ t: 'delete' });
+    check([foreign, previewHit, broken, huge, wrongT].every((s) => s === 204) && (await statsDay()).hits === hitsBefore, 'hit: another site, a preview channel, broken or huge bodies all answer 204 and write nothing');
+    check((await fetch(BASE + '/v1/hit')).status === 405 && (await fetch(BASE + '/v1/hit', { method: 'OPTIONS', headers: { origin: 'http://localhost:5173' } })).status === 204, 'hit: only POST (and the CORS preflight)');
+    const trf = await api('GET', '/v1/console/traffic?days=7', C(own));
+    const tv = trf.json?.data;
+    check(trf.status === 200 && tv.perDay.length === 7 && tv.today.day === todayIL && tv.totals.views === 1 && tv.totals.visitors === 1 && tv.totals.opens === 1 && tv.totals.users === 1 && tv.site.sources[0]?.key === 'google' && tv.site.sections.some((x) => x.key === 'story') && tv.app.screens[0]?.key === 'shopping' && tv.site.hours.length === 24, 'traffic: the console\'s view of the week', tv);
+    check((await api('GET', '/v1/console/traffic?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/traffic', C(mgr))).status === 403, 'traffic: a week, a month or 3 months; owners only');
+    await seed('site_stats/' + todayIL, { hits: 5999, site: { views: 3 } });
+    await hitP({ t: 'view', page: 'home' });
+    await hitP({ t: 'view', page: 'home' });
+    const cappedDay = await statsDay();
+    const tcap = (await api('GET', '/v1/console/traffic?days=7', C(own))).json?.data;
+    check(cappedDay.hits === 6000 && cappedDay.site.views === 4 && tcap.today.capped === true, 'hit: the daily cap stops counting for the day (the free writes stay for the farm)', cappedDay);
   }
 
   section('the app\'s Rules accept what the API wrote');

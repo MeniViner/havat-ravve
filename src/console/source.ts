@@ -73,6 +73,16 @@ export type Jobs = {
   cleanup: { items: CleanupItem[]; last: { date: string; archived: number; deleted: number; done: boolean; at: string; by: string } | null };
   archive: { collections: { collection: string; files: number; bytes: number }[] };
 };
+/** Site visits and app usage from our own daily counters (api/src/traffic.ts). Counts only, nothing personal. */
+export type Ranked = { key: string; count: number }[];
+export type Traffic = {
+  days: number; from: string; cap: number;
+  today: { day: string; views: number; visitors: number; opens: number; users: number; capped: boolean };
+  totals: { views: number; visitors: number; returning: number; opens: number; users: number; appReturning: number; hits: number };
+  perDay: { day: string; views: number; visitors: number; opens: number; users: number }[];
+  site: { pages: Ranked; sections: Ranked; clicks: Ranked; sources: Ranked; devices: Ranked; depth: Ranked; time: Ranked; hours: number[] };
+  app: { screens: Ranked; devices: Ranked; roles: Ranked; hours: number[] };
+};
 export type Stats = {
   from: string; to: string; days: number;
   farm: {
@@ -119,6 +129,7 @@ export interface Source {
   deleteDoc(path: string, updateTime: string): Promise<{ path: string; deleted: boolean }>;
   exportCsv(group: string): Promise<void>;
   stats(days: number): Promise<Stats>;
+  traffic(days: number): Promise<Traffic>;
   switches(): Promise<SwitchesView>;
   setSwitches(b: Partial<Switches>): Promise<SwitchesView>;
   queue(): Promise<Queue>;
@@ -217,6 +228,7 @@ const liveSource: Source = {
   editDoc: (path, set, updateTime) => call('POST', '/data/edit', { path, set, updateTime }),
   deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
   stats: (days) => call('GET', `/stats?days=${days}`),
+  traffic: (days) => call('GET', `/traffic?days=${days}`),
   switches: () => call('GET', '/switches'),
   setSwitches: (b) => call('POST', '/switches', b),
   queue: () => call('GET', '/queue'),

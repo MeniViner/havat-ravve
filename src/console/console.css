@@ -139,6 +139,13 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 .c-money .k-barrow, .c-flat .k-barrow { padding: 0; }
 .c-money .k-barrow__label { width: 112px; }
 .c-money .k-barrow__value { width: auto; min-width: 64px; }
+/* ביקורים ושימוש: a count and its share on one line ("172 · 14%"), and longer names ("ישירות (קישור שמור או הקלדה)") */
+.c-pct .k-barrow__label { width: 132px; line-height: 1.25; }
+.c-pct .k-barrow__value { width: auto; min-width: 76px; white-space: nowrap; font-weight: 400; }
+.c-pct .k-barrow__value b { font-weight: 700; }
+/* two lists in one card (how long, how far): room between them */
+.k-barlist + .c-card-title { margin-top: 18px; }
+@media (max-width: 480px) { .c-pct .k-barrow__label { width: 104px; font-size: 14px; } }
 .c-event { display: flex; flex-direction: column; }
 .c-event__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .c-event__foot { margin: 12px 0 0; font-size: 14px; line-height: 1.5; }
