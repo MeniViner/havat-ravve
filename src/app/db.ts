@@ -7,6 +7,7 @@ import {
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { readOnlyLock } from './switches';
 import { demoOnly, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion, takeRefusal, getDemoStates } from './demo/store';
 import { now } from './clock';
 
@@ -161,6 +162,9 @@ function applyLocal(cur: Record<string, unknown>, patch: Record<string, unknown>
 const isDemoRef = (col: string, id: string) => isDemoId(id) || col.split('/').some(isDemoId);
 function real(col: string, id: string) {
   if (isDemoRef(col, id)) throw new Error('זה פריט לדוגמה. הוא לא נשמר בשרת.');
+  // the owners turned on read-only from the console (switches.ts): nothing reaches Firestore, owners excepted
+  const lock = readOnlyLock();
+  if (lock) throw new Error(lock);
   return doc(db, col, id);
 }
 export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collection(db, col)).id);

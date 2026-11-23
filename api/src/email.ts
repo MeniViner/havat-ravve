@@ -74,7 +74,8 @@ export async function idempotencyKey(jobId: string) {
 
 type Stats = { enqueued: number; sent: number; failed: number; skipped: number; cancelled: number; retried: number; waiting: number; viaResend: number };
 
-export async function runEmail(env: Env, nowMs = Date.now()): Promise<Record<string, unknown>> {
+/** paused (the console's switch): payments are still queued, nothing is sent until the switch is off again. */
+export async function runEmail(env: Env, nowMs = Date.now(), paused = false): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { cron: 'email' };
   if (env.EMAIL_SELF_TEST === 'once') out.selfTest = await selfTest(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
   if (env.EMAIL_SELF_TEST === 'resend-once') out.selfTest = await selfTestResend(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
@@ -83,6 +84,7 @@ export async function runEmail(env: Env, nowMs = Date.now()): Promise<Record<str
   const stats: Stats = { enqueued: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0, retried: 0, waiting: 0, viaResend: 0 };
   out.enabled = true;
   out.scan = await scan(fs, nowMs, stats);
+  if (paused) return { ...out, paused: true, ...stats };
   await sendDue(fs, env, nowMs, stats);
   return { ...out, ...stats };
 }
