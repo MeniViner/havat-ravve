@@ -84,6 +84,8 @@ const slice: Slice = (seed, scenario) => {
       paymentConfirmation: 'שלום [שם], קיבלנו [סכום]. תודה מכל הלב. חוות רווה',
     },
   };
+  // ---- W4 first-visit demo per kind of account (the designed state, which is also the default) ----
+  seed.documents['settings/app'] = { ...seed.documents['settings/app'], demoIntro: { guest: true, staff: true, manager: true, vendor: false } };
 
   // ---- N14 today's feed ----
   patch(seed, 'activity', 'demo-a-3', { at: at(0, '09:40'), text: '180 ₪ · תרומה · לזכר יוסף ברק' });

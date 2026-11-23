@@ -185,3 +185,4 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | W3-VendorPool | manager | regular | /manage/vendors |  |
 | W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
 | W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
+| W4-DemoFirstVisit | owner | regular | /manage/settings/demo |  |

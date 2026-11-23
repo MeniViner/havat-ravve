@@ -937,6 +937,25 @@ try{
  await v2ok(updateDoc(doc(mgr,'users','g4'),{role:'guest',status:'blocked',notes:'',updatedAt:now}),'manage 7 manager blocks a guest');
  await v2ok(updateDoc(doc(mgr,'users','vdana'),{role:'vendor',status:'active',notes:'משלם במזומן',updatedAt:now}),'manager edits a vendor note, role stays vendor');
  await v2no(updateDoc(doc(mgr,'users','g2'),{role:'vendor',status:'active',notes:'',updatedAt:now}),'manager makes a vendor without a claim');
+ // ---------------- W4: first-visit demo per kind of account (settings/app.demoIntro), owners only ----------------
+ await env3.withSecurityRulesDisabled(async(c)=>{await setDoc(doc(c.firestore(),'users/own2'),P('own2','owner'));});
+ {
+  const own2=C('own2'), on={guest:true,staff:true,manager:true,vendor:false};
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 1 the bootstrap owner sets the switches');
+  await v2ok(setDoc(doc(own2,'settings','app'),{demoIntro:{...on,vendor:true}},{merge:true}),'W4 2 an owner (role) sets the switches');
+  await v2no(setDoc(doc(mgr,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 3 a manager cannot set them');
+  await v2no(updateDoc(doc(mgr,'settings','app'),{'demoIntro.staff':false}),'W4 4 a manager cannot change one switch');
+  await v2no(setDoc(doc(guest,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 5 a guest cannot set them');
+  await v2no(setDoc(doc(vol,'settings','app'),{demoIntro:{...on,staff:false}},{merge:true}),'W4 6 a volunteer cannot set them');
+  await v2no(setDoc(doc(raz,'settings','app'),{demoIntro:{...on,vendor:false}},{merge:true}),'W4 7 a vendor cannot set them');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,owner:false}},{merge:true}),'W4 8 an unknown kind');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,guest:'yes'}},{merge:true}),'W4 9 a switch that is not true or false');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:'off'},{merge:true}),'W4 10 not a map');
+  await v2ok(setDoc(doc(mgr,'settings','app'),{guestIntro:'ברוכים הבאים'},{merge:true}),'W4 11 a manager still saves the rest with the switches stored');
+  const read=(await getDoc(doc(anon,'settings','app'))).data();
+  assert.deepEqual(read.demoIntro,{...on,vendor:true},'W4 12 everyone reads the switches (a first visit is decided before any role)');
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 13 the owner switches vendors off again');
+ }
  // ---------------- events area (events.md 1-8) ----------------
  await v2ok(getDoc(doc(vol,'events/ev-day/staffing','gate')),'events 1 staff reads staffing');
  for(const [who,db_] of [['guest',guest],['vendor',raz],['anon',anon]]) await v2no(getDoc(doc(db_,'events/ev-day/staffing','gate')),`events 1 ${who} reads staffing`);

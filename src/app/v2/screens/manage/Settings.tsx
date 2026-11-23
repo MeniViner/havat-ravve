@@ -23,6 +23,7 @@ import {
   cleanPresets, cleanTypes, templateParts, questionMeta, fieldId, settingsLines, gw, isFemale, emailOk, type ManageSettings, type PresetRow, type PaymentForm,
 } from '../../data/manage';
 import { lnk } from './shared';
+import { demoIntroLine } from './DemoFirstVisit';
 
 const back = { label: 'הגדרות', ...lnk('/manage/settings') };
 const closeTo = () => go('/manage/settings');
@@ -56,6 +57,7 @@ export function SettingsScreen({ ctx }: ScreenProps) {
       <ListCard title="מנהלים ומערכת">
         <Row {...lnk('/manage/settings/contact')} title="פרטי קשר לחווה" meta={<span dir="ltr">{l.contact}</span>} />
         {ctx.owner && <Row {...lnk('/manage/settings/managers')} title="מנהלים ובעלים" meta={l.managers} />}
+        {ctx.owner && <Row {...lnk('/manage/settings/demo')} title="הדגמה בכניסה ראשונה" meta={demoIntroLine(s)} />}
         {ctx.cmsEditor
           ? <Row onClick={() => setSiteSheet(true)} title="אתר החווה ותנאי שימוש" meta="נפתח בחלון נפרד" />
           : <Row {...lnk('/terms')} title="תנאי שימוש ופרטיות" meta="הנוסח שהאורחים מאשרים" />}

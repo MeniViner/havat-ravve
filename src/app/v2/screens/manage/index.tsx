@@ -7,6 +7,7 @@ export { PeopleScreen, PersonScreen, InviteScreen } from './People';
 export { ReportsScreen, DonationsScreen, DonationScreen } from './Money';
 export { VisitsScreen, VisitScreen } from './Visits';
 export { SettingsScreen, SettingsPage } from './Settings';
+export { DemoFirstVisitScreen } from './DemoFirstVisit';
 export { ActivityScreen } from './Activity';
 export { InstinctLogScreen } from './InstinctLog';
 

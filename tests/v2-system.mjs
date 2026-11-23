@@ -252,6 +252,32 @@ if (BASE) {
     assert.deepEqual(s.errors, [], 'C9: no page errors');
     await s.ctx.close();
   }
+  { // W4: "הדגמה בכניסה ראשונה" from Q19 (owners only), the four switches at their defaults, a switch saves and Q19 says so
+    const s = await open('owner', '/manage/settings');
+    const row = s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' });
+    assert.equal(await row.count(), 1, 'W4: one row on Q19 for the owner');
+    assert.ok((await row.innerText()).includes('אורחים, מתנדבים ומנהלים'), 'W4: Q19 meta names who sees it');
+    assert.equal(await s.page.locator('.k-card', { hasText: 'מנהלים ומערכת' }).locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).count(), 1, 'W4: in "מנהלים ומערכת"');
+    await row.click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/manage\/settings\/demo$/, 'W4: the row opens /manage/settings/demo');
+    const sw = (name) => s.page.getByRole('switch', { name, exact: true });
+    assert.deepEqual(await Promise.all(['אורחים', 'מתנדבים', 'מנהלים', 'בעלי דוכנים'].map((n) => sw(n).getAttribute('aria-checked'))), ['true', 'true', 'true', 'false'], 'W4: defaults');
+    await sw('מתנדבים').click(); await s.page.waitForTimeout(300);
+    assert.equal(await sw('מתנדבים').getAttribute('aria-checked'), 'false', 'W4: the switch saves at once');
+    assert.ok((await s.text()).includes('לראות את ההדגמה בעצמי'), 'W4: the row to the demo');
+    await s.page.getByText('הגדרות', { exact: true }).first().click(); await s.page.waitForTimeout(400);
+    assert.ok((await s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).innerText()).includes('אורחים ומנהלים'), 'W4: Q19 follows the change');
+    await s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).click(); await s.page.waitForTimeout(300);
+    await s.page.locator('.k-row', { hasText: 'לראות את ההדגמה בעצמי' }).click(); await s.page.waitForTimeout(500);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/demo$/, 'W4: "לראות את ההדגמה בעצמי" opens the persona chooser');
+    assert.deepEqual(s.errors, [], 'W4: no page errors');
+    await s.ctx.close();
+    const m = await open('manager', '/manage/settings');
+    assert.equal(await m.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).count(), 0, 'W4: a manager has no row');
+    await m.page.goto(`${BASE}/app/manage/settings/demo`, { waitUntil: 'networkidle' }); await m.page.waitForTimeout(300);
+    assert.equal(await m.page.getByRole('switch', { name: 'אורחים', exact: true }).count(), 0, 'W4: a manager cannot open the switches');
+    await m.ctx.close();
+  }
   await browser.close();
   console.log('v2-system: Q18 placement checked in the app');
 }
