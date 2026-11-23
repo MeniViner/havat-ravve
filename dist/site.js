@@ -190,6 +190,26 @@ This typically indicates that your device does not have a healthy Internet conne
 `),d=document.createElement("a");d.href=URL.createObjectURL(new Blob([f],{type:"text/calendar;charset=utf-8"})),d.download="farm-event.ics",d.click(),setTimeout(()=>URL.revokeObjectURL(d.href),1e3)},{signal:r}))}var Bp="https://havat-ravve-api.meniviner.workers.dev/v1/hit",cp=()=>/^havat-ravve\.(web\.app|firebaseapp\.com)$/.test(location.hostname),Q_=()=>{try{return localStorage.getItem("farm-hits-debug")==="1"}catch{return!1}},Ma=()=>cp()||Q_(),W_=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date);function lp(r){let e="farm-hit-"+r,t=W_();try{let n=localStorage.getItem(e);return n!==t&&localStorage.setItem(e,t),{newToday:n!==t,returning:!!n&&n!==t}}catch{return{newToday:!1,returning:!1}}}function hp(){return matchMedia("(display-mode: standalone)").matches||navigator.standalone?"installed":matchMedia("(max-width: 800px), (pointer: coarse)").matches?"mobile":"desktop"}function pl(r){if(!Ma())return;let e=JSON.stringify(r);if(!cp()){console.info("[farm hit]",r);return}try{if(navigator.sendBeacon?.(Bp,new Blob([e],{type:"text/plain"})))return;fetch(Bp,{method:"POST",body:e,keepalive:!0,headers:{"content-type":"text/plain"}}).catch(()=>{})}catch{}}var $_=/(^|\.)(bing|duckduckgo|yahoo|yandex|ecosia|baidu)\./;function Y_(){let r=new URLSearchParams(location.search),e=(r.get("utm_source")||r.get("src")||"").toLowerCase();if(e)return/^qr/.test(e)?"qr":/^(fb|facebook)/.test(e)?"facebook":/^(ig|instagram)/.test(e)?"instagram":/^(wa|whatsapp)/.test(e)?"whatsapp":/^google/.test(e)?"google":"other";if(!document.referrer)return"direct";let t="";try{t=new URL(document.referrer).hostname.toLowerCase()}catch{return"other"}return t===location.hostname?null:/(^|\.)google\./.test(t)?"google":$_.test(t)?"search":/(^|\.)(facebook\.com|fb\.com|fb\.me|messenger\.com)$/.test(t)?"facebook":/(^|\.)instagram\.com$/.test(t)?"instagram":/(^|\.)(whatsapp\.com|wa\.me)$/.test(t)?"whatsapp":/(^|\.)tiktok\.com$/.test(t)?"tiktok":"other"}function X_(r){if(r.matches("[data-calendar]"))return"calendar";if(r.matches(".share-button"))return"share";if(r.matches("#install-app"))return"install";if(r.matches("#event-notifications"))return"notify";let e=r.closest("a[href]");if(!e)return null;let t=e.getAttribute("href")||"";if(t.startsWith("tel:"))return"phone";if(t.startsWith("mailto:"))return"email";let n;try{n=new URL(e.href)}catch{return null}let s=n.hostname.toLowerCase();return/(^|\.)(wa\.me|whatsapp\.com)$/.test(s)?"whatsapp":/(^|\.)waze\.com$/.test(s)?"waze":/(^|\.)(instagram|facebook|tiktok|youtube)\.com$/.test(s)?"social":s===location.hostname||/^havat-ravve\.(web\.app|firebaseapp\.com)$/.test(s)?n.pathname==="/app"||n.pathname.startsWith("/app/")?"app":n.pathname.startsWith("/events/archive")?"archive":null:/^https?:$/.test(n.protocol)?"external":null}var dp=new Set,gl=null;function Cp(){!Ma()||!("IntersectionObserver"in window)||(gl?.disconnect(),gl=new IntersectionObserver(r=>{for(let e of r)e.isIntersecting&&e.target.id&&dp.add(e.target.id)},{threshold:.3}),document.querySelectorAll("main section[id], #contact").forEach(r=>gl.observe(r)))}var fp=!1;function pp(){if(fp||!Ma())return;fp=!0;let r=location.pathname.startsWith("/events/archive");pl({t:"view",page:r?"archive":"home",source:Y_(),device:hp(),...lp("site")});let e=new Set;document.addEventListener("click",B=>{let l=B.target?.closest?.("a, button"),f=l&&X_(l);f&&e.add(f)},{capture:!0,passive:!0});let t=0,n=!1,s=()=>{let B=Math.max(1,document.documentElement.scrollHeight-innerHeight);t=Math.max(t,Math.min(1,(scrollY+1)/B)),n=!1};addEventListener("scroll",()=>{n||(n=!0,requestAnimationFrame(s))},{passive:!0});let i=performance.now(),a=!1,u=()=>{if(a)return;a=!0,s();let B=(performance.now()-i)/1e3;pl({t:"leave",sections:[...dp],clicks:[...e],depth:t>=.95?"d100":t>=.75?"d75":t>=.5?"d50":"d25",time:B<10?"t10":B<60?"t60":B<180?"t180":"tlong"})};document.addEventListener("visibilitychange",()=>{document.visibilityState==="hidden"&&u()}),addEventListener("pagehide",u)}var Z_=location.pathname.startsWith("/events/archive"),El=!1,Ga;async function ml(r){let e=new DOMParser().parseFromString(ll(r,Z_),"text/html");document.body.replaceChildren(...Array.from(e.body.childNodes)),document.title=e.title;for(let t of["description","og:title","og:description","og:image"]){let n=t.startsWith("og:")?`meta[property="${t}"]`:`meta[name="${t}"]`,s=e.querySelector(n),i=document.querySelector(n);s&&i&&i.setAttribute("content",s.getAttribute("content")||"")}document.querySelectorAll('img[src^="/api/media/"]').forEach(t=>op(t.getAttribute("src")).then(n=>{t.src=n}).catch(()=>{t.alt="\u05D4\u05EA\u05DE\u05D5\u05E0\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D6\u05DE\u05D9\u05E0\u05D4 \u05DB\u05E8\u05D2\u05E2"})),window.initFarm?.(),up(),Cl(r.events),El=!0;try{Cp(),pp()}catch{}}var gp=setTimeout(()=>{El||ml(an)},3e3);rp(Xs(ka,"cms_state","published"),r=>{clearTimeout(gp);let e;try{e=r.exists()?cl(r.data().data):an}catch{e=an}let t=r.exists()?r.data().revision:0;if(Ga===void 0)Ga=t,ml(e);else if(t!==Ga){Ga=t,Cl(e.events);let n=document.getElementById("app-status");if(n){n.textContent="\u05D4\u05D0\u05EA\u05E8 \u05D4\u05EA\u05E2\u05D3\u05DB\u05DF. ";let s=document.createElement("a");s.href=location.href,s.textContent="\u05E8\u05E2\u05E0\u05D5\u05DF \u05DC\u05D4\u05E6\u05D2\u05EA \u05D4\u05E2\u05D3\u05DB\u05D5\u05E0\u05D9\u05DD",n.append(s)}}},()=>{clearTimeout(gp),El||ml(an)});
 /*! Bundled license information:
 
+@firebase/util/dist/postinstall.mjs:
+@firebase/firestore/dist/common-CLMydGSF.esm.js:
+@firebase/firestore/dist/common-CLMydGSF.esm.js:
+  (**
+   * @license
+   * Copyright 2025 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+
 @firebase/util/dist/index.esm.js:
 @firebase/util/dist/index.esm.js:
 @firebase/util/dist/index.esm.js:
@@ -1285,25 +1305,6 @@ re2js/build/index.js:
   (**
    * @license
    * Copyright 2020 Google LLC
-   *
-   * Licensed under the Apache License, Version 2.0 (the "License");
-   * you may not use this file except in compliance with the License.
-   * You may obtain a copy of the License at
-   *
-   *   http://www.apache.org/licenses/LICENSE-2.0
-   *
-   * Unless required by applicable law or agreed to in writing, software
-   * distributed under the License is distributed on an "AS IS" BASIS,
-   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   * See the License for the specific language governing permissions and
-   * limitations under the License.
-   *)
-
-@firebase/firestore/dist/common-CLMydGSF.esm.js:
-@firebase/firestore/dist/common-CLMydGSF.esm.js:
-  (**
-   * @license
-   * Copyright 2025 Google LLC
    *
    * Licensed under the Apache License, Version 2.0 (the "License");
    * you may not use this file except in compliance with the License.
