@@ -5,6 +5,8 @@ emulators. Run 2026-11-23. It is the redesign cycle (`docs/smoke/redesign/README
 placement of its capability, plus the stage 7 checks of `havat-raveh-tidy/PROMPT.md` (items 9 to 12).
 Result of the final cycle: 329 of 329 checks passed, no console errors in any session.
 
+> Final run on the merged branch `tidy/placement` (after the walk fixes and the smoke-cycle merge, commit 925e171), 2026-11-23: 329 of 329 passed, 29 non-localhost requests all aborted. The screenshots below are from that run.
+
 ## Environment
 
 - Emulators: `PATH=/opt/homebrew/opt/openjdk/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve` (Firestore 8080, Auth 9099). The app keeps its real project id inside the emulator, so the data lives under `havat-ravve` on localhost.
