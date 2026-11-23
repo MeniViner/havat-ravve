@@ -4,21 +4,11 @@ import { useMemo, useState } from 'react';
 import { Button, Card, DetailList, DetailRow, ListCard, Row, SearchField, Sheet, Tag } from '../app/v2/kit';
 import { ddmm, dayName, hhmm, daysFromToday } from '../app/v2/format';
 import { ago, Section, useLoad } from './shared';
-import { collectionName, size } from './labels';
+import { collectionName, size, valueText } from './labels';
 import { errorText, source, type Backup, type BackupDoc, type TrashItem } from './source';
 
 const dayTitle = (date: string) => { const d = daysFromToday(date); return d === 0 ? 'היום' : d === -1 ? 'אתמול' : `${dayName(date)} ${ddmm(date)}`; };
-const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
-/** A stored value as a person reads it: dates as dates, a person as their name, lists joined. */
-function show(v: unknown): string {
-  if (v === null || v === undefined || v === '') return '—';
-  if (typeof v === 'boolean') return v ? 'כן' : 'לא';
-  if (typeof v === 'string') return ISO.test(v) ? `${ddmm(v)}.${v.slice(2, 4)} ${hhmm(v)}` : v;
-  if (typeof v === 'number') return v.toLocaleString('he-IL');
-  if (Array.isArray(v)) return v.length ? v.map(show).join(', ') : '—';
-  if (typeof v === 'object') { const o = v as Record<string, unknown>; if (typeof o.name === 'string') return o.name; return JSON.stringify(v); }
-  return String(v);
-}
+const show = valueText;
 
 export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const list = useLoad(() => source.backups());

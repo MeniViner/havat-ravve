@@ -17,6 +17,20 @@ export function collectionName(group: string): string {
   const parent = NAMES[parts[parts.length - 2]] || parts[parts.length - 2];
   return `${name} · ${parent}`;
 }
+import { ddmm, hhmm } from '../app/v2/format';
+
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+/** A stored value as a person reads it: dates as dates, a person as their name, lists joined. */
+export function valueText(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'כן' : 'לא';
+  if (typeof v === 'string') return ISO.test(v) ? `${ddmm(v)}.${v.slice(2, 4)} ${hhmm(v)}` : v;
+  if (typeof v === 'number') return v.toLocaleString('he-IL');
+  if (Array.isArray(v)) return v.length ? v.map(valueText).join(', ') : '—';
+  if (typeof v === 'object') { const o = v as Record<string, unknown>; if (typeof o.name === 'string') return o.name; return JSON.stringify(v); }
+  return String(v);
+}
+
 /** "12 KB", "1.4 MB" */
 export function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

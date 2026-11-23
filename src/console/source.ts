@@ -46,6 +46,12 @@ export type Monitor = {
 };
 export type SecurityEvent = { at: string; kind: 'refused' | 'limited' | 'console'; who: string; what: string; detail: string; ok: boolean };
 
+export type DataCollection = { group: string; count: number | null; backupCount: number | null; readOnly: boolean };
+export type DataDocRow = { path: string; id: string; title: string; updateTime: string | null };
+export type DataDoc = { path: string; id: string; group: string; title: string; fields: Record<string, unknown>; types: Record<string, string>; createTime: string | null; updateTime: string | null; subcollections: string[]; readOnly: boolean };
+export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; changed: string[] };
+export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number };
+
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -71,6 +77,13 @@ export interface Source {
   setAlerts(b: { on?: boolean; push?: boolean }): Promise<AlertSettings>;
   testAlert(): Promise<{ sent: boolean; push: boolean }>;
   security(days: number): Promise<{ since: string; items: SecurityEvent[] }>;
+  dataCollections(): Promise<{ items: DataCollection[]; backupDate: string | null }>;
+  dataDocs(group: string, after?: string | null, parent?: string | null): Promise<{ items: DataDocRow[]; next: string | null }>;
+  dataDoc(path: string): Promise<DataDoc>;
+  dataHistory(path: string, days: number): Promise<DocHistory>;
+  editDoc(path: string, set: Record<string, unknown>, updateTime: string): Promise<{ path: string; updateTime: string | null }>;
+  deleteDoc(path: string, updateTime: string): Promise<{ path: string; deleted: boolean }>;
+  exportCsv(group: string): Promise<void>;
 }
 
 export class ConsoleError extends Error {
@@ -154,6 +167,13 @@ const liveSource: Source = {
   setAlerts: (b) => call('POST', '/monitor/alerts', b),
   testAlert: () => call('POST', '/monitor/test-alert'),
   security: (days) => call('GET', `/security?days=${days}`),
+  dataCollections: () => call('GET', '/data'),
+  dataDocs: (group, after, parent) => call('GET', `/data/docs?collection=${encodeURIComponent(group)}${after ? `&after=${encodeURIComponent(after)}` : ''}${parent ? `&parent=${encodeURIComponent(parent)}` : ''}`),
+  dataDoc: (path) => call('GET', `/data/doc?path=${encodeURIComponent(path)}`),
+  dataHistory: (path, days) => call('GET', `/data/history?path=${encodeURIComponent(path)}&days=${days}`),
+  editDoc: (path, set, updateTime) => call('POST', '/data/edit', { path, set, updateTime }),
+  deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
+  exportCsv: (group) => download(`/data/export?collection=${encodeURIComponent(group)}`, `havat-ravve-${group.replace(/\/\*\//g, '-')}.csv`),
 };
 
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };

@@ -353,6 +353,19 @@ export class Firestore {
     return rows.filter((r) => r.found).map((r) => r.found!);
   }
 
+  /** The collections directly under a document ("events/e1"), or the top-level ones (''). */
+  async listCollectionIds(parent = ''): Promise<string[]> {
+    const out: string[] = [];
+    let pageToken: string | undefined;
+    for (let i = 0; i < 10; i++) {
+      const r = await this.call<{ collectionIds?: string[]; nextPageToken?: string }>('POST', (parent ? '/' + parent : '') + ':listCollectionIds', { pageSize: 300, ...(pageToken ? { pageToken } : {}) });
+      out.push(...(r.collectionIds || []));
+      if (!r.nextPageToken) break;
+      pageToken = r.nextPageToken;
+    }
+    return out.sort();
+  }
+
   /** A query's documents as the REST API returns them. */
   async rawQuery(structuredQuery: Record<string, unknown>, parent = ''): Promise<RawDoc[]> {
     const rows = await this.call<{ document?: RawDoc }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery }, 20000);
