@@ -79,6 +79,8 @@ const emit = () => { version++; listeners.forEach((l) => l()); };
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); localStorage.setItem(OV_KEY, JSON.stringify(overrides)); localStorage.setItem(ST_KEY, JSON.stringify(states)); } catch { /* private mode */ } };
 
 export const getDemo = () => state;
+/** For code outside React that follows demo changes (demo/intro.ts notices when demo is left). */
+export const subscribeDemo = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const useDemo = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, getDemo);
 /** Changes whenever demo data changes; hooks use it as a dependency. */
 export const useDemoVersion = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => version);

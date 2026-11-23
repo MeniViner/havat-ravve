@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useAuth, useProfile, isOwner, isOwnerEmail, isTeam, useOnline } from './store';
+import { useAuth, useProfile, isOwner, isOwnerEmail, isTeam, useOnline, canManage } from './store';
 import { useSettings } from './data';
 import { useRoute, match } from './router';
-import { Icon, ToastProvider, A, Avatar, Empty, Top, useDesktop, usePageEnter } from './ui';
+import { Icon, ToastProvider, useToast, A, Avatar, Empty, Top, useDesktop, usePageEnter } from './ui';
 import type { GuestCtx } from './ctx';
 import type { Profile, Settings } from './types';
 import { ROLE_LABELS } from './types';
@@ -16,6 +16,7 @@ import { V2Root } from './v2/App';
 import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
 import { ToastProvider as V2Toasts } from './v2/core';
 import { V2DemoStrip } from './v2/DemoChrome';
+import { DemoIntro } from './v2/DemoIntro';
 import { pendingVendorInvite, forgetVendorInvite, claimVendorInvite } from './v2/data/vendor';
 
 // ---------- navigation ----------
@@ -70,12 +71,16 @@ function Shell({ nav, manage, profile, role, online, master, detail, narrow, cen
 
 // ---------- guest app ----------
 function GuestApp({ user, profile, settings }: { user: Session | null; profile: Profile | null; settings: Settings }) {
-  const route = useRoute(); const online = useOnline();
+  const route = useRoute(); const online = useOnline(); const demo = useDemo(); const toast = useToast();
   const ctx: GuestCtx = { user, profile, settings };
   const nav: NavItem[] = [{ path: '/', icon: 'home', label: 'בית', match: (r) => r === '/' || r.startsWith('/events') || r === '/visit' || r === '/donate' || r === '/contact' }, { path: '/me', icon: 'ticket', label: 'הכרטיסים שלי', match: (r) => r === '/me' }, { path: '/me/account', icon: 'user', label: 'החשבון שלי' }];
   const screen = isCalendarRoute(route) ? <><Top title="יומן החווה" backTo="/" backLabel="בית" /><Empty title="היומן זמין לצוות החווה" /></>
     : guestRoutes(route, ctx) || <GuestHome ctx={ctx} />;
-  return <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />;
+  return <>
+    <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />
+    {/* first visits in demo, for a real signed-in account only */}
+    {user && profile && !demo.on && <DemoIntro profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast({ text }, 4500)} />}
+  </>;
 }
 function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {
   let m: Record<string, string> | null;

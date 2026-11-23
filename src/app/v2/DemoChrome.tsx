@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useDemo, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { navigate } from '../router';
+import { leaveDemoTarget } from '../demo/intro';
 import { DemoStrip } from './kit';
 import { DemoSheet } from './screens/system';
 
@@ -11,7 +12,7 @@ export function V2DemoStrip() {
   if (!demo.on) return null;
   return (
     <div className="v2" dir="rtl">
-      <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={open} onSwitch={() => setOpen(true)} onExit={() => { setDemo({ on: false }); navigate('/demo', true); }} />
+      <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={open} onSwitch={() => setOpen(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />
       <DemoSheet open={open} onClose={() => setOpen(false)} />
     </div>
   );

@@ -7,6 +7,7 @@ import { navigate } from '../router';
 import { signOutUser } from '../firebase';
 import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
 import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
+import { startOwnDemo, leaveDemoTarget } from '../demo/intro';
 import { DeleteAccountLink } from './Account';
 import { RegistrationInputs, answerOf, profileDetailsComplete, signupQuestions, type ProfileDetails } from './RegistrationFields';
 
@@ -113,7 +114,7 @@ export function DemoSection({ role }: { role: Profile['role'] }) {
   return (
     <>
       <Sec title="מצב הדגמה" n={demo.on ? 'פעיל' : undefined} />
-      <SwitchRow on={demo.on} onChange={(on) => { setDemo({ on }, role); navigate('/', true); }} title="לעבור לנתוני דוגמה" meta="האפליקציה נפתחת עם אנשים, משימות ואירועים לדוגמה. בזמן ההדגמה הנתונים האמיתיים לא מוצגים, ושום דבר לא נשמר בשרת." />
+      <SwitchRow on={demo.on} onChange={(on) => { if (on) startOwnDemo(role); else setDemo({ on: false }); navigate(on ? '/' : leaveDemoTarget(), true); }} title="לעבור לנתוני דוגמה" meta="האפליקציה נפתחת עם אנשים, משימות ואירועים לדוגמה. בזמן ההדגמה הנתונים האמיתיים לא מוצגים, ושום דבר לא נשמר בשרת." />
       {demo.on && <>
         <Field label="לעבור באפליקציה בתור…" hint="כל מה שעושים בהדגמה נשאר במכשיר הזה בלבד. כדי לחזור לעבודה אמיתית מכבים את ההדגמה.">
           <Chips value={demo.persona} onChange={(persona) => { setDemo({ persona }); navigate('/', true); }} options={personas.map((p) => ({ value: p, label: PERSONA_LABELS[p] }))} />
