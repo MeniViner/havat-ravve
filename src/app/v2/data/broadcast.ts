@@ -71,6 +71,9 @@ export function useAudiences(ctx: V2Ctx, eventId?: string): Audiences {
       managers: team.filter((p) => p.role === 'owner' || p.role === 'manager').map(person),
       crew: [...crewUids].map((u) => byUid.get(u)).filter((p): p is Profile => !!p).map(person),
       vendors: vendorUsers.items.filter((p) => p.status === 'active' && p.vendorId && stallIds.has(p.vendorId)).map(person),
+      // outside the team: filled in by the messages work (stage 4 of the tidy round)
+      registrants: [],
+      everyone: [],
     };
     return m;
   }, [ctx.team, presence.items, staffing.items, stalls.items, vendorUsers.items]);
