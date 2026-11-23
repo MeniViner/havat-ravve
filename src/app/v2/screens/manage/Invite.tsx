@@ -14,7 +14,8 @@ import {
 import './manage.css';
 
 type How = 'phone' | 'email';
-const agoDays = (iso: string) => {
+/** "היום", "אתמול", "לפני 3 ימים": when a pending invite or link was sent (Q27, and G5's phone links). */
+export const agoDays = (iso: string) => {
   const d = Math.floor((nowMs() - new Date(iso).getTime()) / 86400_000);
   return d <= 0 ? 'היום' : d === 1 ? 'אתמול' : d === 2 ? 'לפני יומיים' : d === 7 ? 'לפני שבוע' : d === 14 ? 'לפני שבועיים' : `לפני ${d} ימים`;
 };

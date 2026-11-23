@@ -106,7 +106,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | C1-Notifs | staff | regular | /notifications |  |
 | C2-Search | owner | regular | /search | fill:חיפוש בכל האפליקציה=כהן |
 | C9-Welcome | new | regular | /welcome |  |
-| C10-Install | staff | regular | /install |  |
+| C10-Install | staff | regular | /install?first=1 |  |
 | X2-Suspended | blocked | regular | / |  |
 | D1-Invite | vendor | regular | /vendor/invite/demo-e-festival |  |
 | D2-Confirm | vendor | regular | /vendor/events/demo-e-festival/needs |  |

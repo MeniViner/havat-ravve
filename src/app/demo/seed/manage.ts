@@ -60,13 +60,16 @@ const slice: Slice = (seed, scenario) => {
   patch(seed, 'notifications', 'demo-n-contact', { text: 'יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. אנחנו מגיעים לפסטיבל הסתיו.' });
   patch(seed, 'notifications', 'demo-n-tab', { createdAt: ago(6) });
 
-  // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows two waiting (omer.levi2 by e-mail,
-  // the phone link below), Q19 "2 בעלים · 3 מנהלים" ----
+  // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows three waiting (omer.levi2 by e-mail,
+  // the two phone links below), Q19 "2 בעלים · 3 מנהלים" ----
   drop(seed, 'role_invites', ['farm.ravve@gmail.com']);
   // ---- Q27: a volunteer added ahead by phone yesterday; the one-time WhatsApp link is still open (team_links/{code}) ----
   put(seed, 'team_links', [
     { id: 't-demo2k7q9mfx4r', code: 't-demo2k7q9mfx4r', role: 'staff', name: '', phone: '054-000-0421', fem: true, active: true, usedBy: null, usedAt: null,
       createdBy: A.beni, createdAt: ago(26), expiresMs: new Date(ago(26)).getTime() + 14 * 86400_000 },
+    // G5 (needs-design decision 12): a manager link sent by phone this morning, listed with the pending invites
+    { id: 't-demo8m3wq5hz7n', code: 't-demo8m3wq5hz7n', role: 'manager', name: '', phone: '052-000-0315', active: true, usedBy: null, usedAt: null,
+      createdBy: A.beni, createdAt: ago(2), expiresMs: new Date(ago(2)).getTime() + 14 * 86400_000 },
   ]);
 
   // ---- N6/N7/G1/G4 settings (new keys are optional extras, see docs/redesign-data/manage.md) ----
