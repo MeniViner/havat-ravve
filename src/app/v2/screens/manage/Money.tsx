@@ -181,7 +181,12 @@ export function DonationsScreen({ ctx }: ScreenProps) {
   const count = (f: DFilter) => (f === 'approve' ? approve.length : f === 'receipt' ? receipt.length : 0);
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={table.items} />} />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={[
+        ...table.items,
+        // Q5: print the list as shown (as the event summary prints), and the money activity (Activity's "כסף" filter)
+        { label: 'הדפסה', icon: 'print', onSelect: () => window.print() },
+        { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go('/manage/activity?filter=money') },
+      ]} />} />
       <PageTitle>תרומות</PageTitle>
       {/* Q4 shows three stats; "ממתין" stays until it has a design (tidy-plan row 79). */}
       <StatRow grid>
