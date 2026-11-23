@@ -1,11 +1,3 @@
-/* Guest pages opened from the redesigned team app keep the legacy look: restore the legacy tokens inside the v2 tokens. */
-.v2 .legacy{--paper:#f5f2e8;--paper2:#fbfaf5;--ink:#1d2920;--green:#263a2c;--green2:#3a5240;
-  --gold:#b89a58;--gold-ink:#6f5a2a;--gold-bg:#efe6cf;--rust:#aa4f36;--rust-bg:#f3e1da;--ochre:#8e6412;--ochre-bg:#f3e8cf;
-  --ok:#2f6b3f;--ok-bg:#e1ecdc;--line:#d8d3c3;--line2:#e9e5d8;--muted:#5c685e;--white:#fff;
-  --sans:'Heebo',Arial,sans-serif;--serif:'Frank Ruhl Libre',Georgia,serif;
-  --ease:cubic-bezier(.2,.7,.2,1);
-  --nav-h:66px;--safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);--rail-w:240px;
-  background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.45;min-height:100dvh}
 /* the offline strip is a button that opens C8 */
 .v2 .k-strip-btn{ display:block; width:100%; padding:0; border:0; background:none; text-align:start; font:inherit; color:inherit; cursor:pointer; }
 /* wide screens: the 390-480 column sits on the app background */

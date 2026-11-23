@@ -60,6 +60,21 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
 - Checks on the merged branch: `npx tsc` clean; unit suites tasks 26, projects, shopping, farm 20, manage, events 18, system,
   core and demo; click-throughs delete 79/79, vendor all passed, event day 39/39, broadcast 37/37.
 
+## Stage 6: the guest side on the v2 kit (built, merged)
+Branch `tidy/s6-guest`, merged into `tidy/placement`. U1-U14 in `src/app/v2/screens/guest/` (home, order, tickets,
+account, forms, pages); one pay block serves U4, U6, U9 and U10. Team members reach the same screens through `legacy.tsx`
+(their tickets stay at /me/tickets). The old `Guest`, `Account`, `More`, `PaymentConfirmation` and `RegistrationFields`
+screens and their css are gone; every capability they held has a new home (signed-out browsing and sign-in: U1, U2, U12,
+the order bar; QR, offline, share, calendar: U5/U6 and ⋯; "העברתי": U4, U10, donation page; visits: U8 then the U7 list;
+donations: U9 and U7; stall account: U10; contact: U11; registration questions: U13 and edit details; payment confirmation
+choice: U3/U9 and U7; notifications: U7 sheet and the U14 row; install, terms, privacy: U7 footer; account deletion: bottom of
+edit details; blocked page; demo: U12 quiet link and /demo).
+- Merge: the first-visit demo (PR #24) now runs in the new guest shell (`DemoIntro shell="guest"`), and the guest demo
+  strip's יציאה goes where the team one goes (`leaveDemoTarget()`: back to the account after its own demo).
+- The guest account (U7) has no "מצב הדגמה" row any more, so the guest wording in `INTRO_DECLINED` (`src/app/demo/intro.ts`)
+  now names the sign-in page entry: "אפשר לחזור לדמו בכל רגע מעמוד הכניסה, ב״לראות איך האפליקציה עובדת״".
+- Removed as duplicates: the claimed-donation strip (the U7 tag shows it), the ticket dots ("כרטיס i מתוך n" instead).
+
 ## Decisions (log)
 - `main` is merged into `tidy/placement` (not rebased): the area builders' branches are cut from it, and a rebase would rewrite
   the history they build on. Same result for the PR. Merged: PR #26 (console backup), PR #24 (first-visit demo; the DemoIntro
@@ -73,6 +88,9 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
 - Q7 e-mail row: offered only when the guest chose e-mail, because the Worker sends the automatic e-mail only then
   (`api/src/email.ts`). "בלי אישור" for such a guest records a manual confirmation so the e-mail does not go out.
 - Q9 table view: the search field of the old table sheet is not in the design and is dropped; sorting by a heading stays.
+- Guest side: the intro moved to the bottom of home; `payment.note` shows in the U4 note; the missing-details nudge and "לא
+  אני" stay; the old on-device "new events" switch is replaced by `updatesOptIn`; U2's top bar has two icons as in the design;
+  U7 "הכל" shows 7 (the seed has a visit too).
 
 ## Open decisions (defaults implemented)
 - Delete on detail screens that keep the outlined "עריכה" (task, shopping item, event, project, vendor card, calendar item,
@@ -87,6 +105,8 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
 - The add-note and add-photo buttons after a task is done stay in T3's body (its top bar keeps "עריכה").
 - Event-file image preview is gone; "פתיחה" opens the file.
 - Consent for update messages to all users: opt-in only (`updatesOptIn`).
+- A signed-in guest has no demo entry on U7 (the design's footer is יציאה, התקנה, האתר, תנאים). The way back is the sign-in
+  page or /demo. Alternative: a fifth quiet link "הדגמה" in the U7 footer.
 - Web Push or FCM: still waiting for Meni's test on an installed iPhone app.
 
 ## Needs a design (left as they are)
@@ -97,3 +117,5 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
   four), event summary "יצאו וחזרו" (Q15).
 - Vendor pool export and table view: the V1 top bar already holds "חדש" (rule 5 allows one control).
 - From the first-visit demo session: a role-level demo switch in Settings.
+- From the guest builder: the team-only "מה יש לי בחווה" row on the team tickets page; the visit and donation detail pages
+  reached from U7's list.

@@ -12,8 +12,9 @@ import vendor from './vendor';
 import broadcast from './broadcast';
 import profile from './profile';
 import projects from './projects';
+import guest from './guest';
 
-const SLICES: Slice[] = [tasks, shopping, farm, eventday, live, manage, events, vendor, broadcast, profile, projects];
+const SLICES: Slice[] = [tasks, shopping, farm, eventday, live, manage, events, vendor, broadcast, profile, projects, guest];
 const cache = new Map<Scenario, Seed>();
 export function seedFor(scenario: Scenario): Seed {
   let s = cache.get(scenario);
