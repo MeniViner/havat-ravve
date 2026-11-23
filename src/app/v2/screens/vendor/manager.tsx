@@ -17,7 +17,7 @@ import {
 import { NEED_LABELS, type FarmEvent, type VendorNeed } from '../../../types';
 import { Sees } from './stall';
 import { Quiet } from './parts';
-import { ExcelButton } from '../manage/shared';
+import { tableCell, useTableView } from '../../patterns';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 
 const errText = (e: unknown) => (isConflict(e) ? (e as Error).message : `לא נשמר. ${(e as Error).message}`);
@@ -26,12 +26,18 @@ const contactOf = (v: VendorDoc) => v.contact || '';
 const fem = (v: VendorDoc) => v.fem ?? (v.contact ? femName(v.contact) : false);
 const sellsShort = (v: VendorDoc | EventVendorDoc | null | undefined) => ((v as VendorDoc)?.sells || (v as VendorDoc)?.product || '').split(',')[0].trim();
 
-// ---------- V1 ----------
+// ---------- V1 (W3-VendorPool) ----------
 export function VendorPool({ ctx }: ScreenProps) {
   const isNew = useParam('new') === '1';
   const pool = useVendorPool(true);
   const [q, setQ] = useState('');
+  // W3: table view (Q9, its own /table screen) and the Excel file, both from the ⋯ sheet
+  const table = useTableView({
+    title: 'בעלי דוכנים', filename: 'בעלי דוכנים.csv', headers: ['שם', 'איש קשר', 'טלפון', 'מה מוכרים', 'חיצוני', 'אירועים', 'נוסף למאגר'],
+    rows: () => pool.items.map((v) => [v.name, v.contact || '', v.phone || '', v.sells || v.product || '', v.external === false ? 'לא' : 'כן', (v.events || []).length, tableCell.date(v.createdAt)]),
+  });
   if (isNew) return <PoolEdit ctx={ctx} existing={null} />;
+  if (table.active) return table.screen;
   const s = q.trim();
   const list = pool.items.filter((v) => !s || [v.name, v.contact, v.phone, v.sells, v.product].some((x) => (x || '').includes(s)));
   const meta = (v: VendorDoc) => {
@@ -40,13 +46,20 @@ export function VendorPool({ ctx }: ScreenProps) {
     const took = n === 0 ? g(f, 'עוד לא השתתף', 'עוד לא השתתפה') : n === 1 ? g(f, 'היה באירוע אחד', 'היתה באירוע אחד') : `${g(f, 'היה', 'היתה')} ב־${n} אירועים`;
     return [contactOf(v), took].filter(Boolean).join(' · ');
   };
+  // ⋯ (rule 5): table view, export, and the saved invite message ("saved vendor template", tidy plan row 219; Q10's ⋯ keeps it too)
+  const more: ActionItem[] = [
+    ...table.items.map((i) => ({ ...i, hidden: !pool.items.length })),
+    { label: 'נוסח ההזמנה', icon: 'message', meta: 'הודעה מוכנה: הזמנת בעל דוכן', onSelect: () => navigate('/manage/settings/messages') },
+  ];
   return (
-    <AppScreen variant="detail" gap={12}>
-      <TopBar back={{ label: 'אירועים', onClick: () => navigate('/manage/events') }} end={<Button icon="plus" iconSize={18} onClick={() => navigate('/manage/vendors?new=1')}>חדש</Button>} />
+    <AppScreen variant="detail" gap={10}>
+      <TopBar back={{ label: 'אירועים', onClick: () => navigate('/manage/events') }} end={<MoreMenu title="בעלי דוכנים" items={more} />} />
       <PageTitle>בעלי דוכנים · {pool.items.length}</PageTitle>
       <SearchField label="שם, טלפון או מה מוכרים" value={q} onChange={(e) => setQ(e.target.value)} />
+      {/* W3: "חדש" left the top bar; this dashed row under the search opens the same form */}
+      <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => navigate('/manage/vendors?new=1')}>בעל דוכן חדש</Button>
       {pool.loading ? <Quiet text="טוען..." /> : !list.length ? (
-        <EmptyState variant="card" icon="stall" title={s ? 'לא מצאנו' : 'עוד אין בעלי דוכנים'} text={s ? 'נסו שם אחר או מספר טלפון.' : 'מוסיפים בכפתור "חדש", ואז מזמינים לאירוע.'} />
+        <EmptyState variant="card" icon="stall" title={s ? 'לא מצאנו' : 'עוד אין בעלי דוכנים'} text={s ? 'נסו שם אחר או מספר טלפון.' : 'מוסיפים ב"בעל דוכן חדש", ואז מזמינים לאירוע.'} />
       ) : (
         <ListCard>
           {list.map((v) => (
@@ -54,18 +67,11 @@ export function VendorPool({ ctx }: ScreenProps) {
           ))}
         </ListCard>
       )}
-      {/* Pool export and table view: "needs a design" (tidy plan rows 186, 187; V1's one top-bar slot is "חדש"). Left as it was. */}
-      {pool.items.length > 0 && (
-        <div>
-          <ExcelButton filename="בעלי דוכנים.csv" headers={['שם', 'איש קשר', 'טלפון', 'מה מוכרים', 'חיצוני', 'אירועים']}
-            rows={() => pool.items.map((v) => [v.name, v.contact || '', v.phone || '', v.sells || v.product || '', v.external === false ? 'לא' : 'כן', (v.events || []).length])} />
-        </div>
-      )}
     </AppScreen>
   );
 }
 
-/** New vendor (V1 "חדש") and edit (V2 "עריכה"). Not in the designs: built from N11's form pattern. */
+/** New vendor (W3 "בעל דוכן חדש") and edit (V2 "עריכה"). Not in the designs: built from N11's form pattern. */
 function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorDoc | null; notes?: string }) {
   const toast = useToast();
   // "בעל דוכן חדש" from an event's vendors (?event=): after saving, invite to that event and go back there.

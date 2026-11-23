@@ -182,3 +182,6 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | Q4-DonationsTwo | manager | afterEvent | /manage/donations |  |
 | Q14-ReportsTasks | manager | regular | /manage/reports/tasks |  |
 | Y2-ScansReturned | manager | eventDay | /manage/events/demo-e-festival/live/scans | click:יצאו וחזרו |
+| W3-VendorPool | manager | regular | /manage/vendors |  |
+| W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
+| W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
