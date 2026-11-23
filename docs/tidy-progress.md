@@ -220,3 +220,14 @@ Notes from the builders:
 
 ## Needs a design (left as they are)
 - U16 shows a ⋯ button without its items, and a guest has no secondary action on a donation today; left out.
+
+## Round 2 verification (done)
+- Walk on cc81e6d: 405 screens in demo (owner 132, manager 132, volunteer 60, vendor 20, helper 14, guest 31,
+  signed-out 16), 503 shots, 0 console errors. No install strip anywhere; all 29 ⋯ → מחיקה open Q8; the root screens are
+  pixel-identical to round 1; everything that moved is still reachable. No fixes. `docs/tidy-check/round2/README.md`.
+- Smoke cycle on the emulators, extended with W1, W2 + D6 (from the inbox and from V7), W4 on new accounts, U15/U16 with
+  the manager seeing the reported payment, G5 phone link, the Q4 chip, and item 14 (no strip on 45 screens, six roles):
+  393/393 twice in a row on 65a807a, no app fixes (two test-only fixes: D6 by time of day, item 11's card match).
+  `docs/smoke/needs-design/README.md`.
+- To confirm with Meni: the inbox contact card keeps its inline reply buttons and quiet "טופל" (the decision removed
+  the X and the sender link only).
