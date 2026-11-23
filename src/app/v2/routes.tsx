@@ -33,8 +33,10 @@ export const TEAM_ROUTES: Route[] = [
   R('/tasks/:id', tasks.TaskScreen, 'tasks', 'page'),
   R('/new', tasks.AddScreen, null, 'page'),
   R('/day', tasks.DayEndScreen, 'tasks', 'page'),
-  R('/places', tasks.PlacesScreen, 'tasks', 'tab'),
-  R('/places/:id', tasks.PlaceScreen, 'tasks', 'page'),
+  // places are reached from the Farm tab card only (Q2, RULES.md); /places/table is the list's Q9 table view
+  R('/places', tasks.PlacesScreen, 'farm', 'tab'),
+  R('/places/table', tasks.PlacesScreen, 'farm', 'tab'),
+  R('/places/:id', tasks.PlaceScreen, 'farm', 'page'),
   R('/projects', projects.ProjectsList, 'tasks', 'tab', { manager: true }),
   R('/projects/new', projects.ProjectForm, 'tasks', 'page', { manager: true }),
   R('/projects/:id/edit', projects.ProjectForm, 'tasks', 'page', { manager: true }),
@@ -85,7 +87,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/events/:id/products/:pid', events.ProductForm, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/products', events.ProductsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/tabs/:tid', events.TabScreen, 'manage', 'page', { manager: true }),
-  R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'page', { manager: true }),
+  R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'tab', { manager: true }), // Q12 shows the nav like its siblings
   R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/debts', events.DebtsScreen, 'manage', 'tab', { manager: true }),
@@ -100,8 +102,10 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/vendors/:id', vendor.VendorCard, 'manage', 'page', { manager: true }),
   R('/manage/people', manage.PeopleScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/invite', manage.InviteScreen, 'manage', 'page', { manager: true }),
+  R('/manage/people/messages/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }), // B3 under People (Q25)
   R('/manage/people/:uid', manage.PersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports', manage.ReportsScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/reports/:section', manage.ReportsScreen, 'manage', 'tab', { manager: true }), // Q14 drill-ins: people, events
   R('/manage/visits', manage.VisitsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/visits/:id', manage.VisitScreen, 'manage', 'page', { manager: true }),
   R('/manage/donations', manage.DonationsScreen, 'manage', 'tab', { manager: true }),
@@ -114,12 +118,12 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/:page', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/activity', manage.ActivityScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/instinct', manage.InstinctLogScreen, 'manage', 'tab', { manager: true, owner: true }),
   R('/manage/recurring', tasks.RecurringList, 'tasks', 'tab', { manager: true }),
   R('/manage/recurring/new', tasks.RecurringForm, 'tasks', 'page', { manager: true }),
   R('/manage/recurring/:id', tasks.RecurringForm, 'tasks', 'page', { manager: true }),
-  R('/manage/broadcasts', broadcast.BroadcastsSent, 'manage', 'tab', { manager: true }),
+  // Q26 compose keeps its path; the list and the read details live under People (redirects below)
   R('/manage/broadcasts/new', broadcast.BroadcastCompose, 'manage', 'page', { manager: true }),
-  R('/manage/broadcasts/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }),
 ];
 
 /** Vendors and vendor helpers: only their own world. */
@@ -176,12 +180,21 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
   if ((m = match(route, '/manage/events/:id/entry'))) return `/manage/events/${m.id}?tab=day`;
   if ((m = match(route, '/manage/events/:id/report'))) return `/manage/events/${m.id}?tab=summary`;
   if ((m = match(route, '/manage/events/:id/activity'))) return `/manage/activity?event=${m.id}`;
+  // messages moved into People (Q25): the list is its "הודעות" segment, a message's read details are under it
+  if (route === '/manage/broadcasts') return '/manage/people?tab=messages';
+  if ((m = match(route, '/manage/broadcasts/:id')) && m.id !== 'new') return `/manage/people/messages/${m.id}`;
   if (route === '/manage/vendors/new') return '/manage/vendors?new=1' + (search.get('event') ? `&event=${encodeURIComponent(search.get('event')!)}` : '');
   return null;
 }
 
 export type Resolved = { screen: Screen; params: Record<string, string>; tab: NavTab; kind: Route['kind']; route: Route } | null;
 export function resolve(routes: Route[], route: string, search: URLSearchParams): Resolved {
+  // Q9: "<list>/table" is the list's own table view; the list screen renders it (useTableView in patterns.tsx). Checked first,
+  // so "/manage/donations/table" is the donations list and not a donation whose id is "table" ("/manage/donations/:id").
+  if (route.endsWith('/table')) {
+    const base = resolve(routes, route.slice(0, -'/table'.length) || '/', search);
+    if (base) return base;
+  }
   for (const r of routes) {
     const m = match(route, r.path);
     if (m) return { screen: r.screen, params: { ...Object.fromEntries(search.entries()), ...m }, tab: r.tab, kind: r.kind, route: r };

@@ -88,9 +88,9 @@ try { tracked = execSync('git ls-files', { encoding: 'utf8' }); } catch {}
 ok('Android', 'no keystore or build output tracked in git', !/\.(jks|keystore|apk|aab)$/m.test(tracked));
 
 // ---------- policy ----------
-const app = read('src/app/App.tsx');
-const guest = read('src/app/screens/Guest.tsx');
-ok('Policy', 'privacy page reachable signed out (/app/terms)', /function guestRoutes[\s\S]*?route === '\/terms'/.test(app), 'add /terms to guestRoutes');
+const app = read('src/app/v2/screens/guest/index.tsx'); // the guest routes (guestScreen)
+const guest = read('src/app/v2/screens/guest/pages.tsx'); // the terms text
+ok('Policy', 'privacy page reachable signed out (/app/terms)', /function guestScreen[\s\S]*?route === '\/terms'/.test(app), 'add /terms to guestScreen');
 ok('Policy', 'privacy page is final (no "draft" marker)', !/טיוטה|טרם עברה בדיקה משפטית/.test(guest), 'remove "טיוטה" once the text is final');
 const src = execSync('git ls-files src', { encoding: 'utf8' }).split('\n').filter((f) => /\.(tsx?|mjs)$/.test(f)).map(read).join('\n');
 ok('Policy', 'account deletion can be requested inside the app', /deleteAccount|accountDeletion|delete_requests|מחיקת (ה)?חשבון/.test(src), 'only "ask the managers" in the terms text; Play requires an in-app path');

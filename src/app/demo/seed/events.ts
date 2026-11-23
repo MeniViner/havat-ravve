@@ -135,6 +135,8 @@ function october(seed: Seed, scenario: string) {
     return { id: `demo-tab-oct-f${i + 1}`, eventId: E.oct, eventTitle: title, guestUid: g.uid, guestName: g.displayName, guestPhone: g.phone, ticketId: '', items, total, status: 'paid', createdBy: by, createdAt: on(OCT, hh), updatedAt: on(OCT, '21:00') };
   });
   put(seed, 'tabs', tabs as unknown as Row[]);
+  // Q15 "מזומן 12 ₪": the cash Noa counted at the stall that evening
+  put(seed, `events/${E.oct}/counters`, [{ id: 'cash', stall: { amount: 12, by: 'נועה', at: on(OCT, '21:00'), byActor: A.noa } }]);
 }
 
 // ---------- the Rosh Hashana tour: 14 came, nothing open ----------

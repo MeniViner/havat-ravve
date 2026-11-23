@@ -15,6 +15,8 @@ preview_urls = false
 # Stage B runs against the production project: Meni approved access and writes on 2026-11-12, while the
 # app is still being built. The code refuses havat-ravve unless PRODUCTION_APPROVED names it too.
 FIRESTORE_PROJECT_ID = "havat-ravve"
+# The name each API key has in the owners' assistant log (api_log, "יומן אינסטינקט"), by credential id.
+KEY_LABELS = '{"cred-assistant": "האינסטינקט של מני", "cred-stageb": "בדיקות אוטומטיות"}'
 PRODUCTION_APPROVED = "havat-ravve"
 # Automatic payment-confirmation email through Brevo (src/email.ts). Off unless "true"; with it off, or with
 # BREVO_API_KEY or BREVO_SENDER_EMAIL missing, the cron reads nothing and sends nothing.
@@ -27,6 +29,10 @@ EMAIL_ENABLED = "true"
 BREVO_DAILY_LIMIT = "290"
 
 # The email outbox runs every 5 minutes: 288 short runs a day, inside the Workers Free limits.
+# The deployed version id and time, shown in the owners' console (src/console.ts).
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 [triggers]
 crons = ["*/5 * * * *"]
 
@@ -51,6 +57,13 @@ simple = { limit = 240, period = 60 }
 [[ratelimits]]
 name = "AUTH_LIMITER"
 namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
+# The public visit counter (/v1/hit, src/traffic.ts): one key for everyone, so a flood of beacons cannot spend the
+# farm's free Firestore writes. With the daily cap in traffic.ts this bounds the counter to a small share of the quota.
+[[ratelimits]]
+name = "HIT_LIMITER"
+namespace_id = "1003"
 simple = { limit = 30, period = 60 }
 
 [observability]

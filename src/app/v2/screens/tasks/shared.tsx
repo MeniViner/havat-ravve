@@ -1,15 +1,21 @@
 // Shared parts of the tasks area: in-app links, the X1 failure handler, the task row, the capture bar and photo picking.
 import { useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { go, useToast, useV2 } from '../../core';
-import { Row, CheckButton, Tag, Button, CaptureBar } from '../../kit';
+import { Row, CheckButton, Tag, Button, CaptureBar, Sheet, ListCard, Avatar, IconTile, type SwipeAction } from '../../kit';
 import { href as appHref } from '../../../router';
 import { isConflict } from '../../../db';
-import { nowMs } from '../../../clock';
+import { nowMs, now } from '../../../clock';
+import { firstName, hhmm } from '../../format';
+import { isFemale } from '../../gender';
 import { compressPhoto } from '../../../store';
 import { storePhoto, type FileKind } from '../../../upload';
 import type { Actor, Task } from '../../../types';
 import { useDemo } from '../../../demo/store';
-import { rowMeta, stripPlace, setDone, takeTask, releaseTask, takenText, playTakenInDemo, isOverdue, routineTime, type RowView, type ProfileOf } from '../../data/tasks';
+import {
+  rowMeta, stripPlace, setDone, takeTask, releaseTask, takenText, playTakenInDemo, routineTime, assignTask, deleteTaskLater,
+  canAssignTo, canDeleteTask, presenceOf, usePresenceToday, type RowView, type ProfileOf,
+} from '../../data/tasks';
 
 /** Props for an in-app link: a real href (long-press, new tab) that navigates inside the SPA. */
 export const to = (path: string) => ({
@@ -75,7 +81,20 @@ export function useTaskActions() {
     if (by && isConflict(e)) toast.refused(takenText(by, profileOf));
     else fail(e);
   });
-  return { done, undo, take };
+  // the owner's swipe: put it on me, on someone else (or free), or delete it; each with "ביטול"
+  const moveTo = (t: Task, to: Actor | null) => {
+    const prev = t.assignee || null;
+    return assignTask(ctx.actor, t, to, prev?.uid || null).then(() => {
+      const text = !to ? `פנויה: ${t.title}` : to.uid === ctx.actor.uid ? `עליך: ${t.title}` : `הועברה ל${firstName(to.name)}: ${t.title}`;
+      toast.show({ text, actions: [{ label: 'ביטול', onClick: () => { assignTask(ctx.actor, { ...t, assignee: to }, prev, to?.uid || null).catch(fail); } }] });
+    }, fail);
+  };
+  const toMe = (t: Task) => moveTo(t, ctx.actor);
+  const remove = (t: Task) => {
+    const undoDelete = deleteTaskLater(ctx.actor, t, ctx.templates);
+    toast.show({ text: `נמחקה: ${t.title}`, check: false, duration: 6000, actions: [{ label: 'ביטול', onClick: undoDelete }] });
+  };
+  return { done, undo, take, moveTo, toMe, remove };
 }
 
 /** One task row on the roots: check, title (place stripped under a place header), tags, meta and "לקחת" for free tasks. */
@@ -84,20 +103,68 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   const uid = ctx.user.uid;
   const title = strip ? stripPlace(t.title, placeName) : t.title;
   const mine = !t.done && t.assignee?.uid === uid;
-  const tags = <>
-    {t.urgent && !t.done && <Tag tone="urgent">דחוף</Tag>}
-    {mine && view !== 'mine' && <Tag tone="outline">שלך</Tag>}
-    {t.managersOnly && <Tag tone="warm">מנהלים</Tag>}
-    {extraTags}
-  </>;
+  // rule 4: at most one status tag, the most pressing one
+  const tags = t.urgent && !t.done ? <Tag tone="urgent">דחוף</Tag>
+    : mine && view !== 'mine' ? <Tag tone="outline">שלך</Tag>
+    : t.managersOnly ? <Tag tone="warm">מנהלים</Tag>
+    : extraTags;
+  // owners only: swipe right to finish or take it, left to move it on or delete it (the first button sits at the edge)
+  const [moving, setMoving] = useState(false);
+  const swipe = ctx.role === 'owner' ? {
+    right: t.done
+      ? [{ label: 'להחזיר', icon: 'back', tone: 'done', onAction: () => a.undo(t) } as SwipeAction]
+      : [
+        { label: 'בוצע', icon: 'check', tone: 'done', onAction: () => a.done(t, placeName) } as SwipeAction,
+        ...(!mine && canAssignTo(t, uid, ctx.manager, uid) ? [{ label: 'אליי', icon: 'user', tone: 'action', onAction: () => a.toMe(t) } as SwipeAction] : []),
+      ],
+    left: [
+      ...(canDeleteTask(t, uid, ctx.manager) ? [{ label: 'מחיקה', icon: 'close', tone: 'danger', onAction: () => a.remove(t) } as SwipeAction] : []),
+      ...(!t.done ? [{ label: 'העברה', icon: 'people', tone: 'neutral', onAction: () => setMoving(true) } as SwipeAction] : []),
+    ],
+  } : undefined;
   return (
-    <Row className={isOverdue(t, ctx.today) ? 'tasks-row--late' : undefined}
+    <>
+    <Row swipe={swipe}
       check={<CheckButton checked={t.done} onChange={(v) => (v ? a.done(t, placeName) : a.undo(t))} label={`סימון בוצע: ${title}`} />}
       title={title} tags={tags} done={t.done}
       meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs(), profileOf, time: routineTime(t, ctx.templates) })}
       {...to(`/tasks/${t.id}`)} chevron={false}
       actions={!t.done && !t.assignee ? <Button variant="outline" onClick={() => a.take(t)}>לקחת</Button> : undefined}
     />
+    {/* the sheet leaves the list (a row sits inside a <ul>) */}
+    {moving && createPortal(<MoveSheet t={t} title={title} onClose={() => setMoving(false)} onPick={(to) => { setMoving(false); a.moveTo(t, to); }} />, document.body)}
+    </>
+  );
+}
+
+/** The swipe's "העברה": who takes the task, those at the farm now first. Mounted only while open (one presence read). */
+function MoveSheet({ t, title, onClose, onPick }: { t: Task; title: string; onClose: () => void; onPick: (to: Actor | null) => void }) {
+  const ctx = useV2();
+  const presence = usePresenceToday(ctx.today);
+  const uid = ctx.user.uid;
+  const current = t.assignee?.uid || null;
+  const nowHHMM = hhmm(now());
+  const people = ctx.team
+    .filter((p) => p.status === 'active' && ['owner', 'manager', 'staff'].includes(p.role) && canAssignTo(t, uid, ctx.manager, p.uid))
+    .map((p) => ({ p, st: presenceOf(presence.items.filter((c) => c.ownerUid === p.uid), nowHHMM, isFemale(p.displayName, p)) }))
+    .sort((x, y) => x.st.order - y.st.order || Number(x.p.uid === uid) - Number(y.p.uid === uid) || x.p.displayName.localeCompare(y.p.displayName, 'he'));
+  return (
+    <Sheet open onClose={onClose} title="להעביר את המשימה">
+      <div className="tasks-move">
+        <p className="tasks-move__task">{title}</p>
+        <ListCard aria-label="על מי">
+          {current && canAssignTo(t, uid, ctx.manager, null) && (
+            <Row leading={<IconTile icon="people" />} title="פנויה" meta="מי שיכול לוקח" onClick={() => onPick(null)} chevron={false} />
+          )}
+          {people.map(({ p, st }) => (
+            <Row key={p.uid} leading={<Avatar name={p.displayName} size={36} tone={p.uid === uid ? 'me' : 'default'} />}
+              title={p.uid === uid ? 'אני' : p.displayName} meta={st.text} muted={!st.here && p.uid !== uid}
+              tags={p.uid === current ? <Tag tone="outline">{isFemale(p.displayName, p) ? 'עליה עכשיו' : 'עליו עכשיו'}</Tag> : undefined}
+              onClick={p.uid === current ? undefined : () => onPick({ uid: p.uid, name: p.displayName })} chevron={false} />
+          ))}
+        </ListCard>
+      </div>
+    </Sheet>
   );
 }
 

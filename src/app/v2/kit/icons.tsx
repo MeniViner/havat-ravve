@@ -87,6 +87,30 @@ const ICONS = {
   'chevron-down': [["path",{"d":"m6 9 6 6 6-6"}]],
   /** leave / log out (Z2-DemoBanner, Z3-DemoSwitch, Z4-DemoOwner) */
   'exit': [["path",{"d":"M10 5H5v14h5M14 8l4 4-4 4M18 12H9"}]],
+  /** an API key (owners' console). Drawn for the console in the same stroke style, not from the design HTML */
+  'key': [["circle",{"cx":8,"cy":15,"r":4}],["path",{"d":"m11 12 8-8M16 7l2.5 2.5M14 9l2 2"}]],
+  /** the server (owners' console). Drawn for the console in the same stroke style, not from the design HTML */
+  'server': [["rect",{"x":4,"y":4,"width":16,"height":7,"rx":1.5}],["rect",{"x":4,"y":13,"width":16,"height":7,"rx":1.5}],["path",{"d":"M8 7.5h.01M8 16.5h.01"}]],
+  /** three dots: the ⋯ "עוד פעולות" button (Q4, Q5, Q10-Q15) */
+  'more': [["circle",{"cx":5,"cy":12,"r":1.4}],["circle",{"cx":12,"cy":12,"r":1.4}],["circle",{"cx":19,"cy":12,"r":1.4}]],
+  /** clock: history, not coming (Q5, Q11) */
+  'clock': [["circle",{"cx":12,"cy":12,"r":8}],["path",{"d":"M12 8v4l3 2"}]],
+  /** bin: delete (Q8, Q11) */
+  'trash': [["path",{"d":"M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"}]],
+  /** small robot: the Instinct assistant (Q20) */
+  'robot': [["rect",{"x":5,"y":8,"width":14,"height":10,"rx":2}],["path",{"d":"M12 8V5M9 13h.01M15 13h.01"}]],
+  /** table: table view (Q5) */
+  'table': [["rect",{"x":4,"y":5,"width":16,"height":14,"rx":1.5}],["path",{"d":"M4 10h16M4 14.5h16M10 5v14"}]],
+  /** printer (Q5) */
+  'print': [["path",{"d":"M7 9V4h10v5M7 17H4v-7h16v7h-3M7 14h10v6H7z"}]],
+  /** envelope: e-mail (Q7) */
+  'mail': [["rect",{"x":4,"y":6,"width":16,"height":12,"rx":1.5}],["path",{"d":"m4 8 8 5 8-5"}]],
+  /** globe: the farm website (U1) */
+  'globe': [["circle",{"cx":12,"cy":12,"r":8}],["path",{"d":"M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"}]],
+  /** house (guest nav: בית) (U1, U5, U12, U14) */
+  'home': [["path",{"d":"M4 11l8-7 8 7v9h-5v-6H9v6H4z"}]],
+  /** share (U2) */
+  'share': [["circle",{"cx":6,"cy":12,"r":2.2}],["circle",{"cx":17,"cy":6,"r":2.2}],["circle",{"cx":17,"cy":18,"r":2.2}],["path",{"d":"M8 11l7-4M8 13l7 4"}]],
 } satisfies Record<string, El[]>;
 
 export type IconName = keyof typeof ICONS;

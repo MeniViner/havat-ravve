@@ -10,7 +10,7 @@ const STATUS: Record<ErrorCode, number> = {
   RATE_LIMITED: 429, QUOTA_EXCEEDED: 429, UPSTREAM_ERROR: 502, OUTCOME_UNKNOWN: 503, PRODUCTION_LOCKED: 503, INTERNAL: 500,
 };
 
-const HE: Record<ErrorCode, string> = {
+export const HE: Record<ErrorCode, string> = {
   VALIDATION_FAILED: 'הבקשה לא תקינה',
   UNAUTHENTICATED: 'חסר אימות או שהמפתח לא תקף',
   FORBIDDEN: 'אין הרשאה לפעולה הזו',

@@ -12,6 +12,9 @@ const slice: Slice = (seed) => {
   patch(seed, 'users', U.yoav, { createdAt: '2026-10-12T09:00:00.000Z', acceptedTermsAt: '2026-10-12T09:00:00.000Z', photoSource: 'custom' });
   // C13: Beni's picture comes from Google (none copied in demo, so initials show); A1: Yoav chose his own picture
   patch(seed, 'users', U.beni, { photoSource: 'google' });
+  // Q18 "3 מתוך 5 פעילות": Beni keeps team messages, his tasks and urgent; no shopping trips or event reminders
+  const beni = (seed.collections.users || []).find((u) => u.uid === U.beni);
+  patch(seed, 'users', U.beni, { push: { ...(beni?.push as object || { enabled: true }), kinds: ['broadcast', 'task', 'urgent'] } });
   // X2: "מנהל השעה את הגישה שלך ... ב־18.11"
   patch(seed, 'users', U.yossi, { log: [{ at: '2026-11-18T09:15:00.000Z', by: A.beni, text: 'מצב: נחסם' }], updatedAt: '2026-11-18T09:15:00.000Z' });
   // C2 "כהן": one task on the owner today (managers only, so volunteers never see it) and one done by Noa on 12.11

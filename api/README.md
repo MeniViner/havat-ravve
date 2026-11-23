@@ -14,6 +14,14 @@ Live: `https://havat-ravve-api.meniviner.workers.dev` (Workers Free).
 assistant ──GET /v1/catalog──▶ Worker ──Firestore REST──▶ Firestore (emulator or a separate test project)
 ```
 
+## Catalog 3.0 (2026-11-22, live)
+
+The redesigned app's actions: 182 operations (67 reads, 115 writes), in `src/v2/` (one module per area, registered into
+`WRITE_DEFS` by `src/v2/index.ts`). Writes notify people like the app's `notify()` (`src/notify.ts`). Gate A runs
+`tests/api.mjs` plus `tests/api-v2-{tasks,events,farm}.mjs` (`npm run test:api`); the live check is
+`tests/api-remote.mjs`. The message for Instinct is `docs/instinct-handoff-3.0.md`. The table below lists the first
+operations only; `GET /v1/catalog` is the full list.
+
 ## Endpoints
 
 | Method | Path | Operation | Scope |

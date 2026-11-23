@@ -8,14 +8,14 @@ worker.addEventListener('install',e=>{worker.skipWaiting();e.waitUntil(caches.op
 worker.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith('havat-ravve-')&&k!==CACHE)await caches.delete(k);await worker.clients.claim();})()));
 // Weak reception is the normal case at the farm: give the network a few seconds, then answer from the cache.
 const quick=(req:Request,ms=3500)=>{const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(req,{signal:c.signal}).finally(()=>clearTimeout(t));};
-worker.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==worker.location.origin||u.pathname.startsWith('/api/')||u.pathname.startsWith('/admin')||u.pathname.startsWith('/__/'))return;
+worker.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==worker.location.origin||u.pathname.startsWith('/api/')||u.pathname.startsWith('/admin')||u.pathname.startsWith('/edit')||u.pathname.startsWith('/console')||u.pathname.startsWith('/__/'))return;
  if(e.request.mode==='navigate'){e.respondWith((async()=>{const cache=await caches.open(CACHE);try{const r=await quick(e.request);if(r.ok&&isApp(u.pathname))await cache.put(APP,r.clone());return r;}catch{return (isApp(u.pathname)?await cache.match(APP):await caches.match(OFFLINE))||Response.error();}})());return;}
  if(u.pathname.startsWith('/assets/')||u.pathname==='/styles.css'||u.pathname==='/farm.js'||u.pathname==='/app.js'||u.pathname==='/app.css'||u.pathname==='/app.webmanifest'){e.respondWith((async()=>{const cache=await caches.open(CACHE);try{const r=await quick(e.request);if(r.ok)await cache.put(e.request,r.clone());return r;}catch{return await cache.match(e.request)||Response.error();}})());}
 });
 // Phone push (docs/push-design.md). Both senders arrive here: our Web Push JSON {title, body, link, tag, urgent} and
 // an FCM message whose fields sit under `data`. The link is an in-app path ('/tasks/x'); anything else opens the app root.
 type PushPayload={title?:string;body?:string;link?:string;tag?:string;urgent?:boolean|string};
-const appUrl=(link?:string)=>{const l=typeof link==='string'&&link.startsWith('/')&&!link.startsWith('//')?link:'/';return l==='/app'||l.startsWith('/app/')?l:'/app'+(l==='/'?'':l);};
+const appUrl=(link?:string)=>{const l=typeof link==='string'&&link.startsWith('/')&&!link.startsWith('//')?link:'/';return l==='/app'||l.startsWith('/app/')||l==='/admin'||l.startsWith('/admin#')?l:'/app'+(l==='/'?'':l);};
 worker.addEventListener('push',e=>{let j:{data?:PushPayload}&PushPayload={};try{j=e.data?.json()||{};}catch{j={body:e.data?.text()||''};}
  const p:PushPayload={...j,...(j.data||{})};const urgent=p.urgent===true||p.urgent==='true';
  e.waitUntil(worker.registration.showNotification(String(p.title||'חוות רווה').slice(0,80),{body:String(p.body||'').slice(0,180),icon:'/assets/app-icon-192.png',badge:'/assets/app-icon-192.png',lang:'he',dir:'rtl',tag:p.tag||undefined,requireInteraction:urgent,data:{url:appUrl(p.link)}}));});

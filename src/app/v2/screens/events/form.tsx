@@ -1,8 +1,9 @@
-// N11 Event edit / new event: the few fields that change most, three switches; picture, description and questions one tap away.
+// N11 / Q32 Event edit / new event: the few fields that change most ("מתאריך" and "עד תאריך", empty = the same day), three
+// switches; picture, description and questions one tap away. Deleting the event is in ⋯ beside "ביטול" (rule 6; M4 keeps "עריכה").
 import { useId, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
-import { AppScreen, go, useToast } from '../../core';
-import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton, ConfirmSheet } from '../../kit';
+import { AppScreen, go, useRemove, useToast } from '../../core';
+import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, MoreMenu, Sheet, Tag } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storePhoto } from '../../../upload';
@@ -10,7 +11,7 @@ import { back } from '../../../router';
 import { nowMs } from '../../../clock';
 import { saveEventV2, deleteEventV2 } from '../../data/events';
 import { dateFieldText, endDateOf, localOf, normTime, rangeFromForm } from './logic';
-import { Loading, Missing, useRun } from './shared';
+import { FormEnd, Loading, Missing, useRun } from './shared';
 import type { EventQuestion, FarmEvent } from '../../../types';
 
 export function EventForm({ ctx, params }: ScreenProps) {
@@ -24,13 +25,13 @@ export function EventForm({ ctx, params }: ScreenProps) {
 const DEFAULT_LOCATION = 'חוות רווה, ליד טנא עומרים';
 
 function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
-  const toast = useToast(); const run = useRun();
+  const toast = useToast(); const run = useRun(); const remove = useRemove();
   const s0 = localOf(existing?.start || ''); const e0 = localOf(existing?.end || '');
   const [title, setTitle] = useState(existing?.title || '');
   const [date, setDate] = useState(s0.date);
   const [from, setFrom] = useState(s0.time || '');
   const [to, setTo] = useState(e0.time || '');
-  // A multi-day event keeps its last day; the form still shows one date unless an end day is set (under "more").
+  // Q32 "עד תאריך": empty is the same day (an evening into the night stays one day); a multi-day event keeps its last day.
   const [endDate, setEndDate] = useState(endDateOf(existing?.start || '', existing?.end || ''));
   const [price, setPrice] = useState(String(existing?.price ?? ''));
   const [maxPerOrder, setMax] = useState(existing?.maxPerOrder ?? 5);
@@ -44,12 +45,14 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   const [location, setLocation] = useState(existing?.location ?? DEFAULT_LOCATION);
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 0));
   const [questions, setQuestions] = useState<EventQuestion[]>(existing?.questions || []);
+  // the question being edited in its sheet; id '' is a new one ("הוספת שאלה")
+  const [ask, setAsk] = useState<EventQuestion | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
   const [tried, setTried] = useState(false);
-  const dateId = useId(); const fileRef = useRef<HTMLInputElement>(null); const dateRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const range = rangeFromForm(date, from, to, endDate);
+  const until = endDate > date ? endDate : '';
+  const range = rangeFromForm(date, from, to, until);
   const priceN = Math.max(0, Math.round(Number(price.replace(/[^\d.]/g, '')) || 0));
   const ok = title.trim().length > 0 && !!range;
   const parent = existing ? `/manage/events/${existing.id}` : '/manage/events';
@@ -68,30 +71,24 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
     setBusy(false);
     if (id) go(`/manage/events/${id}`, true);
   };
-  const remove = async () => {
-    if (!existing) return;
-    const done = await run(async () => { await deleteEventV2(ctx.actor, existing); return true; });
-    if (done) { go('/manage/events', true); toast.show({ text: 'האירוע נמחק. הכרטיסים נשמרו.', check: true }); }
-  };
   const pickImage = async (f?: File) => {
     if (!f) return;
     try { setImage(await storePhoto(await compressPhoto(f), 'event')); } catch (err) { toast.show({ text: (err as Error).message, tone: 'error' }); }
   };
-  const openDate = () => { const el = dateRef.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
 
   return (
     <AppScreen variant="form" bar={<BottomBar><Button size="bar" grow disabled={busy} onClick={save}>שמירה</Button></BottomBar>}>
-      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} onCancel={() => back(parent)} />
+      <FormHeader title={existing ? 'עריכת אירוע' : 'אירוע חדש'} end={<FormEnd onCancel={() => back(parent)} title={existing?.title || ''} items={existing ? [
+        { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+          title: 'למחוק את האירוע?', text: `"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`,
+          onConfirm: () => remove(() => deleteEventV2(ctx.actor, existing), { text: 'האירוע נמחק. הכרטיסים נשמרו.', after: () => go('/manage/events', true) }),
+        } },
+      ] : undefined} />} />
       <Field label="שם האירוע" value={title} onChange={(ev) => setTitle(ev.target.value)} error={tried && !title.trim() ? 'צריך שם לאירוע' : undefined} />
-      <div className="k-fieldrow">
-        <div className="k-field k-field--grow events-datefield">
-          <label htmlFor={dateId} className="k-field__label">תאריך</label>
-          <input className="k-input" readOnly value={dateFieldText(date)} onClick={openDate} tabIndex={-1} aria-hidden="true" />
-          <input ref={dateRef} id={dateId} type="date" className="events-datefield__native" value={date} onChange={(ev) => setDate(ev.target.value)} />
-          {tried && !date && <span className="k-field__error" role="alert">בחרו תאריך</span>}
-        </div>
-      </div>
-      {endDate && !more && <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)} />}
+      <FieldRow>
+        <DateField label="מתאריך" value={date} onChange={setDate} error={tried && !date ? 'בחרו תאריך' : undefined} />
+        <DateField label="עד תאריך" value={until} min={date} placeholder="אותו יום" onChange={setEndDate} />
+      </FieldRow>
       <FieldRow>
         <Field grow label="משעה" ltr inputMode="numeric" value={from} onChange={(ev) => setFrom(ev.target.value)} onBlur={() => setFrom((v) => normTime(v) || v)}
           error={tried && !normTime(from) ? 'שעה כמו 16:00' : undefined} />
@@ -124,33 +121,64 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           </div>
           <TextAreaField label="תיאור לאורחים" value={description} onChange={(ev) => setDescription(ev.target.value)} placeholder="מה יהיה, למי זה מתאים, מה להביא" height={110} />
           <Field label="מקום" value={location} onChange={(ev) => setLocation(ev.target.value)} />
-          <Field label="מסתיים" ltr type="date" min={date} value={endDate} onChange={(ev) => setEndDate(ev.target.value)}
-            hint={endDate && endDate > date ? dateFieldText(endDate) : undefined} />
           <Field label="מקומות (0 = בלי הגבלה)" ltr inputMode="numeric" value={capacity} onChange={(ev) => setCapacity(ev.target.value.replace(/\D/g, ''))} />
-          <div className="events-questions">
-            <span className="k-field__label">שאלות נוספות בהרשמה</span>
-            {questions.map((q, i) => (
-              <div key={q.id} className="events-question">
-                <Field grow label={`שאלה ${i + 1}`} labelHidden placeholder="שאלה" value={q.label} onChange={(ev) => setQuestions((l) => l.map((x) => (x.id === q.id ? { ...x, label: ev.target.value } : x)))} />
-                <label className="events-question__req">
-                  <Toggle checked={q.required} onChange={(v) => setQuestions((l) => l.map((x) => (x.id === q.id ? { ...x, required: v } : x)))} label={`חובה: שאלה ${i + 1}`} />
-                  <span aria-hidden="true">חובה</span>
-                </label>
-                <IconButton icon="close" label={`הסרת שאלה ${i + 1}`} variant="quiet" onClick={() => setQuestions((l) => l.filter((x) => x.id !== q.id))} />
-              </div>
-            ))}
-            <Button variant="link" icon="plus" onClick={() => setQuestions((l) => [...l, { id: 'q' + nowMs().toString(36), label: '', required: false }])}>הוספת שאלה</Button>
-          </div>
+          {/* rules 4 and 6: a question is a row that opens its sheet; delete is ⋯ → "מחיקה" there, no X on the row */}
+          {questions.length > 0 && (
+            <ListCard title="שאלות נוספות בהרשמה" count={questions.length}>
+              {questions.map((q) => (
+                <Row key={q.id} minHeight={54} title={q.label || 'שאלה בלי נוסח'} tags={q.required ? <Tag tone="warm">חובה</Tag> : <Tag>רשות</Tag>} onClick={() => setAsk({ ...q })} />
+              ))}
+            </ListCard>
+          )}
+          <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setAsk({ id: '', label: '', required: false })}>{questions.length ? 'הוספת שאלה' : 'שאלות נוספות בהרשמה'}</Button>
+          <QuestionSheet q={ask} saved={questions.find((x) => x.id === ask?.id)?.label || ''} onChange={setAsk} onClose={() => setAsk(null)}
+            onKeep={(q) => { setQuestions((l) => (q.id ? l.map((x) => (x.id === q.id ? q : x)) : [...l, { ...q, id: 'q' + nowMs().toString(36) }])); setAsk(null); }}
+            onDrop={(qid) => { setQuestions((l) => l.filter((x) => x.id !== qid)); setAsk(null); }} />
           <ListCard>
             <Row minHeight={58} title="פתוח להרשמה" meta="אורחים יכולים להזמין כרטיסים" actions={<Toggle checked={open} onChange={setOpen} label="פתוח להרשמה" />} />
           </ListCard>
-          {existing && <Button variant="danger" size="tall" onClick={() => setConfirmDel(true)}>מחיקת האירוע</Button>}
-          {existing && (
-            <ConfirmSheet open={confirmDel} onClose={() => setConfirmDel(false)} title="למחוק את האירוע?"
-              text={`"${existing.title}" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים.`} confirmLabel="מחיקה" onConfirm={remove} />
-          )}
         </div>
       )}
     </AppScreen>
+  );
+}
+
+/** One sign-up question of the event, edited in a sheet like the registration questions in Settings (G3): the question and
+ *  "חובה"; for a saved question ⋯ in the header holds "מחיקה" with the Q8 confirmation. Changes apply with the form's "שמירה". */
+function QuestionSheet({ q, saved, onChange, onClose, onKeep, onDrop }: {
+  q: EventQuestion | null; saved: string; onChange: (q: EventQuestion) => void; onClose: () => void; onKeep: (q: EventQuestion) => void; onDrop: (id: string) => void;
+}) {
+  const ok = !!q?.label.trim();
+  const more = q?.id ? (
+    <MoreMenu title={saved || 'שאלה'} items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: { title: 'למחוק את השאלה?', text: `"${saved}" תוסר מטופס ההרשמה לאירוע כשתלחצו "שמירה". תשובות שכבר נשמרו נשארות.`, confirmLabel: 'מחיקה', onConfirm: () => onDrop(q.id) },
+    }]} />
+  ) : undefined;
+  return (
+    <Sheet open={!!q} onClose={onClose} title={q?.id ? 'עריכת שאלה' : 'שאלה חדשה'} aside={more}>
+      {q && (
+        <div className="events-sheet">
+          <Field label="השאלה" value={q.label} maxLength={80} onChange={(ev) => onChange({ ...q, label: ev.target.value })} />
+          <ul className="k-list k-card k-card--list"><Row minHeight={54} title="חובה" meta="בלי תשובה אי אפשר להירשם" actions={<Toggle label="חובה" checked={q.required} onChange={(v) => onChange({ ...q, required: v })} />} /></ul>
+          <Button size="lg" block disabled={!ok} onClick={() => onKeep({ ...q, label: q.label.trim() })}>{q.id ? 'עדכון' : 'הוספה'}</Button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/** Q32 date field: reads "שבת 28.11.2026" and opens the phone's date picker (the native input lies over it, invisible).
+ *  Empty shows the placeholder ("אותו יום"); clearing the picker empties it. */
+function DateField({ label, value, onChange, min, placeholder, error }: { label: string; value: string; onChange: (v: string) => void; min?: string; placeholder?: string; error?: string }) {
+  const id = useId(); const ref = useRef<HTMLInputElement>(null);
+  const open = () => { const el = ref.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
+  return (
+    <div className="k-field k-field--grow events-datefield">
+      <label htmlFor={id} className="k-field__label">{label}</label>
+      <input className="k-input" readOnly value={dateFieldText(value)} placeholder={placeholder} onClick={open} tabIndex={-1} aria-hidden="true" />
+      <input ref={ref} id={id} type="date" className="events-datefield__native" value={value} min={min} onChange={(ev) => onChange(ev.target.value)} />
+      {error && <span className="k-field__error" role="alert">{error}</span>}
+    </div>
   );
 }

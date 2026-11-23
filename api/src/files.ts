@@ -14,9 +14,13 @@ import { ApiError, type Meta, fail } from './http';
 import { type Env, Firestore, toApiError } from './firestore';
 import { verifyIdToken } from './idtoken';
 
+export type R2Object = { key: string; size: number; uploaded: Date; customMetadata?: Record<string, string> };
 export type R2 = {
-  put(key: string, value: ArrayBuffer, o?: { httpMetadata?: { contentType?: string; cacheControl?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
-  get(key: string): Promise<{ body: ReadableStream; size: number; httpEtag: string; httpMetadata?: { contentType?: string } } | null>;
+  put(key: string, value: ArrayBuffer | Uint8Array | string, o?: { httpMetadata?: { contentType?: string; cacheControl?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
+  get(key: string): Promise<{ body: ReadableStream; size: number; httpEtag: string; httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string>; text(): Promise<string> } | null>;
+  /** Backups and the recycle bin (backup.ts). */
+  list(o: { prefix?: string; delimiter?: string; cursor?: string; limit?: number; include?: ('customMetadata' | 'httpMetadata')[] }): Promise<{ objects: R2Object[]; delimitedPrefixes: string[]; truncated: boolean; cursor?: string }>;
+  delete(keys: string | string[]): Promise<void>;
 };
 
 const KINDS = {

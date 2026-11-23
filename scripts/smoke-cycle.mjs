@@ -1,11 +1,15 @@
-// End-to-end smoke cycle of the v2 redesign on the Firebase emulators, as every role.
+// End-to-end smoke cycle of the team app and the guest side on the Firebase emulators, as every role.
+// Tidy round (2026-11-23): every check follows its capability to the tidy placement (messages in People, deletes in ⋯,
+// recurring tasks from the add form, activity and the Instinct log on the Manage root, places from the Farm tab, the
+// rebuilt guest side U1-U14, Q7 after a payment approval), plus items 9-12 (every message audience, Q27 by phone,
+// the three confirmation kinds, one delete of each entity).
 //
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
-//   node scripts/dev.mjs                                   (port 5173, or PORT=... and BASE=http://localhost:...)
-//   node scripts/smoke-seed.mjs && node scripts/smoke-cycle.mjs [--only=1,2,3]
+//   PATH=/opt/homebrew/opt/openjdk/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
+//   PORT=5237 node scripts/dev.mjs                          (any free port; BASE=http://localhost:5237 below)
+//   node scripts/smoke-seed.mjs && BASE=http://localhost:5237 node scripts/smoke-cycle.mjs [--only=1,2,3]
 //
 // Every browser context aborts all non-localhost requests and every app URL carries ?emulator (scripts/smoke/lib.mjs).
-// Screenshots go to docs/smoke/redesign/shots, results to .build/smoke/results.json.
+// Screenshots go to docs/smoke/tidy/shots (SHOTS=... to change), results to .build/smoke/results.json.
 import fs from 'node:fs';
 import { launch, close, session, check, setItem, results, external, adminGet, adminList, userWrite, userRead, uids, qrDataUrl, adminSet } from './smoke/lib.mjs';
 
@@ -20,6 +24,36 @@ async function pickPhoto(s, trigger) {
   await chooser.setFiles(PHOTO); await s.settle(1200);
 }
 async function findBy(coll, pred, timeout = 8000) { return until(async () => (await adminList(coll)).find(pred), timeout); }
+/** U3/U9 "לאן לשלוח אישור תשלום": the picker row and its sheet. */
+async function pickReceipt(s, label) {
+  await s.click('לאן לשלוח אישור תשלום'); await s.page.getByRole('dialog').last().getByText(label, { exact: true }).click(); await s.settle(400);
+  if (await s.page.getByRole('dialog').count()) { await s.page.keyboard.press('Escape'); await s.settle(300); }
+}
+/** Tidy rules 5 and 6: the top bar's ⋯ ("עוד פעולות") opens a sheet of items. */
+async function openMore(s) { await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).first().click(); await s.settle(400); }
+async function moreItem(s, label) { await openMore(s); await s.page.getByRole('dialog').last().getByRole('button', { name: label, exact: false }).first().click(); await s.settle(600); }
+/** The ⋯ sheet's text ('' when there is no ⋯); closes it again. */
+async function moreText(s) {
+  const b = s.page.getByRole('button', { name: 'עוד פעולות', exact: true });
+  if (!(await b.count())) return '';
+  await b.first().click(); await s.settle(350);
+  const t = await s.page.getByRole('dialog').last().innerText().catch(() => ''); await s.page.keyboard.press('Escape'); await s.settle(300);
+  return t;
+}
+/** A confirmation sheet (Q8) that may follow an action: presses its button when it is there. */
+async function confirmIfAsked(s, button) {
+  const d = s.page.getByRole('dialog').last();
+  if (await d.count() && await d.isVisible().catch(() => false)) { const b = d.getByRole('button', { name: button, exact: true }); if (await b.count()) { await b.first().click(); await s.settle(900); } }
+}
+/** ⋯ → "מחיקה" → Q8. Returns the confirmation's text, after pressing its red "מחיקה". */
+async function deleteViaMore(s, item = 'מחיקה', button = 'מחיקה') {
+  await openMore(s);
+  await s.page.getByRole('dialog').last().getByRole('button', { name: item, exact: true }).first().click(); await s.settle(450);
+  const d = s.page.getByRole('dialog').last();
+  const q = await d.innerText().catch(() => '');
+  await d.getByRole('button', { name: button, exact: true }).first().click(); await s.settle(1200);
+  return q;
+}
 
 // ====================================================================================================================
 async function item1() {
@@ -103,9 +137,9 @@ async function item1() {
   check(s.path() === '/notifications', 'bell opens notifications', 'volunteer');
   // profile
   await s.go('/me', 1000);
-  check(await s.has('יואב פרץ') && await s.has('מתנדב'), 'L6 profile renders', 'volunteer');
+  check(await s.has('יואב פרץ') && await s.has('מתנדב'), 'Q18 (L6) profile renders', 'volunteer');
   await s.shot('1-L6-profile');
-  await s.click('עריכה'); await s.settle(500);
+  await s.click('עריכת פרטים'); await s.settle(500);
   const phone = s.page.getByLabel('טלפון').first(); await phone.fill('052-111-2233');
   await s.click('שמירה', { role: 'button' });
   const saved = await until(async () => (await adminGet('users/' + U.yoav))?.phone === '052-111-2233');
@@ -120,9 +154,9 @@ async function item2() {
   const U = uids();
   const s = await session('dana', { ctx: { geolocation: { latitude: 31.3519, longitude: 34.9716 }, permissions: ['camera', 'geolocation'] } });
   await s.go('/manage', 1500);
-  check(await s.has('ניהול') && await s.has('הודעות לצוות'), 'M1 manage tab renders', 'manager');
-  await s.shot('2-M1-manage');
-  // C4 assign a task to someone
+  check(await s.has('ניהול') && await s.has('אנשים והודעות') && await s.has('כל הפעילות') && !(await s.has('יומן אינסטינקט')), 'Q1 manage root: tiles and the activity row (no Instinct log for a manager)', 'manager');
+  await s.shot('2-Q1-manage');
+  // C4 assign a task to someone ("על מי" on a free task)
   await s.go('/tasks/t-assign', 1000);
   await s.click('על מי', { exact: true }).catch(() => {});
   if (!s.path().endsWith('/assign')) await s.go('/tasks/t-assign/assign', 900);
@@ -131,18 +165,33 @@ async function item2() {
   await s.click('להעביר ליואב', { role: 'button' });
   const assigned = await until(async () => (await adminGet('tasks/t-assign'))?.assignee?.uid === U.yoav);
   check(assigned && s.path() === '/tasks/t-assign', 'C4 assigned to Yoav (saved), back on the task', 'manager');
-  // recurring templates
-  await s.go('/manage/recurring', 900); await s.click('חדשה');
-  await s.fill('מה עושים', 'האכלת התרנגולות'); await s.fill('עד איזו שעה', '08:00'); await s.fill('איפה', 'הגינה');
-  await s.click('שמירה', { role: 'button' });
+  // Q24 recurring task: created from the add form ("חוזרת" chip), listed from the managers-only row at the bottom of Tasks,
+  // edited and switched off in the same form
+  await s.go('/tasks', 1000);
+  await s.page.getByPlaceholder('משימה או קנייה חדשה').fill('האכלת התרנגולות'); await s.page.keyboard.press('Enter'); await s.settle(800);
+  await s.click('חוזרת', { exact: true });
+  await s.page.getByLabel('עד איזו שעה').fill('08:00');
+  await s.click('אחר', { exact: true }); await s.page.getByRole('dialog').getByText('הגינה', { exact: true }).click(); await s.settle(400);
+  await s.shot('2-Q24-recurring-add');
+  await s.click('הוספת משימה חוזרת', { role: 'button', wait: 1200 });
   const tpl = await findBy('task_templates', (t) => t.title === 'האכלת התרנגולות');
-  check(tpl && tpl.placeId === 'pl-garden' && tpl.time === '08:00' && s.path() === '/manage/recurring', 'L2 recurring template saved with place and time', 'manager');
+  check(tpl && tpl.placeId === 'pl-garden' && tpl.time === '08:00' && tpl.active === true, 'Q24 recurring task created from the add form (place, time, on)', 'manager', tpl ? `then on ${s.path()}` : 'not found');
+  await s.go('/tasks', 1200);
+  await row(s, 'משימות חוזרות').click(); await s.settle(900);
+  check(s.path() === '/manage/recurring' && await s.has('האכלת התרנגולות'), 'Q2 the managers-only "משימות חוזרות" row at the bottom of Tasks lists it', 'manager');
   if (tpl) {
-    await s.go('/manage/recurring/' + tpl.id, 900); await s.page.getByRole('switch', { name: 'פעילה' }).click(); await s.click('שמירה', { role: 'button' });
-    check(await until(async () => (await adminGet('task_templates/' + tpl.id))?.active === false), 'L2 template turned off (saved)', 'manager');
+    await s.go('/manage/recurring/' + tpl.id, 1000);
+    check(await s.has('עד איזו שעה') && await s.page.getByRole('switch', { name: 'פעילה' }).count() > 0, 'Q24 the recurring task opens in the add form, with "פעילה"', 'manager');
+    await s.page.getByLabel('עד איזו שעה').fill('08:30'); await s.click('שמירה', { role: 'button', wait: 1000 });
+    check(await until(async () => (await adminGet('task_templates/' + tpl.id))?.time === '08:30'), 'Q24 recurring task edited (time saved)', 'manager');
+    await s.go('/manage/recurring/' + tpl.id, 1000);
+    await s.page.getByRole('switch', { name: 'פעילה' }).click(); await s.click('שמירה', { role: 'button', wait: 1000 });
+    check(await until(async () => (await adminGet('task_templates/' + tpl.id))?.active === false), 'Q24 recurring task switched off (saved)', 'manager');
   }
-  // places
-  await s.go('/places', 900); await s.click('אני עומד כאן, לשמור מקום', { wait: 1200 });
+  // places: reached from the Farm tab
+  await s.go('/farm', 1000); await s.click('מקומות בחווה', { wait: 900 });
+  check(s.path() === '/places', 'places open from the Farm tab', 'manager');
+  await s.click('אני עומד כאן, לשמור מקום', { wait: 1200 });
   check(/^\/places\/[^/]+$/.test(s.path()), 'L3 save a place from the current position opens L4', 'manager');
   await s.page.getByLabel('שם המקום').fill('ליד הלול'); await s.click('שמירה', { role: 'button' });
   const place = await findBy('places', (p) => p.name === 'ליד הלול');
@@ -158,26 +207,29 @@ async function item2() {
   const proj = await findBy('projects', (p) => p.title === 'פינת ישיבה ליד הבריכה');
   check(proj && /^\/projects\/[^/]+$/.test(s.path()) && await s.has('לבנות ספסל'), 'P5 project created with two steps, P3 opens', 'manager');
   await s.shot('2-P3-project');
-  // people directory: invite by email (N13), block/unblock a guest
+  // people: the role by e-mail is in People's ⋯ (Q27 "לפי מייל"); block/unblock a guest through the person's ⋯
   await s.go('/manage/people', 1000);
-  check(await s.has('אנשים') && await s.has('אורלי לוי'), 'M8 people directory renders', 'manager');
-  await s.click('תפקיד לפי כתובת מייל');
+  check(await s.has('אנשים · ') && await s.has('אורלי לוי'), 'M8 people directory renders', 'manager');
+  await moreItem(s, 'תפקיד לפי כתובת מייל');
+  check(s.path() === '/manage/people/invite', 'People ⋯ "תפקיד לפי כתובת מייל" opens Q27', 'manager');
+  await s.click('לפי מייל', { role: 'button' });
   await s.page.getByLabel('כתובת Google של האדם').fill('noga.smoke@example.com');
   await s.click('שמירת התפקיד', { role: 'button' });
-  check(await until(async () => (await adminGet('role_invites/noga.smoke@example.com'))?.role === 'staff'), 'N13 role invite by email saved (staff)', 'manager');
-  await s.go('/manage/people/' + U.michal, 1000); await s.click('חסימה', { role: 'button' });
-  check(await until(async () => (await adminGet('users/' + U.michal))?.status === 'blocked'), 'M9 manager blocks a guest', 'manager');
-  await s.reload(); await s.click('שחרור חסימה', { role: 'button' });
+  check(await until(async () => (await adminGet('role_invites/noga.smoke@example.com'))?.role === 'staff'), 'N13 role invite by e-mail saved (staff)', 'manager');
+  await s.go('/manage/people/' + U.michal, 1000); await moreItem(s, 'חסימה'); await confirmIfAsked(s, 'חסימה');
+  check(await until(async () => (await adminGet('users/' + U.michal))?.status === 'blocked'), 'M9 manager blocks a guest (⋯ → חסימה)', 'manager');
+  await s.reload(); await moreItem(s, 'שחרור חסימה'); await confirmIfAsked(s, 'שחרור חסימה');
   check(await until(async () => (await adminGet('users/' + U.michal))?.status === 'active'), 'M9 manager unblocks the guest', 'manager');
   await s.go('/manage/people/' + U.orly, 1000);
-  check((await s.page.getByRole('button', { name: 'חסימה' }).count()) === 0, 'M9 a manager cannot block a volunteer (owner only)', 'manager');
-  // broadcast (B1/B2)
-  await s.go('/manage/broadcasts/new', 1000);
+  check(!(await moreText(s)).includes('חסימה') && (await s.page.getByRole('button', { name: 'חסימה' }).count()) === 0, 'M9 a manager cannot block a volunteer (owner only)', 'manager');
+  // broadcast: People → הודעות → "הודעה חדשה" (Q25, Q26)
+  await s.go('/manage/people?tab=messages', 1000);
+  await s.click('הודעה חדשה', { role: 'button', wait: 900 });
   await s.page.getByLabel('תוכן ההודעה').fill('מחר בשבע בבוקר מתחילים לקטוף זיתים. מי שיכול להגיע, שיגיע.');
-  await s.shot('2-B1-compose');
+  await s.shot('2-Q26-compose');
   await s.click('שליחה ל־', { role: 'button', wait: 1500 });
   const bc = await findBy('broadcasts', (b) => (b.text || '').includes('לקטוף זיתים'));
-  check(bc && /\/manage\/broadcasts/.test(s.path()), 'B1 broadcast sent (saved)', 'manager', bc ? `recipients ${bc.recipients?.length}` : '');
+  check(bc && bc.audience === 'all' && s.path() === '/manage/people' && s.page.url().includes('tab=messages'), 'Q26 message to the whole team sent (saved), back on People · הודעות', 'manager', bc ? `recipients ${bc.recipients?.length}` : '');
   // payments: bulk approval in the inbox (trust-based)
   await s.go('/manage/inbox', 1200); await s.click('תשלומים', { exact: false });
   await s.shot('2-M2-payments');
@@ -190,7 +242,7 @@ async function item2() {
   // a volunteer reads the broadcast and sees the task put on him
   const y = await session('yoav');
   await y.go('/tasks', 1500);
-  check(await y.has('לקטוף זיתים'), 'B4 the broadcast card shows on the volunteer root', 'volunteer');
+  check(await y.has('לקטוף זיתים'), 'B4 the message card shows on the volunteer root', 'volunteer');
   await y.shot('2-B4-volunteer-card');
   await y.click('קראתי', { role: 'button', wait: 900 });
   const receipt = bc && await until(async () => (await adminGet(`broadcasts/${bc.id}/reads/${U.yoav}`))?.at);
@@ -199,7 +251,10 @@ async function item2() {
   check(await y.has('להביא שק מלט מהרכב'), 'C1 the assignment reached the volunteer\'s notifications', 'volunteer');
   noErrors(y, 'volunteer reads');
   await y.done();
-  if (bc) { await s.go('/manage/broadcasts/' + bc.id, 1200); check(await s.has('יואב'), 'B2 the manager sees who read it', 'manager'); }
+  if (bc) {
+    await s.go('/manage/people?tab=messages', 1200); await s.page.locator('.broadcast-sent', { hasText: 'לקטוף זיתים' }).first().click(); await s.settle(1000);
+    check(s.path() === '/manage/people/messages/' + bc.id && await s.has('יואב'), 'B3 the manager sees who read it (People · הודעות → the message)', 'manager');
+  }
 
   // the invited person signs in for the first time (C9) and lands in the team app as a volunteer
   const n = await session('noga');
@@ -215,15 +270,20 @@ async function item2() {
   noErrors(n, 'first entry');
   await n.done();
 
-  // owner blocks and unblocks a volunteer; the activity feed shows the day
+  // owner blocks and unblocks a volunteer; the activity feed and the Instinct log are rows on the Manage root
   const o = await session('owner');
-  await o.go('/manage/people/' + U.orly, 1200); await o.click('חסימה', { role: 'button' });
+  await o.go('/manage/people/' + U.orly, 1200); await moreItem(o, 'חסימה'); await confirmIfAsked(o, 'חסימה');
   check(await until(async () => (await adminGet('users/' + U.orly))?.status === 'blocked'), 'M9 owner blocks a volunteer', 'owner');
-  await o.reload(); await o.click('שחרור חסימה', { role: 'button' });
+  await o.reload(); await moreItem(o, 'שחרור חסימה'); await confirmIfAsked(o, 'שחרור חסימה');
   check(await until(async () => (await adminGet('users/' + U.orly))?.status === 'active'), 'M9 owner unblocks the volunteer', 'owner');
-  await o.go('/manage/activity', 1500);
+  await o.go('/manage', 1500);
+  await row(o, 'כל הפעילות').click(); await o.settle(1500);
+  check(o.path() === '/manage/activity', 'Q1 "כל הפעילות" row opens the activity feed', 'owner');
   check(await o.has('דנה העבירה: להביא שק מלט מהרכב') && await o.has('דנה אישרה תשלום') && await o.has('דנה חסמה: מיכל בר') && !/[a-z]{4,}/.test((await o.text()).replace(/\S+@\S+/g, '')), 'N14 activity feed lists the day, every line in Hebrew', 'owner');
   await o.shot('2-N14-activity');
+  await o.go('/manage', 1200);
+  await row(o, 'יומן אינסטינקט').click(); await o.settle(1200);
+  check(o.path() === '/manage/instinct' && await o.has('יומן אינסטינקט'), 'Q1 "יומן אינסטינקט" row (owners only) opens the Instinct log', 'owner');
   noErrors(o, 'owner');
   await o.done(); await s.done();
 }
@@ -243,7 +303,7 @@ async function item3() {
   // the manager creates the event a few days ahead and publishes it
   await m.go('/manage/events/new', 1200);
   await m.fill('שם האירוע', EV);
-  await m.page.locator('input[type=date]').fill(plusDays(4));
+  await m.page.getByLabel('מתאריך').fill(plusDays(4));
   await m.fill('משעה', '17:00'); await m.fill('עד שעה', '23:00'); await m.fill('מחיר לכרטיס, בשקלים', '40');
   await m.page.getByRole('switch', { name: 'מפורסם לאורחים' }).click();
   await m.click('שמירה', { role: 'button', wait: 1500 });
@@ -311,16 +371,15 @@ async function item3() {
   noErrors(h, 'helper');
   await h.done();
 
-  // a guest orders two tickets and marks them paid (legacy guest flow)
+  // a guest orders two tickets (U3) and marks them paid (U4)
   const g = await session('michal');
   await g.go(`/events/${ev.id}/order`, 1500);
   await g.page.getByRole('button', { name: 'עוד', exact: true }).click(); await g.settle(200);
-  await g.page.locator('select').first().selectOption('whatsapp'); await g.settle(200);
-  await g.click('הזמנה ·', { wait: 2000 });
+  await pickReceipt(g, 'וואטסאפ');
+  await g.click('הזמנה ·', { role: 'button', wait: 2000 });
   const order = await until(async () => { const t = (await adminList('tickets')).filter((x) => x.eventId === ev.id && x.ownerUid === U.michal); return t.length ? t : null; });
-  check(order?.length === 2 && order.every((t) => t.paymentStatus === 'pending'), 'guest orders 2 tickets (pending)', 'guest', `${order?.length || 0} tickets`);
-  await g.go('/me', 1500);
-  await g.click('העברתי', { wait: 1500 });
+  check(order?.length === 2 && order.every((t) => t.paymentStatus === 'pending') && /^\/me\/orders\/[^/]+\/pay$/.test(g.path()), 'U3 guest orders 2 tickets (pending), U4 opens', 'guest', `${order?.length || 0} tickets`);
+  await g.click('העברתי את התשלום', { role: 'button', wait: 1500 });
   const claimed = await until(async () => (await adminList('tickets')).filter((x) => x.eventId === ev.id && x.ownerUid === U.michal).every((t) => t.paymentStatus === 'claimed'));
   check(claimed, 'guest marks the order paid (claimed, trust-based)', 'guest');
   noErrors(g, 'guest order');
@@ -328,7 +387,7 @@ async function item3() {
 
   // the day comes: the manager moves the event to today (N11 edit)
   await m.go(`/manage/events/${ev.id}/edit`, 1200);
-  await m.page.locator('input[type=date]').fill(jkey(new Date()));
+  await m.page.getByLabel('מתאריך').fill(jkey(new Date()));
   await m.click('שמירה', { role: 'button', wait: 1500 });
   check(await until(async () => jkey(new Date((await adminGet('events/' + ev.id)).start)) === jkey(new Date())), 'N11 event date edited to today', 'manager');
   await m.done();
@@ -436,13 +495,20 @@ async function item4() {
   setItem('4 Role boundaries');
   const U = uids();
   const y = await session('yoav');
-  for (const path of ['/manage', '/manage/people', '/projects', '/manage/recurring', '/manage/events']) {
+  for (const path of ['/manage', '/manage/people', '/manage/people?tab=messages', '/manage/people/invite', '/projects', '/manage/recurring', '/manage/recurring/new', '/manage/events', '/manage/activity']) {
     await y.go(path, 1200);
     check(y.path() === '/tasks', `volunteer opening ${path} is sent to /tasks`, 'volunteer');
   }
   check(!(await y.has('ניהול')), 'volunteer has no manage tab', 'volunteer');
+  check(!(await y.has('משימות חוזרות')), 'volunteer: no "משימות חוזרות" row on Tasks (managers only)', 'volunteer');
+  await y.go('/new?text=' + encodeURIComponent('בדיקה'), 1000);
+  check(await y.has('הוספת משימה') && (await y.page.getByRole('button', { name: 'חוזרת', exact: true }).count()) === 0, 'volunteer: the add form has no "חוזרת" chip', 'volunteer');
   noErrors(y, 'volunteer redirects');
   await y.done();
+  const dm = await session('dana');
+  await dm.go('/manage/instinct', 1200);
+  check(dm.path() !== '/manage/instinct', 'manager opening the Instinct log is sent away (owners only)', 'manager', dm.path());
+  noErrors(dm, 'manager redirect'); await dm.done();
   const denied = (st) => st === 403;
   check(denied(await userWrite('yoav', 'settings/app', { guestIntro: 'x' })), 'rules refuse a volunteer writing settings/app', 'volunteer');
   check(denied(await userWrite('yoav', 'task_templates/smoke-x', { title: 'x' })), 'rules refuse a volunteer writing a recurring template', 'volunteer');
@@ -663,105 +729,403 @@ async function item7() {
 }
 
 async function item8() {
-  setItem('8 Guest flows (legacy)');
+  setItem('8 Guest side (U1-U14)');
   const U0 = uids();
-  // signed out: home, event page, the order asks to sign in first
+  // signed out: home, event page, the order goes to the Google sign-in first
   const a = await session(null);
   await a.go('/', 1800);
-  check(await a.has('אירועים קרובים') && await a.has('פסטיבל החורף') && await a.has('תיאום ביקור'), 'signed out: guest home lists the upcoming event and the tiles', 'signed-out');
-  await a.shot('8-guest-home-signed-out');
+  check(await a.has('אירועים קרובים') && await a.has('פסטיבל החורף') && await a.has('תיאום ביקור') && await a.has('תרומה לחווה') && await a.has('פנייה לחווה'), 'U1 signed out: home lists the upcoming event and the tiles', 'signed-out');
+  await a.shot('8-U1-home-signed-out');
   await a.click('פסטיבל החורף', { wait: 1000 });
-  check(a.path() === '/events/ev-winter' && await a.has('הזמנת כרטיסים') && await a.has('לכרטיס'), 'event page with price and "הזמנת כרטיסים"', 'signed-out');
-  await a.shot('8-event-page');
+  check(a.path() === '/events/ev-winter' && await a.has('הזמנת כרטיסים') && await a.has('50 ₪'), 'U2 event page with price and "הזמנת כרטיסים"', 'signed-out');
+  await a.shot('8-U2-event-page');
   await a.click('הזמנת כרטיסים', { wait: 900 });
-  await a.click('הזמנה ·', { role: 'button', wait: 900 });
-  check(a.path() === '/login' && await a.has('רגע לפני הכרטיסים') && await a.has('המשך עם Google'), 'ordering signed out asks to sign in first', 'signed-out');
+  check(a.path() === '/events/ev-winter/order' && await a.has('בפעם הראשונה נכנסים עם Google'), 'U3 the order opens signed out, with the sign-in note on the bar', 'signed-out');
+  await a.click('הזמנה ·', { role: 'button', wait: 1500 });
+  check(/localhost:9099|\/emulator\/auth\/handler/.test(a.page.url()), 'U3 ordering signed out goes to the Google sign-in first (the Auth emulator\'s page)', 'signed-out', a.page.url().slice(0, 60));
   await a.go('/me', 900);
-  check(await a.has('עוד לא נכנסתם'), '"הכרטיסים שלי" signed out invites to sign in', 'signed-out');
+  check(await a.has('עוד לא נכנסתם') && await a.has('כניסה'), 'U5 "הכרטיסים שלי" signed out invites to sign in', 'signed-out');
+  await a.go('/login', 900);
+  check(await a.has('המשך עם Google') && await a.has('לראות איך האפליקציה עובדת'), 'U12 sign-in page: Google and the quiet demo link', 'signed-out');
   noErrors(a, 'signed-out guest'); await a.done();
 
-  // first entry (sign-up) of a new guest
+  // first entry (sign-up) of a new guest, who agrees to updates (U13)
   const g = await session('rotem');
   await g.go('/', 1800);
-  check(await g.has('נעים להכיר') && await g.has('סיום'), 'first sign-in opens the sign-up form', 'new guest');
-  await g.shot('8-signup');
+  check(await g.has('עוד רגע ונכנסים') && await g.has('לקבל עדכונים מהחווה'), 'U13 first sign-in opens the sign-up form', 'new guest');
+  await g.fill('השם שלך בעברית', 'רותם אברהם');
   await g.fill('טלפון', '0541234567');
   await g.fill('יישוב', 'טנא עומרים');
-  await g.click('סיום', { role: 'button', wait: 2000 });
-  const U = uids(); const rotem = g.account.uid;
+  const opt = g.page.getByRole('switch', { name: 'לקבל עדכונים מהחווה' });
+  if ((await opt.getAttribute('aria-checked')) !== 'true') await opt.click();
+  await g.shot('8-U13-signup');
+  await g.click('כניסה', { role: 'button', wait: 2000 });
+  const rotem = g.account.uid;
   const prof = await until(async () => adminGet('users/' + rotem));
-  check(prof?.role === 'guest' && prof?.phone === '0541234567' && await g.waitText('אירועים קרובים', 6000), 'sign-up creates a guest profile and opens the guest home', 'new guest', JSON.stringify({ role: prof?.role, phone: prof?.phone }));
-  // order (paid event): 2 tickets, then "העברתי"
+  check(prof?.role === 'guest' && prof?.phone === '0541234567' && prof?.updatesOptIn === true && await g.waitText('אירועים קרובים', 6000), 'U13 sign-up creates a guest profile (agreed to updates) and opens the guest home', 'new guest', JSON.stringify({ role: prof?.role, phone: prof?.phone, optIn: prof?.updatesOptIn }));
+  // order (paid event): 2 tickets, the second in a companion's name, confirmation by e-mail; then "העברתי" (U4)
   await g.go('/events/ev-winter/order', 1500);
   await g.page.getByRole('button', { name: 'עוד', exact: true }).click(); await g.settle(200);
-  await g.page.getByPlaceholder('כרטיס 2').fill('דני אברהם');
-  const sel = g.page.locator('select'); if (await sel.count()) { await sel.first().selectOption('whatsapp'); await g.settle(200); }
+  await g.click('עוד פרטים'); await g.page.getByLabel('כרטיס 2').fill('דני אברהם');
+  await pickReceipt(g, 'מייל');
+  await g.shot('8-U3-order');
   await g.click('הזמנה ·', { role: 'button', wait: 2000 });
   const tks = await until(async () => { const t = (await adminList('tickets')).filter((x) => x.ownerUid === rotem); return t.length === 2 ? t : null; });
-  check(tks?.length === 2 && tks.every((t) => t.paymentStatus === 'pending') && tks.some((t) => t.holderName === 'דני אברהם'), 'order: 2 tickets created, pending, the second in the companion\'s name', 'new guest');
-  check(g.path() === '/me' && await g.has('ממתין לתשלום') && await g.page.locator('.ticket canvas, .ticket svg, .ticket img').count() > 0, '"הכרטיסים שלי" shows the order with a QR and the payment band', 'new guest');
-  await g.shot('8-my-tickets');
-  await g.click('העברתי', { role: 'button', wait: 1500 });
-  check(await until(async () => (await adminList('tickets')).filter((x) => x.ownerUid === rotem).every((t) => t.paymentStatus === 'claimed')), '"העברתי" marks the order paid (claimed)', 'new guest');
+  check(tks?.length === 2 && tks.every((t) => t.paymentStatus === 'pending') && tks.some((t) => t.holderName === 'דני אברהם'), 'U3 order: 2 tickets created, pending, the second in the companion\'s name', 'new guest');
+  check((await adminGet('users/' + rotem))?.fields?.receiptPreference === 'email', 'U3 the confirmation choice (e-mail) is kept on the profile', 'new guest');
+  check(/^\/me\/orders\/[^/]+\/pay$/.test(g.path()) && await g.has('נשאר לשלם') && await g.has('100 ₪'), 'U4 the pay page opens with the amount', 'new guest');
+  await g.shot('8-U4-pay');
+  await g.click('העברתי את התשלום', { role: 'button', wait: 1500 });
+  check(await until(async () => (await adminList('tickets')).filter((x) => x.ownerUid === rotem).every((t) => t.paymentStatus === 'claimed')), 'U4 "העברתי" marks the order paid (claimed)', 'new guest');
   check(await until(async () => (await adminList('notifications')).some((n) => n.type === 'claim' && n.refId === tks[0].orderId), 5000), 'the managers\' inbox gets the payment claim', 'new guest');
+  await g.go('/me', 1500);
+  check(await g.has('פסטיבל החורף') && await g.has('כרטיס 1 מתוך 2') && await g.page.locator('main canvas, main svg[role=img], main img[alt*="QR"], .guest-ticket canvas, .guest-ticket svg').count() > 0, 'U5 "הכרטיסים שלי" shows the ticket with its QR', 'new guest');
+  await g.shot('8-U5-tickets');
   // registration (free event)
-  await adminSet('events/ev-free', { title: 'סדנת הרכבה בחווה', description: 'סדנה פתוחה לכל המשפחה.', image: '', location: 'חוות רווה', start: new Date(Date.now() + 9 * 864e5).toISOString(), end: new Date(Date.now() + 9 * 864e5 + 3 * 3600e3).toISOString(), price: 0, maxPerOrder: 4, capacity: 0, open: true, published: true, publishedAt: new Date().toISOString(), questions: [], createdBy: { uid: U.dana, name: 'דנה אברהם' }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  await adminSet('events/ev-free', { title: 'סדנת הרכבה בחווה', description: 'סדנה פתוחה לכל המשפחה.', image: '', location: 'חוות רווה', start: new Date(Date.now() + 9 * 864e5).toISOString(), end: new Date(Date.now() + 9 * 864e5 + 3 * 3600e3).toISOString(), price: 0, maxPerOrder: 4, capacity: 0, open: true, published: true, publishedAt: new Date().toISOString(), questions: [], createdBy: { uid: U0.dana, name: 'דנה אברהם' }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
   await g.go('/events/ev-free', 1500);
-  check(await g.has('כניסה חופשית') && await g.has('הרשמה'), 'free event: "כניסה חופשית · נדרש רישום"', 'new guest');
-  await g.click('הרשמה', { role: 'link', wait: 1000 }).catch(() => g.click('הרשמה', { wait: 1000 }));
+  check(await g.has('חינם, בהרשמה') && await g.has('הרשמה'), 'U2 free event: "חינם, בהרשמה" and "הרשמה"', 'new guest', (await g.text()).replace(/\n+/g, ' | ').slice(0, 160));
+  await g.click('הרשמה', { role: 'button', wait: 1000 });
   await g.click('הרשמה', { role: 'button', wait: 2000 });
-  check(await until(async () => (await adminList('tickets')).some((x) => x.ownerUid === rotem && x.eventId === 'ev-free' && x.paymentStatus === 'free')), 'registration creates a free ticket', 'new guest');
-  // visit request
+  check(await until(async () => (await adminList('tickets')).some((x) => x.ownerUid === rotem && x.eventId === 'ev-free' && x.paymentStatus === 'free')), 'U3 registration creates a free ticket', 'new guest');
+  // visit request (U8)
   await g.go('/visit', 1200);
-  const dayBtn = g.page.locator('.cal button:not([disabled])').nth(5);
-  await dayBtn.click(); await g.settle(200);
-  await g.page.getByPlaceholder('סבא וסבתא עם הנכדים, מעדיפים בוקר.').fill('קבוצה של חברים');
+  await g.click('מתי תרצו לבוא');
+  await g.page.locator('.guest-cal__day:not([disabled])').nth(5).click(); await g.settle(400);
+  if (await g.page.getByRole('dialog').count()) { const ok = g.page.getByRole('dialog').last().getByRole('button', { name: /בחירה|אישור|שמירה/ }); if (await ok.count()) await ok.first().click(); else await g.page.keyboard.press('Escape'); await g.settle(300); }
+  await g.page.getByLabel('כמה מילים (לא חובה)').fill('קבוצה של חברים');
   await g.click('שליחת הבקשה', { role: 'button', wait: 1500 });
   const visit = await until(async () => (await adminList('visits')).find((v) => v.uid === rotem));
-  check(await g.has('קיבלנו, נחזור אליכם') && visit?.status === 'new' && visit?.people === 4, 'visit request sent ("קיבלנו, נחזור אליכם")', 'new guest');
-  await g.shot('8-visit-sent');
-  // donation
+  check(visit?.status === 'new' && visit?.people === 4 && visit?.note === 'קבוצה של חברים', 'U8 visit request sent (new, 4 people)', 'new guest', g.path());
+  await g.shot('8-U8-visit-sent');
+  // donation (U9) with a memorial, then "העברתי"
   await g.go('/donate', 1200);
   await g.click('סכום אחר', { wait: 200 });
-  await g.page.getByPlaceholder('₪').fill('250');
-  await g.page.getByPlaceholder('לזכר…').fill('סבתא רחל');
+  await g.page.getByLabel('כמה (₪)').fill('250');
+  await g.page.getByLabel('הנצחה (לא חובה)').fill('סבתא רחל');
   await g.click('לתרום', { role: 'button', wait: 1800 });
   const dn = await until(async () => (await adminList('donations')).find((d) => d.uid === rotem));
-  check(await g.has('תודה!') && dn?.amount === 250 && dn?.memorial === 'סבתא רחל' && dn?.paymentStatus === 'pending', 'donation 250 with a memorial (pending)', 'new guest');
-  await g.click('העברתי', { role: 'button', wait: 1500 });
-  check(await until(async () => (await adminGet('donations/' + dn.id))?.paymentStatus === 'claimed'), 'donation "העברתי" (claimed)', 'new guest');
-  await g.shot('8-donation-thanks');
-  // a stall tab opened for the guest at the event (staff side), paid from "הכרטיסים שלי"
+  check(await g.has('תודה!') && dn?.amount === 250 && dn?.memorial === 'סבתא רחל' && dn?.paymentStatus === 'pending', 'U9 donation 250 with a memorial (pending)', 'new guest');
+  await g.click('העברתי את התשלום', { role: 'button', wait: 1500 });
+  check(await until(async () => (await adminGet('donations/' + dn.id))?.paymentStatus === 'claimed'), 'U9 donation "העברתי" (claimed)', 'new guest');
+  await g.shot('8-U9-donation-thanks');
+  // a stall account opened for the guest at the event (staff side), paid from its page (U10)
   const now = new Date().toISOString();
-  await adminSet('tabs/tab-rotem', { eventId: 'ev-winter', eventTitle: 'פסטיבל החורף', guestUid: rotem, guestName: 'רותם אברהם', guestPhone: '0541234567', ticketId: tks[0].id, items: [{ productId: 'p-cheese', name: 'גבינת עיזים', price: 45, qty: 1, at: now, by: { uid: U.orly, name: 'אורלי' } }], total: 45, status: 'open', createdBy: { uid: U.orly, name: 'אורלי' }, createdAt: now, updatedAt: now });
-  await g.go('/me', 1500);
-  const tabRow = g.page.locator('.row', { hasText: 'החשבון שלי בדוכן' }).first();
-  check(await tabRow.count() > 0 && (await tabRow.innerText()).includes('פתוח'), 'stall tab shows on "הכרטיסים שלי" (open)', 'new guest');
-  await tabRow.getByRole('button', { name: 'העברתי' }).click(); await g.settle(800);
-  if (await g.has('אישור שהעברתי')) await g.click('אישור שהעברתי', { role: 'button', wait: 1200 });
-  check(await until(async () => (await adminGet('tabs/tab-rotem'))?.status === 'claimed'), 'stall tab "העברתי" (claimed)', 'new guest');
-  await g.shot('8-stall-tab');
-  // account page
+  await adminSet('tabs/tab-rotem', { eventId: 'ev-winter', eventTitle: 'פסטיבל החורף', guestUid: rotem, guestName: 'רותם אברהם', guestPhone: '0541234567', ticketId: tks[0].id, items: [{ productId: 'p-cheese', name: 'גבינת עיזים', price: 45, qty: 1, at: now, by: { uid: U0.orly, name: 'אורלי' } }], total: 45, status: 'open', createdBy: { uid: U0.orly, name: 'אורלי' }, createdAt: now, updatedAt: now });
+  await g.go('/me/account', 1500);
+  const tabRow = row(g, 'החשבון שלי בדוכן');
+  check(await tabRow.count() > 0 && (await tabRow.innerText()).includes('45'), 'U7 the stall account shows on the account page', 'new guest');
+  await tabRow.click(); await g.settle(1000);
+  check(g.path() === '/me/stall/tab-rotem' && await g.has('גבינת עיזים'), 'U10 the stall account page lists what was taken', 'new guest');
+  await g.click('העברתי את התשלום', { role: 'button', wait: 1200 });
+  check(await until(async () => (await adminGet('tabs/tab-rotem'))?.status === 'claimed'), 'U10 stall account "העברתי" (claimed)', 'new guest');
+  await g.shot('8-U10-stall');
+  // account page (U7)
   await g.go('/me/account', 1500);
   const acc = await g.text();
-  check(acc.includes('הפעילות שלי') && acc.includes('כרטיסים · פסטיבל החורף') && acc.includes('ביקור ·') && acc.includes('תרומה · 250') && acc.includes('החשבון שלי בדוכן'), 'account page lists tickets, visit, donation and the stall tab', 'new guest');
-  check(acc.includes('תודה על תרומתך') && acc.includes('רותם אברהם'), 'account page: thank-you strip and the profile', 'new guest');
-  await g.shot('8-account');
+  check(acc.includes('מה יש לי בחווה') && acc.includes('פסטיבל החורף · 2 כרטיסים') && acc.includes('תרומה · 250') && acc.includes('החשבון שלי בדוכן') && acc.includes('הכל · 5'), 'U7 account page lists tickets, donation and the stall account, "הכל · 5"', 'new guest');
+  check(acc.includes('רותם אברהם') && acc.includes('עריכת פרטים') && acc.includes('נשלח אליי במייל'), 'U7 account page: the profile, "עריכת פרטים" and the e-mail confirmation choice', 'new guest', (acc.match(/אישור תשלום\n[^\n]*/) || [''])[0].replace('\n', ' '));
+  await g.shot('8-U7-account');
+  await g.click('הכל · 5', { wait: 900 });
+  const all = await g.text();
+  check(g.path() === '/me/items' && all.includes('ביקור ·') && all.includes('סדנת הרכבה בחווה') && all.includes('תרומה · 250') && all.includes('החשבון שלי בדוכן'), 'U7 "הכל" lists the five, the visit among them', 'new guest');
+  // contact (U11): the message reaches the managers' inbox
   await g.go('/contact', 1000);
-  check(await g.has('פנייה למנהלים'), 'contact page opens', 'new guest');
+  await g.page.getByLabel('נושא').fill('חניה לאוטובוס');
+  await g.page.getByLabel('מה רצית לשאול').fill('אפשר להגיע עם אוטובוס של 50 מקומות?');
+  await g.click('שליחת הפנייה', { role: 'button', wait: 1500 });
+  check(await until(async () => (await adminList('notifications')).some((n) => n.type === 'contact' && `${n.title} ${n.text}`.includes('חניה לאוטובוס')), 5000), 'U11 contact message reaches the managers\' inbox', 'new guest');
   noErrors(g, 'new guest flows'); await g.done();
 
   // an existing guest sees her own history
   const m = await session('michal');
   await m.go('/me', 1800);
-  check(await m.has('פסטיבל החורף') && await m.page.locator('.ticket').count() > 0, 'existing guest: her tickets are on "הכרטיסים שלי"', 'guest');
+  check(await m.has('הכרטיסים שלי') && await m.has('פסטיבל החורף'), 'existing guest: her tickets are on "הכרטיסים שלי"', 'guest');
   await m.go('/me/account', 1200);
-  check(await m.has('ביקור ·') && await m.has('תרומה · 180'), 'existing guest: account page lists her visit and donation', 'guest');
+  if (await m.page.getByRole('button', { name: /^הכל · / }).count()) await m.click('הכל · ', { wait: 900 }); // more than four: the visit may be under "הכל"
+  check(await m.has('ביקור ·') && await m.has('תרומה · 180'), 'existing guest: her visit and donation are on her account', 'guest');
   noErrors(m, 'existing guest'); await m.done();
 }
 
 // ====================================================================================================================
-const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8 };
+/** The event the "צוות האירוע", "בעלי דוכנים" audiences refer to (data/broadcast.ts pickEvent): today's or the next open one. */
+async function audienceEvent() {
+  const today = jkey(new Date());
+  const live = (await adminList('events')).filter((e) => e.published && !e.closed);
+  return live.find((e) => jkey(new Date(e.start)) <= today && jkey(new Date(e.end || e.start)) >= today)
+    || live.filter((e) => jkey(new Date(e.start)) > today).sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+}
+/** Q26 from People · הודעות: writes the text, picks the audience (and the registrants' event), sends. */
+async function sendMessage(m, text, audience, eventTitle) {
+  await m.go('/manage/people?tab=messages', 1200);
+  await m.click('הודעה חדשה', { role: 'button', wait: 1000 });
+  await m.page.getByLabel('תוכן ההודעה').fill(text);
+  await m.page.getByRole('button', { name: audience }).first().click(); await m.settle(500);
+  if (eventTitle && await m.page.getByRole('dialog').count()) { await m.page.getByRole('dialog').last().getByText(eventTitle, { exact: true }).click(); await m.settle(600); }
+  if (await m.page.getByRole('dialog').count()) { await m.page.keyboard.press('Escape'); await m.settle(300); }
+  const chosen = (await m.page.getByRole('button', { name: audience }).first().innerText()).trim();
+  const sendBtn = m.page.getByRole('button', { name: /^שליחה/ }).last();
+  const sendLabel = (await sendBtn.innerText()).trim();
+  await sendBtn.click(); await m.settle(1500);
+  const b = await findBy('broadcasts', (x) => x.text === text);
+  return { b, chosen, sendLabel };
+}
+const sameSet = (a = [], b = []) => a.length === b.length && b.every((x) => a.includes(x));
+
+async function item9() {
+  setItem('9 Messages to every audience');
+  const U = uids();
+  // what the audiences need, done in the app: Orly marks today at the farm, Yoav staffed at the next event, the stall invited to it
+  const o = await session('orly');
+  await o.go('/farm/presence', 1200);
+  await o.click('כל היום', { exact: true }); await o.page.getByRole('button', { name: /^שמירה/ }).click(); await o.settle(1200);
+  check(await findBy('calendar', (c) => c.kind === 'presence' && c.ownerUid === U.orly && c.date === jkey(new Date())), 'F presence: Orly marks today at the farm', 'volunteer');
+  noErrors(o, 'presence'); await o.done();
+  const ev = await audienceEvent();
+  const vendor = (await adminList('vendors')).find((v) => v.name === 'גבינות העמק');
+  const m = await session('dana');
+  if (ev) {
+    await m.go(`/manage/events/${ev.id}/staffing`, 1200);
+    await m.click('לשבץ מישהו לשער'); await m.page.getByRole('dialog').getByText('יואב פרץ').click(); await m.page.getByRole('dialog').getByRole('button', { name: 'שיבוץ' }).click(); await m.settle(900);
+    if (vendor) { await m.go('/manage/vendors/' + vendor.id, 1200); await m.click('הזמנה לאירוע', { wait: 600 }); await m.page.getByRole('dialog').getByText(ev.title).click(); await m.settle(1500); }
+  }
+  check(ev && (await adminList(`events/${ev.id}/staffing`)).some((s) => s.people?.some((p) => p.uid === U.yoav)) && vendor && await until(async () => adminGet(`events/${ev.id}/vendors/${vendor.id}`)), 'the next event has a crew (Yoav) and an invited stall', 'manager', ev ? ev.title : 'no event');
+
+  const T = {
+    all: 'בדיקה לכל הצוות: מחר עובדים מוקדם.',
+    farmToday: 'למי שבחווה היום: יש פיצה במטבח.',
+    managers: 'למנהלים: ישיבה ביום ראשון בעשר.',
+    crew: 'לצוות האירוע: מגיעים שעה לפני הפתיחה.',
+    vendors: 'לבעלי הדוכנים: החשמל מחובר מארבע.',
+    registrants: 'לנרשמי פסטיבל החורף: החניה בשער הצפוני.',
+    everyone: 'לכל המשתמשים: נפתחה ההרשמה לסדנה חדשה.',
+  };
+  const sent = {};
+  const expect = { all: null, farmToday: [U.orly], managers: [U.owner, U.dana], crew: [U.yoav], vendors: [U.raz, U.tamar], registrants: [U.michal, U.rotem], everyone: [U.rotem] };
+  const LABEL = { all: /^כל הצוות · /, farmToday: /^בחווה היום · /, managers: /^מנהלים · /, crew: /^צוות האירוע · /, vendors: /^בעלי דוכנים · /, registrants: /^נרשמי /, everyone: /^כל המשתמשים · / };
+  const NAME = { all: 'כל הצוות', farmToday: 'בחווה היום', managers: 'מנהלים', crew: 'צוות האירוע', vendors: 'בעלי דוכנים', registrants: 'נרשמי פסטיבל החורף', everyone: 'כל המשתמשים' };
+  /** One recipient opens the app and reads the card (team: "קראתי" on Tasks, vendor: on its home, guest: "ראיתי" on home). */
+  const readAs = async (who, home, button, text, role) => {
+    const r = await session(who);
+    await r.go(home, 1800);
+    const shown = await r.has(text);
+    if (shown) await r.click(button, { role: 'button', wait: 1000 });
+    const b = await findBy('broadcasts', (x) => x.text === text);
+    const receipt = b && await until(async () => (await adminGet(`broadcasts/${b.id}/reads/${r.account.uid}`))?.at);
+    check(shown && receipt && !(await r.has(text)), `read as ${role}: the card shows, "${button}" saves the receipt`, role, text.split(':')[0]);
+    noErrors(r, 'read as ' + role); await r.done();
+  };
+  for (const a of ['all', 'farmToday', 'managers', 'crew', 'vendors', 'registrants', 'everyone']) {
+    const { b, chosen, sendLabel } = await sendMessage(m, T[a], LABEL[a], a === 'registrants' ? 'פסטיבל החורף' : undefined);
+    sent[a] = b;
+    const team = await adminList('users');
+    const ok = b && b.audience === a && (expect[a] ? sameSet(b.recipients, expect[a])
+      : b.recipients.includes(U.yoav) && b.recipients.includes(U.orly) && b.recipients.includes(U.noga) && !b.recipients.includes(U.michal) && !b.recipients.includes(U.rotem) && !b.recipients.includes(U.raz)
+        && team.filter((p) => b.recipients.includes(p.uid)).every((p) => ['owner', 'manager', 'staff'].includes(p.role) && p.status === 'active'));
+    check(ok && (a !== 'registrants' || b.eventId === 'ev-winter'), `Q26 sent to "${NAME[a]}": the recipients are exactly that audience`, 'manager', `${chosen} → ${b ? b.recipients.length : 0} (${sendLabel})`);
+    if (a === 'registrants' || a === 'farmToday') await m.shot(`9-Q26-${a}`);
+    if (a === 'all') await readAs('noga', '/tasks', 'קראתי', T[a], 'team member (volunteer)');
+    if (a === 'farmToday') await readAs('orly', '/tasks', 'קראתי', T[a], 'team member at the farm today');
+    if (a === 'managers') await readAs('owner', '/tasks', 'קראתי', T[a], 'manager (owner)');
+    if (a === 'crew') await readAs('yoav', '/tasks', 'קראתי', T[a], 'event crew (volunteer)');
+    if (a === 'vendors') await readAs('raz', '/vendor', 'קראתי', T[a], 'stall owner');
+    if (a === 'registrants') await readAs('michal', '/', 'ראיתי', T[a], 'registrant guest');
+    if (a === 'everyone') {
+      const r = await session('rotem');
+      await r.go('/', 1800);
+      const shown = await r.has(T[a]);
+      await r.shot('9-U1-guest-message');
+      if (shown) await r.click('ראיתי', { role: 'button', wait: 1000 });
+      check(shown && await until(async () => (await adminGet(`broadcasts/${b.id}/reads/${U.rotem}`))?.at), 'read as opted-in guest: the card shows on home, "ראיתי" saves the receipt', 'opted-in guest');
+      await r.go('/me/messages', 1200);
+      check(await r.has(T.everyone) && await r.has(T.registrants), 'U14 the guest\'s messages list both messages to her', 'opted-in guest');
+      noErrors(r, 'opted-in guest'); await r.done();
+    }
+  }
+  // Michal did not agree to updates: the all-users message does not reach her
+  const mi = await session('michal');
+  await mi.go('/', 1800);
+  const home = await mi.text();
+  await mi.go('/me/messages', 1200);
+  const list = await mi.text();
+  check(sent.everyone && !sent.everyone.recipients.includes(U.michal) && !home.includes(T.everyone) && !list.includes(T.everyone) && list.includes(T.registrants), 'opted-out guest: the all-users message does not reach her (not a recipient, not on home, not in her messages)', 'opted-out guest');
+  noErrors(mi, 'opted-out guest'); await mi.done();
+  // the sender's list: outside audiences filtered, the read count for guests says "ראו"
+  await m.go('/manage/people?tab=messages', 1500);
+  await m.click('לאורחים ולכולם', { role: 'button', wait: 700 });
+  const out = await m.text();
+  check(out.includes(T.registrants) && out.includes(T.everyone) && out.includes(T.vendors) && !out.includes(T.all) && !out.includes(T.managers), 'Q25 filter "לאורחים ולכולם" shows only the messages outside the team', 'manager');
+  const card = m.page.locator('.broadcast-sent', { hasText: T.registrants }).first();
+  check((await card.innerText()).includes('ראו 1 מתוך 2') && (await card.innerText()).includes('נרשמי פסטיבל החורף'), 'Q25 the registrants\' message: tag "נרשמי פסטיבל החורף", "ראו 1 מתוך 2"', 'manager', (await card.innerText()).replace(/\n+/g, ' | '));
+  await m.shot('9-Q25-messages-outside');
+  noErrors(m, 'messages'); await m.done();
+}
+
+async function item10() {
+  setItem('10 Adding someone ahead by phone (Q27)');
+  const U = uids();
+  const o = await session('owner');
+  await o.go('/manage/people', 1200);
+  await moreItem(o, 'להוסיף מישהו מראש');
+  check(o.path() === '/manage/people/invite' && await o.has('לפי טלפון'), 'People ⋯ "להוסיף מישהו מראש" opens Q27 on "לפי טלפון"', 'owner');
+  const addAhead = async (phone, name, role) => {
+    await o.page.getByLabel('מספר הטלפון').fill(phone); await o.page.getByLabel('שם (לא חובה)').fill(name);
+    await o.page.getByRole('button', { name: role, exact: true }).click(); await o.settle(200);
+    await o.click('שליחת קישור בוואטסאפ', { role: 'button', wait: 1500 });
+    const l = await findBy('team_links', (x) => x.name === name);
+    return { l, url: l && lastWaLink(new RegExp('/app/login\\?k=' + l.code)) };
+  };
+  const one = await addAhead('052-555-1212', 'גל מזרחי', 'מנהל');
+  check(one.l?.active && one.l.role === 'manager' && !one.l.usedBy && one.url, 'Q27 by phone: the link is saved (manager, open) and sent in WhatsApp', 'owner', one.url || 'no WhatsApp link');
+  const two = await addAhead('052-555-3434', 'ליאור דהן', 'מתנדב');
+  const pending = o.page.getByRole('region', { name: 'נוספו מראש ועוד לא נכנסו' });
+  check(await o.has('נוספו מראש ועוד לא נכנסו') && await o.has('גל מזרחי') && await o.has('מנהל · לפי טלפון'), 'Q27 the pending list shows the person added by phone', 'owner');
+  await o.shot('10-Q27-pending');
+  await row(o, 'ליאור דהן').getByRole('button', { name: 'ביטול' }).click(); await o.settle(1200);
+  check(two.l && await until(async () => !(await adminGet('team_links/' + two.l.code))) && (await row(o, 'ליאור דהן').count()) === 0, 'Q27 "ביטול" removes the second link (row and link gone)', 'owner');
+  noErrors(o, 'add ahead'); await o.done();
+  void pending;
+  if (!one.url) return;
+
+  // a new Google account opens the link: C9 with the invitation, then the role
+  const g = await session('gal');
+  await g.go(one.url.replace(/^\/app/, ''), 2500);
+  check(await g.has('ברוך הבא לצוות') && await g.has('אליה הוסיף אותך כמנהל'), 'C9 a new account through the link sees the invitation ("אליה הוסיף אותך כמנהל")', 'new account');
+  await g.page.getByLabel('השם שלך בעברית').fill('גל מזרחי'); await g.page.getByLabel('טלפון').fill('052-555-1212');
+  await g.shot('10-C9-link');
+  await g.click('כניסה לאפליקציה', { role: 'button', wait: 2500 });
+  const gp = await until(async () => adminGet('users/' + U.gal));
+  const used = await adminGet('team_links/' + one.l.code);
+  check(gp?.role === 'manager' && gp?.teamLink === one.l.code && used?.usedBy === U.gal && used?.active === false, 'the link is claimed once: the account becomes a manager, the link is marked used', 'new account', JSON.stringify({ role: gp?.role, usedBy: used?.usedBy === U.gal }));
+  await g.go('/manage', 1500);
+  check(g.path() === '/manage' && await g.has('אנשים והודעות'), 'the new manager has the manage tab', 'new account');
+  noErrors(g, 'link claimed'); await g.done();
+
+  // a second account opens the same link: refused
+  const s2 = await session('shir');
+  await s2.go(one.url.replace(/^\/app/, ''), 2500);
+  check(await s2.has('הקישור כבר לא בתוקף') && !(await s2.has('ברוך הבא לצוות')), 'a second account opening the used link is refused ("הקישור כבר לא בתוקף")', 'second account');
+  await s2.shot('10-link-used');
+  await s2.click('המשך', { role: 'button', wait: 1500 });
+  check(await s2.has('עוד רגע ונכנסים') && !(await adminGet('users/' + U.shir)) && (await adminGet('team_links/' + one.l.code))?.usedBy === U.gal, '"המשך" goes on as a guest sign-up; no role, the link stays with the first account', 'second account');
+  noErrors(s2, 'second account'); await s2.done();
+
+  // a guest opens the cancelled link: refused
+  const l = await session('lior');
+  await l.go(two.url.replace(/^\/app/, ''), 2500);
+  check(await l.has('לא הצלחנו לצרף אותך לצוות') && await l.has('הקישור כבר לא בתוקף'), 'a guest opening the cancelled link is refused', 'guest');
+  check((await adminGet('users/' + U.lior))?.role === 'guest', 'the guest stays a guest', 'guest');
+  await l.shot('10-link-cancelled');
+  noErrors(l, 'cancelled link'); await l.done();
+}
+
+async function item11() {
+  setItem('11 Payment approval and the confirmation (Q7)');
+  const U = uids();
+  const m = await session('dana');
+  const waBefore = external.filter((u) => /wa\.me/.test(u)).length;
+  // WhatsApp: Michal's order for the event of item 3 (she chose WhatsApp), approved from the inbox
+  await m.go('/manage/inbox', 1500); await m.click('תשלומים', { exact: false });
+  const card = m.page.locator('section.k-card', { hasText: 'מיכל בר' }).filter({ has: m.page.getByRole('button', { name: 'אישור תשלום' }) }).first();
+  await card.getByRole('button', { name: 'אישור תשלום' }).click(); await m.settle(900);
+  const sheet = m.page.getByRole('dialog').last();
+  const q7 = await sheet.innerText().catch(() => '');
+  check(q7.includes('התשלום אושר') && q7.includes('אישור בוואטסאפ') && q7.includes('בלי אישור') && !q7.includes('אישור במייל'), 'Q7 opens after the approval: WhatsApp and none (she chose WhatsApp)', 'manager', q7.replace(/\n+/g, ' | ').slice(0, 140));
+  await m.shot('11-Q7-whatsapp');
+  await sheet.getByRole('button', { name: 'שליחה בוואטסאפ' }).click(); await m.settle(1500);
+  const mOrder = (await adminList('tickets')).filter((t) => t.ownerUid === U.michal && t.eventTitle === EV);
+  const wa = external.filter((u) => /wa\.me/.test(u)).slice(waBefore);
+  check(mOrder.length && mOrder.every((t) => t.paymentStatus === 'paid' && t.paymentConfirmation?.at), 'WhatsApp: the order is paid and the confirmation is recorded', 'manager');
+  check(wa.length === 1 && decodeURIComponent(wa[0]).includes('80'), 'WhatsApp: the wa.me request (with the amount) was aborted by the safety block', 'runner', wa[0] ? decodeURIComponent(wa[0]).slice(0, 90) : 'none');
+  // e-mail: Rotem's donation (she chose e-mail), approved on its page (Q6)
+  const dn = (await adminList('donations')).find((d) => d.uid === U.rotem);
+  await m.go('/manage/donations/' + dn.id, 1500);
+  await m.click('אישור תשלום', { role: 'button', wait: 900 });
+  const s2 = m.page.getByRole('dialog').last(); const q7b = await s2.innerText().catch(() => '');
+  check(q7b.includes('אישור במייל') && await s2.getByRole('radio', { name: /אישור במייל/ }).getAttribute('aria-checked') === 'true', 'Q7 for an e-mail guest: "אישור במייל" offered and chosen', 'manager', q7b.replace(/\n+/g, ' | ').slice(0, 140));
+  await m.shot('11-Q7-email');
+  await s2.getByRole('button', { name: 'שליחה במייל' }).click(); await m.settle(1500);
+  const dn2 = await adminGet('donations/' + dn.id);
+  check(dn2.paymentStatus === 'paid' && dn2.paidAt && !dn2.paymentConfirmation && external.filter((u) => /wa\.me/.test(u)).length === waBefore + 1, 'e-mail: paid with paidAt and no manual mark, so the Worker sends it (its scan queues email_outbox/donation_<id>); nothing opened', 'manager', `paidAt ${dn2.paidAt}`);
+  check(!(await adminGet('email_outbox/donation_' + dn.id)), 'e-mail: the app writes no outbox job itself (the Worker does, not run on the emulators)', 'manager');
+  // none: Rotem's ticket order, approved from the event's guests (Q12), "בלי אישור"
+  await m.go('/manage/events/ev-winter?tab=guests', 1500);
+  await m.page.locator('.events-guestrow__hit', { hasText: 'רותם אברהם' }).click(); await m.settle(500);
+  await m.page.getByRole('dialog').last().getByRole('button', { name: 'אישור תשלום' }).click(); await m.settle(1000);
+  const s3 = m.page.getByRole('dialog').last();
+  await s3.getByRole('radio', { name: /בלי אישור/ }).click(); await m.settle(300);
+  await m.shot('11-Q7-none');
+  await s3.getByRole('button', { name: 'סגירה' }).click(); await m.settle(1500);
+  const rOrder = (await adminList('tickets')).filter((t) => t.ownerUid === U.rotem && t.eventId === 'ev-winter');
+  check(rOrder.length === 2 && rOrder.every((t) => t.paymentStatus === 'paid' && t.paymentConfirmation?.at), 'none: the order is paid; for an e-mail guest "בלי אישור" records a manual confirmation so no e-mail goes out', 'manager');
+  check(external.filter((u) => /wa\.me/.test(u)).length === waBefore + 1, 'none: nothing opened', 'manager');
+  // the guest sees it paid
+  noErrors(m, 'payments'); await m.done();
+  const g = await session('rotem');
+  await g.go('/me/items', 1500);
+  const paidRow = async (t) => ((await row(g, t).innerText().catch(() => '')).includes('שולם'));
+  check(await paidRow('תרומה · 250') && await paidRow('פסטיבל החורף · 2 כרטיסים'), 'the guest sees the donation and the order paid ("שולם")', 'guest');
+  noErrors(g, 'guest after approval'); await g.done();
+}
+
+async function item12() {
+  setItem('12 Delete through ⋯ (one of each)');
+  const U = uids();
+  const o = await session('owner');
+  /** Opens `path`, runs ⋯ → מחיקה → Q8, then checks the question and that `doc` is gone. */
+  const del = async (what, path, question, doc, opts = {}) => {
+    await o.go(path, 1300);
+    let q = '';
+    try { q = await deleteViaMore(o, opts.item || 'מחיקה', opts.button || 'מחיקה'); } catch (e) { q = 'ERR ' + String(e).split('\n')[0]; }
+    const gone = await until(async () => !(await adminGet(doc)), 9000); // a shopping item goes after its 6-second undo
+    check(q.includes(question) && gone, `${what}: ⋯ → מחיקה → "${question}" → deleted`, opts.role || 'owner', gone ? (opts.after ? o.path() : '') : q.replace(/\n+/g, ' | ').slice(0, 120));
+    if (opts.shot) await o.shot(opts.shot);
+  };
+  await del('task', '/tasks/t-off1/edit', 'למחוק את המשימה?', 'tasks/t-off1', { shot: '12-task-deleted' });
+  await del('recurring task', '/manage/recurring/tpl-cash', 'למחוק את המשימה החוזרת?', 'task_templates/tpl-cash');
+  const proj = (await adminList('projects')).find((p) => p.title === 'פינת ישיבה ליד הבריכה');
+  if (proj) await del('project', `/projects/${proj.id}/edit`, 'למחוק את הפרויקט?', 'projects/' + proj.id); else check(false, 'project from item 2 exists', 'runner');
+  await del('shopping item', '/shopping/s-eggs/edit', 'למחוק מהרשימה?', 'shopping/s-eggs');
+  await del('place', '/places/pl-shed', 'למחוק את המקום?', 'places/pl-shed');
+  // calendar item: added on the farm calendar, then deleted from its form
+  await o.go('/farm/calendar/new', 1200);
+  await o.page.getByLabel('מה קורה').fill('פגישה עם הווטרינר'); await o.click('פגישה', { exact: true });
+  await o.click('הוספה ליומן', { role: 'button', wait: 1200 });
+  const cal = await findBy('calendar', (c) => c.title === 'פגישה עם הווטרינר');
+  if (cal) await del('calendar item', `/farm/calendar/${cal.id}/edit`, 'למחוק מהיומן?', 'calendar/' + cal.id); else check(false, 'calendar item added', 'owner');
+  // event (a past one) and a product of the winter festival (added first)
+  await del('event', '/manage/events/ev-past/edit', 'למחוק את האירוע?', 'events/ev-past');
+  await o.go('/manage/events/ev-winter/products/new', 1200);
+  await o.page.getByLabel('שם המוצר').fill('ריבת תאנים'); await o.page.getByLabel('מחיר בשקלים').fill('30');
+  await o.click('שמירה', { role: 'button', wait: 1200 });
+  const prod = await findBy('events/ev-winter/products', (p) => p.name === 'ריבת תאנים');
+  if (prod) await del('product', `/manage/events/ev-winter/products/${prod.id}`, 'למחוק את המוצר?', `events/ev-winter/products/${prod.id}`); else check(false, 'product added', 'owner');
+  // vendor: a second stall added to the pool, then deleted from its edit form
+  await o.go('/manage/vendors?new=1', 1200);
+  await o.fill('שם הדוכן', 'דבש הגליל'); await o.fill('איש קשר', 'עמית לוי'); await o.fill('טלפון', '052-888-1212'); await o.fill('מה מוכר', 'דבש');
+  await o.click('הוספה למאגר', { role: 'button', wait: 1500 });
+  const v2 = await findBy('vendors', (v) => v.name === 'דבש הגליל');
+  if (v2) await del('vendor', `/manage/vendors/${v2.id}?edit=1`, 'למחוק את בעל הדוכן?', 'vendors/' + v2.id); else check(false, 'second vendor added', 'owner');
+  await del('visit', '/manage/visits/vi-michal', 'למחוק את הבקשה?', 'visits/vi-michal');
+  await del('donation', '/manage/donations/dn-michal', 'למחוק את התרומה?', 'donations/dn-michal');
+  await del('person', '/manage/people/' + U.avi, 'למחוק את אבי שטרן?', 'users/' + U.avi);
+  const bc = (await adminList('broadcasts')).find((b) => (b.text || '').includes('לקטוף זיתים'));
+  if (bc) await del('message', '/manage/people/messages/' + bc.id, 'למחוק את ההודעה?', 'broadcasts/' + bc.id, { shot: '12-message-deleted' }); else check(false, 'message from item 2 exists', 'runner');
+  noErrors(o, 'deletes (owner)'); await o.done();
+  // presence: Orly removes her own day from its form (⋯ → מחיקה → "הסרה")
+  const p = await session('orly');
+  const pres = (await adminList('calendar')).find((c) => c.kind === 'presence' && c.ownerUid === U.orly);
+  if (pres) {
+    await p.go('/farm/presence', 1200);
+    await p.page.getByRole('button', { name: 'שינוי' }).first().click(); await p.settle(600);
+    let q = ''; try { q = await deleteViaMore(p, 'מחיקה', 'הסרה'); } catch (e) { q = 'ERR ' + String(e).split('\n')[0]; }
+    check(q.includes('להסיר מהיומן?') && await until(async () => !(await adminGet('calendar/' + pres.id)), 5000), 'presence: ⋯ → מחיקה → "להסיר מהיומן?" → removed', 'volunteer', q.replace(/\n+/g, ' | ').slice(0, 100));
+  } else check(false, 'presence from item 9 exists', 'runner');
+  noErrors(p, 'presence delete'); await p.done();
+}
+
+// ====================================================================================================================
+const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8, 9: item9, 10: item10, 11: item11, 12: item12 };
 await launch();
 for (const [k, fn] of Object.entries(ITEMS)) {
   if (only.length && !only.includes(k)) continue;

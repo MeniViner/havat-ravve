@@ -6,11 +6,13 @@ import { sameHex, sha256hex } from './util';
 
 export type Scope =
   | 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'tasks:edit' | 'templates:read' | 'templates:write'
+  | 'projects:read' | 'projects:write'
   | 'people:read' | 'people:write' | 'shopping:read' | 'shopping:write' | 'places:read' | 'places:write'
   | 'events:read' | 'events:write' | 'tickets:read' | 'tickets:write' | 'tabs:read' | 'tabs:write' | 'tabs:settle'
   | 'vendors:read' | 'vendors:write' | 'visits:read' | 'visits:write' | 'donations:read' | 'donations:write'
   | 'notifications:read' | 'notifications:write' | 'calendar:read' | 'calendar:write' | 'activity:read'
-  | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read';
+  | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read'
+  | 'presence:write' | 'broadcasts:read' | 'broadcasts:write' | 'me:read' | 'me:write' | 'notify:write';
 export type ActorRole = 'owner' | 'manager' | 'staff';
 
 export type ActorDef = {
@@ -20,19 +22,25 @@ export type ActorDef = {
   person: { uid: string; name: string };
 };
 
-export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous' };
+export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous'; /** The key's name from the console (keys.ts). */ label?: string; /** The key carries only some of its person's permissions (keys.ts scopes). */ limited?: boolean };
 
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
   'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'templates:read', 'shopping:read', 'shopping:write', 'places:read',
+  // places: anyone on the team saves and names a place (rules: create/update isStaff); delete stays manager-only in the operation
+  'places:write',
   'events:read', 'tickets:read', 'tabs:read', 'tabs:write', 'vendors:read', 'activity:read', 'settings:read', 'overview:read',
+  // the farm calendar and their own presence (firestore.rules calendar: read isStaff, presence own), broadcasts sent to them, their own notifications
+  'calendar:read', 'presence:write', 'broadcasts:read', 'me:read', 'me:write',
 ];
 const MANAGER: Scope[] = [
-  ...STAFF, 'tasks:assign', 'templates:write', 'people:read', 'people:write', 'places:write', 'events:write', 'tickets:write', 'tabs:settle',
+  ...STAFF, 'tasks:assign', 'templates:write', 'projects:read', 'projects:write', 'people:read', 'people:write', 'events:write', 'tickets:write', 'tabs:settle',
   'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'notifications:read', 'notifications:write',
-  'calendar:read', 'calendar:write', 'settings:write', 'system:read',
+  'calendar:write', 'settings:write', 'system:read', 'broadcasts:write', 'notify:write',
 ];
-const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
+export const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
+/** Every scope there is (the console offers a key a part of them). */
+export const ALL_SCOPES: readonly Scope[] = [...new Set(MANAGER)];
 
 /**
  * Synthetic actors, for tests. Real people are actors named "user:<uid>": a credential lists them, and
@@ -54,19 +62,31 @@ export const seesManagerTasks = (a: ActorDef) => a.role === 'owner' || a.role ==
  * One key per person (or per assistant). Revoking sets "disabled"; rotating replaces "sha256" (same id,
  * same actors); "expiresAt" (ISO time) ends a key on its own. Managed with api/scripts/keys.mjs.
  */
-type CredentialDef = {
+export type CredentialDef = {
   id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string;
+  /** Keys managed in the owners' console (keys.ts, TOKEN_KV): the name shown in the assistant log, and who made it when. */
+  label?: string; createdAt?: string; createdBy?: string; updatedAt?: string;
+  /** A limited key (the console): only these scopes, and never more than its person's role allows. Absent: the role's. */
+  scopes?: string[];
   /** During a rotation the replaced key keeps working until previousUntil, so the client can switch over. */
   previousSha256?: string; previousUntil?: string;
 };
 
-function credentials(raw: string | undefined): CredentialDef[] {
-  if (!raw) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
+/** The keys in the API_CREDENTIALS secret (the original registry; the console's keys in KV override them by id). */
+export function credentials(raw: string | undefined, stored: CredentialDef[] = []): CredentialDef[] {
+  if (!raw && !stored.length) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
+  if (!raw) return stored;
   let list: unknown;
   try { list = JSON.parse(raw); } catch { throw new ApiError('INTERNAL', 'API_CREDENTIALS is not valid JSON'); }
   if (!Array.isArray(list)) throw new ApiError('INTERNAL', 'API_CREDENTIALS must be an array');
-  return list.filter((c): c is CredentialDef =>
-    !!c && typeof c.id === 'string' && typeof c.sha256 === 'string' && /^[0-9a-f]{64}$/.test(c.sha256) && Array.isArray(c.actors) && c.actors.length > 0);
+  const valid = (c: unknown): c is CredentialDef => {
+    const x = c as CredentialDef;
+    return !!x && typeof x.id === 'string' && typeof x.sha256 === 'string' && /^[0-9a-f]{64}$/.test(x.sha256) && Array.isArray(x.actors) && x.actors.length > 0;
+  };
+  const byId = new Map<string, CredentialDef>();
+  for (const c of list.filter(valid)) byId.set(c.id, c);
+  for (const c of stored.filter(valid)) byId.set(c.id, c);
+  return [...byId.values()];
 }
 
 /** Loads users/<uid>, or null when it does not exist. Supplied by the caller so this module has no I/O. */
@@ -77,7 +97,7 @@ const PROFILE_TTL_MS = 60_000;
 const profileCache = new Map<string, { at: number; actor: ActorDef | null }>();
 
 /** A real person as an actor: only an active team member, with the role their profile has right now. */
-async function userActor(actorId: string, load: ProfileLoader): Promise<ActorDef | null> {
+export async function userActor(actorId: string, load: ProfileLoader): Promise<ActorDef | null> {
   const uid = actorId.slice('user:'.length);
   const hit = profileCache.get(uid);
   if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.actor;
@@ -90,7 +110,7 @@ async function userActor(actorId: string, load: ProfileLoader): Promise<ActorDef
   return actor;
 }
 
-export async function authenticate(req: Request, rawCredentials: string | undefined, loadProfile: ProfileLoader): Promise<Caller> {
+export async function authenticate(req: Request, rawCredentials: string | undefined, loadProfile: ProfileLoader, stored: CredentialDef[] = []): Promise<Caller> {
   const header = req.headers.get('authorization') || '';
   const m = /^Bearer\s+(\S{16,256})$/i.exec(header);
   if (!m) throw new ApiError('UNAUTHENTICATED', header ? 'malformed Authorization header' : 'missing Authorization header');
@@ -99,7 +119,7 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   let found: CredentialDef | null = null;
   let keyVersion: 'current' | 'previous' = 'current';
   const now = Date.now();
-  for (const c of credentials(rawCredentials)) {
+  for (const c of credentials(rawCredentials, stored)) {
     const cur = sameHex(presented, c.sha256);
     const prev = !!c.previousSha256 && /^[0-9a-f]{64}$/.test(c.previousSha256) && sameHex(presented, c.previousSha256) && Date.parse(c.previousUntil || '') > now;
     if ((cur || prev) && !found) { found = c; keyVersion = cur ? 'current' : 'previous'; }
@@ -113,7 +133,11 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   if (!found.actors.includes(actorId)) throw new ApiError('FORBIDDEN', `credential ${found.id} may not act as ${actorId}`, { actor: actorId });
   const actor = /^user:[A-Za-z0-9_-]{1,128}$/.test(actorId) ? await userActor(actorId, loadProfile) : ACTORS[actorId];
   if (!actor) throw new ApiError('FORBIDDEN', `actor ${actorId} is not registered or not an active team member`, { actor: actorId });
-  return { credentialId: found.id, actor, scopes: new Set(ROLE_SCOPES[actor.role]), keyVersion };
+  // a limited key keeps only the scopes it was given that the person's role has (a role change can only take away)
+  const role = ROLE_SCOPES[actor.role];
+  const limited = Array.isArray(found.scopes);
+  const scopes = limited ? role.filter((s) => found!.scopes!.includes(s)) : role;
+  return { credentialId: found.id, actor, scopes: new Set(scopes), keyVersion, ...(found.label ? { label: found.label } : {}), ...(limited ? { limited: true } : {}) };
 }
 
 export function requireScope(c: Caller, scope: Scope) {

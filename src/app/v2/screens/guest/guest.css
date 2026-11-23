@@ -1,0 +1,175 @@
+/* Guest area (U1-U14, havat-raveh-tidy/design/html/U*.html). Tokens, type and the kit parts come from kit.css; this file holds
+   only what the guest designs add: the photo header, the ticket card, the pay block, the total, the sign-in page. */
+
+/* screens whose first child is a full-bleed photo (U1, U2) */
+.guest-bleed { padding-top: 0 !important; }
+/* the kit's detail body already starts the back link 6px down; under the photo-bleed body it sits a little higher */
+.guest-bleed > .guest-pull { margin-top: -4px; }
+
+.guest-sub { font-size: 15px; color: var(--soft); line-height: 1.4; }
+.guest-lead { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink); }
+.guest-titleblock { display: flex; flex-direction: column; gap: 2px; }
+.guest-section { display: flex; flex-direction: column; gap: 4px; }
+.guest-inlinelink { padding: 0; border: 0; background: transparent; font: inherit; color: var(--action); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+/* ---------- photo header ---------- */
+.guest-photo { position: relative; flex: none; margin-inline: -16px; background: #CFC6BD; overflow: hidden; }
+.guest-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.guest-photo__over {
+  position: absolute; inset-inline: 0; bottom: 0; padding: 28px 16px 12px; color: #FFFFFF; display: flex; flex-direction: column;
+  background: linear-gradient(to top, rgba(20, 23, 27, .72), rgba(20, 23, 27, 0));
+}
+.guest-photo__overline { font-size: 14px; }
+.guest-photo__title { font-size: 28px; line-height: 1.15; font-weight: 700; }
+
+/* ---------- U1 ---------- */
+.guest-msg { gap: 8px; padding: 12px 14px; transition: opacity .2s ease, transform .2s ease; }
+.guest-msg--out { opacity: 0; transform: translateY(-6px); }
+.guest-msg__head { display: flex; align-items: center; gap: 8px; font-size: 14px; color: rgba(255, 255, 255, .9); }
+.guest-msg__text { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.guest-msg__btn { align-self: flex-start; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .guest-msg { transition: none; } }
+
+.guest-shortcut {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; text-align: start; font: inherit; color: var(--ink); cursor: pointer;
+  background: var(--surface); border: 1.5px solid var(--action); border-radius: 8px;
+}
+.guest-shortcut > .k-icon:first-child { color: var(--action); }
+.guest-shortcut > .k-icon:last-child { color: var(--soft); }
+.guest-shortcut__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.guest-shortcut__body b { font-size: 16px; }
+.guest-shortcut__body span { font-size: 14px; color: var(--soft); }
+
+.guest-datebox--pine { background: var(--action); color: #FFFFFF; }
+.guest-datebox--pine .k-datebox__month { color: rgba(255, 255, 255, .85); }
+
+.guest-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.guest-tile {
+  display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 12px; box-sizing: border-box; text-align: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; font: inherit; cursor: pointer;
+}
+.guest-tile__icon { display: flex; color: var(--action); }
+.guest-tile__body { min-width: 0; display: flex; flex-direction: column; }
+.guest-tile__body b { font-size: 16px; line-height: 1.2; }
+.guest-tile__body span { font-size: 13px; color: var(--soft); }
+.guest-intro { padding-bottom: 8px; }
+.v2 .guest-tile:focus-visible, .v2 .guest-shortcut:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+
+/* ---------- U2 ---------- */
+.guest-icons { display: flex; gap: 8px; }
+
+/* ---------- headers (U5) ---------- */
+.guest-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.guest-head__titles { display: flex; flex-direction: column; }
+.guest-head .guest-sub { font-size: 14px; }
+
+/* ---------- forms (U3, U8, U9) ---------- */
+.guest-stepcard { display: flex; align-items: center; justify-content: space-between; padding-block: 6px; padding-inline: 14px 6px; }
+.guest-stepcard__text { display: flex; flex-direction: column; }
+.guest-stepcard__label { font-size: 16px; font-weight: 600; }
+.guest-stepcard__meta { font-size: 14px; color: var(--soft); }
+.guest-stepcard .k-stepper__btn { border-width: 1px; }
+
+.guest-total { background: var(--selected); color: #FFFFFF; border-radius: 12px; padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.guest-total__amount { font-size: 34px; line-height: 1; }
+.guest-total__meta { font-size: 15px; color: rgba(255, 255, 255, .9); }
+
+.guest-moreli { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.guest-togglerow { min-height: 58px !important; }
+.guest-togglerow .k-row__body { gap: 0; }
+.guest-barnote { text-align: center; }
+
+/* the visit date picker */
+.guest-cal { display: flex; flex-direction: column; gap: 8px; }
+.guest-cal__head { display: flex; align-items: center; justify-content: space-between; }
+.guest-cal__month { font-size: 17px; }
+.guest-cal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.guest-cal__wd { text-align: center; font-size: 13px; color: var(--soft); padding: 4px 0; }
+.guest-cal__day {
+  height: 44px; border-radius: 8px; border: 1px solid transparent; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 16px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.guest-cal__day:disabled { color: var(--line-strong); cursor: default; }
+.guest-cal__day--today { border-color: var(--line-strong); }
+.guest-cal__day--on { background: var(--selected); border-color: var(--selected); color: #FFFFFF; font-weight: 700; }
+.v2 .guest-cal__day:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+
+/* ---------- U4 ---------- */
+.guest-checkhead { display: flex; flex-direction: column; gap: 4px; }
+.guest-checkhead__mark { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--selected); color: #FFFFFF; }
+
+/* the pay block (U4, U6, U9, U10) */
+.guest-pay { overflow: hidden; }
+.guest-pay__head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 14px; background: var(--amber); color: var(--ink); }
+.guest-pay--claimed .guest-pay__head { background: var(--bg); }
+.guest-pay--paid .guest-pay__head { background: var(--green); color: #FFFFFF; }
+.guest-pay__label { font-size: 16px; }
+.guest-pay__amount { font-size: 24px; }
+.guest-pay__dl { margin: 0; }
+.guest-pay__row { display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 4px 14px; }
+.guest-pay__row + .guest-pay__row { border-top: 1px solid var(--line); }
+.guest-pay__row dt { flex: none; width: 64px; font-size: 14px; color: var(--soft); }
+.guest-pay__row dd { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 500; line-height: 1.35; }
+
+/* ---------- the ticket card (U5, U6) ---------- */
+.guest-ticket { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+.guest-ticket__head { background: var(--selected); color: #FFFFFF; padding: 12px 14px; display: flex; flex-direction: column; }
+.guest-ticket__title { font-size: 20px; }
+.guest-ticket__when { font-size: 14px; color: rgba(255, 255, 255, .9); }
+.guest-ticket__body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.guest-qr { align-self: center; box-sizing: border-box; border-radius: 8px; background: #FFFFFF; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
+.guest-qr img { display: block; }
+.guest-ticket__holder { font-size: 20px; text-align: center; }
+.guest-ticket__nav { display: flex; align-items: center; justify-content: space-between; }
+.guest-ticket__count { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.guest-ticket__strip { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 10px 14px; font-size: 15px; font-weight: 700; }
+.guest-ticket__strip--green { background: var(--green); color: #FFFFFF; }
+.guest-ticket__strip--amber { background: var(--amber); color: var(--ink); padding-block: 8px; padding-inline: 14px 8px; }
+.guest-ticket__strip--red { background: var(--red); color: #FFFFFF; }
+.guest-ticket__striptext { flex: 1; }
+.guest-ticket__pay { flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--ink); color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.guest-ticket--cancelled .guest-qr { opacity: .35; }
+.v2 .guest-ticket__pay:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; box-shadow: 0 0 0 4px var(--ink); }
+
+/* ---------- U7 ---------- */
+.guest-editlink { display: flex; justify-content: flex-end; margin-top: -12px; }
+.guest-who { display: flex; align-items: center; gap: 14px; }
+.guest-who__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.guest-who__name { font-size: 24px; line-height: 1.2; }
+.guest-who__meta { font-size: 14px; color: var(--soft); }
+.guest-nudge { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; text-align: start; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; }
+.guest-nudge .k-icon { flex: none; color: var(--action); }
+.guest-emptyli { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.guest-foot { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-bottom: 8px; }
+.guest-foot .k-btn--quiet { padding-inline: 10px; }
+.guest-delete { align-self: flex-start; }
+
+/* ---------- U10 ---------- */
+.guest-qty { font-size: 15px; color: var(--soft); }
+
+/* ---------- U11 ---------- */
+.guest-contact { display: flex; flex-wrap: wrap; gap: 8px; }
+.guest-contact .k-btn { height: 48px; }
+
+/* ---------- U12 ---------- */
+.guest-signin { display: flex; flex-direction: column; }
+.guest-signin__main { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 8px 0 24px; }
+.guest-signin__mark { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 12px; background: var(--action); color: #FFFFFF; }
+.guest-signin__title { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; }
+.guest-signin__text { margin: 0; font-size: 17px; line-height: 1.5; color: var(--soft); }
+.guest-signin__fine { font-size: 14px; line-height: 1.5; color: var(--soft); }
+.guest-signin__demo { display: flex; justify-content: center; padding-bottom: 12px; }
+.guest-google {
+  height: 56px; border-radius: 8px; border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink); cursor: pointer;
+  font: inherit; font-size: 18px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.guest-google:disabled { opacity: .6; cursor: default; }
+.guest-apple { background: #000000; border-color: #000000; color: #FFFFFF; }
+.guest-signin__choice { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
+.v2 .guest-google:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+
+/* ---------- U14 ---------- */
+.guest-msgrow .k-row__hit { align-items: flex-start; }
+.guest-msgrow .k-row__title { white-space: normal; line-height: 1.4; }
+.guest-dot { flex: none; width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: var(--red); }
+.guest-dot--off { background: transparent; }

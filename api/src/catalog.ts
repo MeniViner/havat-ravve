@@ -4,10 +4,11 @@
 
 import { resourceOperations } from './resources';
 import { WRITE_DEFS } from './writes';
+import './v2'; // the redesign's actions register themselves into WRITE_DEFS (after writes.ts is evaluated)
 import { OVERVIEW_OPS } from './overview';
 import { FAILURE_OPS } from './failures';
 
-export const CATALOG_VERSION = '2.0.0';
+export const CATALOG_VERSION = '3.0.0';
 
 export type Param =
   | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
@@ -58,18 +59,29 @@ export const OPERATIONS: Operation[] = [
   {
     name: 'tasks.list',
     kind: 'read',
-    he: 'רשימת משימות, אופציונלי לפי אחראי, תאריך יעד ומצב ביצוע',
+    he: 'רשימת משימות, אופציונלי לפי אחראי, תאריך יעד, מצב ביצוע, אירוע, מקום, משימה קבועה, היסטוריית ביצוע או באיחור',
     method: 'GET',
     path: '/v1/tasks',
     params: {
       assignee: { type: 'uid', he: 'uid מתוך people.search' },
       date: date('תאריך יעד מדויק'),
       done: { type: 'bool', he: 'true לבוצעו, false לפתוחות' },
+      eventId: { type: 'id', he: 'משימות שמכינות אירוע (מתוך events.list)' },
+      placeId: { type: 'id', he: 'משימות במקום (מתוך places.list)' },
+      templateId: { type: 'id', he: 'המופעים היומיים של משימה קבועה (מתוך templates.list)' },
+      doneFrom: date('היסטוריה: בוצעו מתאריך (כולל)'),
+      doneTo: date('היסטוריה: בוצעו עד תאריך (כולל)'),
+      overdue: { type: 'bool', he: 'true: פתוחות שתאריך היעד שלהן עבר (באיחור)' },
       limit: { type: 'int', min: 1, max: 50, default: 20 },
       cursor: { type: 'string', max: 400, he: 'nextCursor מהעמוד הקודם, עם אותם מסננים' },
     },
     requiredScope: 'tasks:read',
-    notes: ['Newest first. Response has "items", "nextCursor" and "hasMore". A cursor is only valid with the same filters.'],
+    notes: [
+      'Newest first. Response has "items", "nextCursor" and "hasMore". A cursor is only valid with the same filters.',
+      'doneFrom/doneTo (Israel dates, inclusive) list the done history, latest done first; they cannot be combined with other filters.',
+      'overdue=true: open tasks whose dueDate is before today, earliest due first. With eventId, placeId or overdue the matching set is read whole (up to 500, "complete": false past that) and paged here.',
+      'Photos: hasPhoto/hasDonePhoto, and photoUrl/donePhotoUrl when the photo is a stored link (never base64).',
+    ],
   },
   {
     name: 'tasks.get',
@@ -100,6 +112,7 @@ export const OPERATIONS: Operation[] = [
     requiredScope: 'tasks:create',
     notes: [
       'The response is a read-back of the stored task ("verified": true when it matches what was sent).',
+      'Put on someone else, that person is notified (in the app and by push), as in the app.',
       '"readBack": "unavailable" (with "task": null, "verified": false) means the task was stored but could not be read back. Do not create it again with a new Idempotency-Key; read it later with tasks.get.',
     ],
   },
@@ -107,16 +120,19 @@ export const OPERATIONS: Operation[] = [
     name: 'tasks.assign',
     kind: 'write',
     idempotency: 'required',
-    he: 'שיוך משימה קיימת לאחראי',
+    he: 'שיוך משימה קיימת לאחראי, או שחרור שלה (פנויה)',
     method: 'POST',
     path: '/v1/actions/tasks.assign',
     body: {
       taskId: { type: 'id', required: true },
-      assignee: { type: 'uid', required: true, he: 'uid מתוך people.search' },
+      assignee: { type: 'uid', he: 'uid מתוך people.search' },
+      release: { type: 'bool', he: 'true במקום assignee: המשימה חוזרת להיות פנויה' },
       ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' },
     },
     requiredScope: 'tasks:assign',
     notes: [
+      'Send either assignee or release=true. As the app: stamps takenAt, logs "assigned" (or "released") and notifies the new person (in the app and by push) unless it is you.',
+      'A done task cannot be reassigned (409 STALE_WRITE).',
       'The response is a read-back of the stored task.',
       '"readBack": "unavailable" (with "task": null, "verified": false) means the change was stored but could not be read back. Do not send it again with a new key.',
     ],
@@ -128,10 +144,16 @@ export const OPERATIONS: Operation[] = [
     he: 'סימון משימה כבוצעה, בשם מי שקורא',
     method: 'POST',
     path: '/v1/actions/tasks.complete',
-    body: { taskId: { type: 'id', required: true }, ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' }, },
+    body: {
+      taskId: { type: 'id', required: true }, ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' },
+      donePhoto: { type: 'string', max: 300, he: 'תמונת ביצוע: רק קישור לתמונה שהאפליקציה כבר שמרה (https://havat-ravve-api.meniviner.workers.dev/v1/files/...)' },
+      doneNote: { type: 'string', max: 2000, he: 'הערת ביצוע (מה נעשה)' },
+    },
     requiredScope: 'tasks:complete',
     notes: [
-      'Marks the task done by the calling actor, as the app does. An already-done task returns "changed": false.',
+      'Marks the task done by the calling actor, as the app does. A free one-off task becomes the caller\'s (assignee). An already-done task returns "changed": false.',
+      'With donePhoto or doneNote it is the app\'s "done with a photo": the note is written (empty when not sent), and an already-done task only gets the photo and note.',
+      'The API cannot upload photo bytes: donePhoto must be a link the app already stored.',
       'The response is a read-back of the stored task. "readBack": "unavailable" means it was stored but could not be read back.',
     ],
   },
@@ -144,7 +166,7 @@ export const OPERATIONS: Operation[] = [
     path: '/v1/actions/tasks.reopen',
     body: { taskId: { type: 'id', required: true }, ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' }, },
     requiredScope: 'tasks:complete',
-    notes: ['Clears done, doneBy, doneAt and the done photo and note, as the app does. An open task returns "changed": false.'],
+    notes: ['Clears done, doneBy and doneAt, as the app does; the done photo and note stay (un-ticking by mistake must not destroy them). An open task returns "changed": false.'],
   },
   {
     name: 'shopping.list',
@@ -171,11 +193,18 @@ export const OPERATIONS: Operation[] = [
       title: { type: 'string', required: true, min: 1, max: 200, he: 'מה לקנות' },
       qty: { type: 'string', max: 40, he: 'כמות, טקסט חופשי, למשל "2 שקים"' },
       category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], default: 'super', he: 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה' },
-      urgent: { type: 'bool', default: false },
+      urgent: { type: 'bool', default: false, he: 'דחוף: כל הצוות מקבל התראה (באפליקציה ובטלפון)' },
       note: { type: 'string', max: 1000 },
+      link: { type: 'string', max: 2000, he: 'קישור https למוצר' },
+      taskId: { type: 'id', he: 'המשימה שהפריט נדרש לה (לקישור גם מצד המשימה: tasks.addShopping)' },
+      photo: { type: 'string', max: 300, he: 'רק קישור לתמונה שהאפליקציה כבר שמרה' },
     },
     requiredScope: 'shopping:write',
-    notes: ['Check shopping.list first: if the same item is already open, ask before adding it again.', 'The response is a read-back of the stored item.'],
+    notes: [
+      'Check shopping.list first: if the same item is already open, ask before adding it again.',
+      'urgent=true notifies the whole team ("דחוף לכולם"), as the app does: ask before using it.',
+      'The response is a read-back of the stored item.',
+    ],
   },
   {
     name: 'shopping.setBought',
@@ -188,9 +217,10 @@ export const OPERATIONS: Operation[] = [
       itemId: { type: 'id', required: true },
       ifUpdatedAt: { type: 'string', max: 40, he: 'updatedAt כפי שנקרא; אם השתנה מאז, 409 STALE_WRITE' },
       bought: { type: 'bool', default: true, he: 'false מחזיר את הפריט לרשימה הפתוחה' },
+      tripId: { type: 'id', he: 'הקנייה שבה נקנה (מתוך shoppingTrips.list), כשמישהו בחנות' },
     },
     requiredScope: 'shopping:write',
-    notes: ['Bought items leave the app\'s open list and disappear after 24 hours, as when marked in the app. No change returns "changed": false.'],
+    notes: ['Bought items leave the app\'s open list and disappear after 24 hours, as when marked in the app. No change returns "changed": false.', 'Clears "notAvailable" (marked missing on a trip), as the app does.'],
   },
 ];
 
@@ -199,11 +229,11 @@ export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...OPERATIONS, ...F
 
 export const CATALOG = {
   version: CATALOG_VERSION,
-  generatedAt: '2026-11-12T00:00:00+02:00',
+  generatedAt: '2026-11-22T00:00:00+02:00',
   service: 'havat-ravve-api',
   conventions: {
     auth: 'Authorization: Bearer <api-key>. Each key is bound to its own actors; X-Actor-Id may only pick among them and never raises permissions. A real person acts with the name and role of their profile in the app, and only while that profile is an active team member.',
-    scopes: 'owner and manager: every operation. staff: tasks.list/get/create (for themselves)/complete/reopen and the shopping list; not people.search or assigning to others.',
+    scopes: 'Roles mirror the app (firestore.rules); each operation names its requiredScope. owner: everything, including what only an owner may do (payment details and donation amounts in settings.update, making someone a manager or owner, people.delete, broadcasts.delete). manager: everything else: people and roles (up to staff), events, tickets, payments, visits, donations, the managers\' inbox, the calendar, broadcasts and notifications.send, settings. staff: tasks (list/get, create for themselves, complete/reopen, edit/delete their own), the shopping list, reading places, templates, events, tickets and tabs, the farm calendar (without items for managers only), their own presence (presence.save/remove), broadcasts sent to them and their own notifications (me.notifications); not people, visits, donations, the inbox, settings changes or assigning others. A refused operation is 403 and writes nothing.',
     idempotency: 'Every write needs an Idempotency-Key header (UUID). Same key + same body returns the stored result with "replayed": true. Same key + different body is 409. After a timeout or OUTCOME_UNKNOWN, resend with the same key.',
     dates: 'Absolute dates only, YYYY-MM-DD in Asia/Jerusalem. Resolve "today" / "tomorrow" before calling; the server does not parse natural language.',
     datesAndTimes: 'Every parameter states its format and time zone. date: YYYY-MM-DD (Asia/Jerusalem). datetime: YYYY-MM-DDTHH:mm, local Israel time, no offset (event start/end). time: HH:mm, Israel time. Stored timestamps (createdAt, updatedAt, at, doneAt, boughtAt) are ISO 8601 in UTC with a Z; convert to Israel time before telling the user.',
@@ -212,6 +242,8 @@ export const CATALOG = {
     keys: 'One key per person or assistant, bound on the server to that person\'s profile. A key can be revoked, rotated or set to expire; a revoked or expired key gets 401. Every authenticated response has meta.keyVersion: "current", or "previous" when a rotated key is still inside its grace period (switch to the new one).',
     envelope: 'Success: { ok: true, data, meta }. Failure: { ok: false, error: { code, message, he, details }, meta }.',
     unknownParams: 'Unknown query or body fields are rejected with 400.',
+    files: 'Photos and files cannot be uploaded through the API: where a record holds a photo or a file, the API only accepts an https link (one the app already stored), and reads return photo flags (hasPhoto) instead of image data.',
+    notifications: 'Notifications the API creates (broadcasts.send/resend, notifications.send, people.setRole and every action that notifies in the app) reach people exactly like the app\'s: in the app\'s bell (users/<uid>/notifications) and, unless the operation says otherwise, as a phone push through the same outbox, for people who turned push on. The caller is never notified about their own action.',
     userAgent: 'Send a User-Agent header that names your client, e.g. "Instinct-HavatRavve/1.0". Cloudflare blocks Python urllib\'s default User-Agent before the request reaches this API: a plain-text 403 "error code: 1010" means it never arrived and nothing was written.',
   },
   errors: {

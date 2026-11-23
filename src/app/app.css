@@ -275,10 +275,6 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .note{margin:12px 20px 0;padding:12px 14px;border-radius:10px;background:var(--paper2);border:1px solid var(--line2);font-size:15px;color:var(--muted);line-height:1.5}
 .note.ink{color:var(--ink)}
 .quote{margin:8px 20px 0;padding:0 14px;border-inline-start:3px solid var(--gold);font-size:16px;line-height:1.5;color:var(--ink)}
-.paybox{margin:12px 20px 0;padding:14px 16px;border-radius:12px;background:var(--ochre-bg);color:var(--ochre);font-size:15px;line-height:1.5}
-.paybox b{display:block;font-family:var(--serif);font-size:30px;font-weight:500;line-height:1.1;margin-bottom:4px}
-.paybox.ok{background:var(--ok-bg);color:var(--ok)}
-.paybox.rust{background:var(--rust-bg);color:var(--rust)}
 
 /* ---------- bottom nav ---------- */
 .bottom{position:fixed;bottom:0;inset-inline:0;background:var(--paper2);border-top:1px solid var(--line);z-index:6;padding-bottom:var(--safe-b)}
@@ -325,41 +321,6 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .cartbar .sub{font-size:14px;opacity:.85;margin-top:4px}
 .cartbar .btn.primary{background:var(--paper);color:var(--green)}
 
-/* ---------- guest: ticket card ---------- */
-.ticket{margin:14px 20px 0;background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.ticket .head{padding:16px 18px 10px;background:var(--green);color:var(--paper)}
-.ticket .head .ev{font-family:var(--serif);font-size:26px;font-weight:500;line-height:1.1}
-.ticket .head .when{font-size:14px;color:#e6dcc0;margin-top:4px}
-.ticket .body{padding:18px 18px 14px;display:flex;flex-direction:column;align-items:center;gap:12px}
-.ticket .qr{width:220px;height:220px;border-radius:8px}
-.ticket .who{font-size:22px;font-weight:700;text-align:center}
-.ticket .idx{font-size:14px;color:var(--muted)}
-.ticket .band{padding:12px 18px;font-size:15px;font-weight:600;background:var(--ok-bg);color:var(--ok);display:flex;justify-content:space-between;gap:10px;align-items:center}
-.ticket .band.ochre{background:var(--ochre-bg);color:var(--ochre)}
-.ticket .band.rust{background:var(--rust-bg);color:var(--rust)}
-.ticket.cancelled{opacity:.55}
-.dots{display:flex;justify-content:center;gap:6px;padding:10px}
-.dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
-.dots i.on{background:var(--green)}
-.evcard{display:flex;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line2);align-items:flex-start}
-.evcard .date{width:62px;flex-shrink:0;text-align:center;line-height:1}
-.evcard .date .d{font-family:var(--serif);font-size:38px;font-weight:500;color:var(--green)}
-.evcard .date .m{font-size:13px;color:var(--muted);margin-top:4px}
-.evcard .date .w{font-size:13px;color:var(--muted)}
-.evcard .t{font-family:var(--serif);font-size:24px;font-weight:500;line-height:1.15}
-.hero{margin:0;position:relative;height:220px;background:var(--green)}
-.hero img{width:100%;height:100%;object-fit:cover}
-.hero .over{position:absolute;inset:auto 0 0 0;padding:18px 20px;background:linear-gradient(to top,rgba(29,41,32,.85),transparent);color:var(--paper)}
-.hero .over h1{font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.1}
-.hero .over .sub{color:#e6dcc0;font-size:15px;margin-top:4px}
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:8px 20px 0}
-.cal .wd{text-align:center;font-size:12px;color:var(--muted);font-weight:600;padding:4px 0}
-.cal button{aspect-ratio:1;border-radius:10px;display:grid;place-items:center;font-weight:500;font-size:15px}
-.cal button.off{color:#b9b4a4}
-.cal button.today{box-shadow:inset 0 0 0 1.5px var(--line)}
-.cal button.on{background:var(--green);color:var(--paper)}
-.cal button.dot::after{content:'';display:block;width:5px;height:5px;border-radius:50%;background:var(--gold);margin-top:-6px}
-
 /* ---------- toast / sheet / splash ---------- */
 .toasts{position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 14px);inset-inline:16px;display:flex;flex-direction:column;gap:8px;z-index:30;pointer-events:none}
 .toast{pointer-events:auto;display:flex;align-items:center;gap:14px;margin:0 auto;max-width:520px;width:100%;padding:12px 16px;border-radius:12px;background:var(--ink);color:var(--paper);font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
@@ -389,11 +350,6 @@ dialog.sheet::backdrop{background:rgba(29,41,32,.45)}
 .grid30 i.ok{background:var(--ok)}
 .grid30 i.miss{background:var(--ok-bg)}
 .grid30 i.sat{background:var(--line)}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 20px 0}
-.tile{display:flex;flex-direction:column;gap:6px;padding:14px 14px 12px;border-radius:12px;background:var(--white);border:1px solid var(--line2);min-height:92px}
-.tile .h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
-.tile .h svg.ic{width:20px;height:20px;color:var(--green2)}
-.tile .s{font-size:14px;color:var(--muted);line-height:1.4}
 .links{padding:6px 20px 0}
 .links a,.links button{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:12px;min-height:54px;padding:8px 0;border-bottom:1px solid var(--line2);font-size:16px;font-weight:500;width:100%}
 .links a>svg.ic:first-child,.links button>svg.ic:first-child{color:var(--green2);width:20px;height:20px;grid-row:1 / span 2}
@@ -548,32 +504,4 @@ dialog.sheet[open]::backdrop{animation:fade .2s}
 
 /* the new tasks and shopping screens inside this shell: their bottom bar of actions sits above this shell's bottom navigation */
 .screen .r-dock{bottom:calc(var(--nav-h) + var(--safe-b))}
-
-/* guest account (/me/account): the guest look, laid out as cards on the paper background */
-.acct{padding-bottom:24px}
-.acct-welcome{margin:calc(20px + var(--safe-t)) 16px 0;padding:28px 22px 22px;background:var(--paper2);border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
-.acct-logo{width:64px;height:64px;object-fit:contain}
-.acct-welcome h1{font-weight:500;font-size:30px;line-height:1.15;margin:0}
-.acct-welcome p{margin:0;font-size:16px;line-height:1.55;color:var(--ink);max-width:30ch}
-.acct-welcome .btn{margin-top:8px}
-.acct-welcome .acct-fine{font-size:13px;color:var(--muted)}
-.acct-error{color:var(--rust)!important;font-size:14px!important}
-.acct-head{display:flex;align-items:center;gap:14px;margin:calc(16px + var(--safe-t)) 16px 4px;padding:18px;background:var(--paper2);border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:16px}
-.acct-head .avatar{flex-shrink:0}
-.acct-who{min-width:0}
-.acct-who h1{font-weight:500;font-size:26px;line-height:1.15;margin:0;overflow-wrap:anywhere}
-.acct-who .sub{font-size:14px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
-.acct .strip{margin-inline:16px}
-.acct-group{margin:14px 16px 0;background:var(--paper2);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.acct-group>.sec{padding:14px 16px 4px}
-.acct-group .row,.acct-group .switchrow{padding-inline:16px}
-.acct-group .kv{padding:6px 16px 14px}
-.acct-group .links{padding:0 16px}
-.acct-group .lead{padding:4px 16px 14px}
-.acct-group .field{margin-inline:16px}
-.acct-group .actions{padding-inline:16px;padding-bottom:14px}
-.acct-group .list>:last-child,.acct-group .links>:last-child,.acct-group>.switchrow:last-child{border-bottom:0}
-.acct-group .inline.pad{padding:12px 16px 16px}
-.acct-empty{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px 16px}
-.acct-empty p{margin:0;color:var(--muted);font-size:15px}
-.acct>.actions{padding-inline:16px}
+.splash-text{max-width:32ch;text-align:center;line-height:1.5;padding:0 16px}

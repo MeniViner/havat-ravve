@@ -27,8 +27,8 @@
 .system-dl .k-dl__row { min-height: 50px; }
 .system-dl .k-textlink { margin-inline-start: auto; }
 
-/* footer row of L6 / C12 */
-.system-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* footer row of Q18: sign out, then the quiet links (website, terms, demo); gap 6 as designed so the three fit one line */
+.system-foot { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 /* C13 photo row */
 .system-photorow {

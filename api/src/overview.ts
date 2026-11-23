@@ -4,7 +4,7 @@ import { type Caller, requireScope } from './auth';
 import type { Operation } from './catalog';
 import { type Doc, Firestore, enc } from './firestore';
 import { isManager, project, todayIL } from './core';
-import { mergedSettings } from './writes';
+import { farmTime, isoFromIL, mergedSettings } from './writes';
 import { validate } from './util';
 
 type F = Record<string, unknown>;
@@ -50,7 +50,8 @@ export async function overview(fs: Firestore, caller: Caller, query: URLSearchPa
   const [tasks, shop, events] = await Promise.all([
     q('tasks', [...(mgr ? [] : [eq('managersOnly', false)]), eq('done', false)], [...TASK, 'managersOnly'], TASK_LIMIT),
     q('shopping', [eq('bought', false)], ['title', 'qty', 'category', 'urgent', 'createdAt'], SHOP_LIMIT),
-    q('events', [cmp('start', 'GREATER_THAN_OR_EQUAL', day)], ['title', 'start', 'end', 'published', 'open', 'price', 'capacity'], 5, ['start', 'ASCENDING']),
+    // start is an ISO instant in UTC (older events: Israel wall time), so the day begins at its first instant in Israel
+    q('events', [cmp('start', 'GREATER_THAN_OR_EQUAL', isoFromIL(day))], ['title', 'start', 'end', 'published', 'open', 'price', 'capacity', 'closed'], 5, ['start', 'ASCENDING']),
   ]);
   const newest = byStr('createdAt', -1);
   const overdue = tasks.filter((d) => d.data.dueDate && String(d.data.dueDate) < day).sort(byStr('dueDate'));
@@ -64,7 +65,7 @@ export async function overview(fs: Firestore, caller: Caller, query: URLSearchPa
       mine: tasks.filter((d) => (d.data.assignee as { uid?: string } | null)?.uid === me).sort(newest).slice(0, CAP).map((d) => brief(d, TASK)),
     },
     shopping: { open: shop.length, ...(shop.length >= SHOP_LIMIT ? { openCapped: true } : {}), urgent: shop.filter((d) => d.data.urgent).sort(newest).slice(0, CAP).map((d) => brief(d, ['title', 'qty', 'category'])) },
-    upcomingEvents: events.filter((d) => mgr || d.data.published).map((d) => brief(d, ['title', 'start', 'end', 'published', 'open', 'price', 'capacity'])),
+    upcomingEvents: events.filter((d) => mgr || d.data.published).map((d) => ({ ...brief(d, ['title', 'start', 'end', 'published', 'open', 'price', 'capacity', 'closed']), startLocal: d.data.start ? farmTime(String(d.data.start)) : '', endLocal: d.data.end ? farmTime(String(d.data.end)) : '' })),
   };
   if (!mgr) return out;
 

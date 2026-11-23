@@ -235,9 +235,32 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-row--muted { opacity: .65; }
 .k-row__meta { font-size: 14px; color: var(--soft); }
 .k-row__trail { flex: none; display: flex; align-items: center; gap: 8px; }
+/* a tappable row (padding 0, the link carries it) keeps its one control 14px off the card edge, as in Q10 */
+.k-row--hit:not(.k-row--check) > .k-row__trail { padding-inline-end: 14px; }
 .k-row__value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .k-row__chev { display: flex; color: var(--soft); }
 .k-row__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+
+/* Row swipe: the row slides over one action button and stays open until the button or anything else is pressed.
+   The li keeps the line between rows; the sliding front is the row itself, on the card's white. */
+.k-swipe { position: relative; overflow: hidden; border-top: 1px solid var(--line); touch-action: pan-y; }
+.k-swipe__front { position: relative; z-index: 1; border-top: 0; background: var(--surface); transition: transform .22s cubic-bezier(.2, .8, .2, 1); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.k-swipe--drag .k-swipe__front { transition: none; }
+.k-swipe__front a, .k-swipe__front img { -webkit-user-drag: none; }
+.k-swipe__under { position: absolute; inset-block: 0; display: flex; align-items: stretch; direction: ltr; }
+.k-swipe__under--right { left: 0; }
+.k-swipe__under--left { right: 0; }
+.k-swipe__btn {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%;
+  border: 0; background: var(--soft); color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 6px;
+  direction: rtl; white-space: nowrap;
+}
+.k-swipe__btn--done { background: var(--selected); }
+.k-swipe__btn--action { background: var(--action); }
+.k-swipe__btn--neutral { background: var(--soft); }
+.k-swipe__btn--danger { background: var(--red); }
+.v2 .k-swipe__btn:focus-visible { outline: 2px solid #FFFFFF; outline-offset: -4px; }
+@media (prefers-reduced-motion: reduce) { .k-swipe__front { transition: none; } }
 
 .k-icontile {
   flex: none; display: flex; align-items: center; justify-content: center;
@@ -588,9 +611,16 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
   .k-sheet__panel { animation: k-sheet-in .2s ease-out; }
   .k-sheet__backdrop { animation: k-fade-in .2s ease-out; }
 }
-.k-confirm__text { margin: 0; font-size: 16px; line-height: 1.45; color: var(--soft); }
-.k-confirm__actions { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
-.v2 .k-confirm__go { border: 1.5px solid var(--red); }
+.k-sheet__head--sub { flex-direction: column; align-items: stretch; gap: 2px; }
+.k-sheet__head--sub .k-sheet__title { line-height: 1.25; }
+.k-sheet__sub { font-size: 15px; color: var(--soft); line-height: 1.45; }
+/* Q8: red filled "מחיקה" with a bin, outlined "ביטול" beside it */
+.k-confirm__actions { display: flex; gap: 8px; }
+.k-confirm__go, .k-confirm__cancel { height: 56px; border-radius: 8px; font: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.k-confirm__go { flex: 1; border: 0; background: var(--red); color: #FFFFFF; font-size: 18px; font-weight: 600; }
+.k-confirm__cancel { flex: none; padding: 0 16px; border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 600; }
+.k-confirm__go:disabled, .k-confirm__cancel:disabled { opacity: .6; cursor: default; }
+.v2 .k-confirm__go:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 @keyframes k-sheet-in { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
 @keyframes k-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -709,3 +739,71 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 
 /* the legacy app.css sets button{text-align:start}; centred controls say so explicitly */
 .v2 .k-chip, .v2 .k-tabs__tab, .v2 .k-btn, .v2 .k-gatebtn { text-align: center; }
+
+/* ═════════════ Tidy patterns (patterns.tsx) ═════════════ */
+/* Q5 / Q11 action rows */
+.k-action { border-top: 1px solid var(--line); }
+.k-action__btn {
+  width: 100%; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 4px 14px;
+  border: 0; background: transparent; font: inherit; color: var(--ink); text-align: start; cursor: pointer;
+}
+.k-action__btn:disabled { opacity: .55; cursor: default; }
+.k-action__icon { display: flex; color: var(--action); }
+.k-action__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.k-action__label { font-size: 16px; font-weight: 600; }
+.k-action__meta { font-size: 14px; color: var(--soft); }
+.k-action__btn--danger, .k-action__btn--danger .k-action__icon { color: var(--red); }
+.v2 .k-action__btn:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+/* Q17 / U3 single-select row */
+.k-selectrow__hit {
+  width: 100%; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 4px 14px; box-sizing: border-box;
+  border: 0; background: transparent; font: inherit; color: var(--ink); text-align: start; text-decoration: none; cursor: pointer;
+}
+.k-selectrow__link { flex: none; font-size: 15px; font-weight: 600; color: var(--action); padding: 10px 0; }
+.v2 .k-selectrow__hit:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+/* Q16 dropdown */
+.k-dropdown {
+  flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 15px; font-weight: 500; display: flex; align-items: center; justify-content: space-between; gap: 6px; cursor: pointer;
+}
+.k-dropdown__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-dropdown .k-icon { flex: none; color: var(--soft); }
+/* Q3 "עוד פרטים" */
+.k-moredetails__head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 50px; padding: 4px 14px;
+  border: 0; background: transparent; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink); text-align: start; cursor: pointer;
+}
+.k-moredetails__chev { display: flex; color: var(--soft); transition: transform .15s ease; }
+.k-moredetails--open .k-moredetails__chev { transform: rotate(180deg); }
+.k-moredetails .k-row { min-height: 50px; }
+/* form fields inside "עוד פרטים" (rule 8): one list item that stacks them */
+.k-moredetails__fields { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.v2 .k-moredetails__head:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+/* Q21 drag handle */
+.k-draghandle {
+  flex: none; width: 32px; height: 44px; border: 0; background: transparent; color: var(--soft); padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none;
+}
+.k-draghandle:active { cursor: grabbing; }
+/* Q18 underlined link */
+.k-ulink {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; border: 0; background: transparent; font: inherit;
+  color: var(--action); font-size: 16px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+/* Q9 table view */
+.k-table { overflow: hidden; }
+.k-table__scroll { overflow-x: auto; }
+.k-table table { border-collapse: collapse; min-width: 100%; }
+.k-table th { padding: 0; text-align: start; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.k-table th button { all: unset; display: block; padding: 8px 10px; font-size: 13px; font-weight: 600; color: var(--soft); cursor: pointer; }
+.v2 .k-table th button:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+.k-table td { padding: 10px; font-size: 15px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.k-table td:first-child { font-weight: 600; }
+.k-table tbody tr:last-child td { border-bottom: 0; }
+/* Q7 payment confirmation */
+.k-payconfirm__preview { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 16px; line-height: 1.5; white-space: pre-line; }
+/* title + soft line under it (Q9 "5 שורות · 6 עמודות", Q20 subtitle) */
+.k-titleblock { display: flex; flex-direction: column; gap: 2px; }
+.k-titleblock__sub { font-size: 14px; color: var(--soft); }
+/* soft note under a card (Q9, Q12, Q20) */
+.k-note { margin: 0; font-size: 14px; color: var(--soft); line-height: 1.45; }

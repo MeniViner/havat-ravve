@@ -11,8 +11,11 @@
 .farm-h1 { margin: 0; font-size: 28px; font-weight: 700; }
 .farm-h1--day { font-size: 26px; }
 .farm-arrows { display: flex; gap: 6px; flex: none; }
-.farm-todaybtn { padding: 0 12px; }
+.v2 .farm-todaybtn { padding: 0 12px; border-width: 1px; font-weight: 600; }
 .farm-addbtn { gap: 6px; }
+/* a form header while editing: "ביטול" then ⋯ */
+.farm-formend { display: flex; align-items: center; gap: 12px; }
+.v2 .farm-cancel { background: transparent; border: 0; font-family: inherit; }
 .farm-link { font-size: 15px; font-weight: 600; color: var(--action); text-decoration: none; padding: 10px 0; background: transparent; border: 0; font-family: inherit; }
 .farm-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
 .farm-cardhead { display: flex; justify-content: space-between; align-items: center; padding: 0 14px; min-height: 42px; gap: 8px; }
@@ -41,7 +44,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
 .farm-day[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; }
 .farm-day__name { font-size: 13px; }
 .farm-day__num { font-size: 16px; font-weight: 700; }
-.farm-otherdate { align-self: flex-start; padding: 4px 0; }
+.farm-group__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* ---------- F1 ---------- */
 .farm-here { padding: 14px 16px 8px; gap: 4px; }
@@ -145,6 +148,8 @@ button.farm-item, a.farm-item { cursor: pointer; }
 
 /* ---------- F4 ---------- */
 .farm-group { display: flex; flex-direction: column; gap: 8px; }
+.farm-note { margin: 0; font-size: 14px; color: var(--soft); }
+.farm-moreli { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
 .farm-group__label { font-size: 14px; font-weight: 600; color: var(--soft); }
 .farm-hours { display: flex; gap: 6px; }
 .farm-row2 { display: flex; gap: 12px; }
