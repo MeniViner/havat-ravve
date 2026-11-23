@@ -33,8 +33,10 @@ export const TEAM_ROUTES: Route[] = [
   R('/tasks/:id', tasks.TaskScreen, 'tasks', 'page'),
   R('/new', tasks.AddScreen, null, 'page'),
   R('/day', tasks.DayEndScreen, 'tasks', 'page'),
-  R('/places', tasks.PlacesScreen, 'tasks', 'tab'),
-  R('/places/:id', tasks.PlaceScreen, 'tasks', 'page'),
+  // places are reached from the Farm tab card only (Q2, RULES.md); /places/table is the list's Q9 table view
+  R('/places', tasks.PlacesScreen, 'farm', 'tab'),
+  R('/places/table', tasks.PlacesScreen, 'farm', 'tab'),
+  R('/places/:id', tasks.PlaceScreen, 'farm', 'page'),
   R('/projects', projects.ProjectsList, 'tasks', 'tab', { manager: true }),
   R('/projects/new', projects.ProjectForm, 'tasks', 'page', { manager: true }),
   R('/projects/:id/edit', projects.ProjectForm, 'tasks', 'page', { manager: true }),

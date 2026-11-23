@@ -97,15 +97,29 @@
 .tasks-qty > :first-child { flex: 1; min-width: 0; }
 .tasks-qty .k-field { gap: 8px; }
 .tasks-hidden { display: none; }
-.tasks-delete { align-self: flex-start; margin-top: 8px; }
+
+/* Q3 / Q24 add form */
+.tasks-formend { display: flex; align-items: center; gap: 8px; }
+/* the date chip opens the phone's picker from this input (kept in the layout so showPicker works, never seen) */
+.tasks-dateinput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; margin: 0; }
+.tasks-rec { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.tasks-days__row .k-choice { font-size: 16px; font-weight: 600; }
+.tasks-rec__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 16px; font-weight: 500; }
+.tasks-rec__time { width: 96px; height: 44px; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: center; direction: ltr; }
+.tasks-rec__time::placeholder { color: var(--soft); }
+.tasks-rec__time[aria-invalid] { border-color: var(--red); }
+.tasks-notesheet { display: flex; flex-direction: column; gap: 12px; }
 
 /* "באיחור": the overdue group and its rows in the late tone (the old list's late section) */
 .v2 .tasks-late .k-cardhead__title { color: var(--red); }
 .v2 .tasks-row--late .k-row__meta { color: var(--red); }
-/* T3 header tags: דחוף · שגרה יומית · מנהלים בלבד */
-.tasks-headtags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: -4px; }
-/* T6: the day's summary (C7) from the history */
-.tasks-daylink { display: flex; justify-content: flex-end; margin-top: -6px; }
+/* T3: the tags sit beside the title (small-additions table) */
+.tasks-titlerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tasks-titlerow > .k-h1 { flex: 0 1 auto; min-width: 0; }
+.tasks-who__chev { display: flex; color: var(--soft); }
+/* T3 timeline: the note and the photo added after done */
+.tasks-tl-note { white-space: pre-wrap; }
+.tasks-tl-photo { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); margin-top: 4px; }
 .tasks-cap { margin: 0; font-size: 14px; color: var(--soft); }
 .tasks-usual { display: flex; gap: 8px; flex-wrap: wrap; }
 /* the old list's load error (missing index), in the body instead of the empty state */

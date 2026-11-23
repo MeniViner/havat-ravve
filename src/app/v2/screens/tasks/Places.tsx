@@ -1,9 +1,9 @@
 // L3 (places on the farm) and L4 (one place): saved points that tasks and recurring tasks hang on.
 import { useState } from 'react';
-import { ExcelButton } from '../manage/shared';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../core';
-import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, ConfirmSheet } from '../../kit';
+import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, MoreMenu } from '../../kit';
+import { useTableView } from '../../patterns';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import { useEvent } from '../../../data';
@@ -13,10 +13,10 @@ import { useRootTasks, useTasksAt, placeMeta, sortPlaces, rowMeta, createPlace, 
 import { to, useFail, usePhotoPicker } from './shared';
 import './tasks.css';
 
-/** The places list opens from the tasks area, the farm tab (?from=farm) or the manage screen (?from=manage): back returns there. */
+/** The places list opens from the Farm tab card (and an old link from the manage screen, ?from=manage): back returns there. */
 function placesBack() {
   const from = param('from');
-  const [label, parent] = from === 'farm' ? ['החווה', '/farm'] : from === 'manage' ? ['ניהול', '/manage'] : ['משימות', '/tasks'];
+  const [label, parent] = from === 'manage' ? ['ניהול', '/manage'] : ['החווה', '/farm'];
   return { label, onClick: () => back(parent) };
 }
 
@@ -24,6 +24,11 @@ export function PlacesScreen({ ctx }: ScreenProps) {
   const root = useRootTasks(ctx); const fail = useFail();
   const [busy, setBusy] = useState(false);
   const open = root.items.filter((t) => !t.done);
+  // rule 5: table view and export are ⋯ items (Q5, Q9), managers only as before
+  const table = useTableView({
+    title: 'מקומות בחווה', filename: 'מקומות.csv', headers: ['שם', 'lat', 'lng', 'נשמר'],
+    rows: () => ctx.places.map((place) => [place.name, place.lat, place.lng, (place.createdAt || '').slice(0, 10).split('-').reverse().join('.')]),
+  });
   const here = async () => {
     setBusy(true);
     try {
@@ -32,9 +37,10 @@ export function PlacesScreen({ ctx }: ScreenProps) {
       go(`/places/${id}?new=1`);
     } catch (e) { fail(e); setBusy(false); }
   };
+  if (table.active) return table.screen;
   return (
     <AppScreen variant="detail">
-      <TopBar back={placesBack()} />
+      <TopBar back={placesBack()} end={<MoreMenu title="מקומות" items={table.items.map((i) => ({ ...i, hidden: !ctx.manager || !ctx.places.length }))} />} />
       <PageTitle size="root">מקומות בחווה</PageTitle>
       <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>
       {ctx.places.length > 0 ? (
@@ -45,10 +51,6 @@ export function PlacesScreen({ ctx }: ScreenProps) {
         </Card>
       ) : (
         <EmptyState variant="card" title="עוד אין מקומות שמורים" text="עמדו במקום ולחצו על הכפתור למעלה" />
-      )}
-      {ctx.manager && ctx.places.length > 0 && (
-        <ExcelButton filename="מקומות.csv" headers={['שם', 'lat', 'lng', 'נשמר']}
-          rows={() => ctx.places.map((place) => [place.name, place.lat, place.lng, (place.createdAt || '').slice(0, 10).split('-').reverse().join('.')])} />
       )}
     </AppScreen>
   );
@@ -106,12 +108,16 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
     try { await savePlace(ctx.actor, p, { name, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, photo }); toast.show({ text: 'נשמר' }); back('/places'); }
     catch (e) { fail(e); setBusy(false); }
   };
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   return (
     <AppScreen variant="detail" bar={<BottomBar><Button size="bar" grow disabled={busy || !name.trim()} onClick={save}>שמירה</Button></BottomBar>}>
       {pick.input}
-      <TopBar back={{ label: 'מקומות', ...to('/places') }} end={ctx.manager ? <Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button> : undefined} />
+      {/* rule 6: delete is ⋯ → "מחיקה" → Q8 (managers) */}
+      <TopBar back={{ label: 'מקומות', ...to('/places') }} end={<MoreMenu title="מקום" items={[{
+        label: 'מחיקה', icon: 'trash', tone: 'danger', hidden: !ctx.manager,
+        confirm: { title: 'למחוק את המקום?', text: `"${p.name}" יימחק מהרשימה. משימות שקשורות אליו נשארות.`,
+          onConfirm: () => remove(() => removePlace(ctx.actor, p), { text: 'המקום נמחק', after: () => go('/places', true) }) },
+      }]} />} />
       <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} />
       <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(pos.lat, pos.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(pos.lat, pos.lng)); }}>
         {photo && <img src={photo} alt="" />}
@@ -131,9 +137,6 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
       ) : (
         <Card as="section"><SectionHeader title="משימות במקום הזה" /><p className="tasks-meta" style={{ margin: '0 14px 14px' }}>אין משימות פתוחות כאן</p></Card>
       )}
-      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את המקום?"
-        text={`"${p.name}" יימחק מהרשימה. משימות שקשורות אליו נשארות.`} confirmLabel="מחיקה"
-        onConfirm={() => remove(() => removePlace(ctx.actor, p), { text: 'המקום נמחק', after: () => go('/places', true) })} />
     </AppScreen>
   );
 }

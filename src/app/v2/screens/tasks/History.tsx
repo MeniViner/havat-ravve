@@ -1,8 +1,8 @@
 // T6 (history of done tasks) and C7 (the day's summary).
 import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen } from '../../core';
-import { TopBar, PageTitle, SearchField, Chip, ChipRow, ListCard, TextLink, Icon, Card, SectionHeader, Button, EmptyState } from '../../kit';
+import { AppScreen, go } from '../../core';
+import { TopBar, PageTitle, SearchField, Chip, ChipRow, ListCard, TextLink, Icon, Card, SectionHeader, Button, EmptyState, MoreMenu } from '../../kit';
 import { back } from '../../../router';
 import { useClockVersion, dateKeyOf } from '../../../clock';
 import { dayName, longDate, firstName, hhmm } from '../../format';
@@ -45,7 +45,8 @@ export function HistoryScreen({ ctx }: ScreenProps) {
 
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'משימות', ...to('/tasks') }} />
+      {/* rule 5: the day's summary (C7) opens from ⋯, not a loose link under the summary line */}
+      <TopBar back={{ label: 'משימות', ...to('/tasks') }} end={<MoreMenu title="היסטוריה" items={[{ label: 'סיכום היום', icon: 'chart', onSelect: () => go('/day') }]} />} />
       <PageTitle size="root">היסטוריה</PageTitle>
       <SearchField label="חיפוש בהיסטוריה" placeholder="חיפוש: משימה, מקום או שם" size="sm" className="tasks-search" value={q} onChange={(e) => setQ(e.target.value)} />
       <ChipRow label="תקופה">
@@ -57,8 +58,6 @@ export function HistoryScreen({ ctx }: ScreenProps) {
           {counts.length > 0 && ' ' + counts.map((c) => `${firstName(c.name)} ${c.n}`).join(' · ')}
         </p>
       )}
-      {/* C7, the day's summary, opens from here */}
-      <div className="tasks-daylink"><TextLink {...to('/day')}>סיכום היום</TextLink></div>
       {groups.map((g) => {
         const all = searching || open[g.key];
         const shown = all ? g.rows : g.rows.slice(0, SHOWN);

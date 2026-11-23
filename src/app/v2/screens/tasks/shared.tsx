@@ -103,12 +103,11 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   const uid = ctx.user.uid;
   const title = strip ? stripPlace(t.title, placeName) : t.title;
   const mine = !t.done && t.assignee?.uid === uid;
-  const tags = <>
-    {t.urgent && !t.done && <Tag tone="urgent">דחוף</Tag>}
-    {mine && view !== 'mine' && <Tag tone="outline">שלך</Tag>}
-    {t.managersOnly && <Tag tone="warm">מנהלים</Tag>}
-    {extraTags}
-  </>;
+  // rule 4: at most one status tag, the most pressing one
+  const tags = t.urgent && !t.done ? <Tag tone="urgent">דחוף</Tag>
+    : mine && view !== 'mine' ? <Tag tone="outline">שלך</Tag>
+    : t.managersOnly ? <Tag tone="warm">מנהלים</Tag>
+    : extraTags;
   // owners only: swipe right to finish or take it, left to move it on or delete it (the first button sits at the edge)
   const [moving, setMoving] = useState(false);
   const swipe = ctx.role === 'owner' ? {

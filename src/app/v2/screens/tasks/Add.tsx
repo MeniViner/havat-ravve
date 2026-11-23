@@ -1,30 +1,36 @@
-// T5 (add a task) and S5 (add a shopping item) in one form, plus edit mode for both (/tasks/:id/edit, /shopping/:id/edit).
-// The capture bars open it with ?text=, ?photo=1 or ?camera=1 (a camera shot), ?mic=1 and, from shopping, ?kind=shopping&list=; C3 opens it with ?kind=shopping&task=<id>.
-import { useEffect, useMemo, useState } from 'react';
+// Q3 / Q24 (add a task, recurring included) and S5 (add a shopping item) in one form, plus edit mode for both
+// (/tasks/:id/edit, /shopping/:id/edit) and for a recurring task (/manage/recurring/new and /manage/recurring/:id open this
+// same form through RecurringForm). The capture bars open it with ?text=, ?photo=1 or ?camera=1 (a camera shot), ?mic=1 and,
+// from shopping, ?kind=shopping&list=; C3 opens it with ?kind=shopping&task=<id>.
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import {
-  FormHeader, BigTextInput, Segmented, ChoiceGroup, Button, BottomBar, Inline, Field, TextAreaField, Card, Toggle, EmptyState, ConfirmSheet, AddChip,
+  FormHeader, BigTextInput, Segmented, ChoiceGroup, ChoiceChip, Button, BottomBar, Inline, Field, TextAreaField, Toggle, EmptyState, AddChip,
+  MoreDetails, MoreMenu, PickerSheet, Row, Sheet, type ActionItem,
 } from '../../kit';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import { useAllEvents } from '../../../data';
 import { nowIso } from '../../../clock';
-import { dayName, ddmm } from '../../format';
-import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation } from '../../../types';
+import { dayName, ddmm, DAY_LETTERS } from '../../format';
+import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation, Template } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
-  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, canEditTask, deleteTaskV2, type TaskInput,
+  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, canEditTask, deleteTaskV2, saveTemplateV2, removeTemplate,
+  type TaskInput,
 } from '../../data/tasks';
-import { catOfKey, suggestions, useShopping, SUGGESTED } from '../../data/shopping';
+import { catOfKey, suggestions, useShopping, SUGGESTED, deleteShopItem } from '../../data/shopping';
 import { useFail, usePhotoPicker, takeStashedPhoto, dictate } from './shared';
+import { deleteItem } from './Task';
 import './tasks.css';
 
 type Kind = 'task' | 'shopping';
 type Where = '' | 'sug' | 'here' | 'other';
 type Who = 'free' | 'me' | 'other';
-type When = 'today' | 'tomorrow' | 'week' | 'none' | 'date';
+type When = 'today' | 'tomorrow' | 'week' | 'none' | 'date' | 'recurring';
 const WHEN: { value: When; label: string }[] = [{ value: 'today', label: 'היום' }, { value: 'tomorrow', label: 'מחר' }, { value: 'week', label: 'השבוע' }, { value: 'none', label: 'בלי תאריך' }];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 
 export function AddScreen(p: ScreenProps) {
@@ -40,50 +46,72 @@ export function AddScreen(p: ScreenProps) {
   if (shopEdit && !item.item) return item.loading ? <AppScreen variant="form"><div /></AppScreen> : <NotFound />;
   return <AddForm {...p} task={taskEdit ? task.item : null} item={shopEdit ? (item.item as ShoppingItem) : null} />;
 }
-const NotFound = () => (
+export const NotFound = ({ title = 'הפריט לא נמצא', backTo = '/tasks' }: { title?: string; backTo?: string }) => (
   <AppScreen variant="form">
-    <FormHeader title="עריכה" onCancel={() => back('/tasks')} />
-    <EmptyState variant="card" title="הפריט לא נמצא" text="אולי נמחק בינתיים" />
+    <FormHeader title="עריכה" onCancel={() => back(backTo)} />
+    <EmptyState variant="card" title={title} text="אולי נמחק בינתיים" />
   </AppScreen>
 );
 
-function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: ShoppingItem | null }) {
+type FormProps = ScreenProps & {
+  task: Task | null;
+  item: ShoppingItem | null;
+  /** Q24: a recurring task being edited (/manage/recurring/:id). */
+  template?: Template;
+  /** /manage/recurring/new: the form opens on "חוזרת" and returns to the recurring list. */
+  recurringStart?: boolean;
+  /** Under the form: the recurring task's 30-day record (the small-additions table). */
+  below?: ReactNode;
+};
+
+export function AddForm({ ctx, task, item, template, recurringStart, below }: FormProps) {
   const toast = useToast(); const fail = useFail();
-  const editing = !!(task || item);
+  const editing = !!(task || item || template);
+  const fromRecurring = !!template || !!recurringStart;
   const forTask = param('task');
-  const initialText = task?.title ?? item?.title ?? param('text');
+  const initialText = template?.title ?? task?.title ?? item?.title ?? param('text');
   const [text, setText] = useState(initialText);
-  const [kind, setKind] = useState<Kind>(item ? 'shopping' : task ? 'task' : param('kind') === 'shopping' ? 'shopping' : initialText ? guessKind(initialText) : 'task');
+  const [kind, setKind] = useState<Kind>(item ? 'shopping' : task || fromRecurring ? 'task' : param('kind') === 'shopping' ? 'shopping' : initialText ? guessKind(initialText) : 'task');
   const [photo, setPhoto] = useState(() => task?.photo ?? item?.photo ?? (param('photo') || param('camera') ? takeStashedPhoto() : ''));
-  const [note, setNote] = useState(task?.note ?? item?.note ?? '');
-  const [showNote, setShowNote] = useState(!!(task?.note || item?.note));
+  const [note, setNote] = useState(template?.note ?? task?.note ?? item?.note ?? '');
+  const [showNote, setShowNote] = useState(!!item?.note);
   const [urgent, setUrgent] = useState<boolean | null>(task ? task.urgent : item ? item.urgent : null);
   const [busy, setBusy] = useState(false);
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
 
   // ---- task fields
   const sugId = useMemo(() => suggestPlace(text, ctx.places), [text, ctx.places]);
-  const [where, setWhere] = useState<Where>(task?.location ? 'other' : 'sug');
-  const [otherPlace, setOtherPlace] = useState(task?.location?.placeId || '');
+  const startPlace = template?.placeId || task?.location?.placeId || '';
+  const [where, setWhere] = useState<Where>(task?.location || template?.placeId ? 'other' : 'sug');
+  const [otherPlace, setOtherPlace] = useState(startPlace);
   const [herePos, setHerePos] = useState<TaskLocation | null>(null);
-  const [who, setWho] = useState<Who>(!task?.assignee ? 'free' : task.assignee.uid === ctx.user.uid ? 'me' : 'other');
-  const [otherWho, setOtherWho] = useState(task?.assignee && task.assignee.uid !== ctx.user.uid ? task.assignee.uid : '');
+  const startWho = template ? (template.assignee ? 'other' : 'free') : !task?.assignee ? 'free' : task.assignee.uid === ctx.user.uid ? 'me' : 'other';
+  const [who, setWho] = useState<Who>(startWho);
+  const [otherWho, setOtherWho] = useState(template?.assignee?.uid || (task?.assignee && task.assignee.uid !== ctx.user.uid ? task.assignee.uid : ''));
   // an edit keeps the stored date as it is (an overdue one too) unless the user picks another
   const [when, setWhen] = useState<When>(() => {
+    if (fromRecurring) return 'recurring';
     const d = task?.dueDate || '';
     return !d ? 'none' : d === ctx.today ? 'today' : d === addDays(ctx.today, 1) ? 'tomorrow' : d === endOfWeek(ctx.today) && d > addDays(ctx.today, 1) ? 'week' : 'date';
   });
   const [date, setDate] = useState(() => task?.dueDate && isDay(task.dueDate) ? task.dueDate : addDays(ctx.today, 2));
-  // "לאיזה אירוע" (old T5): prefilled from ?event=; upcoming and running events, soonest first; a past event stays listed only
+  const [dateField, setDateField] = useState(false);
+  const dateRef = useRef<HTMLInputElement>(null);
+  // Q24 "חוזרת": days, until what time, and (when editing) whether it is on
+  const [days, setDays] = useState<number[]>(template?.days.length ? template.days : ALL_DAYS);
+  const [time, setTime] = useState(template?.time || '');
+  const [active, setActive] = useState(template ? template.active : true);
+  const recurring = kind === 'task' && when === 'recurring';
+  // "קשור לאירוע" (old T5): prefilled from ?event=; upcoming and running events, soonest first; a past event stays listed only
   // when the task is already linked to it
   const [eventId, setEventId] = useState(task ? task.eventId || '' : param('event'));
-  const allEvents = useAllEvents(!item);
+  const allEvents = useAllEvents(!item && !fromRecurring);
   const eventOptions = useMemo(() => {
     const now = nowIso();
     return allEvents.items.filter((e) => (e.end || e.start) >= now || e.id === eventId).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
   }, [allEvents.items, eventId]);
-  const [managersOnly, setManagersOnly] = useState(!!task?.managersOnly);
+  const [managersOnly, setManagersOnly] = useState(!!(task?.managersOnly || template?.managersOnly));
+  const [sheet, setSheet] = useState<'' | 'place' | 'who' | 'event' | 'note'>('');
 
   // ---- shopping fields (derived from the text until touched)
   const parsed = parseShopping(text);
@@ -103,17 +131,30 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
   // the S1 camera (?photo=1) comes without a stashed shot: open the camera (the browser may want a tap on "תמונה")
   useEffect(() => { if ((param('photo') || param('camera')) && !photo && !editing) pick.pick(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (param('mic') && !editing) dictate((said) => setText((t) => (t ? t + ' ' : '') + said)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (where === 'sug' && !sugId && !task) setWhere(''); else if (where === '' && sugId && !task) setWhere('sug'); }, [sugId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (where === 'sug' && !sugId && !editing) setWhere(''); else if (where === '' && sugId && !editing) setWhere('sug'); }, [sugId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sugPlace = ctx.places.find((x) => x.id === sugId);
+  const pickedPlace = ctx.places.find((x) => x.id === otherPlace);
   const placeOptions = [
     ...(sugPlace ? [{ value: 'sug' as Where, label: sugPlace.name }] : []),
     { value: 'here' as Where, label: herePos?.placeName ? `כאן: ${herePos.placeName}` : 'כאן, לפי המיקום שלי' },
-    { value: 'other' as Where, label: 'אחר' },
+    { value: 'other' as Where, label: where === 'other' && pickedPlace ? pickedPlace.name : 'אחר' },
   ];
-  const people = ctx.team.filter((x) => x.status === 'active' && x.uid !== ctx.user.uid);
+  // rule 9: one of many people is chosen in a picker. A recurring task may be on anyone, the manager too ("אדם קבוע").
+  const people = ctx.team.filter((x) => x.status === 'active' && (recurring || x.uid !== ctx.user.uid));
+  const pickedPerson = ctx.team.find((x) => x.uid === otherWho);
+  const whoOptions: { value: Who; label: string }[] = recurring
+    ? [{ value: 'free', label: 'מי שפנוי' }, { value: 'other', label: who === 'other' && pickedPerson ? pickedPerson.displayName : 'אדם קבוע' }]
+    : [{ value: 'free', label: 'פנויה' }, { value: 'me', label: 'עליי' }, { value: 'other', label: who === 'other' && pickedPerson ? pickedPerson.displayName : 'מישהו אחר' }];
+  // "חוזרת" only for managers, on a new task or a recurring one; a recurring task being edited stays recurring
+  const whenOptions: { value: When; label: string }[] = template ? [{ value: 'recurring', label: 'חוזרת' }] : [
+    ...WHEN,
+    { value: 'date', label: when === 'date' && isDay(date) ? `${dayName(date)} ${ddmm(date)}` : 'תאריך' },
+    ...(ctx.manager && !task ? [{ value: 'recurring' as When, label: 'חוזרת' }] : []),
+  ];
 
   const chooseWhere = async (v: Where) => {
+    if (v === 'other') { setWhere('other'); setSheet('place'); return; }
     if (v === where) { setWhere(''); return; }
     setWhere(v);
     if (v === 'here') {
@@ -124,12 +165,24 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
       } catch (e) { setWhere(''); fail(e); }
     }
   };
+  const chooseWho = (v: Who) => { setWho(v); if (v === 'other') setSheet('who'); };
+  const chooseWhen = (v: When) => {
+    if (v === 'recurring' && who === 'me') { setWho('other'); setOtherWho(ctx.user.uid); }
+    if (v !== 'recurring' && who === 'other' && otherWho === ctx.user.uid) { setWho('me'); setOtherWho(''); }
+    setWhen(v);
+    if (v === 'date') {
+      // the date chip opens the phone's date picker; where the browser cannot, the date field shows under the chips
+      const el = dateRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+      try { if (el?.showPicker) el.showPicker(); else setDateField(true); } catch { setDateField(true); }
+    }
+  };
+  const toggleDay = (d: number) => setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort());
+
   const locationNow = (): TaskLocation | null => {
     if (where === 'sug' && sugPlace) return { lat: sugPlace.lat, lng: sugPlace.lng, placeId: sugPlace.id, placeName: sugPlace.name };
     if (where === 'here') return herePos;
     if (where === 'other') {
-      const pl = ctx.places.find((x) => x.id === otherPlace);
-      if (pl) return { lat: pl.lat, lng: pl.lng, placeId: pl.id, placeName: pl.name };
+      if (pickedPlace) return { lat: pickedPlace.lat, lng: pickedPlace.lng, placeId: pickedPlace.id, placeName: pickedPlace.name };
       return task?.location && !task.location.placeId ? task.location : null;
     }
     return null;
@@ -143,11 +196,24 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
 
   // the event stays: several tasks for one event are added in a row (old form)
   const reset = () => { setText(''); setPhoto(''); setNote(''); setShowNote(false); setUrgent(null); setQty(null); setList(null); setLink(''); setShowLink(false); setWhere(''); setWho('free'); setWhen('none'); };
+  const timeBad = !!time && !/^\d{1,2}:\d{2}$/.test(time);
+  const blocked = !text.trim() || busy || (recurring && (!days.length || timeBad));
+  const leave = (fallback: string) => back(fromRecurring ? '/manage/recurring' : fallback);
   const submit = async (more: boolean) => {
-    if (!text.trim() || busy) return;
-    if (kind === 'task' && who === 'other' && !otherWho) { toast.refused('לא נשמר. בחרו על מי המשימה'); return; }
+    if (blocked) return;
+    if (kind === 'task' && who === 'other' && !otherWho) { toast.refused(recurring ? 'לא נשמר. בחרו מי עושה אותה' : 'לא נשמר. בחרו על מי המשימה'); return; }
     setBusy(true);
     try {
+      if (recurring) {
+        const placeId = (where === 'sug' && sugPlace?.id) || (where === 'here' && herePos?.placeId) || (where === 'other' && pickedPlace?.id) || '';
+        await saveTemplateV2(ctx.actor, {
+          title: text, note: note.trim(), days, time: time ? time.padStart(5, '0') : '', active, managersOnly: ctx.manager && managersOnly, assignee: assigneeNow(), placeId,
+        }, template);
+        toast.show({ text: 'נשמר' });
+        if (more && !fromRecurring) { reset(); setBusy(false); return; }
+        leave('/tasks');
+        return;
+      }
       if (kind === 'task') {
         const { title } = parseTaskText(text);
         const data: TaskInput = { title, note: note.trim(), photo, location: locationNow(), dueDate: dueNow(), managersOnly: ctx.manager && managersOnly, assignee: assigneeNow(), urgent: urgentNow,
@@ -170,62 +236,110 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
 
   const listLabel = SHOP_LISTS.find((l) => l.id === listNow)?.label || '';
   const bar = (
-    <BottomBar column={!editing}>
-      <Button size="bar" block disabled={!text.trim() || busy} onClick={() => submit(false)}>
-        {editing ? 'שמירה' : kind === 'task' ? 'הוספת משימה' : `הוספה ל${listLabel}`}
+    <BottomBar column={!editing && !recurring}>
+      <Button size="bar" block disabled={blocked} onClick={() => submit(false)}>
+        {editing ? 'שמירה' : recurring ? 'הוספת משימה חוזרת' : kind === 'task' ? 'הוספת משימה' : `הוספה ל${listLabel}`}
       </Button>
-      {!editing && <Button variant="link" disabled={!text.trim() || busy} onClick={() => submit(true)}>{kind === 'task' ? 'הוספה, ועוד אחת' : 'הוספה, ועוד פריט'}</Button>}
+      {!editing && !recurring && <Button variant="link" disabled={blocked} onClick={() => submit(true)}>{kind === 'task' ? 'הוספה, ועוד אחת' : 'הוספה, ועוד פריט'}</Button>}
     </BottomBar>
   );
-  const extras = (
-    <>
-      {photo && <img className="tasks-photo-thumb" src={photo} alt="התמונה שנבחרה" />}
-      {showNote && <TextAreaField label="הערה" value={note} onChange={(e) => setNote(e.target.value)} />}
-      {showLink && kind === 'shopping' && <Field label="קישור" ltr type="url" inputMode="url" placeholder="https://" value={link} onChange={(e) => setLink(e.target.value)} />}
-    </>
+
+  // rule 6: delete is ⋯ → "מחיקה" → Q8, in the edit form's header beside "ביטול"
+  const cancel = () => (template || recurringStart ? back('/manage/recurring') : back(task ? `/tasks/${task.id}` : item ? `/shopping/${item.id}` : '/tasks'));
+  const delItems: ActionItem[] = template ? [{
+    label: 'מחיקה', icon: 'trash', tone: 'danger',
+    confirm: {
+      title: 'למחוק את המשימה החוזרת?', text: `"${template.title}" לא תיווצר יותר. משימות שכבר נוצרו נשארות.`,
+      onConfirm: () => remove(() => removeTemplate(template.id), { text: 'המשימה החוזרת נמחקה', after: () => go('/manage/recurring', true) }),
+    },
+  }] : task ? [deleteItem(task, canDeleteTask(task, ctx.user.uid, ctx.manager),
+    () => remove(() => deleteTaskV2(ctx.actor, task, ctx.templates), { text: 'המשימה נמחקה', after: () => go('/tasks', true) }))]
+    : item ? [{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: {
+        title: 'למחוק מהרשימה?', text: `"${item.title}" יימחק מהרשימה של כולם.`,
+        onConfirm: () => {
+          const undo = deleteShopItem(ctx.actor, item);
+          toast.show({ text: `נמחק: ${item.title}`, check: false, duration: 6000, actions: [{ label: 'ביטול', onClick: undo }] });
+          go('/shopping', true);
+        },
+      },
+    }] : [];
+  const headEnd = delItems.some((i) => !i.hidden) ? (
+    <div className="tasks-formend">
+      <MoreMenu title={template ? 'משימה חוזרת' : item ? item.title : 'משימה'} items={delItems} />
+      <button type="button" className="k-quietlink" onClick={cancel}>ביטול</button>
+    </div>
+  ) : undefined;
+
+  const eventLabel = (id: string) => {
+    const e = allEvents.items.find((x) => x.id === id);
+    if (!e) return allEvents.loading ? 'טוען…' : 'אירוע שנמחק';
+    return e.start ? `${e.title} · ${dayName(e.start)} ${ddmm(e.start)}` : e.title;
+  };
+  const noteMeta = [note.trim(), photo ? 'תמונה' : ''].filter(Boolean).join(' · ') || 'אין';
+  // Q3 "עוד פרטים": collapsed unless one of its fields already has a value
+  const moreOpen = !!(eventId || note.trim() || photo || urgentNow || managersOnly);
+  const managersRow = ctx.manager && (
+    <Row title="רק מנהלים רואים" actions={<Toggle checked={managersOnly} onChange={setManagersOnly} label="רק מנהלים רואים" />} />
   );
+
   return (
     <AppScreen variant="form" bar={bar}>
       {pick.input}
-      <FormHeader title={editing ? 'עריכה' : 'הוספה'} onCancel={() => back(task ? `/tasks/${task.id}` : item ? `/shopping/${item.id}` : '/tasks')} />
+      <FormHeader title={editing ? 'עריכה' : 'הוספה'} onCancel={cancel} end={headEnd} />
       <BigTextInput label={kind === 'task' ? 'מה צריך לעשות' : 'מה צריך לקנות'} value={text} onChange={(e) => setText(e.target.value)} autoFocus={!initialText} />
-      {!editing && <Segmented label="סוג" size="lg" value={kind} onChange={setKind} options={[{ value: 'task', label: 'משימה' }, { value: 'shopping', label: 'קנייה' }]} />}
+      {!editing && !recurringStart && <Segmented label="סוג" size="lg" value={kind} onChange={setKind} options={[{ value: 'task', label: 'משימה' }, { value: 'shopping', label: 'קנייה' }]} />}
 
       {kind === 'task' ? (
         <>
           <ChoiceGroup label="איפה" value={where} onChange={chooseWhere} options={placeOptions} />
-          {where === 'other' && (
-            <ChoiceGroup label="באיזה מקום" value={otherPlace} onChange={setOtherPlace} options={ctx.places.map((x) => ({ value: x.id, label: x.name }))} />
-          )}
-          <ChoiceGroup label="על מי" value={who} onChange={setWho} options={[{ value: 'free', label: 'פנויה' }, { value: 'me', label: 'עליי' }, { value: 'other', label: 'מישהו אחר' }]} />
-          {who === 'other' && <ChoiceGroup label="מי" value={otherWho} onChange={setOtherWho} options={people.map((x) => ({ value: x.uid, label: x.displayName }))} />}
-          <ChoiceGroup label="מתי" value={when} onChange={setWhen}
-            options={[...WHEN, { value: 'date', label: when === 'date' && isDay(date) ? `${dayName(date)} ${ddmm(date)}` : 'תאריך' }]} />
-          {when === 'date' && (
+          <ChoiceGroup label="על מי" value={who} onChange={chooseWho} options={whoOptions} />
+          <ChoiceGroup label="מתי" value={when} onChange={chooseWhen} options={whenOptions} />
+          <input ref={dateRef} type="date" className="tasks-dateinput" tabIndex={-1} aria-hidden="true" min={date < ctx.today ? undefined : ctx.today} value={date}
+            onChange={(e) => { if (isDay(e.target.value)) { setDate(e.target.value); setWhen('date'); } }} />
+          {when === 'date' && dateField && (
             <Field label="באיזה תאריך?" type="date" ltr min={date < ctx.today ? undefined : ctx.today} value={date}
               onChange={(e) => { if (isDay(e.target.value)) setDate(e.target.value); }} />
           )}
-          {(eventOptions.length > 0 || eventId) && (
-            <ChoiceGroup label="לאיזה אירוע?" value={eventId} onChange={setEventId}
-              options={[{ value: '', label: 'לא קשור לאירוע' },
-                ...eventOptions.map((e) => ({ value: e.id, label: e.start ? `${e.title} · ${dayName(e.start)} ${ddmm(e.start)}` : e.title })),
-                ...(eventId && !eventOptions.some((e) => e.id === eventId) ? [{ value: eventId, label: allEvents.loading ? 'טוען…' : 'אירוע שנמחק' }] : [])]} />
+          {recurring ? (
+            <>
+              <section className="k-card tasks-rec">
+                <div className="tasks-days">
+                  <span className="tasks-days__label">באילו ימים</span>
+                  <div className="tasks-days__row" role="group" aria-label="באילו ימים">
+                    {DAY_LETTERS.map((l, i) => (
+                      <ChoiceChip key={i} fill selected={days.includes(i)} onClick={() => toggleDay(i)}><span aria-label={`יום ${l}`}>{l}</span></ChoiceChip>
+                    ))}
+                  </div>
+                </div>
+                <label className="tasks-rec__row">
+                  <span>עד איזו שעה</span>
+                  <input type="text" inputMode="numeric" placeholder="07:00" maxLength={5} className="tasks-rec__time" aria-invalid={timeBad || undefined}
+                    value={time} onChange={(e) => setTime(e.target.value.trim())} />
+                </label>
+                {template && (
+                  <div className="tasks-rec__row">
+                    <span>פעילה</span>
+                    <Toggle checked={active} onChange={setActive} label="פעילה" />
+                  </div>
+                )}
+              </section>
+              <span className="tasks-meta">המשימה תיכנס לבד לרשימה בכל בוקר של יום שנבחר. רק מנהלים יוצרים משימה חוזרת.</span>
+              <MoreDetails defaultOpen={!!(note.trim() || managersOnly)}>
+                <Row title="הערה" meta={note.trim() || 'אין'} onClick={() => setSheet('note')} />
+                {managersRow}
+              </MoreDetails>
+            </>
+          ) : (
+            <MoreDetails defaultOpen={moreOpen}>
+              {(eventOptions.length > 0 || eventId) && <Row title="קשור לאירוע" meta={eventId ? eventLabel(eventId) : 'אין'} onClick={() => setSheet('event')} />}
+              <Row title="הערה ותמונה" meta={noteMeta} onClick={() => setSheet('note')} />
+              <Row title="דחוף" actions={<Toggle checked={urgentNow} onChange={(v) => setUrgent(v)} label="דחוף" />} />
+              {managersRow}
+            </MoreDetails>
           )}
-          <Inline gap={8}>
-            <Button variant="neutral" size="tall" grow icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>
-            <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
-            <Button variant={urgentNow ? 'secondary' : 'neutral'} size="tall" grow aria-pressed={urgentNow} onClick={() => setUrgent(!urgentNow)}>דחוף</Button>
-          </Inline>
-          {ctx.manager && (
-            <Card pad="md" layout="row" style={{ alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 16, fontWeight: 600 }}>רק מנהלים רואים</span>
-              <Toggle checked={managersOnly} onChange={setManagersOnly} label="רק מנהלים רואים" />
-            </Card>
-          )}
-          {extras}
-          {task && canDeleteTask(task, ctx.user.uid, ctx.manager) && (
-            <Button variant="danger" size="tall" className="tasks-delete" onClick={() => setAskDelete(true)}>מחיקת המשימה</Button>
-          )}
+          {below}
         </>
       ) : (
         <>
@@ -245,14 +359,28 @@ function AddForm({ ctx, task, item }: ScreenProps & { task: Task | null; item: S
             <Button variant="neutral" size="tall" grow icon="link" iconSize={20} aria-pressed={showLink} onClick={() => setShowLink(!showLink)}>קישור</Button>
             <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
           </Inline>
-          {extras}
+          {photo && <img className="tasks-photo-thumb" src={photo} alt="התמונה שנבחרה" />}
+          {showNote && <TextAreaField label="הערה" value={note} onChange={(e) => setNote(e.target.value)} />}
+          {showLink && <Field label="קישור" ltr type="url" inputMode="url" placeholder="https://" value={link} onChange={(e) => setLink(e.target.value)} />}
         </>
       )}
-      {task && (
-        <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את המשימה?"
-          text={task.templateId ? `רק המשימה של היום תימחק. "${task.title}" תמשיך לחזור בימים הבאים.` : `"${task.title}" תימחק מהרשימה של כולם.`}
-          confirmLabel="מחיקה" onConfirm={() => remove(() => deleteTaskV2(ctx.actor, task, ctx.templates), { text: 'המשימה נמחקה', after: () => go('/tasks', true) })} />
-      )}
+
+      <PickerSheet open={sheet === 'place'} onClose={() => { setSheet(''); if (!pickedPlace && !task?.location) setWhere(sugPlace ? 'sug' : ''); }} title="באיזה מקום"
+        options={ctx.places.map((x) => ({ value: x.id, label: x.name }))} value={otherPlace} onChange={(v) => { setOtherPlace(v); setWhere('other'); }} />
+      <PickerSheet open={sheet === 'who'} onClose={() => { setSheet(''); if (!pickedPerson) setWho('free'); }} title={recurring ? 'מי' : 'על מי'}
+        options={people.map((x) => ({ value: x.uid, label: x.uid === ctx.user.uid ? 'אני' : x.displayName }))} value={otherWho} onChange={(v) => { setOtherWho(v); setWho('other'); }} />
+      <PickerSheet open={sheet === 'event'} onClose={() => setSheet('')} title="קשור לאירוע" value={eventId} onChange={setEventId}
+        options={[{ value: '', label: 'לא קשור לאירוע' },
+          ...eventOptions.map((e) => ({ value: e.id, label: e.title, meta: e.start ? `${dayName(e.start)} ${ddmm(e.start)}` : undefined })),
+          ...(eventId && !eventOptions.some((e) => e.id === eventId) ? [{ value: eventId, label: eventLabel(eventId) }] : [])]} />
+      <Sheet open={sheet === 'note'} onClose={() => setSheet('')} title={recurring ? 'הערה' : 'הערה ותמונה'}>
+        <div className="tasks-notesheet">
+          <TextAreaField label={recurring ? 'הסבר קצר (לא חובה)' : 'הערה'} height={96} value={note} onChange={(e) => setNote(e.target.value)} />
+          {!recurring && photo && <img className="tasks-photo-thumb" src={photo} alt="התמונה שנבחרה" />}
+          {!recurring && <Button variant="neutral" size="tall" icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>}
+          <Button size="bar" block onClick={() => setSheet('')}>שמירה</Button>
+        </div>
+      </Sheet>
     </AppScreen>
   );
 }

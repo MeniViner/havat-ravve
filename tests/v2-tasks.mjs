@@ -454,8 +454,8 @@ await test('restored: stale routine, overdue group, routine "עד HH:MM", no "ב
   assert.equal(T.rowMeta({ ...todayInst, assignee: noa }, o('place', '07:00')), 'נועה · עד 07:00');
   assert.equal(T.rowMeta({ ...todayInst, assignee: noa }, o('place')), 'נועה');
   // late rows lead with the date
-  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', location: loc(green) }), o('late')), 'אתמול · חממה · פנויה');
-  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', assignee: yoav }), o('late')), 'אתמול · עליך');
+  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', location: loc(green) }), o('late')), 'היה עד אתמול · חממה · פנויה');
+  assert.equal(T.rowMeta(task({ dueDate: '2026-11-18', assignee: yoav }), o('late')), 'היה עד אתמול · עליך');
   // groupByTime with late: "באיחור" first, today without the overdue ones
   const ts = [task({ id: 'od', dueDate: '2026-11-17' }), task({ id: 'td', dueDate: TODAY }), task({ id: 'none' })];
   const g = T.groupByTime(ts, yoav.uid, TODAY, true);

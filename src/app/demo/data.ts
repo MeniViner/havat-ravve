@@ -113,7 +113,9 @@ export const tasks: Task[] = [
   task('demo-t-flag', 'להחליף את הדגל', { location: loc('gate'), urgent: true, photo: PHOTO, createdAt: ago(18), dueDate: today }),
   task('demo-t-branches', 'לגזום ענפים נמוכים', { location: loc('gate'), createdAt: ago(30), createdBy: A.eliya }),
   task('demo-t-compost', 'להעביר שקי קומפוסט לחממה', { location: loc('greenhouse'), assignee: A.yoav, createdBy: A.eliya, createdAt: ago(22), dueDate: today, takenAt: ago(21) }),
-  task('demo-t-path', 'לפנות את השביל לחממה', { location: loc('greenhouse'), dueDate: '2026-12-04', createdAt: ago(26) }),
+  // Q2: one free task two days late, so the by-time view opens on the red "באיחור" group
+  task('demo-t-shed', 'לנקות את מחסן הכלים', { createdAt: ago(4 * 24), dueDate: key(-2) }),
+  task('demo-t-path', 'לפנות את השביל לחממה',{ location: loc('greenhouse'), dueDate: '2026-12-04', createdAt: ago(26) }),
   task('demo-t-tap', 'לתקן את הברז ליד החממה', { location: loc('greenhouse'), assignee: A.yoav, createdBy: A.beni, createdAt: ago(20 / 60), dueDate: today, takenAt: ago(20 / 60) }),
   task('demo-t-tables', 'להכין את שולחנות הדוכן', { location: loc('stall'), assignee: A.noa, createdBy: A.beni, createdAt: ago(3 * 24), dueDate: '2026-11-27', eventId: 'demo-e-festival', shoppingId: 'demo-s-tablecloths', takenAt: ago(3 * 24 - 1) }),
   task('demo-t-signs', 'להדפיס שלטי כניסה ודוכן', { eventId: 'demo-e-festival', createdAt: ago(3 * 24), dueDate: '2026-11-27' }),
