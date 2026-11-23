@@ -16,7 +16,8 @@ import { runEmail } from './email';
 import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
-import { consoleCaller, consoleCors, consoleRoute, isConsolePath, recordCron } from './console';
+import { consoleCaller, consoleCors, consoleRoute, isConsolePath } from './console';
+import { monitorStep, readMonitor, recordCron } from './monitor';
 import { storedKeys } from './keys';
 import { runBackup, trashFor } from './backup';
 
@@ -162,7 +163,7 @@ export default {
     // the owners' assistant log: every request of a recognised key, its body and answer (best effort, after the response)
     const doc = auditDoc(env, audit, { requestId: meta.requestId, method: req.method, path: audit.path || url.pathname, query: url.search.slice(1), status: res.status, ms: Date.now() - meta.started, error });
     // the console's own successful reads (opening a screen, refreshing the overview) would only bury what was done
-    const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok;
+    const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok && doc.op !== 'console.me' && doc.op !== 'console.monitor.check';
     if (doc && !quietRead && log.code !== 'QUOTA_EXCEEDED') {
       const p = writeAudit(env, doc).catch((e) => console.log(JSON.stringify({ requestId: meta.requestId, auditFailed: String(e).slice(0, 200) })));
       if (ctx) ctx.waitUntil(p); else await p;
@@ -188,7 +189,15 @@ export default {
     // the nightly backup to R2 (backup.ts): nothing before 03:00 Israel time or once today's is done; one page per run
     try { const b = await runBackup(env); if (b) console.log(JSON.stringify(b)); }
     catch (e) { console.log(JSON.stringify({ cron: 'backup', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
-    // the console's "last cron run" (console.ts): when it ran and how long it took
-    await recordCron(env, { wallMs: Date.now() - started }).catch(() => {});
+    // watching (monitor.ts): the site every 15 minutes, the free quota every hour, the morning check, alerts to owners
+    const prev = await readMonitor(env);
+    let mon = prev;
+    try {
+      mon = await monitorStep(env, prev);
+      const c = mon.uptime?.checks[mon.uptime.checks.length - 1];
+      console.log(JSON.stringify({ cron: 'monitor', site: c ? { ok: c.ok, ms: c.ms } : null, quota: mon.quota?.error || (mon.quota ? 'ok' : null), health: mon.health?.worst || null }));
+    } catch (e) { console.log(JSON.stringify({ cron: 'monitor', internal: (e instanceof Error ? e.message : String(e)).slice(0, 300) })); }
+    // the console's "last cron run": when it ran, how long it took, and what it watched (one KV write)
+    await recordCron(env, { ...mon, wallMs: Date.now() - started }).catch(() => {});
   },
 };

@@ -26,6 +26,8 @@ export const useParam = (name: string) => useSyncExternalStore((l) => { listener
 
 /** `keepScroll`: for a side panel that opens next to the list, where the list must not jump. */
 export function navigate(path: string, replace = false, keepScroll = false) {
+  // the owners' console is its own page (a server alert links there)
+  if (path === '/admin' || path.startsWith('/admin#') || path.startsWith('/admin?')) { location.assign(path); return; }
   const url = href(path);
   if (url === location.pathname + location.search) return;
   scrolls.set(depth(), window.scrollY);

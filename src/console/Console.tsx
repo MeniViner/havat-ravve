@@ -11,12 +11,16 @@ import { OverviewScreen } from './Overview';
 import { KeysScreen } from './Keys';
 import { PeopleScreen } from './People';
 import { BackupsScreen } from './Backups';
+import { MonitorScreen } from './Monitor';
+import { SecurityScreen } from './Security';
 
-type Tab = 'overview' | 'people' | 'keys' | 'backups';
+type Tab = 'overview' | 'monitor' | 'people' | 'keys' | 'security' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
+  { value: 'monitor', label: 'ניטור', icon: 'chart' },
   { value: 'people', label: 'אנשים', icon: 'people' },
   { value: 'keys', label: 'מפתחות API', icon: 'key' },
+  { value: 'security', label: 'אבטחה', icon: 'blocked' },
   { value: 'backups', label: 'גיבויים', icon: 'box' },
 ];
 const tabOf = (): Tab => { const h = location.hash.replace(/^#\/?/, ''); return (TABS.some((t) => t.value === h) ? h : 'overview') as Tab; };
@@ -108,6 +112,8 @@ function Shell({ me }: { me: Me }) {
         {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
         {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
         {tab === 'backups' && <BackupsScreen notify={notice.show} />}
+        {tab === 'monitor' && <MonitorScreen notify={notice.show} />}
+        {tab === 'security' && <SecurityScreen />}
       </main>
       {notice.view}
     </div>

@@ -590,6 +590,30 @@ try {
     check(LB && LB.op === 'console.backups.restore' && LB.verb === 'שחזר' && LB.keyLabel === 'קונסולה · נועה', 'a restore is logged as the console', LB && { op: LB.op, verb: LB.verb });
     check((await api('GET', '/v1/console/backups/2020-01-01/download', C(own))).status === 404, 'a day without a backup → 404');
     check((await api('GET', `/v1/console/backups/${day}/docs?collection=${encodeURIComponent('../x')}`, C(own))).status === 400, 'a bad collection name → 400');
+
+    // ---------- watching: the site, the free quota, the morning check, alerts, the security log ----------
+    const mon0 = await api('GET', '/v1/console/monitor', C(own));
+    check(mon0.status === 200 && Array.isArray(mon0.json.data.site.checks) && mon0.json.data.limits.reads === 50000 && mon0.json.data.alerts.on === true && mon0.json.data.alerts.push === true, 'monitor: site checks, limits, alerts on by default', mon0.json?.data && { alerts: mon0.json.data.alerts });
+    check((await api('GET', '/v1/console/monitor', C(mgr))).status === 403, 'a manager cannot open the monitor');
+    const chk = await api('POST', '/v1/console/monitor/check', C(own));
+    const items = Object.fromEntries((chk.json?.data?.health?.items || []).map((i) => [i.id, i]));
+    check(chk.status === 200 && items.backup?.state === 'ok' && items.quota?.state === 'unknown' && chk.json.data.quota?.error === 'unavailable' && items.keys && items.failures && items.cron && chk.json.data.health.by === 'נועה בעלים', 'check now: the morning check runs (backup of today ok; no Cloud Monitoring in the emulator)', chk.json?.data?.health);
+    check(chk.json?.data?.cronAt === mon0.json.data.cronAt, 'a check from the console does not move the last cron run');
+    const off1 = await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: false } });
+    check(off1.status === 200 && off1.json.data.on === true && off1.json.data.push === false && off1.json.data.updatedBy === 'נועה בעלים', 'alerts: phone push turned off, alerts stay on', off1.json?.data);
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: 'no' } })).status === 400, 'alerts: a value that is not true/false → 400');
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { sms: true } })).status === 400, 'alerts: an unknown field → 400');
+    check((await api('POST', '/v1/console/monitor/alerts', { ...C(mgr), body: { on: false } })).status === 403, 'a manager cannot change alerts');
+    const ta = await api('POST', '/v1/console/monitor/test-alert', C(own));
+    const inbox = await fetch(`${DOCS}/users/${own.localId}/notifications?pageSize=50`, { headers: admin }).then((x) => x.json());
+    const note = (inbox.documents || []).map((d) => d.fields).find((f) => f.title?.stringValue === 'בדיקת התראות מהשרת');
+    check(ta.status === 200 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
+    await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: true } });
+    const sec = await api('GET', '/v1/console/security?days=7', C(own));
+    const secItems = sec.json?.data?.items || [];
+    check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
+    check(secItems.every((e, i) => i === 0 || secItems[i - 1].at >= e.at), 'security log: newest first');
+    check((await api('GET', '/v1/console/security', C(mgr))).status === 403, 'a manager cannot read the security log');
   }
 
   section('the app\'s Rules accept what the API wrote');

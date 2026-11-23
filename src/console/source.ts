@@ -34,6 +34,18 @@ export type BackupDocRow = { path: string; title: string; updateTime: string | n
 export type BackupDoc = { path: string; then: Record<string, unknown>; now: Record<string, unknown> | null; thenUpdated: string | null; nowUpdated: string | null };
 export type TrashItem = { key: string; path: string; collection: string; title: string; by: string; who: string; requestId: string; deletedAt: string };
 
+export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
+export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'unavailable' | 'failed'; detail?: string };
+export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
+export type Health = { at: string; date: string; by: string; worst: HealthState; items: { id: string; he: string; state: HealthState; detail: string }[]; r2Bytes: number | null };
+export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
+export type Monitor = {
+  site: { url: string; checks: SiteCheck[]; downSince: string | null; incidents: { from: string; to: string | null }[]; uptime: number | null };
+  quota: Quota | null; limits: { reads: number; writes: number; deletes: number; r2Bytes: number }; health: Health | null;
+  alerts: AlertSettings; cronAt: string | null;
+};
+export type SecurityEvent = { at: string; kind: 'refused' | 'limited' | 'console'; who: string; what: string; detail: string; ok: boolean };
+
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -54,6 +66,11 @@ export interface Source {
   restoreBackup(date: string, paths: string[]): Promise<{ restored: number; missing: number }>;
   trash(): Promise<TrashItem[]>;
   restoreTrash(keys: string[]): Promise<{ restored: string[]; exists: string[]; gone: string[] }>;
+  monitor(): Promise<Monitor>;
+  checkNow(): Promise<Monitor>;
+  setAlerts(b: { on?: boolean; push?: boolean }): Promise<AlertSettings>;
+  testAlert(): Promise<{ sent: boolean; push: boolean }>;
+  security(days: number): Promise<{ since: string; items: SecurityEvent[] }>;
 }
 
 export class ConsoleError extends Error {
@@ -132,6 +149,11 @@ const liveSource: Source = {
   restoreBackup: (date, paths) => call('POST', `/backups/${date}/restore`, { paths }),
   trash: async () => (await call<{ items: TrashItem[] }>('GET', '/trash')).items,
   restoreTrash: (keys) => call('POST', '/trash/restore', { keys }),
+  monitor: () => call('GET', '/monitor'),
+  checkNow: () => call('POST', '/monitor/check'),
+  setAlerts: (b) => call('POST', '/monitor/alerts', b),
+  testAlert: () => call('POST', '/monitor/test-alert'),
+  security: (days) => call('GET', `/security?days=${days}`),
 };
 
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };
