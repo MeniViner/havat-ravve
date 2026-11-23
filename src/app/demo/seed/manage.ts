@@ -50,7 +50,8 @@ const slice: Slice = (seed) => {
   ]);
 
   // ---- M2 inbox wording ----
-  patch(seed, 'notifications', 'demo-n-contact', { text: 'לקראת פסטיבל הסתיו' });
+  // W1 shows the whole message; the M2 card shows it on one line after the sender
+  patch(seed, 'notifications', 'demo-n-contact', { text: 'יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. אנחנו מגיעים לפסטיבל הסתיו.' });
   patch(seed, 'notifications', 'demo-n-tab', { createdAt: ago(6) });
 
   // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows two waiting (omer.levi2 by e-mail,

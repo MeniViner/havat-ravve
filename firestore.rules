@@ -291,13 +291,15 @@ service cloud.firestore {
     allow list: if isStaff();
     allow write: if isManager() && doc == 'main' && (request.method == 'delete' || infoShape());
    }
-   // D6 "need something": the stall creates and may close its own; staff take and close (V7, M2)
+   // D6 "need something": the stall creates and may close its own; staff take (W2, while open) and close (V7, M2, W2)
    match /vendor_requests/{rid} {
-    function reqShape(){return incoming().keys().hasOnly(['id','eventId','vendorId','vendorName','kind','text','by','createdAt','takenBy','closedAt','closedBy']) && incoming().id == rid && incoming().eventId == id && incoming().kind in ['power','help','supply','other','water'] && str(incoming().text, 200) && str(incoming().vendorName, 200) && actorOf(incoming().by);}
+    function reqShape(){return incoming().keys().hasOnly(['id','eventId','vendorId','vendorName','kind','text','by','createdAt','takenBy','takenAt','closedAt','closedBy']) && incoming().id == rid && incoming().eventId == id && incoming().kind in ['power','help','supply','other','water'] && str(incoming().text, 200) && str(incoming().vendorName, 200) && actorOf(incoming().by);}
+    // W2 "אני על זה": the writer becomes the handler with the time (D6 shows it to the vendor); or a release, both cleared
+    function takeOk(){return (actorOk(incoming().takenBy) && isoTime(incoming().get('takenAt', null))) || (incoming().takenBy == null && incoming().get('takenAt', null) == null);}
     function confirmedStall(){return get(/databases/$(database)/documents/events/$(id)/vendors/$(incoming().vendorId)).data.get('status', '') == 'confirmed';}
     allow get, list: if isStaff() || vendorPerson(resource.data.vendorId);
-    allow create: if reqShape() && vendorPerson(incoming().vendorId) && confirmedStall() && actorOk(incoming().by) && isoTime(incoming().createdAt) && incoming().takenBy == null && incoming().closedAt == null && incoming().closedBy == null;
-    allow update: if reqShape() && incoming().vendorId == resource.data.vendorId && incoming().by == resource.data.by && incoming().createdAt == resource.data.createdAt && ((isStaff() && changed().hasOnly(['takenBy']) && (incoming().takenBy == null || actorOk(incoming().takenBy))) || ((isStaff() || vendorPerson(resource.data.vendorId)) && resource.data.closedAt == null && changed().hasOnly(['closedAt','closedBy']) && isoTime(incoming().closedAt) && actorOk(incoming().closedBy)));
+    allow create: if reqShape() && vendorPerson(incoming().vendorId) && confirmedStall() && actorOk(incoming().by) && isoTime(incoming().createdAt) && incoming().takenBy == null && incoming().get('takenAt', null) == null && incoming().closedAt == null && incoming().closedBy == null;
+    allow update: if reqShape() && incoming().vendorId == resource.data.vendorId && incoming().by == resource.data.by && incoming().createdAt == resource.data.createdAt && ((isStaff() && resource.data.closedAt == null && changed().hasOnly(['takenBy','takenAt']) && takeOk()) || ((isStaff() || vendorPerson(resource.data.vendorId)) && resource.data.closedAt == null && changed().hasOnly(['closedAt','closedBy']) && isoTime(incoming().closedAt) && actorOk(incoming().closedBy)));
     allow delete: if isManager();
    }
    // links to permits, layout maps and lists: managers only (they used to sit in the public event document).

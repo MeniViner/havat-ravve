@@ -1193,11 +1193,19 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await ok(getDocs(query(collection(raz, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz'))), '15 owner lists own requests');
     await no(getDocs(collection(raz, 'events/e-hidden/vendor_requests')), '15 owner cannot list all requests');
     await no(getDoc(reqRef(raz, 'r-dana', 'e-other')), '15 cannot read another stall request');
-    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), '16 staff takes a request');
-    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz') }), '16 vendor cannot take');
+    await no(setDoc(reqRef(raz, 'r6'), request('r6', 'e-hidden', 'v-raz', 'raz', { takenAt: now })), 'W2 a new request carries no handler time');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), 'W2 taking without the time is refused');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 cannot name someone else as the handler');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: 'אחר כך' }), 'W2 handler time must be a time');
+    await ok(updateDoc(reqRef(mgr, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 manager taps "אני על זה" (takenBy + takenAt)');
+    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: now }), '16 staff takes a request (W2, takes it over)');
+    await ok(getDoc(reqRef(raz, 'r1')), 'W2 the vendor reads who is handling it (D6)');
+    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz'), takenAt: now }), '16 vendor cannot take');
+    await no(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz'), takenAt: '2026-01-01T10:00:00.000Z' }), 'W2 vendor cannot change the handler time while closing');
     await ok(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz') }), '16 owner closes own request');
     await no(updateDoc(reqRef(mgr, 'r1'), { closedAt: now, closedBy: actor('mgr') }), '16 closing twice is refused');
     await ok(updateDoc(reqRef(mgr, 'r2'), { closedAt: now, closedBy: actor('mgr') }), '16 manager closes a request');
+    await no(updateDoc(reqRef(mgr, 'r2'), { takenBy: actor('mgr'), takenAt: now }), 'W2 a closed request cannot be taken');
 
     vsection('Rules: the stall and its people');
     await ok(updateDoc(doc(raz, 'vendors/v-raz'), { name: 'גבינות רז', note: 'מגיע עם מקרר', sells: 'גבינות', product: 'גבינות', inviteNext: true, updatedAt: now }), '17 owner edits the stall');

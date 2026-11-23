@@ -203,11 +203,65 @@ async function clickPart() {
   await step('manager eventDay', async () => {
     const s = await session('manager', 'eventDay');
     await s.go('/manage/events/demo-e-festival/vendors/today'); log(await s.has('ביקשו משהו'), 'V7 renders with request');
+    await s.page.locator('.k-row__hit', { hasText: 'החשמל נפל' }).click(); await s.page.waitForTimeout(250);
+    log(s.page.url().endsWith('/manage/events/demo-e-festival/vendors/today/demo-vr-raz-power') && await s.has('מי מטפל') && await s.has('נועה שחר · לקחה ב־17:14'), 'V7 request row opens W2');
+    log(await s.has('הדוכנים היום'), 'W2 from V7: back to the vendors today');
+    await s.page.getByText('הדוכנים היום').first().click(); await s.page.waitForTimeout(250);
+    log(s.page.url().endsWith('/vendors/today'), 'W2 back returns to V7');
     await s.click('טופל'); await s.reload(); log(!(await s.has('ביקשו משהו')), 'V7 done persisted');
     await s.role('button', 'וואטסאפ ליאיר'); log(await s.has('בהדגמה לא נשלח'), 'V7 WhatsApp intercepted');
     await s.click('קרמיקה של דנה'); log(s.page.url().includes('/manage/vendors/demo-v-dana'), 'V7 row opens V2');
     await s.go('/manage/events/demo-e-festival/vendors/today'); await s.click('הודעה', { exact: true }); log(s.page.url().includes('/manage/broadcasts/new'), 'V7 message opens B1');
     log(!s.errors.length, `manager eventDay: no console errors ${s.errors.slice(0, 3).join(' | ')}`);
+    await s.ctx.close();
+  });
+  // ---------- W1: open and close a contact message (needs-design decision 2) ----------
+  await step('contact message', async () => {
+    const s = await session('manager', 'regular');
+    await s.go('/manage/inbox');
+    log(!(await s.page.locator('.k-card', { hasText: 'יש חניה נגישה?' }).getByRole('link', { name: 'מיכל ברק' }).count()), 'M2 contact card has no inline sender link');
+    await s.page.locator('.manage-item__hit', { hasText: 'יש חניה נגישה?' }).click(); await s.page.waitForTimeout(250);
+    log(s.page.url().endsWith('/manage/inbox/demo-n-contact'), 'M2 contact card opens W1');
+    log(await s.has('אמא שלי בכיסא גלגלים') && await s.has('אורחת · 3 כרטיסים לפסטיבל הסתיו'), 'W1 shows the message and the sender row');
+    await s.click('מענה בוואטסאפ'); log(await s.has('בהדגמה לא נשלח'), 'W1 WhatsApp reply intercepted in demo');
+    await s.page.locator('.k-row__hit', { hasText: 'מיכל ברק' }).click(); await s.page.waitForTimeout(250);
+    log(s.page.url().endsWith('/manage/people/demo-u-michal'), 'W1 sender row opens the person file');
+    await s.go('/manage/inbox'); await s.page.locator('.manage-item__hit', { hasText: 'יש חניה נגישה?' }).click(); await s.page.waitForTimeout(250);
+    await s.page.locator('.k-bottombar').getByRole('button', { name: 'טופל' }).click(); await s.page.waitForTimeout(300);
+    log(s.page.url().endsWith('/manage/inbox'), 'W1 "טופל" returns to the inbox');
+    await s.reload(); log(!(await s.has('יש חניה נגישה?')), 'W1 handled: off the queue after a reload');
+    await s.go('/manage/inbox?view=handled'); log(await s.has('יש חניה נגישה?'), 'W1 handled: listed in "מה שטופל"');
+    await s.page.locator('.manage-item__hit', { hasText: 'יש חניה נגישה?' }).click(); await s.page.waitForTimeout(250);
+    await s.page.locator('.k-bottombar').getByRole('button', { name: 'החזרה לתור' }).click(); await s.page.waitForTimeout(300);
+    await s.go('/manage/inbox'); log(await s.has('יש חניה נגישה?'), 'W1 back in the queue');
+    log(!s.errors.length, `contact message: no console errors ${s.errors.slice(0, 3).join(' | ')}`);
+    await s.ctx.close();
+  });
+  // ---------- W2 + D6: the vendor asks, a manager takes it ("אני על זה") and closes it ("טופל"), the vendor sees each state ----------
+  // One browser: the demo data stays in this browser while the persona switches (?demo=), so both sides see the same request.
+  await step('stall request round trip', async () => {
+    const s = await session('vendor', 'eventDay');
+    const as = async (persona, path) => s.go(`${path}${path.includes('?') ? '&' : '?'}demo=${persona}`);
+    await s.go('/vendor'); await s.click('הגעתי לחווה');
+    if (await s.has('ביקשת:')) { await s.click('הסתדר'); await s.page.waitForTimeout(200); }
+    await s.click('צריך עזרה בדוכן');
+    log(await s.has('ביקשת: צריך עזרה בדוכן') && await s.has('נשלח למנהלים'), 'D6 vendor: request sent, nobody on it yet');
+    await as('manager', '/manage/inbox');
+    await s.page.locator('.manage-item__hit', { hasText: 'גבינות משק רז' }).click(); await s.page.waitForTimeout(250);
+    const w2 = s.page.url();
+    log(/\/manage\/inbox\/stall\/demo-e-festival\/[^/]+$/.test(w2) && await s.has('צריך עזרה בדוכן') && await s.has('פתוחה') && await s.has('עוד אף אחד'), 'M2 stall card opens W2: open, nobody handling');
+    await s.page.locator('.k-bottombar').getByRole('button', { name: 'אני על זה' }).click(); await s.page.waitForTimeout(300);
+    await s.reload(); log(await s.has('נועה שחר · לקחה ב־17:20'), 'W2 "אני על זה" persisted as the handler');
+    await as('vendor', '/vendor');
+    log(await s.has('ביקשת: צריך עזרה בדוכן') && await s.has('נועה בדרך אליך'), 'D6 vendor sees someone is coming');
+    await as('manager', new URL(w2).pathname.replace(/^\/app/, ''));
+    await s.page.locator('.k-bottombar').getByRole('button', { name: 'טופל' }).click(); await s.page.waitForTimeout(300);
+    log(s.page.url().endsWith('/manage/inbox') && !(await s.page.locator('.k-card', { hasText: 'גבינות משק רז' }).count()), 'W2 "טופל" closes it and returns to the inbox');
+    await s.go(new URL(w2).pathname.replace(/^\/app/, '')); log(await s.has('סגורה') && !(await s.page.locator('.k-bottombar').count()), 'W2 closed: tag "סגורה", no bottom bar');
+    await as('vendor', '/vendor');
+    log(!(await s.has('ביקשת:')), 'D6 vendor: the request is closed');
+    await s.go('/notifications'); log(await s.has('הבקשה שלך טופלה'), 'vendor is told the request was handled');
+    log(!s.errors.length, `stall request round trip: no console errors ${s.errors.slice(0, 3).join(' | ')}`);
     await s.ctx.close();
   });
   await browser.close();

@@ -119,3 +119,8 @@
 .manage-inline-link { color: var(--action); font-weight: 600; text-decoration: none; }
 .manage-inline-link:hover { text-decoration: underline; }
 
+
+/* W1 reply buttons; W2 title with its open/closed tag */
+.manage-replies { display: flex; gap: 8px; flex-wrap: wrap; }
+.manage-titletag { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.manage-item__meta--one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }

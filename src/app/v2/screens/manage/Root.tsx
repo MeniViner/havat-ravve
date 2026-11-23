@@ -2,8 +2,9 @@
 // Q1: the hero, six tiles, then exactly two rows (כל הפעילות; יומן אינסטינקט for owners). Everything else the parity round
 // appended here has one home elsewhere (rule 1): the calendar is the Farm tab, recurring tasks the managers' row at the bottom
 // of Tasks, stall holders are reached from an event, places from the Farm tab card, and team messages inside People.
-// M2: cards keep their designed buttons; there is no X on a card. Tapping a card's head opens its row sheet (Q11) with
-// "פתיחה" and the delete from the list. Approving a payment opens the Q7 confirmation sheet.
+// M2: cards keep their designed buttons; there is no X on a card. Tapping a contact message opens W1 and a stall request
+// opens W2 (their delete is behind ⋯ there); tapping any other card's head opens its row sheet (Q11) with "פתיחה" and the
+// delete from the list. Approving a payment opens the Q7 confirmation sheet.
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, RootHead, go, useExternal, useRemove, useV2, waUrl, telUrl } from '../../core';
@@ -16,7 +17,7 @@ import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } fro
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
   inboxIn, inboxSummary, donationTotals, approvedSoon, gw, timeFromNote, needsReceipt, fillTemplate, payTarget,
-  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, deleteVendorRequest, type PayItem, type InboxFilter,
+  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, type PayItem, type InboxFilter,
 } from '../../data/manage';
 import { lnk, LinkCard } from './shared';
 
@@ -75,7 +76,6 @@ function resolve(n: AppNotification, m: { visits: Map<string, Visit>; donations:
 }
 /** Where "פתיחה" in a card's row sheet goes: the record's own screen when there is one. */
 function detailOf(n: AppNotification, r: Resolved): string {
-  if (n.type === 'contact') return n.refId ? `/manage/people/${n.refId}` : ''; // the sender's file (the card's old inline link)
   if (r.visit) return `/manage/visits/${r.visit.id}`;
   if (r.donation) return `/manage/donations/${r.donation.id}`;
   if (r.tab) return `/manage/events/${r.tab.eventId}/tabs/${r.tab.id}`;
@@ -146,9 +146,9 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
   );
 }
 
-/** The card's row sheet (Q11): set by the card's wrapper; the head of the card opens it. */
-const OnMore = createContext<(() => void) | null>(null);
-function CardShell({ icon, over, title, meta, children, done }: { icon: IconName; over: ReactNode; title: ReactNode; meta?: ReactNode; children?: ReactNode; done?: boolean }) {
+/** What tapping the head of a card does, set by the card's wrapper: its row sheet (Q11, popup) or its own screen (W1, W2). */
+const OnMore = createContext<{ run: () => void; popup: boolean } | null>(null);
+function CardShell({ icon, over, title, meta, children, done, oneLine }: { icon: IconName; over: ReactNode; title: ReactNode; meta?: ReactNode; children?: ReactNode; done?: boolean; oneLine?: boolean }) {
   const onMore = useContext(OnMore);
   const head = (
     <>
@@ -156,14 +156,14 @@ function CardShell({ icon, over, title, meta, children, done }: { icon: IconName
       <span className="manage-item__body">
         <span className="manage-item__over">{over}</span>
         <span className="manage-item__title">{title}</span>
-        {meta ? <span className="manage-item__meta">{meta}</span> : null}
+        {meta ? <span className={oneLine ? 'manage-item__meta manage-item__meta--one' : 'manage-item__meta'}>{meta}</span> : null}
       </span>
     </>
   );
   return (
     <Card as="section" pad="md" layout="col" className={done ? 'manage-item--done' : undefined}>
       {onMore
-        ? <div className="manage-item__head"><button type="button" className="manage-item__hit" onClick={onMore} aria-haspopup="dialog">{head}</button></div>
+        ? <div className="manage-item__head"><button type="button" className="manage-item__hit" onClick={onMore.run} aria-haspopup={onMore.popup ? 'dialog' : undefined}>{head}</button></div>
         : <div className="manage-item__head">{head}</div>}
       {children && <div className="manage-item__acts">{children}</div>}
     </Card>
@@ -179,25 +179,31 @@ function WithSheet({ title, sub, open, confirm, children }: { title: string; sub
     { label: 'מחיקה מהרשימה', icon: 'trash', tone: 'danger', confirm: { title: confirm.title, text: confirm.text, onConfirm: () => remove(confirm.run, { text: 'נמחק מהרשימה' }) } },
   ];
   return (
-    <OnMore.Provider value={() => setShown(true)}>
+    <OnMore.Provider value={{ run: () => setShown(true), popup: true }}>
       {children}
       <ActionSheet open={shown} onClose={() => setShown(false)} title={title} sub={sub} items={items} />
     </OnMore.Provider>
   );
 }
 
+/** A card whose head opens its own detail screen (W1, W2). */
+function Opens({ path, children }: { path: string; children: ReactNode }) {
+  return <OnMore.Provider value={{ run: () => go(path), popup: false }}>{children}</OnMore.Provider>;
+}
+
 function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
+  const path = `/manage/inbox/stall/${eventId}/${r.id}`; // W2
   return (
-    <WithSheet title={`${r.vendorName} · ${VREQ[r.kind]}`} sub={`בקשה מדוכן · ${agoLong(r.createdAt)}`} open={eventId ? `/manage/events/${eventId}/vendors/today` : undefined}
-      confirm={{ title: 'למחוק את הבקשה?', text: `הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`, run: () => deleteVendorRequest(r) }}>
+    <Opens path={path}>
       <CardShell icon="stall" over={`בקשה מדוכן · ${agoLong(r.createdAt)}`} title={`${r.vendorName} · ${VREQ[r.kind]}`} meta={r.text || undefined}>
-        <Button {...lnk(`/manage/events/${eventId}/vendors/today`)}>פרטים</Button>
+        <Button {...lnk(path)}>פרטים</Button>
       </CardShell>
-    </WithSheet>
+    </Opens>
   );
 }
 
 function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+  if (p.n.type === 'contact') return <Opens path={`/manage/inbox/${p.n.id}`}><InboxCardBody {...p} /></Opens>; // W1
   return (
     <WithSheet title={p.n.title} sub={agoLong(p.n.createdAt)} open={detailOf(p.n, p.r) || undefined}
       confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(p.n) }}>
@@ -223,7 +229,7 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
     const sender = peopleByUid.get(n.refId);
     const phone = sender?.phone || '';
     return (
-      <CardShell icon="phone" done={handled} over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
+      <CardShell icon="phone" done={handled} oneLine over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
         meta={<>{sender ? sender.displayName : 'פרטי השולח אינם זמינים'}{n.text ? ` · ${n.text}` : ''}</>}>
         {handled ? back : <>
           {contactPhoneOk(phone) && <Button icon="message" onClick={() => ext(waUrl(phone, `שלום ${firstName(sender?.displayName || '')}, `))}>מענה בוואטסאפ</Button>}

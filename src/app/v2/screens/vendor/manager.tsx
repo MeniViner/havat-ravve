@@ -445,7 +445,7 @@ export function VendorsToday({ ctx, params }: ScreenProps) {
       {openReqs.length > 0 && (
         <ListCard title="ביקשו משהו" count={openReqs.length}>
           {openReqs.map((r) => (
-            <Row key={r.id} minHeight={60} leading={<Dot />} title={r.vendorName}
+            <Row key={r.id} minHeight={60} leading={<Dot />} title={r.vendorName} onClick={() => navigate(`/manage/events/${eid}/vendors/today/${r.id}`)}
               meta={[requestLabel(r), hhmm(r.createdAt), r.takenBy ? `${first(r.takenBy.name)} ${g(femName(r.takenBy.name), 'לקח', 'לקחה')}` : 'עוד לא נלקח'].join(' · ')}
               actions={<Button onClick={() => done(r.id, r.by?.uid)}>טופל</Button>} />
           ))}
