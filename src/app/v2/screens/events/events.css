@@ -76,10 +76,6 @@
 .events-imagepick { display: flex; flex-direction: column; gap: 8px; }
 .events-imagepick__img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 .events-imagepick__btns { display: flex; gap: 8px; }
-.events-questions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
-.events-questions > .k-btn--link { align-self: flex-start; }
-.events-question { display: flex; align-items: center; gap: 8px; }
-.events-question__req { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: var(--soft); }
 
 /* N12 tab */
 .events-tabhero { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }

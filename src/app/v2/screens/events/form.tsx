@@ -3,7 +3,7 @@
 import { useId, useRef, useState } from 'react';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useRemove, useToast } from '../../core';
-import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, IconButton } from '../../kit';
+import { FormHeader, Field, FieldRow, Stepper, ListCard, Row, Toggle, Button, BottomBar, TextAreaField, MoreMenu, Sheet, Tag } from '../../kit';
 import { useEvent } from '../../../data';
 import { compressPhoto } from '../../../store';
 import { storePhoto } from '../../../upload';
@@ -45,6 +45,8 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
   const [location, setLocation] = useState(existing?.location ?? DEFAULT_LOCATION);
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 0));
   const [questions, setQuestions] = useState<EventQuestion[]>(existing?.questions || []);
+  // the question being edited in its sheet; id '' is a new one ("הוספת שאלה")
+  const [ask, setAsk] = useState<EventQuestion | null>(null);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -120,26 +122,49 @@ function Form({ ctx, existing }: { ctx: V2Ctx; existing?: FarmEvent }) {
           <TextAreaField label="תיאור לאורחים" value={description} onChange={(ev) => setDescription(ev.target.value)} placeholder="מה יהיה, למי זה מתאים, מה להביא" height={110} />
           <Field label="מקום" value={location} onChange={(ev) => setLocation(ev.target.value)} />
           <Field label="מקומות (0 = בלי הגבלה)" ltr inputMode="numeric" value={capacity} onChange={(ev) => setCapacity(ev.target.value.replace(/\D/g, ''))} />
-          <div className="events-questions">
-            <span className="k-field__label">שאלות נוספות בהרשמה</span>
-            {questions.map((q, i) => (
-              <div key={q.id} className="events-question">
-                <Field grow label={`שאלה ${i + 1}`} labelHidden placeholder="שאלה" value={q.label} onChange={(ev) => setQuestions((l) => l.map((x) => (x.id === q.id ? { ...x, label: ev.target.value } : x)))} />
-                <label className="events-question__req">
-                  <Toggle checked={q.required} onChange={(v) => setQuestions((l) => l.map((x) => (x.id === q.id ? { ...x, required: v } : x)))} label={`חובה: שאלה ${i + 1}`} />
-                  <span aria-hidden="true">חובה</span>
-                </label>
-                <IconButton icon="close" label={`הסרת שאלה ${i + 1}`} variant="quiet" onClick={() => setQuestions((l) => l.filter((x) => x.id !== q.id))} />
-              </div>
-            ))}
-            <Button variant="link" icon="plus" onClick={() => setQuestions((l) => [...l, { id: 'q' + nowMs().toString(36), label: '', required: false }])}>הוספת שאלה</Button>
-          </div>
+          {/* rules 4 and 6: a question is a row that opens its sheet; delete is ⋯ → "מחיקה" there, no X on the row */}
+          {questions.length > 0 && (
+            <ListCard title="שאלות נוספות בהרשמה" count={questions.length}>
+              {questions.map((q) => (
+                <Row key={q.id} minHeight={54} title={q.label || 'שאלה בלי נוסח'} tags={q.required ? <Tag tone="warm">חובה</Tag> : <Tag>רשות</Tag>} onClick={() => setAsk({ ...q })} />
+              ))}
+            </ListCard>
+          )}
+          <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => setAsk({ id: '', label: '', required: false })}>{questions.length ? 'הוספת שאלה' : 'שאלות נוספות בהרשמה'}</Button>
+          <QuestionSheet q={ask} saved={questions.find((x) => x.id === ask?.id)?.label || ''} onChange={setAsk} onClose={() => setAsk(null)}
+            onKeep={(q) => { setQuestions((l) => (q.id ? l.map((x) => (x.id === q.id ? q : x)) : [...l, { ...q, id: 'q' + nowMs().toString(36) }])); setAsk(null); }}
+            onDrop={(qid) => { setQuestions((l) => l.filter((x) => x.id !== qid)); setAsk(null); }} />
           <ListCard>
             <Row minHeight={58} title="פתוח להרשמה" meta="אורחים יכולים להזמין כרטיסים" actions={<Toggle checked={open} onChange={setOpen} label="פתוח להרשמה" />} />
           </ListCard>
         </div>
       )}
     </AppScreen>
+  );
+}
+
+/** One sign-up question of the event, edited in a sheet like the registration questions in Settings (G3): the question and
+ *  "חובה"; for a saved question ⋯ in the header holds "מחיקה" with the Q8 confirmation. Changes apply with the form's "שמירה". */
+function QuestionSheet({ q, saved, onChange, onClose, onKeep, onDrop }: {
+  q: EventQuestion | null; saved: string; onChange: (q: EventQuestion) => void; onClose: () => void; onKeep: (q: EventQuestion) => void; onDrop: (id: string) => void;
+}) {
+  const ok = !!q?.label.trim();
+  const more = q?.id ? (
+    <MoreMenu title={saved || 'שאלה'} items={[{
+      label: 'מחיקה', icon: 'trash', tone: 'danger',
+      confirm: { title: 'למחוק את השאלה?', text: `"${saved}" תוסר מטופס ההרשמה לאירוע כשתלחצו "שמירה". תשובות שכבר נשמרו נשארות.`, confirmLabel: 'מחיקה', onConfirm: () => onDrop(q.id) },
+    }]} />
+  ) : undefined;
+  return (
+    <Sheet open={!!q} onClose={onClose} title={q?.id ? 'עריכת שאלה' : 'שאלה חדשה'} aside={more}>
+      {q && (
+        <div className="events-sheet">
+          <Field label="השאלה" value={q.label} maxLength={80} onChange={(ev) => onChange({ ...q, label: ev.target.value })} />
+          <ul className="k-list k-card k-card--list"><Row minHeight={54} title="חובה" meta="בלי תשובה אי אפשר להירשם" actions={<Toggle label="חובה" checked={q.required} onChange={(v) => onChange({ ...q, required: v })} />} /></ul>
+          <Button size="lg" block disabled={!ok} onClick={() => onKeep({ ...q, label: q.label.trim() })}>{q.id ? 'עדכון' : 'הוספה'}</Button>
+        </div>
+      )}
+    </Sheet>
   );
 }
 
