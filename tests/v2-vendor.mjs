@@ -1,4 +1,4 @@
-// Click-through of the vendor area (D1-D11, V1, V2, V6, N8, V7) in demo mode: every control per persona (vendor regular /
+// Click-through of the vendor area (D1-D11, V1/W3, V2, V6, N8, V7) in demo mode: every control per persona (vendor regular /
 // event day / after, helper, manager), writes checked after a reload, no console errors, no request outside the demo sandbox.
 // The vendor rules cases live in tests/rules-app.mjs (npm run test:rules).
 //
@@ -141,7 +141,19 @@ async function clickPart() {
     await s.page.getByLabel('שם, טלפון או מה מוכרים').fill('דבש'); await s.page.waitForTimeout(200);
     log((await s.page.locator('.k-row').count()) === 1, 'V1 search filters');
     await s.page.getByLabel('שם, טלפון או מה מוכרים').fill('');
-    await s.click('חדש'); log(await s.has('בעל דוכן חדש'), 'V1 new form opens');
+    // W3: the top bar holds only ⋯ (table view, Excel, the saved invite message); "חדש" became the dashed row under the search
+    log((await s.page.getByRole('button', { name: 'חדש', exact: true }).count()) === 0, 'W3 no "חדש" in the top bar');
+    await s.role('button', 'עוד פעולות');
+    const poolMore = await s.page.getByRole('dialog').innerText();
+    log(['צפייה בטבלה', 'ייצוא לאקסל', 'נוסח ההזמנה'].every((t) => poolMore.includes(t)), 'W3 ⋯ holds table view, Excel and the saved template');
+    await s.page.getByRole('dialog').getByText('צפייה בטבלה').click(); await s.page.waitForTimeout(250);
+    log(s.page.url().includes('/manage/vendors/table') && await s.has('9 שורות · 7 עמודות') && await s.has('גבינות משק רז'), 'W3 table view opens its own /table screen');
+    log((await s.page.locator('td', { hasText: /^\d{2}\.\d{2}\.\d{4}$/ }).count()) === 9, 'W3 table dates go through tableCell');
+    await s.click('בעלי דוכנים', { exact: true }); log(/\/manage\/vendors$/.test(s.page.url()) && await s.has('בעלי דוכנים · 9'), 'W3 table back link returns to the pool');
+    await s.role('button', 'עוד פעולות'); await s.page.getByRole('dialog').getByText('נוסח ההזמנה').click(); await s.page.waitForTimeout(250);
+    log(s.page.url().includes('/manage/settings/messages') && await s.has('הזמנת בעל דוכן'), 'W3 saved template opens the invite message');
+    await s.go('/manage/vendors');
+    await s.role('button', 'בעל דוכן חדש'); log(s.page.url().includes('new=1') && await s.has('שם הדוכן') && await s.has('הוספה למאגר'), 'W3 "בעל דוכן חדש" opens the new form');
     await s.page.getByLabel('שם הדוכן').fill('ירקות השדה'); await s.page.getByLabel('איש קשר').fill('גלית'); await s.page.getByLabel('טלפון').fill('050-111-2222'); await s.click('הוספה למאגר');
     await s.reload(); log(await s.has('ירקות השדה') && /\/manage\/vendors\/demo-/.test(s.page.url()), 'V1 new vendor saved and opens V2');
     await s.click('הזמנה לאירוע'); await s.page.getByRole('dialog').getByText('פסטיבל הסתיו').click(); await s.page.waitForTimeout(250);
@@ -159,8 +171,6 @@ async function clickPart() {
     log((await s.page.getByRole('dialog').innerText()).includes('להסיר את הגישה של כולם?'), 'V6 remove access asks in the Q8 sheet');
     await s.page.getByRole('dialog').getByRole('button', { name: 'הסרה', exact: true }).click(); await s.page.waitForTimeout(250); await s.reload();
     log(await s.has('אף אחד עוד לא מקושר'), 'V6 remove access persisted');
-    // V1: pool export and table view stay where they were (tidy plan rows 186, 187: needs a design)
-    await s.go('/manage/vendors'); log(await s.has('צפייה בטבלה'), 'V1 export block still there (needs a design)');
     // Q10
     await s.go('/manage/events/demo-e-festival/vendors'); log(await s.has('הוזמנו') && await s.has('לא ענו'), 'Q10 renders three stats');
     log(await s.page.locator('.k-row button:not(.k-row__hit)').evaluateAll((bs) => bs.length > 0 && bs.every((b) => (b.getAttribute('aria-label') || '').startsWith('תזכורת בוואטסאפ'))), 'Q10 the only row control is the reminder on unanswered rows');

@@ -177,3 +177,6 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | U11-GuestContact | guest | regular | /contact | fill:נושא=חניה נגישה בפסטיבל; fill:מה רצית לשאול=יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. |
 | U12-GuestSignIn | anon | regular | /login |  |
 | U13-GuestRegister | new | regular | /welcome |  |
+| W3-VendorPool | manager | regular | /manage/vendors |  |
+| W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
+| W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
