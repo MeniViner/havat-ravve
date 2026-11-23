@@ -1,5 +1,5 @@
 // The owners' console at /admin: the farm's server in one place. Sign in with Google; only an active owner gets in
-// (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, אנשים, מפתחות API.
+// (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, אבטחה, גיבויים.
 // /admin?demo shows the same screens over made-up data, without signing in and without reading or writing anything.
 import { useEffect, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
@@ -14,11 +14,15 @@ import { BackupsScreen } from './Backups';
 import { MonitorScreen } from './Monitor';
 import { SecurityScreen } from './Security';
 import { DataScreen } from './Data';
+import { StatsScreen } from './Stats';
+import { MoneyScreen } from './Money';
 
-type Tab = 'overview' | 'monitor' | 'data' | 'people' | 'keys' | 'security' | 'backups';
+type Tab = 'overview' | 'monitor' | 'stats' | 'money' | 'data' | 'people' | 'keys' | 'security' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
   { value: 'monitor', label: 'ניטור', icon: 'chart' },
+  { value: 'stats', label: 'סטטיסטיקות', icon: 'farm' },
+  { value: 'money', label: 'כסף ואירועים', icon: 'ticket' },
   { value: 'data', label: 'נתונים', icon: 'grid' },
   { value: 'people', label: 'אנשים', icon: 'people' },
   { value: 'keys', label: 'מפתחות API', icon: 'key' },
@@ -117,6 +121,8 @@ function Shell({ me }: { me: Me }) {
         {tab === 'monitor' && <MonitorScreen notify={notice.show} />}
         {tab === 'security' && <SecurityScreen />}
         {tab === 'data' && <DataScreen notify={notice.show} />}
+        {tab === 'stats' && <StatsScreen />}
+        {tab === 'money' && <MoneyScreen />}
       </main>
       {notice.view}
     </div>

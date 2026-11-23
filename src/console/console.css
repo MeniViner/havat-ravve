@@ -116,3 +116,29 @@ html, body { margin: 0; background: #F3F4F2; }
 .c-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .c-warn ul { margin: 6px 0; padding: 0 18px 0 0; }
 button.c-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Round 4: statistics, money, events. One hue (the kit's chart fill), bars anchored to the baseline, rounded data end. */
+.c-card-title { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.c-stack { display: flex; flex-direction: column; gap: 20px; }
+@media (min-width: 900px) { .c-stack { gap: 24px; } }
+.c-loading { opacity: .6; transition: opacity .15s; }
+.c-cols { margin: 0; }
+.c-cols__plot { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); direction: ltr; }
+.c-cols__col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+.c-cols__col:hover .c-cols__bar { opacity: 1; }
+.c-cols__bar { display: block; width: 100%; max-width: 28px; margin: 0 auto; background: var(--selected); opacity: .85; border-radius: 4px 4px 0 0; }
+.c-cols__axis { display: flex; gap: 2px; direction: ltr; margin-top: 6px; }
+.c-cols__axis span { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--soft); text-align: center; white-space: nowrap; overflow: visible; font-variant-numeric: tabular-nums; }
+.c-funnel { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.c-funnel__step { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 15px; }
+.c-funnel__track { display: block; height: 12px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.c-funnel__bar { display: block; height: 100%; background: var(--selected); border-radius: 4px; }
+.c-funnel__value { min-width: 84px; text-align: end; white-space: nowrap; }
+.c-money__hero { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.c-money__sum { font-size: 34px; font-weight: 700; line-height: 1.1; }
+.c-money .k-barrow, .c-flat .k-barrow { padding: 0; }
+.c-money .k-barrow__label { width: 112px; }
+.c-money .k-barrow__value { width: auto; min-width: 64px; }
+.c-event { display: flex; flex-direction: column; }
+.c-event__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.c-event__foot { margin: 12px 0 0; font-size: 14px; line-height: 1.5; }

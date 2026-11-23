@@ -26,6 +26,7 @@
 //   POST /v1/console/data/edit                { path, set: { field: value }, updateTime } simple fields only
 //   POST /v1/console/data/delete              { path, updateTime } (kept in the recycle bin)
 //   GET  /v1/console/data/export?collection=  the collection as a CSV file for Excel
+//   GET  /v1/console/stats?days=30            the farm, the money and each event as a funnel (stats.ts)
 // Every console request lands in the assistant log (api_log) as "קונסולה · <first name>".
 import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
@@ -36,6 +37,7 @@ import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
 import { alertSettings, healthCheck, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
+import { stats } from './stats';
 import { collections, deleteDoc, docsPage, docView, editDoc, exportCsv, history } from './data';
 import { backupCollection, backupDoc, downloadBackup, listBackups, listTrash, restoreFromBackup, restoreFromTrash, runBackup } from './backup';
 
@@ -128,6 +130,7 @@ const OPS: Record<string, ConsoleOp> = {
   'data.edit': { name: 'console.data.edit', he: 'עריכת רשומה', kind: 'write' },
   'data.delete': { name: 'console.data.delete', he: 'מחיקת רשומה', kind: 'write' },
   'data.export': { name: 'console.data.export', he: 'ייצוא לאקסל', kind: 'read' },
+  stats: { name: 'console.stats', he: 'סטטיסטיקות', kind: 'read' },
 };
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
@@ -193,6 +196,7 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
   }
   if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
   if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
+  if (m === 'GET' && path === '/stats') return { op: OPS.stats, data: await stats(fs, Number(q.get('days') || 30)) };
   // the data browser (data.ts)
   if (m === 'GET' && path === '/data') return { op: OPS['data.browse'], data: await collections(env, fs) };
   if (m === 'GET' && path === '/data/docs') return { op: OPS['data.browse'], data: await docsPage(fs, q.get('collection') || '', q.get('after'), q.get('parent')) };

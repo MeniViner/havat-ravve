@@ -650,6 +650,18 @@ try {
     check(csv.status === 200 && csvBytes[0] === 0xEF && csvBytes[1] === 0xBB && csvBytes[2] === 0xBF && /attachment; filename="havat-ravve-users-/.test(csv.headers.get('content-disposition') || '') && csvText.startsWith('id,') && csvText.includes('מנהלת בדיקה'), 'export: a CSV for Excel (BOM, header, Hebrew)', csvText.slice(0, 120));
     const LX = await (async () => { for (let i = 0; i < 30; i++) { const r = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.data.export' } } }, limit: 1 } }) }).then((x) => x.json()); if (r[0]?.document) return r[0].document; await new Promise((res) => setTimeout(res, 100)); } return null; })();
     check(!!LX, 'export: always logged (data leaving the server)');
+
+    // ---------- statistics, money, events ----------
+    const nowIso = new Date().toISOString();
+    await seed('donations/stat-paid', { uid: 'syn-staff', name: 'תורם בדיקה', amount: 250, label: 'תרומה', paymentStatus: 'paid', paymentConfirmation: { at: nowIso, by: { uid: 'syn-own', name: 'נועה' } }, createdAt: nowIso, updatedAt: nowIso });
+    await seed('donations/stat-claimed', { uid: 'syn-staff2', name: 'תורמת שנייה', amount: 100, label: 'תרומה', paymentStatus: 'claimed', createdAt: nowIso, updatedAt: nowIso });
+    const st = await api('GET', '/v1/console/stats?days=30', C(own));
+    const sd = st.json?.data;
+    check(st.status === 200 && sd.days === 30 && sd.farm.people.total >= 10 && sd.farm.activity.days.length === 30 && sd.farm.activity.weekday.length === 7 && typeof sd.farm.tasks.done === 'number', 'stats: the farm over 30 days (people, tasks, a column per day, weekdays)', sd && { people: sd.farm.people.total, tasks: sd.farm.tasks });
+    check(sd && sd.money.received.donations >= 250 && sd.money.months.length === 12 && sd.money.debts.some((d) => d.id === 'stat-claimed' && d.claimed && d.amount === 100) && sd.money.debts[0].claimed === true && sd.money.waiting.claimed >= 100, 'money: what came in, and a claimed payment waits first for an owner', sd?.money && { received: sd.money.received, debts: sd.money.debts.slice(0, 3) });
+    check(Array.isArray(sd?.events) && sd.events.every((e) => typeof e.tickets === 'number' && typeof e.paid === 'number' && e.paid <= e.tickets), 'events: each event as tickets → paid → came in', sd?.events?.slice(0, 2));
+    check((await api('GET', '/v1/console/stats?days=5', C(own))).status === 400, 'stats: only a week, a month, 3 months or a year');
+    check((await api('GET', '/v1/console/stats', C(mgr))).status === 403, 'a manager cannot read the money report');
   }
 
   section('the app\'s Rules accept what the API wrote');
