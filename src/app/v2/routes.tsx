@@ -87,7 +87,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/events/:id/products/:pid', events.ProductForm, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/products', events.ProductsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/tabs/:tid', events.TabScreen, 'manage', 'page', { manager: true }),
-  R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'page', { manager: true }),
+  R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'tab', { manager: true }), // Q12 shows the nav like its siblings
   R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/debts', events.DebtsScreen, 'manage', 'tab', { manager: true }),
