@@ -51,6 +51,11 @@ try{
  await assertFails(setDoc(doc(beni,'users','guest'),{fields:{receiptPreference:'whatsapp'},updatedAt:now},{merge:true}));
  await assertSucceeds(updateDoc(doc(guest,'users','guest'),{displayName:'אורח',phone:'',updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'users','guest'),{role:'manager',status:'active',updatedAt:now}));
+ // tidy round (U13, U14): the person turns update messages on and off; only a true/false
+ await assertSucceeds(updateDoc(doc(guest,'users','guest'),{updatesOptIn:true,updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(guest,'users','guest'),{updatesOptIn:false,updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'users','guest'),{updatesOptIn:'yes',updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'users','guest'),{updatesOptIn:true,updatedAt:now}));
 
  // --- role by email (pre-assignment) ---
  await assertFails(setDoc(doc(guest,'role_invites','vol@example.com'),{email:'vol@example.com',role:'staff',createdBy:actor('guest'),createdAt:now}));
