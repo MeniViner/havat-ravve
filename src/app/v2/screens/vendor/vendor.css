@@ -103,3 +103,4 @@
 .vendor-empty-line { padding: 14px; font-size: 15px; color: var(--soft); }
 .vendor-pick { text-align: start; }
 .vendor-dl50 .k-dl__row { min-height: 50px; }
+.vendor-formend { display: flex; align-items: center; gap: 12px; }

@@ -1,7 +1,7 @@
 // Pieces shared by the vendor screens: header with the farm's WhatsApp, the event hero, spot card, the day's timeline,
 // the event contact, farm messages and the "היית אצלנו" list.
 import { useState, type ReactNode } from 'react';
-import { Avatar, Card, DateBox, Dot, Hero, HeroNumber, Icon, IconButton, ListCard, Row, Sheet, Tag, TextLink, TopBar, Quote, Button, type IconName } from '../../kit';
+import { ActionSheet, Avatar, Card, DateBox, Dot, Hero, HeroNumber, Icon, IconButton, ListCard, Row, Sheet, Tag, TextLink, TopBar, Quote, Button, type IconName } from '../../kit';
 import { useExternal, waUrl, telUrl, useV2 } from '../../core';
 import { navigate } from '../../../router';
 import { nowMs } from '../../../clock';
@@ -130,21 +130,27 @@ export function Timeline({ e, info, title, limit, withSoon }: { e: FarmEvent; in
   );
 }
 
-/** The event contact with WhatsApp (and phone). */
+/** The event contact: WhatsApp as the row's one control (rule 4); tapping the row opens its sheet with WhatsApp and the call. */
 export function ContactCard({ info, phone = true }: { info: VendorInfo | null; phone?: boolean }) {
   const open = useExternal();
+  const [sheet, setSheet] = useState(false);
   const c = info?.contact;
   if (!c?.name) return null;
   const f = femName(c.name); const fn = firstName(c.name);
-  return (
+  const meta = g(f, 'איש הקשר שלך באירוע', 'אשת הקשר שלך באירוע');
+  return <>
     <ListCard>
-      <Row minHeight={60} leading={<Avatar name={c.name} />} title={c.name} meta={g(f, 'איש הקשר שלך באירוע', 'אשת הקשר שלך באירוע')}
-        actions={c.phone ? <>
-          <IconButton icon="message" variant="outline" label={`וואטסאפ ל${fn}`} onClick={() => open(waUrl(c.phone))} />
-          {phone && <IconButton icon="phone" variant="outline" label={`התקשרות ל${fn}`} onClick={() => open(telUrl(c.phone))} />}
-        </> : undefined} />
+      <Row minHeight={60} leading={<Avatar name={c.name} />} title={c.name} meta={meta}
+        onClick={c.phone && phone ? () => setSheet(true) : undefined}
+        actions={c.phone ? <IconButton icon="message" variant="outline" label={`וואטסאפ ל${fn}`} onClick={() => open(waUrl(c.phone))} /> : undefined} />
     </ListCard>
-  );
+    {c.phone && phone && (
+      <ActionSheet open={sheet} onClose={() => setSheet(false)} title={c.name} sub={meta} items={[
+        { label: 'וואטסאפ', icon: 'message', onSelect: () => open(waUrl(c.phone)) },
+        { label: 'התקשרות', icon: 'phone', meta: <span dir="ltr">{c.phone}</span>, onSelect: () => open(telUrl(c.phone)) },
+      ]} />
+    )}
+  </>;
 }
 
 const msgTime = (iso: string) => { const d = daysFromToday(iso); return d === 0 || d === -1 ? dayTime(iso) : ddmm(iso); };

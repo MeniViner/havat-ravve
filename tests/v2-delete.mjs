@@ -81,16 +81,18 @@ await step('owner', async () => {
   log(s.path() === '/places', 'place: back on the list');
   await s.reload(); log(!(await s.page.locator('a[href$="/places/demo-p-pots"]').count()), 'place: gone after a reload');
 
-  // stall from the pool: its event records go too
+  // stall from the pool: its event records go too (the edit form's ⋯ → "מחיקה" → Q8)
   await s.go('/manage/vendors/demo-v-dana?edit=1');
-  await s.confirm('מחיקת בעל הדוכן', 'למחוק את בעל הדוכן?', 'מחיקה', { text: 'מהמאגר ומההזמנות לאירועים' });
+  await s.page.getByRole('button', { name: 'עוד פעולות' }).click(); await s.page.waitForTimeout(200);
+  await s.confirm('', 'למחוק את בעל הדוכן?', 'מחיקה', { text: 'מהמאגר ומההזמנות לאירועים', label: 'stall', locator: s.dialog().getByRole('button', { name: 'מחיקה' }) });
   log(s.path() === '/manage/vendors', 'stall: back on the pool');
   await s.reload(); log(!(await s.has('קרמיקה של דנה')), 'stall: gone from the pool after a reload');
   await s.go('/manage/events/demo-e-festival/vendors'); log(!(await s.has('קרמיקה של דנה')), 'stall: gone from the event\'s stalls');
 
-  // a stall off one event (N8)
+  // a stall off one event (Q10 row → Q11 sheet → "הסרה מהאירוע" → Q8)
   await s.go('/manage/events/demo-e-festival/vendors');
-  await s.confirm('', 'להסיר מהאירוע?', 'הסרה', { locator: s.page.getByRole('button', { name: /^הסרה מהאירוע: גבינות משק רז/ }), label: 'event stall' });
+  await s.page.locator('.k-row', { hasText: 'גבינות משק רז' }).locator('.k-row__hit').click(); await s.page.waitForTimeout(200);
+  await s.confirm('', 'להסיר מהאירוע?', 'הסרה', { locator: s.dialog().getByRole('button', { name: 'הסרה מהאירוע' }), label: 'event stall' });
   await s.reload(); log(!(await s.has('גבינות משק רז')), 'event stall: off the event after a reload');
   await s.go('/manage/vendors'); log(await s.has('גבינות משק רז'), 'event stall: still in the pool');
 
