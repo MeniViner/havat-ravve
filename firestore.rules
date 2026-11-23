@@ -255,8 +255,10 @@ service cloud.firestore {
    function numberOk(v){return str(v, 25) && (v == '' || v.matches('[+]?([() .-]*[0-9]){9,15}[() .-]*'));}
    function contactOk(){let c = incoming().get('contact', {}); return c is map && c.keys().hasOnly(['phone','whatsapp']) && numberOk(c.get('phone', '')) && numberOk(c.get('whatsapp', ''));}
    function confirmationTemplateOk(){let t = incoming().get('templates', {}); return t is map && str(t.get('paymentConfirmation', ''), 2000);}
-   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming())) && contactOk() && confirmationTemplateOk();
-   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk());
+   // W4: the first-visit demo per kind of account (demo/intro.ts) is the owners' decision too; missing means the defaults
+   function demoIntroOk(){let d = incoming().get('demoIntro', {}); return d is map && d.keys().hasOnly(['guest','staff','manager','vendor']) && d.get('guest', true) is bool && d.get('staff', true) is bool && d.get('manager', true) is bool && d.get('vendor', false) is bool;}
+   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming())) && (isOwner() || !('demoIntro' in incoming())) && contactOk() && confirmationTemplateOk() && demoIntroOk();
+   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment','demoIntro'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk()) && (!changed().hasAny(['demoIntro']) || demoIntroOk());
    allow delete: if isOwner() && name == 'app';
   }
   match /events/{id} {

@@ -118,4 +118,5 @@
 .manage-table td { font-variant-numeric: tabular-nums; }
 .manage-inline-link { color: var(--action); font-weight: 600; text-decoration: none; }
 .manage-inline-link:hover { text-decoration: underline; }
-
+/* W4: the lead paragraph under the title */
+.manage-lead { margin: 0; font-size: 16px; line-height: 1.5; color: var(--soft); }

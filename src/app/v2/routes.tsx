@@ -114,6 +114,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/settings/messages', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/questions', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/managers', manage.SettingsPage, 'manage', 'tab', { manager: true, owner: true }),
+  R('/manage/settings/demo', manage.DemoFirstVisitScreen, 'manage', 'tab', { manager: true, owner: true }),
   R('/manage/settings/payments', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/:page', manage.SettingsPage, 'manage', 'page', { manager: true }),

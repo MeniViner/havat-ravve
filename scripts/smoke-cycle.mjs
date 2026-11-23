@@ -1125,7 +1125,41 @@ async function item12() {
 }
 
 // ====================================================================================================================
-const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8, 9: item9, 10: item10, 11: item11, 12: item12 };
+// 13 (W4): the owner switches the first-visit demo off for volunteers; a volunteer opening the app for the first time on
+// this browser lands on the real account, while a guest's first visit still opens in demo. Then the switch goes back on.
+async function item13() {
+  setItem('13 First-visit demo per kind of account');
+  const o = await session('owner');
+  await o.go('/manage/settings', 1500);
+  await o.click('הדגמה בכניסה ראשונה', { wait: 900 });
+  const sw = (name) => o.page.getByRole('switch', { name, exact: true });
+  const states = await Promise.all(['אורחים', 'מתנדבים', 'מנהלים', 'בעלי דוכנים'].map((n) => sw(n).getAttribute('aria-checked')));
+  check(o.path() === '/manage/settings/demo' && states.join() === 'true,true,true,false', 'W4 opens from Q19 with the defaults (vendors off)', 'owner', states.join());
+  await sw('מתנדבים').click(); await o.settle(1200);
+  const saved = await until(async () => (await adminGet('settings/app'))?.demoIntro?.staff === false);
+  check(saved, 'W4: volunteers off is saved in settings/app', 'owner');
+  await o.shot('13-W4-volunteers-off');
+  noErrors(o, 'W4 switch'); await o.done();
+  const demoOn = async (s) => s.page.evaluate(() => { try { return JSON.parse(localStorage.getItem('farm-demo') || '{}').on === true; } catch { return false; } });
+  const v = await session('yoav', { firstVisit: true });
+  await v.go('/', 2500);
+  check(!(await demoOn(v)) && !(await v.page.locator('.k-demo__switch').count()) && await v.has('משימות'), 'W4: a volunteer\'s first visit with the switch off opens the real account, no demo', 'volunteer');
+  await v.go('/tasks', 1500);
+  check(!(await demoOn(v)), 'W4: still no demo on the next opening', 'volunteer');
+  noErrors(v, 'W4 volunteer first visit'); await v.done();
+  const g = await session('michal', { firstVisit: true });
+  await g.go('/', 2500);
+  check(await demoOn(g) && (await g.page.locator('.k-demo__switch').first().innerText().catch(() => '')).includes('מחובר כ'), 'W4: a guest\'s first visit still opens in demo (guests on)', 'guest');
+  noErrors(g, 'W4 guest first visit'); await g.done();
+  const o2 = await session('owner');
+  await o2.go('/manage/settings/demo', 1500);
+  await o2.page.getByRole('switch', { name: 'מתנדבים', exact: true }).click(); await o2.settle(1000);
+  check(await until(async () => (await adminGet('settings/app'))?.demoIntro?.staff === true), 'W4: volunteers back on', 'owner');
+  noErrors(o2, 'W4 restore'); await o2.done();
+}
+
+// ====================================================================================================================
+const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8, 9: item9, 10: item10, 11: item11, 12: item12, 13: item13 };
 await launch();
 for (const [k, fn] of Object.entries(ITEMS)) {
   if (only.length && !only.includes(k)) continue;

@@ -12,6 +12,7 @@ import {
 } from '../../data';
 import { usePeople, usePerson, useRoleInvites, setUserRole, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
 import { useActivityByKind } from '../../activity';
+import type { DemoIntroRoles } from '../../demo/intro';
 import { notify } from './notify';
 import { useToast } from '../core';
 import { ROLE_LABELS } from '../../types';
@@ -33,6 +34,8 @@ export type SettingsExtra = {
   donationOptions?: { custom: boolean; memorial: boolean; receipt: boolean };
   /** G4 details the contact rule does not allow under `contact` (it accepts phone/whatsapp only). */
   contactMore?: { email: string; address: string; inquiries: boolean };
+  /** W4 "הדגמה בכניסה ראשונה" per kind of account; owners only (firestore.rules). Missing = demo/intro DEMO_INTRO_DEFAULT. */
+  demoIntro?: Partial<DemoIntroRoles>;
 };
 export type ManageSettings = Settings & SettingsExtra;
 export const donationOptionsOf = (s: ManageSettings) => ({ custom: true, memorial: true, receipt: true, ...s.donationOptions });
