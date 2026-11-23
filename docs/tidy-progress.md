@@ -25,6 +25,41 @@ Plan and inventory: `docs/tidy-plan.md`.
   table resolves any `/table` suffix to its list) and `usePayConfirm` (Q7).
 - New icons from the tidy designs: more, clock, trash, robot, table, print, mail, globe, home, share.
 
+## Stages 2 and 3: roots, forms, lists and details (built; verification running)
+One builder per area, each in its own branch, merged into `tidy/placement`:
+- **Tasks and projects** (`tidy/s2-tasks`): Q2 (no "עליך" list, four views, red "באיחור" first, bottom rows "בוצעו ביממה
+  האחרונה" and, for managers, "משימות חוזרות"; no places row), Q3 (date chip, "עוד פרטים" card with event, note and photo,
+  urgent, managers-only; pickers for place, person, event), Q24 ("חוזרת" chip for managers; `/manage/recurring/new` and `/:id`
+  open the add form; "פעילה" switch and the 30-day record under the form when editing). T3: tags beside the title, a note or
+  photo after done is a timeline line, a free task keeps "לקחת" and hand-over opens from "פנויה". Deletes of task, recurring
+  task, project and shopping item are ⋯ in the edit form's header; the place delete is ⋯ in its top bar. Places: table view
+  and export in ⋯, back link and lit tab go to the Farm.
+- **Shopping and farm** (`tidy/s2-shopfarm`): Q22 (one scrolling suggestion row; "נקנה היום" is one row to history; putting
+  an item back moved to history: swipe right "להחזיר"), Q30 ("היום" beside the arrows; owners/volunteers legend only in day
+  view), Q31 ("סוג" chips, including "ביקור"), Q17 ("של מי" row with "החלפה" and a picker; "תאריך אחר" beside the day strip).
+  Calendar item and presence deletes in ⋯ of their forms; trip delete in ⋯ for managers.
+- **Manage** (`tidy/s2-manage`): Q1 (hero, six tiles, two rows; removed duplicates: inbox preview → inbox, calendar → Farm,
+  recurring → Tasks, vendors → events, places → Farm card, broadcasts → People), inbox without the card X (row sheet
+  "פתיחה" / "מחיקה מהרשימה"), Q4, Q6 (approve opens Q7), Q13, people list ("חסומים" chip, pending slim row; team list and
+  role changes now in People `?filter=team` and Activity "אנשים"), Q14 (drill-in sub-routes `/manage/reports/:section`;
+  comparison, print, export in ⋯), Q16 (two dropdowns), Q19 (two groups; visit types and sign-up questions page), Q20 (12 API
+  codes mapped to Hebrew reasons), visits (history, "לא מתאים", delete in ⋯).
+- **Events and event day** (`tidy/s2-events`): Q32, Q12, Q21, Q15, orders (row sheet, Q7 after approval, e-mail status
+  line), N12 (⋯: history, confirmation, delete), V3 files (row sheet), Q28/Q29 (account sheet with "הסרה", total, "שילם
+  עכשיו", "סגירה", clear the cart with undo), gate "נשמר בטלפון, יישלח כשתהיה קליטה". M4 keeps the outlined "עריכה"; ⋯ only
+  on נרשמים and סיכום. Removed as duplicates: E1 recent scans and its search link (gate and Y2 keep them), the gate's
+  "נכנסו מתוך" count (M6 and Y1 keep it), the gate's "לדוכן" link (E1 keeps it), E9's manager stat row and the products'
+  sales counts (Q12 and Q15 keep them).
+- **Vendors** (`tidy/s2-vendor`): Q10 (one WhatsApp button only for vendors who have not answered; ⋯ holds "להזמין את מי
+  שהיה ב…" and "נוסח ההזמנה"), Q11 row sheet (reminder, confirmed by phone, not coming this time, vendor card, remove from
+  the event through Q8). Pool delete in ⋯ of the vendor's edit form; access removal in ⋯; contact rows on the vendor's own
+  screens show WhatsApp and open a sheet with WhatsApp and a call.
+- **Profile** (`tidy/s2-system`): Q18 ("עריכת פרטים" underlined link; registration answers only in /me/edit; website, terms
+  and demo as quiet links at the bottom; account deletion moved to the bottom of /me/edit).
+- Rule 11: a red count only on ניהול.
+- Checks on the merged branch: `npx tsc` clean; unit suites tasks 26, projects, shopping, farm 20, manage, events 18, system,
+  core and demo; click-throughs delete 79/79, vendor all passed, event day 39/39, broadcast 37/37.
+
 ## Decisions (log)
 - `main` is merged into `tidy/placement` (not rebased): the area builders' branches are cut from it, and a rebase would rewrite
   the history they build on. Same result for the PR. Merged: PR #26 (console backup), PR #24 (first-visit demo; the DemoIntro
@@ -43,7 +78,14 @@ Plan and inventory: `docs/tidy-plan.md`.
 - Delete on detail screens that keep the outlined "עריכה" (task, shopping item, event, project, vendor card, calendar item,
   presence, product, recurring): ⋯ in the edit form's header next to "ביטול", then "מחיקה" and Q8. Delete is one step deeper
   than before. Alternative for Meni: ⋯ replaces "עריכה" on the detail, with "עריכה" as its first item.
-- M2 "מה שטופל" is a text link beside the back link in the approved M2 design (rule 5 forbids it): kept until Meni decides.
+- M2 "מה שטופל" and C1 "מה לקבל" are text links beside the back link in their approved designs (rule 5 forbids them): kept
+  until Meni decides (⋯, or keep).
+- The gate no longer shows the managers' "נכנסו מתוך" count (a duplicate of M6 and Y1); managers at the gate open it from
+  ניהול. Say if it should come back.
+- Q24: "בלי תאריך" stays among the "מתי" chips (Q24 leaves it out), so with "חוזרת" the chips wrap to two lines. "הוספה, ועוד
+  אחת" stays under the add button (approved T5).
+- The add-note and add-photo buttons after a task is done stay in T3's body (its top bar keeps "עריכה").
+- Event-file image preview is gone; "פתיחה" opens the file.
 - Consent for update messages to all users: opt-in only (`updatesOptIn`).
 - Web Push or FCM: still waiting for Meni's test on an installed iPhone app.
 
