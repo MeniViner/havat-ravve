@@ -17,6 +17,8 @@ export type Overview = {
 export type KeyView = {
   id: string; label: string; actors: string[]; status: 'active' | 'revoked' | 'expired'; expiresAt: string | null;
   rotating: boolean; previousUntil: string | null; source: 'console' | 'secret'; createdAt: string | null; createdBy: string | null; updatedAt: string | null;
+  /** null: everything its person may do; else only these scopes. */
+  scopes: string[] | null;
 };
 export type Person = {
   uid: string; email: string; displayName: string; phone: string; role: 'owner' | 'manager' | 'staff' | 'guest' | 'vendor';
@@ -26,7 +28,7 @@ export type LogEntry = {
   id: string; at: string; credential: string; keyLabel: string; actor: { id: string; role: string; uid: string; name: string };
   kind: 'read' | 'write'; op: string; opHe: string; verb: string; ok: boolean; code: string; message: string; status: number;
 };
-export type KeyAction = 'rename' | 'revoke' | 'restore' | 'expire' | 'rotate';
+export type KeyAction = 'rename' | 'revoke' | 'restore' | 'expire' | 'rotate' | 'scopes';
 export type Backup = { date: string; startedAt: string; finishedAt: string; docs: number; bytes: number; parts: number; collections: Record<string, number>; by: string };
 export type Backups = { items: Backup[]; running: { date: string; docs: number; startedAt: string } | null };
 export type BackupStep = { done: boolean; date: string | null; docs: number };
@@ -73,6 +75,24 @@ export type Jobs = {
   cleanup: { items: CleanupItem[]; last: { date: string; archived: number; deleted: number; done: boolean; at: string; by: string } | null };
   archive: { collections: { collection: string; files: number; bytes: number }[] };
 };
+/** How fast the server answers (api/src/speed.ts), from the assistant log's own timings. */
+export type Speed = {
+  days: number; from: string; slowMs: number; truncated: boolean;
+  total: { count: number; p50: number; p95: number; max: number; slow: number; errors: number };
+  ops: { op: string; he: string; kind: string; count: number; p50: number; p95: number; max: number; errors: number }[];
+  perDay: { day: string; count: number; p50: number; p95: number }[];
+  slowest: { at: string; op: string; he: string; ms: number; status: number; key: string }[];
+  cron: { at: string | null; wallMs: number | null; jobs: { id: string; ms: number; at: string; ok: boolean }[] };
+  site: { checks: number; p50: number; p95: number };
+};
+/** One operation of the API's catalog (GET /v1/catalog), as the console's "run any operation" shows it. */
+export type CatalogParam = { type: string; required?: boolean; min?: number; max?: number; values?: readonly string[]; default?: unknown; he?: string; format?: string; maxItems?: number };
+export type CatalogOp = {
+  name: string; kind: 'read' | 'write'; he: string; method: 'GET' | 'POST'; path: string; idempotency?: 'required';
+  pathParams?: Record<string, CatalogParam>; params?: Record<string, CatalogParam>; body?: Record<string, CatalogParam>; requiredScope: string; notes?: string[];
+};
+/** An operation's answer as it came, success or not. */
+export type OpResult = { status: number; ms: number; json: unknown };
 /** Site visits and app usage from our own daily counters (api/src/traffic.ts). Counts only, nothing personal. */
 export type Ranked = { key: string; count: number }[];
 export type Traffic = {
@@ -101,7 +121,7 @@ export interface Source {
   me(): Promise<Me>;
   overview(): Promise<Overview>;
   keys(): Promise<KeyView[]>;
-  createKey(input: { label: string; actor: string; expiresAt: string | null }): Promise<{ id: string; key: string }>;
+  createKey(input: { label: string; actor: string; expiresAt: string | null; scopes?: string[] | null }): Promise<{ id: string; key: string }>;
   changeKey(id: string, action: KeyAction, body?: Record<string, unknown>): Promise<{ id: string; key?: string }>;
   people(): Promise<Person[]>;
   recent(n: number): Promise<LogEntry[]>;
@@ -130,6 +150,10 @@ export interface Source {
   exportCsv(group: string): Promise<void>;
   stats(days: number): Promise<Stats>;
   traffic(days: number): Promise<Traffic>;
+  speed(days: number): Promise<Speed>;
+  catalog(): Promise<CatalogOp[]>;
+  /** Any API operation as the signed-in owner (/v1/console/api/...). `path` is the operation's path with its ids filled in. */
+  runOp(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<OpResult>;
   switches(): Promise<SwitchesView>;
   setSwitches(b: Partial<Switches>): Promise<SwitchesView>;
   queue(): Promise<Queue>;
@@ -229,6 +253,23 @@ const liveSource: Source = {
   deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
   stats: (days) => call('GET', `/stats?days=${days}`),
   traffic: (days) => call('GET', `/traffic?days=${days}`),
+  speed: (days) => call('GET', `/speed?days=${days}`),
+  catalog: async () => (await call<{ operations: CatalogOp[] }>('GET', '/catalog')).operations,
+  runOp: async (method, path, body, idem) => {
+    const tk = await token();
+    const t = performance.now();
+    let res: Response;
+    try {
+      res = await fetch(apiBase() + '/v1/console/api' + path.replace(/^\/v1/, ''), {
+        method,
+        headers: { authorization: 'Bearer ' + tk, ...(method === 'POST' ? { 'content-type': 'application/json', 'idempotency-key': idem || crypto.randomUUID() } : {}) },
+        body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
+      });
+    } catch {
+      throw new ConsoleError('NETWORK', 'no connection to the server', 'אין חיבור לשרת');
+    }
+    return { status: res.status, ms: Math.round(performance.now() - t), json: await res.json().catch(() => null) };
+  },
   switches: () => call('GET', '/switches'),
   setSwitches: (b) => call('POST', '/switches', b),
   queue: () => call('GET', '/queue'),

@@ -22,7 +22,7 @@ export type ActorDef = {
   person: { uid: string; name: string };
 };
 
-export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous'; /** The key's name from the console (keys.ts). */ label?: string };
+export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous'; /** The key's name from the console (keys.ts). */ label?: string; /** The key carries only some of its person's permissions (keys.ts scopes). */ limited?: boolean };
 
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
@@ -39,6 +39,8 @@ const MANAGER: Scope[] = [
   'calendar:write', 'settings:write', 'system:read', 'broadcasts:write', 'notify:write',
 ];
 export const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
+/** Every scope there is (the console offers a key a part of them). */
+export const ALL_SCOPES: readonly Scope[] = [...new Set(MANAGER)];
 
 /**
  * Synthetic actors, for tests. Real people are actors named "user:<uid>": a credential lists them, and
@@ -64,6 +66,8 @@ export type CredentialDef = {
   id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string;
   /** Keys managed in the owners' console (keys.ts, TOKEN_KV): the name shown in the assistant log, and who made it when. */
   label?: string; createdAt?: string; createdBy?: string; updatedAt?: string;
+  /** A limited key (the console): only these scopes, and never more than its person's role allows. Absent: the role's. */
+  scopes?: string[];
   /** During a rotation the replaced key keeps working until previousUntil, so the client can switch over. */
   previousSha256?: string; previousUntil?: string;
 };
@@ -129,7 +133,11 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   if (!found.actors.includes(actorId)) throw new ApiError('FORBIDDEN', `credential ${found.id} may not act as ${actorId}`, { actor: actorId });
   const actor = /^user:[A-Za-z0-9_-]{1,128}$/.test(actorId) ? await userActor(actorId, loadProfile) : ACTORS[actorId];
   if (!actor) throw new ApiError('FORBIDDEN', `actor ${actorId} is not registered or not an active team member`, { actor: actorId });
-  return { credentialId: found.id, actor, scopes: new Set(ROLE_SCOPES[actor.role]), keyVersion, ...(found.label ? { label: found.label } : {}) };
+  // a limited key keeps only the scopes it was given that the person's role has (a role change can only take away)
+  const role = ROLE_SCOPES[actor.role];
+  const limited = Array.isArray(found.scopes);
+  const scopes = limited ? role.filter((s) => found!.scopes!.includes(s)) : role;
+  return { credentialId: found.id, actor, scopes: new Set(scopes), keyVersion, ...(found.label ? { label: found.label } : {}), ...(limited ? { limited: true } : {}) };
 }
 
 export function requireScope(c: Caller, scope: Scope) {
