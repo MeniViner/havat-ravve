@@ -3,6 +3,7 @@ import { depth } from './router';
 import { Btn, Icon } from './ui';
 import './install-banner.css';
 import { nowMs } from './clock';
+import { isNative } from './native';
 
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
@@ -24,7 +25,7 @@ function writeFlag(key: string, value: string) {
 
 const seenOnArrival = readFlag(seenKey) === 'yes';
 const standalone = window.matchMedia?.('(display-mode: standalone)');
-const isInstalled = () => !!(standalone?.matches || (navigator as Navigator & { standalone?: boolean }).standalone || readFlag(installedKey) === 'yes');
+const isInstalled = () => isNative || !!(standalone?.matches || (navigator as Navigator & { standalone?: boolean }).standalone || readFlag(installedKey) === 'yes');
 const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 let installState = { prompt: null as InstallPrompt | null, installed: isInstalled() };

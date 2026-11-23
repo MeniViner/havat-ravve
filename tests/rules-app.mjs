@@ -41,6 +41,19 @@ try{
  await assertFails(setDoc(doc(stranger,'users','someone-else'),profile('someone-else','stranger@example.com','guest','active')));
  await assertFails(getDoc(doc(guest,'users','beni')));                        // guests cannot read others
  await assertFails(getDocs(collection(beni,'users')));                        // guests cannot list
+ // --- Sign in with Apple (the iPhone app, docs/app-store.md): a guest like any Google guest; never the owner, never the website editor ---
+ const appleClaims=(email,extra={})=>({email,email_verified:true,firebase:{sign_in_provider:'apple.com'},...extra});
+ const apple=env.authenticatedContext('apple1',appleClaims('x7k2@privaterelay.appleid.com')).firestore();
+ await assertSucceeds(setDoc(doc(apple,'users','apple1'),profile('apple1','x7k2@privaterelay.appleid.com','guest','active')));
+ await assertSucceeds(getDoc(doc(apple,'users','apple1')));
+ await assertFails(getDoc(doc(apple,'users','beni')));
+ const appleOwnerEmail=env.authenticatedContext('apple2',appleClaims('meniviner@gmail.com')).firestore();
+ await assertFails(setDoc(doc(appleOwnerEmail,'users','apple2'),profile('apple2','meniviner@gmail.com','owner','active'))); // the owner bootstrap is Google only
+ await assertFails(getDoc(doc(appleOwnerEmail,'cms_state','draft')));                                                        // the website editor too
+ const appleUnverified=env.authenticatedContext('apple3',appleClaims('a3@example.com',{email_verified:false})).firestore();
+ await assertFails(setDoc(doc(appleUnverified,'users','apple3'),profile('apple3','a3@example.com','guest','active')));
+ const password=env.authenticatedContext('pw1',{email:'pw@example.com',email_verified:true,firebase:{sign_in_provider:'password'}}).firestore();
+ await assertFails(setDoc(doc(password,'users','pw1'),profile('pw1','pw@example.com','guest','active')));                  // other providers stay out
 
  // owner promotes beni to manager; beni approves a volunteer later
  await assertSucceeds(updateDoc(doc(owner,'users','beni'),{role:'manager',status:'active',notes:'',updatedAt:now}));

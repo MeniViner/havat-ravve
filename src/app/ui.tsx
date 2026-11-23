@@ -172,7 +172,7 @@ export const Pill = ({ tone, children }: { tone?: 'rust' | 'ochre' | 'ok' | 'gol
 export const Dot = () => <span aria-hidden="true">·</span>;
 
 // ---------- buttons ----------
-type BtnProps = { kind?: 'primary' | 'ghost' | 'quiet' | 'danger' | 'gold' | 'rustfill' | 'google'; size?: 'big' | 'sm' | 'xs'; block?: boolean; icon?: string; to?: string; children?: ReactNode; className?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>;
+type BtnProps = { kind?: 'primary' | 'ghost' | 'quiet' | 'danger' | 'gold' | 'rustfill' | 'google' | 'apple'; size?: 'big' | 'sm' | 'xs'; block?: boolean; icon?: string; to?: string; children?: ReactNode; className?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>;
 export function Btn({ kind = 'primary', size, block, icon, to, children, className = '', ...rest }: BtnProps) {
   const cls = `btn ${kind} ${size || ''} ${block ? 'block' : ''} ${className}`;
   if (to) return <A to={to} className={cls}>{icon && <Icon name={icon} size={20} />}{children}</A>;

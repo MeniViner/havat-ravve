@@ -5,6 +5,7 @@ import { ROLE_LABELS } from '../types';
 import { Top, Ledger, Sec, Btn, Icon, A, Field, SwitchRow, Avatar, Chips, useToast, todayISO, addDays } from '../ui';
 import { navigate } from '../router';
 import { signOutUser } from '../firebase';
+import { isNative, publicOrigin } from '../native';
 import { updateOwnProfile, useHistoryTasks, useOpenTasks } from '../store';
 import { useDemo, setDemo, resetDemoData, PERSONA_LABELS, type Persona } from '../demo/store';
 import { DeleteAccountLink } from './Account';
@@ -93,7 +94,7 @@ export function NotificationsSection({ team }: { team: boolean }) {
 }
 export function InstallHint() {
   const standalone = matchMedia('(display-mode: standalone)').matches;
-  if (standalone) return null;
+  if (standalone || isNative) return null;
   const ios = /iP(hone|ad)/.test(navigator.userAgent);
   return <button type="button" onClick={() => alert(ios ? 'בספארי: כפתור שיתוף (הריבוע עם החץ) ← "הוספה למסך הבית".' : 'בתפריט הדפדפן (⋮) ← "התקנת אפליקציה" או "הוספה למסך הבית".')}><Icon name="download" />להתקין על מסך הבית<span className="s">{ios ? 'שיתוף ← הוספה למסך הבית' : 'מהתפריט של הדפדפן'}</span><Icon name="chev" className="chev" size={18} /></button>;
 }
@@ -118,7 +119,7 @@ export function DemoSection({ role }: { role: Profile['role'] }) {
         <Field label="לעבור באפליקציה בתור…" hint="כל מה שעושים בהדגמה נשאר במכשיר הזה בלבד. כדי לחזור לעבודה אמיתית מכבים את ההדגמה.">
           <Chips value={demo.persona} onChange={(persona) => { setDemo({ persona }); navigate('/', true); }} options={personas.map((p) => ({ value: p, label: PERSONA_LABELS[p] }))} />
         </Field>
-        <div className="inline pad" style={{ paddingTop: 14 }}><Btn kind="ghost" size="sm" icon="repeat" onClick={() => { resetDemoData(); toast({ text: 'נתוני הדוגמה אופסו' }, 2500); }}>איפוס נתוני הדוגמה</Btn><Btn kind="quiet" size="sm" onClick={() => navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast({ text: 'הקישור הועתק: /app?demo=owner' }, 3000))}>קישור להדגמה</Btn></div>
+        <div className="inline pad" style={{ paddingTop: 14 }}><Btn kind="ghost" size="sm" icon="repeat" onClick={() => { resetDemoData(); toast({ text: 'נתוני הדוגמה אופסו' }, 2500); }}>איפוס נתוני הדוגמה</Btn><Btn kind="quiet" size="sm" onClick={() => navigator.clipboard?.writeText(publicOrigin() + '/app?demo=owner').then(() => toast({ text: 'הקישור הועתק: /app?demo=owner' }, 3000))}>קישור להדגמה</Btn></div>
       </>}
     </>
   );

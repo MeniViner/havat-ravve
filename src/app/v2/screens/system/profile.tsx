@@ -16,6 +16,7 @@ import {
   receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, answerText, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { RegistrationQuestions } from './fields';
+import { isNative, publicOrigin } from '../../../native';
 import './system.css';
 
 export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
@@ -72,10 +73,10 @@ export function ProfileScreen({ ctx }: ScreenProps) {
             meta={ctx.viewAsStaff ? 'פעיל עכשיו. נגיעה מחזירה לתצוגה הרגילה' : 'בלי ניהול ובלי פרויקטים'} onClick={() => setViewAsStaff(!ctx.viewAsStaff)} />
         )}
         {!lead && !ctx.viewAsStaff && !vendor && <Row leading={<IconTile icon="people" />} title="פנייה למנהלים" meta="שאלה, בקשה או בעיה" onClick={() => go('/contact?from=team')} />}
-        <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />
+        {!isNative && <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />}
         {!vendor && <Row leading={<IconTile icon="ticket" />} title="הכרטיסים שלי כאורח" meta="" onClick={() => go('/me/tickets')} />}
         <Row leading={<IconTile icon="farm" />} title="האתר של החווה" meta="" href="/"
-          onClick={(e) => { e.preventDefault(); window.open('/', '_blank', 'noopener'); }} />
+          onClick={(e) => { e.preventDefault(); window.open(publicOrigin() + '/', '_blank', 'noopener'); }} />
         {!demo.on && <Row leading={<IconTile icon="help" />} title="לראות איך האפליקציה עובדת" meta="הדגמה עם נתונים לא אמיתיים" onClick={() => go('/demo')} />}
       </ListCard>
       <div className="system-foot">

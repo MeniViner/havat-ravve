@@ -23,7 +23,7 @@ const stub = {
     ` }));
     b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {}; export const signOut = async () => {};' }));
     b.onLoad({ filter: /^storage$/, namespace: 'stub' }, () => ({ contents: 'export {};' }));
-    b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: "export const db = {}, ownerEmail = 'owner@example.test', config = {}, emulatorMode = false; export const readyAuth = async () => ({ currentUser: null }); export const isGoogleUser = () => false, inAppBrowser = () => false, authErrorMessage = () => ''; export const signIn = async () => {}, signOutUser = async () => {}; export { nowIso, todayKey, dateKeyOf, hoursAgoIso } from '" + process.cwd() + "/src/app/clock';", resolveDir: process.cwd(), loader: 'ts' }));
+    b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: "export const db = {}, ownerEmail = 'owner@example.test', config = {}, emulatorMode = false; export const readyAuth = async () => ({ currentUser: null }); export const isAccountUser = () => false, appleSignInAvailable = false; export const signInApple = async () => {}, inAppBrowser = () => false, authErrorMessage = () => ''; export const signIn = async () => {}, signOutUser = async () => {}; export { nowIso, todayKey, dateKeyOf, hoursAgoIso } from '" + process.cwd() + "/src/app/clock';", resolveDir: process.cwd(), loader: 'ts' }));
   },
 };
 await build({

@@ -7,7 +7,7 @@ import type { GuestCtx } from '../ctx';
 import { Top, Sec, Row, Pill, Btn, A, Icon, Empty, Field, Input, Textarea, Chip, Stepper, SwitchRow, Avatar, Loading, useToast, fmtDateShort, fmtWeekday, fmtDayLong, fmtRange, firstName, money, todayISO, dateKey, fmtMonthYear, relTime, useDesktop } from '../ui';
 import { navigate, param } from '../router';
 import { useUpcomingEvents, useEvent, useMyTickets, orderTickets, qrPayload, claimOrderPaid, useMyVisits, createVisit, cancelVisit, useMyDonations, createDonation, claimDonationPaid, useMyTabs, claimTabPaid, waLink, telLink, contactPhoneOk, notify, receiptPreference, hasTabPurchases } from '../data';
-import { signIn, signOutUser, authErrorMessage, nowIso, type Session } from '../firebase';
+import { signIn, signInApple, appleSignInAvailable, signOutUser, authErrorMessage, nowIso, type Session } from '../firebase';
 import { createProfile, isTeam } from '../store';
 import { useDemo, setDemo } from '../demo/store';
 import { demoPreviousGuestVisit } from '../demo/data';
@@ -138,7 +138,7 @@ export function OrderPage({ id, ctx }: { id: string; ctx: GuestCtx }) {
       {e.price > 0 && <p className="note">הכרטיסים נוצרים עכשיו ומסומנים "ממתין לתשלום". משלמים בביט או ב־PayBox ומסמנים "העברתי", או במזומן בשער.</p>}
       <div className="actions sticky">
         <Btn size="big" disabled={busy || missing.length > 0 || (e.price > 0 && choice.missing)} onClick={order}>{e.price ? `הזמנה · ${money(total)}` : 'הרשמה'}</Btn>
-        {!ctx.profile && <p className="lead" style={{ padding: 0, fontSize: 14 }}>בפעם הראשונה נכנסים עם Google וממלאים פרטי הרשמה.</p>}
+        {!ctx.profile && <p className="lead" style={{ padding: 0, fontSize: 14 }}>בפעם הראשונה נכנסים עם {appleSignInAvailable ? 'Google או Apple' : 'Google'} וממלאים פרטי הרשמה.</p>}
       </div>
     </>
   );
@@ -150,24 +150,36 @@ export function LoginPage({ ctx }: { ctx: GuestCtx }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const demo = useDemo();
   useEffect(() => { if (ctx.profile) navigate(next, true); }, [ctx.profile]);
-  const go = async () => {
+  const go = async (provider: Provider) => {
     if (demo.on) { setDemo({ persona: 'guest' }); navigate(next, true); return; }
     setBusy(true); setError('');
-    try { await signIn(); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
+    try { await (provider === 'apple' ? signInApple() : signIn()); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
   };
   const about = next.includes('/order') ? 'כדי שהכרטיסים יהיו שלכם ויישמרו בטלפון' : next === '/visit' ? 'כדי שנוכל לחזור אליכם על הביקור' : next === '/donate' ? 'כדי שנוכל לשלוח אישור תשלום ולומר תודה' : next === '/contact' ? 'כדי שהמנהלים ידעו למי לחזור' : 'כדי לראות את הכרטיסים, הביקורים והתרומות שלכם';
   return (
     <>
       <Top back title={next.includes('/order') ? 'רגע לפני הכרטיסים' : 'כניסה'} />
-      <p className="lead ink" style={{ fontSize: 17 }}>{about}, נכנסים פעם אחת עם חשבון Google. לא נשאל שוב.</p>
+      <p className="lead ink" style={{ fontSize: 17 }}>{about}, נכנסים פעם אחת עם {ACCOUNT_WORD}. לא נשאל שוב.</p>
       <div className="actions" style={{ paddingTop: 28 }}>
-        <Btn kind="google" size="big" disabled={busy} onClick={go}><GoogleG />המשך עם Google</Btn>
+        <SignInButtons busy={busy} onPick={go} />
         {error && <p className="lead" style={{ padding: 0, color: 'var(--rust)' }}>{error}</p>}
         <p className="lead" style={{ padding: 0, fontSize: 14 }}>בהרשמה ממלאים שם בעברית, טלפון ופרטים נוספים לפי שאלות החווה. <A to="/terms" style={{ textDecoration: 'underline' }}>תנאי שימוש ופרטיות</A></p>
       </div>
     </>
   );
 }
+type Provider = 'google' | 'apple';
+/** "חשבון Google", and inside the iPhone app also Apple (App Store guideline 4.8: an equal option next to Google). */
+const ACCOUNT_WORD = appleSignInAvailable ? 'חשבון Google או Apple' : 'חשבון Google';
+function SignInButtons({ busy, onPick, block }: { busy: boolean; onPick: (p: Provider) => void; block?: boolean }) {
+  return (
+    <>
+      <Btn kind="google" size="big" block={block} disabled={busy} onClick={() => onPick('google')}><GoogleG />המשך עם Google</Btn>
+      {appleSignInAvailable && <Btn kind="apple" size="big" block={block} disabled={busy} onClick={() => onPick('apple')}><AppleLogo />המשך עם Apple</Btn>}
+    </>
+  );
+}
+const AppleLogo = () => <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>;
 const GoogleG = () => <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.5 13.3l7.8 6C12.2 13.6 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.3 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.5 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.4 0-11.8-4.1-13.7-9.9l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>;
 
 // ---------- onboarding ----------
@@ -410,21 +422,21 @@ export function DonatePage({ ctx }: { ctx: GuestCtx }) {
 }
 
 // ---------- guest account ----------
-/** Signs in with Google right here (no detour through /login). In demo mode it becomes the example guest. */
+/** Signs in with Google (or Apple, in the iPhone app) right here (no detour through /login). In demo mode it becomes the example guest. */
 function AccountSignIn() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const demo = useDemo();
-  const go = async () => {
+  const go = async (provider: Provider) => {
     if (demo.on) { setDemo({ persona: 'guest' }); return; }
     setBusy(true); setError('');
-    try { await signIn(); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
+    try { await (provider === 'apple' ? signInApple() : signIn()); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
   };
   return (
     <section className="acct-welcome">
       <img src="/assets/rava-logo.png" alt="" className="acct-logo" />
       <h1 className="serif">החשבון שלי</h1>
-      <p>כדי לראות את הכרטיסים, הביקורים והתרומות שלכם, נכנסים פעם אחת עם חשבון Google. לא נשאל שוב.</p>
-      <Btn kind="google" size="big" block disabled={busy} onClick={go}><GoogleG />המשך עם Google</Btn>
+      <p>כדי לראות את הכרטיסים, הביקורים והתרומות שלכם, נכנסים פעם אחת עם {ACCOUNT_WORD}. לא נשאל שוב.</p>
+      <SignInButtons busy={busy} onPick={go} block />
       {error && <p className="acct-error" role="alert">{error}</p>}
       <p className="acct-fine">בהרשמה ממלאים שם בעברית, טלפון ופרטים נוספים לפי שאלות החווה.</p>
     </section>

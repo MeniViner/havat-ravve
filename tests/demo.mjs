@@ -50,7 +50,7 @@ const stub = {
       export const db = {}, ownerEmail = 'owner@example.test';
       export const readyAuth = async () => ({});
       export const nowIso = () => new Date().toISOString();
-      export const todayKey = () => '', hoursAgoIso = () => '', isGoogleUser = () => false;
+      export const todayKey = () => '', hoursAgoIso = () => '', isAccountUser = () => false, appleSignInAvailable = false; export const signInApple = async () => {};
     ` }));
   },
 };

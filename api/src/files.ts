@@ -34,8 +34,8 @@ const MAX_PDF = 10 * 1024 * 1024;
 const TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png', 'application/pdf': 'pdf' };
 const EXT_TYPE: Record<string, string> = { jpg: 'image/jpeg', webp: 'image/webp', png: 'image/png', pdf: 'application/pdf' };
 export const KEY_RE = /^(avatar|task|shopping|place|event|eventfile|stall)\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{32}\.(jpg|webp|png|pdf)$/;
-/** The app's own origins: production, its preview channels, and local development. */
-const ORIGIN_RE = /^(https:\/\/havat-ravve(--[a-z0-9-]{1,80})?\.(web\.app|firebaseapp\.com)|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/;
+/** The app's own origins: production, its preview channels, local development, and the iPhone app (Capacitor, docs/app-store.md). */
+const ORIGIN_RE = /^(https:\/\/havat-ravve(--[a-z0-9-]{1,80})?\.(web\.app|firebaseapp\.com)|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?|capacitor:\/\/localhost)$/;
 const TEAM = new Set(['owner', 'manager', 'staff']);
 const MANAGERS = new Set(['owner', 'manager']);
 

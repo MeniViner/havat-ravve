@@ -11,6 +11,7 @@ import {
 import { nowIso } from '../../../clock';
 import { setOfflineSince } from '../../data/system';
 import type { ScreenProps } from '../../ctx';
+import { publicOrigin } from '../../../native';
 import './system.css';
 
 const personaInitials = (p: Persona) => initials(String((demoDoc('users/' + PERSONA_UID[p]) as { displayName?: string } | null)?.displayName || PERSONA_LABELS[p].split(' · ')[1] || ''));
@@ -52,7 +53,7 @@ export function DemoSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const exit = () => { onClose(); setDemo({ on: false }); navigate('/demo', true); };
   const reset = () => { resetDemoData(); setOfflineSince(''); toast.show({ text: 'נתוני הדוגמה אופסו', duration: 2500 }); };
   // the old profile's "קישור להדגמה": a link that opens the demo as the owner
-  const copyLink = () => { void navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast.show({ text: 'הקישור הועתק: /app?demo=owner', duration: 3000 })).catch(() => {}); };
+  const copyLink = () => { void navigator.clipboard?.writeText(publicOrigin() + '/app?demo=owner').then(() => toast.show({ text: 'הקישור הועתק: /app?demo=owner', duration: 3000 })).catch(() => {}); };
   const offline = (on: boolean) => { setOfflineSince(on ? nowIso() : ''); setDemoStates({ offline: on }); };
   return (
     <Sheet className="system-scr" open={open} onClose={onClose} title="הדגמה" aside="נתונים לא אמיתיים">

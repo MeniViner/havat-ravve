@@ -1,0 +1,31 @@
+{
+  "appId": "com.menis10tec.havatravve",
+  "appName": "חוות רווה",
+  "webDir": ".build/native",
+  "backgroundColor": "#f7f5ed",
+  "ios": {
+    "scheme": "App",
+    "contentInset": "never",
+    "backgroundColor": "#f7f5ed",
+    "allowsLinkPreview": false
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": ["google.com", "apple.com"]
+    }
+  },
+  "experimental": {
+    "ios": {
+      "spm": {
+        "swiftToolsVersion": "6.1",
+        "packageOptions": {
+          "@capacitor-firebase/authentication": { "symlink": true }
+        },
+        "packageTraits": {
+          "@capacitor-firebase/authentication": ["Google"]
+        }
+      }
+    }
+  }
+}
