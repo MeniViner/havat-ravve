@@ -19,12 +19,11 @@ const stage = (uid = 'u1') => localStorage.getItem('farm-demo-intro:' + uid);
 const newOpening = () => sessionStorage.clear();
 
 // the pure step
-assert.deepEqual(I.introStep(null, { fresh: true, leftNow: false }), { action: 'start', stage: 'demo' });
-assert.deepEqual(I.introStep(null, { fresh: false, leftNow: false }), { action: 'none', stage: null });
-assert.deepEqual(I.introStep('demo', { fresh: true, leftNow: true }), { action: 'none', stage: 'left' });
-assert.deepEqual(I.introStep('left', { fresh: true, leftNow: false }), { action: 'ask', stage: 'left' });
-assert.deepEqual(I.introStep('demo', { fresh: true, leftNow: false }), { action: 'ask', stage: 'left' }, 'left demo in an earlier opening');
-assert.deepEqual(I.introStep('done', { fresh: true, leftNow: false }), { action: 'none', stage: 'done' });
+assert.deepEqual(I.introStep(null, { leftNow: false }), { action: 'start', stage: 'demo' });
+assert.deepEqual(I.introStep('demo', { leftNow: true }), { action: 'none', stage: 'left' });
+assert.deepEqual(I.introStep('left', { leftNow: false }), { action: 'ask', stage: 'left' });
+assert.deepEqual(I.introStep('demo', { leftNow: false }), { action: 'ask', stage: 'left' }, 'left demo in an earlier opening');
+assert.deepEqual(I.introStep('done', { leftNow: false }), { action: 'none', stage: 'done' });
 
 // the persona is the person's own role or the closest one below it
 assert.equal(I.introPersona(p({}), false, false), 'guest');
@@ -72,14 +71,20 @@ assert.equal(I.runIntro(m, false, true), 'none');
 I.setDemo({ on: true, persona: 'owner' }); I.setDemo({ on: false });
 assert.equal(I.leaveDemoTarget(), '/demo');
 
-// accounts from before the feature are left alone; ?demo-intro=reset starts it again on this device
+// existing accounts get it too (the first time they open this version), with or without createdAt
 const old = p({ uid: 'u3', createdAt: '2026-03-01T08:00:00.000Z' });
-assert.equal(I.runIntro(old, false, false), 'none');
-assert.equal(stage('u3'), null);
-assert.equal(I.runIntro(p({ uid: 'u4', createdAt: undefined }), false, false), 'none', 'no createdAt: treated as an old account');
-localStorage.setItem('farm-demo-intro-reset', '1');
 assert.equal(I.runIntro(old, false, false), 'start');
 assert.deepEqual([I.getDemo().persona, stage('u3')], ['guest', 'demo']);
+I.setDemo({ on: false });
+newOpening();
+assert.equal(I.runIntro(p({ uid: 'u4', createdAt: undefined }), false, false), 'start', 'no createdAt');
+I.setDemo({ on: false });
+// ?demo-intro=reset starts it again on this device, even after it was answered
+newOpening();
+I.answerIntro('u3', false, 'guest');
+localStorage.setItem('farm-demo-intro-reset', '1');
+assert.equal(I.runIntro(old, false, false), 'start');
+assert.equal(stage('u3'), 'demo');
 I.setDemo({ on: false });
 
 console.log('demo-intro: ok');

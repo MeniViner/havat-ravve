@@ -1,4 +1,4 @@
-// First visits in demo: a new account first sees the app with example data, as the example person of its own role (never a higher one).
+// First visits in demo: every account (new, and existing ones the first time they open this version) first sees the app with example data, as the example person of its own role (never a higher one).
 //   1. first opening (role known, demo off)  → demo turns on by itself, and stays on across openings
 //   2. the first time the person leaves demo → nothing more in that opening
 //   3. the next opening                      → one question: "רוצה לראות איך נראים נתוני דמו?" (הפעלה / לא תודה)
@@ -17,9 +17,6 @@ export const INTRO_DECLINED = {
   team: 'אפשר לחזור לדמו בכל רגע מהפרופיל, ב״לראות איך האפליקציה עובדת״',
   guest: 'אפשר לחזור לדמו בכל רגע מ״החשבון שלי״, ב״מצב הדגמה״',
 } as const;
-
-/** Accounts created from this day get the first-visit demo. Older accounts (the working team) are left as they are. */
-export const INTRO_FROM = '2026-11-23';
 
 const STAGE = (uid: string) => 'farm-demo-intro:' + uid;
 /** sessionStorage: demo was left during this opening of the app (the question waits for the next opening). */
@@ -71,8 +68,8 @@ export function introPersona(p: Profile, owner: boolean, manager: boolean): Pers
 }
 
 /** Pure: what to do when a real account is on screen with demo off. */
-export function introStep(stage: IntroStage | null, o: { fresh: boolean; leftNow: boolean }): { action: IntroAction; stage: IntroStage | null } {
-  if (stage === null) return o.fresh ? { action: 'start', stage: 'demo' } : { action: 'none', stage: null };
+export function introStep(stage: IntroStage | null, o: { leftNow: boolean }): { action: IntroAction; stage: IntroStage | null } {
+  if (stage === null) return { action: 'start', stage: 'demo' };
   if (stage === 'done') return { action: 'none', stage };
   // 'demo' with demo off means the person left it; 'left' waits for an opening other than the one they left in
   if (o.leftNow) return { action: 'none', stage: 'left' };
@@ -88,9 +85,8 @@ const readStage = (uid: string): IntroStage | null => {
 export function runIntro(p: Profile, owner: boolean, manager: boolean): IntroAction {
   if (getDemo().on) return 'none';
   let stage = readStage(p.uid);
-  let fresh = typeof p.createdAt === 'string' && p.createdAt.slice(0, 10) >= INTRO_FROM;
-  if (ls.get(RESET)) { ls.del(RESET); stage = null; fresh = true; ss.set(LEFT_NOW, ''); }
-  const step = introStep(stage, { fresh, leftNow: ss.get(LEFT_NOW) === '1' });
+  if (ls.get(RESET)) { ls.del(RESET); stage = null; ss.set(LEFT_NOW, ''); }
+  const step = introStep(stage, { leftNow: ss.get(LEFT_NOW) === '1' });
   if (step.stage !== stage) step.stage ? ls.set(STAGE(p.uid), step.stage) : ls.del(STAGE(p.uid));
   if (step.action === 'start') startOwnDemo(introPersona(p, owner, manager));
   return step.action;
