@@ -17,8 +17,6 @@ import { TEAM_ROUTES, VENDOR_ROUTES, VENDOR_LEGACY, resolve, redirectOf, type Na
 import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet, useInstallBanner } from './screens/system';
-import { useRootTasks } from './data/tasks';
-import { useUrgentOpenCount } from './data/shopping';
 import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
@@ -113,11 +111,10 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const allowed = !hit || ((!hit.route.manager || ctx.manager) && (!hit.route.owner || ctx.owner));
   useEffect(() => { if (hit && !allowed) navigate('/tasks', true); }, [hit, allowed]);
 
-  // nav badges (old shell): my open tasks, urgent shopping, and for managers what waits in "לטיפול" (the manage root's count)
-  const myOpen = useRootTasks(ctx).items.filter((t) => !t.done && t.assignee?.uid === user.uid).length;
-  const urgent = useUrgentOpenCount();
+  // nav badges (RULES.md rule 11): a red count only on ניהול (what waits in "לטיפול", the manage root's count). Not on משימות,
+  // קניות or החווה; the bell carries the personal count in each root header.
   const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
-  const badges: Partial<Record<NavItem['key'], number>> = { tasks: myOpen, shopping: urgent, manage: ctx.manager ? inbox : 0 };
+  const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
   let screen: ReactNode;
