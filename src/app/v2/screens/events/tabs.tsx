@@ -6,6 +6,7 @@ import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen } from '../../core';
 import { TopBar, PageTitle, StatRow, StatTile, ChipRow, Chip, ListCard, Row, Avatar, Tag, EmptyState, MoreMenu } from '../../kit';
 import { useEvent, useEventTabs, hasTabPurchases } from '../../../data';
+import { gw } from '../../gender';
 import { money, relDay } from '../../format';
 import { tableCell, useTableView } from '../../patterns';
 import { tabUnits, itemsWord } from './logic';
@@ -39,7 +40,7 @@ function Tabs({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   });
   if (table.active) return table.screen;
   const chip = (v: F, label: string, n: number) => <Chip key={v} selected={f === v} onClick={() => setFilter(v)}>{`${label} · ${n}`}</Chip>;
-  const tag = (t: Tab) => (t.status === 'claimed' ? <Tag tone="waiting">סימן שהעביר</Tag> : t.status === 'paid' ? <Tag tone="paid">{TAB_LABELS.paid}</Tag>
+  const tag = (t: Tab) => (t.status === 'claimed' ? <Tag tone="waiting">{gw(t.guestName, 'סימן שהעביר', 'סימנה שהעבירה')}</Tag> : t.status === 'paid' ? <Tag tone="paid">{TAB_LABELS.paid}</Tag>
     : t.status === 'waived' ? <Tag tone="neutral">{TAB_LABELS.waived}</Tag> : undefined);
   return (
     <AppScreen variant="detail" gap={10}>

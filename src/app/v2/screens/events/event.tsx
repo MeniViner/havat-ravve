@@ -14,6 +14,7 @@ import {
   cancelOrder, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
 } from '../../../data';
 import { nowIso, nowMs, useClockVersion } from '../../../clock';
+import { gw } from '../../gender';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
 import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
@@ -130,6 +131,8 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
 const STATUS_TAG: Record<Order['status'], { tone: 'waiting' | 'neutral' | 'paid'; text: string }> = {
   claimed: { tone: 'waiting', text: 'סימן שהעביר' }, pending: { tone: 'neutral', text: PAYMENT_LABELS.pending }, paid: { tone: 'paid', text: PAYMENT_LABELS.paid }, free: { tone: 'neutral', text: PAYMENT_LABELS.free },
 };
+/** "סימן שהעביר" / "סימנה שהעבירה" follows the guest (as Q4, Q6 and Q13 word it). */
+const statusTag = (o: Order) => (o.status === 'claimed' ? { ...STATUS_TAG.claimed, text: gw(o.name, 'סימן שהעביר', 'סימנה שהעבירה') } : STATUS_TAG[o.status]);
 const payTarget = (e: FarmEvent, o: Order): PayConfirmTarget => ({
   collection: 'tickets', ids: o.tickets.map((t) => t.id), uid: o.ownerUid, name: o.name, phone: o.phone, amount: o.total, purpose: `כרטיסים לאירוע ${e.title}`, event: e.title,
 });
@@ -190,7 +193,7 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
           )}
           <ul className="k-list">
             {list.map((o) => {
-              const tag = o.cancelled ? { tone: 'neutral' as const, text: 'בוטל' } : STATUS_TAG[o.status];
+              const tag = o.cancelled ? { tone: 'neutral' as const, text: 'בוטל' } : statusTag(o);
               return (
                 <li key={o.orderId} className="events-guestrow">
                   {f === 'claimed' && <CheckButton className="events-guestrow__check" checked={!unselected.has(o.orderId)} onChange={(on) => toggle(o.orderId, on)} label={`בחירה: ${o.name}`} />}
@@ -250,7 +253,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
   const answers = Object.entries(t0.answers || {}).map(([k, v]) => `${e.questions.find((x) => x.id === k)?.label || k} ${v}`);
   const sub = (
     <span className="events-sheet__meta">
-      {ticketsWord(o.count)} · {o.cancelled ? 'בוטל' : STATUS_TAG[o.status].text}{o.arrived ? ` · ${o.arrived} נכנסו` : ''} · {money(o.owed || o.total)}<br />
+      {ticketsWord(o.count)} · {o.cancelled ? 'בוטל' : statusTag(o).text}{o.arrived ? ` · ${o.arrived} נכנסו` : ''} · {money(o.owed || o.total)}<br />
       הוזמן {ddmm(o.createdAt)}{o.phone ? <> · <span dir="ltr">{o.phone}</span></> : null}
       {holders.length > 0 && <><br />{holders.join(' · ')}</>}
       {answers.length > 0 && <><br />{answers.join(' · ')}</>}

@@ -50,7 +50,8 @@ export function useMySteps(ctx: Pick<TeamCtx, 'manager' | 'user'>): { items: MyS
   });
   const uid = ctx.user.uid;
   const loading = projects.loading || lists.some((l) => l.loading);
-  const key = lists.map((l) => l.items).flat();
+  // one dependency per slot: the array keeps its length whatever the number of steps (React warns when it changes)
+  const key = lists.map((l) => l.items);
   const items = useMemo(() => {
     const out: MyStep[] = [];
     active.forEach((project, i) => {
