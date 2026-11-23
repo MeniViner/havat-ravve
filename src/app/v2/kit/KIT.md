@@ -183,7 +183,7 @@ Build every secondary action, choice and delete from these. A screen never grows
 | `MoreDetails` | `title='עוד פרטים'`, `defaultOpen` | Q3: collapsible card for fields beyond the designed set (rule 8). Open when any field inside has a value. Children are rows. |
 | `useReorder` / `DragHandle` | `handle(i, name)`, `rowStyle(i)` | Q21: the handle is the first thing in the row; arrows move with the keyboard. No up/down arrow pairs. |
 | `UnderlineLink` | `icon`, `href/onClick` | Q18: "עריכת פרטים" on the team profile and the guest account only. Other detail screens keep the outlined "עריכה". |
-| `DataTable` | `headers`, `rows` | Q9 card: horizontal scroll inside the card, heading tap sorts. Screen wiring: `useTableView` in `v2/patterns.tsx` (`<route>/table`). |
+| `DataTable` | `headers`, `rows` | Q9 card: horizontal scroll inside the card, heading tap sorts (money and dd.mm.yyyy dates by value). Screen wiring: `useTableView` in `v2/patterns.tsx` (`<route>/table`); cells use `tableCell.date / time / money` there, the same in the table and the CSV. |
 | `PayConfirmSheet` | `name`, `channels`, `initial`, `preview`, `onSend` | Q7 after approving a payment. Screen wiring: `usePayConfirm` in `v2/patterns.tsx`. |
 
 ### Row shape (rule 4, enforced in `Row`)

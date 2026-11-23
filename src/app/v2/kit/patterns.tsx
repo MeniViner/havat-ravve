@@ -316,6 +316,15 @@ export function UnderlineLink({ icon, children, href, onClick, className, style 
 /* ═════════════ Table view (Q9) ═════════════ */
 
 export type TableCell = string | number;
+/** Money ("1,076 ₪") sorts as a number and a date ("19.11.2026", with or without a time) by year, month, day. */
+const sortKey = (c: TableCell): TableCell => {
+  if (typeof c === 'number') return c;
+  const m = /^(-?[\d,]+(?:\.\d+)?) ₪$/.exec(c);
+  if (m) return Number(m[1].replace(/,/g, ''));
+  const d = /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?: (\d{1,2}):(\d{2}))?$/.exec(c);
+  if (d) return Number(d[3]) * 1e8 + Number(d[2]) * 1e6 + Number(d[1]) * 1e4 + Number(d[4] || 0) * 100 + Number(d[5] || 0);
+  return c;
+};
 /**
  * The table view's card: a header row of soft 13/600 headings, 15px cells, the first column bold, horizontal scroll inside
  * the card. Tapping a heading sorts by that column (again to reverse).
@@ -325,7 +334,7 @@ export function DataTable({ headers, rows, label = 'טבלה', className, style 
   const visible = useMemo(() => {
     if (!sort) return rows;
     return [...rows].sort((a, b) => {
-      const x = a[sort.col] ?? '', y = b[sort.col] ?? '';
+      const x = sortKey(a[sort.col] ?? ''), y = sortKey(b[sort.col] ?? '');
       const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he', { numeric: true });
       return r * sort.dir;
     });

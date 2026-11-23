@@ -1,6 +1,6 @@
 // Screen-level wiring of the shared tidy patterns (the kit parts are in kit/patterns.tsx):
 //   useTableView  Q9: "צפייה בטבלה" opens `<route>/table` (its own screen, same nav tab) and "ייצוא לאקסל" downloads the CSV.
-//                 Both are ⋯ items (Q5), never top-bar text.
+//                 Both are ⋯ items (Q5), never top-bar text. Dates and money in its rows go through `tableCell`.
 //   usePayConfirm Q7: after a payment is approved, the sheet that sends the confirmation (WhatsApp / automatic e-mail / none).
 import { useState, type ReactNode } from 'react';
 import { back, navigate, useRoute, useSearch } from '../router';
@@ -9,7 +9,7 @@ import { Button, DataTable, PageTitle, PayConfirmSheet, TopBar, type ActionItem,
 import { downloadCsv } from './data/manage';
 import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../data';
 import { DEFAULT_SETTINGS } from '../types';
-import { money } from './format';
+import { hhmm, keyOf, money } from './format';
 
 /* ═════════════ Q9 table view ═════════════ */
 
@@ -24,6 +24,20 @@ export type TableViewSpec = {
   headers: string[];
   /** Read when the table opens or the file downloads, so it always follows the current filter. */
   rows: () => Cell[][];
+};
+/**
+ * The one way a table view and its CSV write dates and money (Q9), so every list exports alike:
+ *   tableCell.date("2026-11-19" or an ISO time) → "19.11.2026"; tableCell.time(iso) → "19.11.2026 09:40"; tableCell.money(180) → "180 ₪".
+ * Empty in, empty out. The year stays in the date so a file that spans years still reads right in Excel.
+ */
+export const tableCell = {
+  date: (v: string | null | undefined): string => {
+    if (!v) return '';
+    const k = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : Number.isNaN(Date.parse(v)) ? '' : keyOf(v);
+    return k ? k.split('-').reverse().join('.') : '';
+  },
+  time: (v: string | null | undefined): string => (v && !Number.isNaN(Date.parse(v)) ? `${tableCell.date(v)} ${hhmm(v)}` : ''),
+  money: (n: number | null | undefined | ''): string => (n === null || n === undefined || n === '' || Number.isNaN(Number(n)) ? '' : money(Number(n))),
 };
 const clean = (rows: Cell[][]): TableCell[][] => rows.map((r) => r.map((c) => (c === null || c === undefined ? '' : c)));
 

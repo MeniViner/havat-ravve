@@ -6,8 +6,8 @@ import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen } from '../../core';
 import { TopBar, PageTitle, StatRow, StatTile, ChipRow, Chip, ListCard, Row, Avatar, Tag, EmptyState, MoreMenu } from '../../kit';
 import { useEvent, useEventTabs, hasTabPurchases } from '../../../data';
-import { money, ddmm, relDay } from '../../format';
-import { useTableView } from '../../patterns';
+import { money, relDay } from '../../format';
+import { tableCell, useTableView } from '../../patterns';
 import { tabUnits, itemsWord } from './logic';
 import { Loading, Missing, backTo, link } from './shared';
 import { TAB_LABELS, type FarmEvent, type Tab } from '../../../types';
@@ -35,7 +35,7 @@ function Tabs({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     .sort((a, b) => Number(!owes(a)) - Number(!owes(b)) || b.updatedAt.localeCompare(a.updatedAt));
   const table = useTableView({
     title: 'חשבונות הדוכן', filter: e.title, filename: `${e.title} - חשבונות.csv`, headers: ['מי', 'טלפון', 'פריטים', 'סכום', 'מצב', 'עדכון'],
-    rows: () => tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), t.total, TAB_LABELS[t.status], ddmm(t.updatedAt)]),
+    rows: () => tabs.map((t) => [t.guestName, t.guestPhone, t.items.map((i) => `${i.name}×${i.qty}`).join(' '), tableCell.money(t.total), TAB_LABELS[t.status], tableCell.date(t.updatedAt)]),
   });
   if (table.active) return table.screen;
   const chip = (v: F, label: string, n: number) => <Chip key={v} selected={f === v} onClick={() => setFilter(v)}>{`${label} · ${n}`}</Chip>;

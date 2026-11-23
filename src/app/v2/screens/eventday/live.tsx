@@ -5,7 +5,7 @@ import {
   TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, IconButton, Tag, Chip, ChipRow, Hero, HeroNumber, Bar, LiveStatus, Dot, IconTile,
   StatRow, StatTile, DetailList, DetailRow, Quote, BottomBar, FormHeader, TextLink, Sheet, Field, EmptyState, Card, Icon, Overline, MoreMenu,
 } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { AppScreen, useToast, useExternal, waUrl, telUrl } from '../../core';
 import { hhmm, ddmm, dayName, money, firstName } from '../../format';
 import { now, nowMs, nowIso } from '../../../clock';
@@ -166,7 +166,7 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   // Q9 / rule 5: the table view and the CSV are ⋯ items, not a top-bar "אקסל"
   const table = useTableView({
     title: 'סריקות', filter: event?.title, filename: `סריקות-${event?.title || ''}.csv`, headers: ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
-    rows: () => scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', SCAN_WORD[s.result], s.meta, s.amount || '', s.by?.name || '']),
+    rows: () => scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', SCAN_WORD[s.result], s.meta, s.amount ? tableCell.money(s.amount) : '', s.by?.name || '']),
   });
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
   if (table.active) return table.screen;

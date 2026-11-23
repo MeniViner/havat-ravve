@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../core';
 import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, MoreMenu } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import { useEvent } from '../../../data';
@@ -26,8 +26,8 @@ export function PlacesScreen({ ctx }: ScreenProps) {
   const open = root.items.filter((t) => !t.done);
   // rule 5: table view and export are ⋯ items (Q5, Q9), managers only as before
   const table = useTableView({
-    title: 'מקומות בחווה', filename: 'מקומות.csv', headers: ['שם', 'lat', 'lng', 'נשמר'],
-    rows: () => ctx.places.map((place) => [place.name, place.lat, place.lng, (place.createdAt || '').slice(0, 10).split('-').reverse().join('.')]),
+    title: 'מקומות בחווה', filename: 'מקומות.csv', headers: ['שם', 'קו רוחב', 'קו אורך', 'נשמר'],
+    rows: () => ctx.places.map((place) => [place.name, place.lat, place.lng, tableCell.date(place.createdAt)]),
   });
   const here = async () => {
     setBusy(true);

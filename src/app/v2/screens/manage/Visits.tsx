@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, useToast, waUrl, telUrl } from '../../core';
 import { BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, IconButton, ListCard, MoreMenu, PageTitle, Quote, Row, Tag, TopBar, type ActionItem } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { agoLong, dayName, ddmm, dayTime, longDate, firstName } from '../../format';
 import { contactPhoneOk } from '../../../data';
 import { useActivityFor, ACTION_LABELS } from '../../../activity';
@@ -22,7 +22,7 @@ export function VisitsScreen({ ctx }: ScreenProps) {
   const b = visitBuckets(items, ctx.today);
   const table = useTableView({
     title: 'ביקורים', filename: 'ביקורים.csv', headers: ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'],
-    rows: () => items.map((v) => [v.date, v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || '']),
+    rows: () => items.map((v) => [tableCell.date(v.date), v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || '']),
   });
   if (table.active) return table.screen;
   const freshRow = (v: Visit) => <Row key={v.id} minHeight={58} {...lnk(`/manage/visits/${v.id}`)} title={`${v.name} · ${v.people} אנשים`} tags={<Tag tone="waiting">חדש</Tag>} meta={`${when(v)} · ${v.type}`} />;
