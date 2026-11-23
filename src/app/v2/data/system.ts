@@ -9,6 +9,7 @@ import { useAllEvents, useVisits } from '../../data';
 import { useActivityBy } from '../../activity';
 import { getDemo } from '../../demo/store';
 import { readyAuth } from '../../firebase';
+import { isNative } from '../../native';
 import { storePhoto } from '../../upload';
 import type { Activity, CalendarItem, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
@@ -212,7 +213,7 @@ export async function promptInstall() {
   try { await p.prompt(); return (await p.userChoice).outcome === 'accepted'; } catch { return false; }
 }
 export const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-export const isStandalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone);
+export const isStandalone = () => isNative || !!(window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone);
 
 // ---------- the install banner (the old team shell's, src/app/InstallBanner.tsx: same keys, so a dismissal carries over) ----------
 const INSTALL_SEEN_KEY = 'farm-app-install-seen';

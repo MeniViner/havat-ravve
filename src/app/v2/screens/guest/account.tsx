@@ -21,10 +21,10 @@ import { RegistrationQuestions } from '../system/fields';
 import { signOutEverywhere } from '../system/profile';
 import type { Broadcast, Donation, Profile, ReceiptPreference, Tab, Visit } from '../../../types';
 import {
-  type GuestCtx, type Order, type Status, actorOf, paths, useMine, useEvents, useSignIn, orderTag, donationTag, tabTag, visitTag, orderState, dayShort,
+  type GuestCtx, type Order, type Status, actorOf, paths, useMine, useEvents, useSignIn, ACCOUNT_WORD, orderTag, donationTag, tabTag, visitTag, orderState, dayShort,
   RECEIPT_WORD, receiptMethods, canChooseReceipt, useReceiptChoice, saveReceipt, setUpdatesOptIn, audienceText,
 } from './data';
-import { GoogleButton, Note, PayBlock, ReceiptSelect, orderTitle } from './parts';
+import { SignInButtons, Note, PayBlock, ReceiptSelect, orderTitle } from './parts';
 import { messageWhen } from './home';
 
 // ---------- the items under "מה יש לי בחווה" ----------
@@ -77,8 +77,8 @@ export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
       <main className="guest-signin__main">
         <span className="guest-signin__mark" aria-hidden="true"><Icon name="farm" size={32} /></span>
         <h1 className="guest-signin__title">{next?.includes('/order') ? 'רגע לפני הכרטיסים' : 'החשבון שלי בחוות רווה'}</h1>
-        <p className="guest-signin__text">{about}, נכנסים פעם אחת עם חשבון Google. לא נשאל שוב.</p>
-        <GoogleButton disabled={sign.busy} onClick={() => void sign.go(next)} />
+        <p className="guest-signin__text">{about}, נכנסים פעם אחת עם חשבון {ACCOUNT_WORD}. לא נשאל שוב.</p>
+        <SignInButtons sign={sign} next={next} />
         {sign.error && <span className="k-field__error" role="alert">{sign.error}</span>}
         <span className="guest-signin__fine">בהרשמה ממלאים שם בעברית וטלפון. <button type="button" className="guest-inlinelink" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
       </main>

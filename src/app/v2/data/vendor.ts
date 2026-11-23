@@ -13,6 +13,7 @@ import { hhmm, ddmm, dayName, keyOf } from '../format';
 import { NEED_LABELS } from '../../types';
 import type { Actor, FarmEvent, Profile, VendorNeed, VendorV2, EventVendorV2, VendorRequest, VendorRequestKind } from '../../types';
 import type { Session } from '../../firebase';
+import { publicOrigin } from '../../native';
 import type { V2Ctx } from '../ctx';
 
 // ---------- types (local extensions of types.ts; every field optional, old documents load without them) ----------
@@ -164,9 +165,8 @@ export function peopleOf(v: VendorDoc | null, invites: VendorInviteDoc[] = []): 
 }
 
 // ---------- links ----------
-const origin = () => (typeof location !== 'undefined' ? location.origin : 'https://havat-ravve.web.app');
 /** The WhatsApp link a vendor opens: lands on D1 for an event, or on the vendor home for a helper. `k` is the access code. */
-export const inviteLink = (eid: string, code?: string) => `${origin()}/app/vendor${eid ? `/invite/${eid}` : ''}${code ? `?k=${code}` : ''}`;
+export const inviteLink = (eid: string, code?: string) => `${publicOrigin()}/app/vendor${eid ? `/invite/${eid}` : ''}${code ? `?k=${code}` : ''}`;
 const newCode = () => {
   const abc = 'abcdefghijkmnpqrstuvwxyz23456789'; let s = '';
   const rnd = typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(12)) : Array.from({ length: 12 }, () => Math.floor(Math.random() * 256));

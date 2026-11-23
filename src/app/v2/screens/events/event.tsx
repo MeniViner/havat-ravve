@@ -25,6 +25,7 @@ import {
 import { PayConfirmStatus } from './payconfirm';
 import { tableCell, usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
 import { useCounters, useScans, useCash, liveNumbers as liveOf } from '../../data/eventday';
+import { publicOrigin } from '../../../native';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
 import { DEFAULT_SETTINGS, PAYMENT_LABELS, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
 
@@ -86,7 +87,7 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const openTasks = tasks.items.filter((t) => !t.done).length;
   const fileNames = [...files.items.map((f) => f.name), ...(e.files || []).map((f) => f.name)];
   const share = async () => {
-    const url = `${location.origin}/app/events/${e.id}`;
+    const url = `${publicOrigin()}/app/events/${e.id}`;
     if (navigator.share) {
       try { await navigator.share({ title: e.title, url }); return; } catch (err) { if ((err as Error)?.name === 'AbortError') return; /* closed the share sheet */ }
     }

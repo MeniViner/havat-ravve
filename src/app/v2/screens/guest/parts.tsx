@@ -3,13 +3,14 @@
 // and the Google button (U12, and signing in on a form).
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { Icon, IconButton, Stepper, SelectRow, PickerSheet, cx } from '../../kit';
+import { Icon, IconButton, Stepper, SelectRow, PickerSheet, Sheet, cx } from '../../kit';
 import { useExternal, useToast } from '../../core';
 import type { Profile, ReceiptPreference, Settings, Ticket } from '../../../types';
 import { receiptDestination } from '../../../data';
 import { qrPayload } from '../../../data';
 import { money } from '../../format';
-import { RECEIPT_WORD, receiptMethods, canChooseReceipt, ticketsWord, whenShort, type Order, orderState } from './data';
+import { appleSignInAvailable } from '../../../firebase';
+import { type useSignIn, RECEIPT_WORD, receiptMethods, canChooseReceipt, ticketsWord, whenShort, type Order, orderState } from './data';
 
 export const FARM_PHOTO = '/assets/rava-sunset.webp';
 
@@ -143,4 +144,30 @@ const GoogleG = () => <svg width="20" height="20" viewBox="0 0 48 48" aria-hidde
 /** U12: white, ink-bordered, 56 high. */
 export function GoogleButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return <button type="button" className="guest-google" disabled={disabled} onClick={onClick}><GoogleG />המשך עם Google</button>;
+}
+// Apple's own mark (Simple Icons, CC0); black button with white text, as Apple's guidelines ask. Only inside the iPhone app.
+const AppleMark = () => <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>;
+export function AppleButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return <button type="button" className="guest-google guest-apple" disabled={disabled} onClick={onClick}><AppleMark />המשך עם Apple</button>;
+}
+/** Google, and Apple inside the iPhone app. */
+export function SignInButtons({ sign, next }: { sign: ReturnType<typeof useSignIn>; next?: string }) {
+  return (
+    <>
+      <GoogleButton disabled={sign.busy} onClick={() => void sign.go(next, 'google')} />
+      {appleSignInAvailable && <AppleButton disabled={sign.busy} onClick={() => void sign.go(next, 'apple')} />}
+    </>
+  );
+}
+/** The iPhone app's choice when a form signs in (on the website a form opens Google directly and this draws nothing). */
+export function SignInChoice({ sign }: { sign: ReturnType<typeof useSignIn> }) {
+  if (!appleSignInAvailable) return null;
+  return (
+    <Sheet open={sign.choosing} onClose={sign.closeChoice} title="כניסה לחשבון" sub="פעם אחת, ואחר כך ממלאים שם וטלפון.">
+      <div className="guest-signin__choice">
+        <SignInButtons sign={sign} />
+        {sign.error && <span className="k-field__error" role="alert">{sign.error}</span>}
+      </div>
+    </Sheet>
+  );
 }

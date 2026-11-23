@@ -5,7 +5,7 @@ import { AppScreen, go } from '../../core';
 import { Button, EmptyState, ListCard, MoreMenu, PageTitle, Row, Tag, TopBar, type ActionItem } from '../../kit';
 import { qrPayload } from '../../../data';
 import { firstName, money } from '../../format';
-import { type GuestCtx, type Order, paths, useMine, orderState, ticketsWord, dayShort, downloadIcs, share, orderTag } from './data';
+import { type GuestCtx, type Order, paths, useMine, orderState, ticketsWord, dayShort, downloadIcs, share, orderTag, ACCOUNT_WORD } from './data';
 import { TicketCard, Note } from './parts';
 
 /** The card's ⋯ (U5, U6): share this ticket, add the event to the calendar, the event page. */
@@ -39,7 +39,7 @@ export function TicketsPage({ ctx }: { ctx: GuestCtx }) {
     return (
       <AppScreen variant="root" gap={10}>
         {head()}
-        <EmptyState variant="fill" icon="ticket" title="עוד לא נכנסתם" text="הכרטיסים, הביקורים והתרומות שלכם מחכים אחרי כניסה עם Google."
+        <EmptyState variant="fill" icon="ticket" title="עוד לא נכנסתם" text={`הכרטיסים, הביקורים והתרומות שלכם מחכים אחרי כניסה עם ${ACCOUNT_WORD}.`}
           action={<Button onClick={() => go('/login?next=' + encodeURIComponent(paths(ctx).tickets))}>כניסה</Button>} />
       </AppScreen>
     );

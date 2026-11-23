@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import type { FarmEvent, Ticket, Donation, Tab, Visit, Profile, Settings, Broadcast, PaymentStatus, ReceiptPreference } from '../../../types';
 import { AUDIENCE_LABELS, RECEIPT_PREFERENCE_FIELD } from '../../../types';
 import type { Session } from '../../../firebase';
-import { signIn, authErrorMessage } from '../../../firebase';
+import { signIn, signInApple, appleSignInAvailable, authErrorMessage } from '../../../firebase';
 import { useUpcomingEvents, receiptDestination, receiptPreference, useMyTickets, useMyVisits, useMyDonations, useMyTabs } from '../../../data';
 import { updateOwnProfile } from '../../../store';
 import { write } from '../../../db';
@@ -151,16 +151,26 @@ export function audienceText(b: Broadcast, byId: Map<string, FarmEvent>) {
 }
 
 // ---------- signing in on the page ----------
-/** Google sign-in right where the person is (no detour). In the demo it becomes the example guest. */
+export type SignInProvider = 'google' | 'apple';
+/** "Google", or "Google או Apple" inside the iPhone app (App Store guideline 4.8: Sign in with Apple next to Google). */
+export const ACCOUNT_WORD = appleSignInAvailable ? 'Google או Apple' : 'Google';
+/**
+ * Sign-in right where the person is (no detour). In the demo it becomes the example guest.
+ * On the website `go()` opens Google at once. In the iPhone app a form's `go()` first opens the choice of Google or Apple
+ * (`choosing`, drawn by <SignInChoice>), so what was typed stays.
+ */
 export function useSignIn() {
   const demo = useDemo();
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  const go = async (next?: string) => {
+  const [choosing, setChoosing] = useState(false);
+  const go = async (next?: string, provider?: SignInProvider) => {
     if (demo.on) { setDemo({ persona: 'guest' }); if (next) navigate(next, true); return; }
+    if (!provider && appleSignInAvailable) { setError(''); setChoosing(true); return; }
     setBusy(true); setError('');
-    try { await signIn(); } catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
+    try { await (provider === 'apple' ? signInApple() : signIn()); setChoosing(false); }
+    catch (e) { setError(authErrorMessage(e)); } finally { setBusy(false); }
   };
-  return { go, busy, error };
+  return { go, busy, error, choosing, closeChoice: () => setChoosing(false) };
 }
 
 // ---------- calendar and sharing ----------

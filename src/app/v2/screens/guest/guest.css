@@ -164,6 +164,8 @@
   font: inherit; font-size: 18px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px;
 }
 .guest-google:disabled { opacity: .6; cursor: default; }
+.guest-apple { background: #000000; border-color: #000000; color: #FFFFFF; }
+.guest-signin__choice { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
 .v2 .guest-google:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 
 /* ---------- U14 ---------- */

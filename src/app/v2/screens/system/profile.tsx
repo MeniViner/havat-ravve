@@ -19,6 +19,7 @@ import {
   receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { RegistrationQuestions } from './fields';
+import { isNative, publicOrigin } from '../../../native';
 import './system.css';
 
 export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
@@ -72,12 +73,12 @@ export function ProfileScreen({ ctx }: ScreenProps) {
             meta={ctx.viewAsStaff ? 'פעיל עכשיו. נגיעה מחזירה לתצוגה הרגילה' : 'בלי ניהול ובלי פרויקטים'} onClick={() => setViewAsStaff(!ctx.viewAsStaff)} />
         )}
         {!lead && !ctx.viewAsStaff && !vendor && <Row leading={<IconTile icon="people" />} title="פנייה למנהלים" meta="שאלה, בקשה או בעיה" onClick={() => go('/contact?from=team')} />}
-        <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />
+        {!isNative && <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />}
         {!vendor && <Row leading={<IconTile icon="ticket" />} title="הכרטיסים שלי כאורח" meta="" onClick={() => go('/me/tickets')} />}
       </ListCard>
       <div className="system-foot">
         <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
-        <Button variant="quiet" onClick={() => window.open('/', '_blank', 'noopener')}>האתר של החווה</Button>
+        <Button variant="quiet" onClick={() => window.open(publicOrigin() + '/', '_blank', 'noopener')}>האתר של החווה</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
         {/* the demo link (parity): a quiet link too, only while the demo is off */}
         {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}

@@ -6,8 +6,8 @@ import { useEvent, orderTickets, claimOrderPaid } from '../../../data';
 import { authErrorMessage } from '../../../firebase';
 import { back } from '../../../router';
 import { dayName, longDate, money } from '../../format';
-import { type GuestCtx, paths, useMine, useReceiptChoice, saveReceipt, useSignIn, ticketsWord, dayShort, orderState } from './data';
-import { StepperCard, TotalBlock, ReceiptSelect, Note, PayBlock, CheckHead } from './parts';
+import { type GuestCtx, paths, useMine, useReceiptChoice, saveReceipt, useSignIn, ACCOUNT_WORD, ticketsWord, dayShort, orderState } from './data';
+import { StepperCard, TotalBlock, ReceiptSelect, Note, PayBlock, CheckHead, SignInChoice } from './parts';
 
 export function OrderPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const { item: e, loading } = useEvent(id);
@@ -39,7 +39,8 @@ export function OrderPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   return (
     <AppScreen variant="form" gap={14} bar={<BottomBar column={!ctx.profile}>
       <Button size="bar" grow={!!ctx.profile} block={!ctx.profile} disabled={busy || sign.busy || (!!ctx.profile && (missing.length > 0 || (paid && choice.missing)))} onClick={order}>{label}</Button>
-      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || 'בפעם הראשונה נכנסים עם Google וממלאים פרטי הרשמה.'}</span>}
+      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || `בפעם הראשונה נכנסים עם ${ACCOUNT_WORD} וממלאים פרטי הרשמה.`}</span>}
+      <SignInChoice sign={sign} />
     </BottomBar>}>
       <FormHeader title={paid ? 'הזמנת כרטיסים' : 'הרשמה'} onCancel={cancel} />
       <span className="guest-sub">{e.title} · {dayName(e.start)} {longDate(e.start)}</span>

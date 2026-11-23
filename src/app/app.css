@@ -222,6 +222,7 @@ tr.checking td{opacity:.35;transition:opacity .3s .1s}
 .btn.block{width:100%}
 .btn.gold{background:var(--gold);color:var(--ink)}
 .btn.google{background:var(--white);border-color:var(--line);color:var(--ink)}
+.btn.apple{background:#000;border-color:#000;color:#fff}
 .iconbtn{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:var(--green)}
 .iconbtn.ghost{border:1.5px solid var(--line);background:var(--white)}
 .fab{position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 18px);inset-inline-start:20px;display:flex;background:var(--green);color:var(--paper);border-radius:32px;box-shadow:0 8px 24px rgba(29,41,32,.28);overflow:hidden;z-index:5}

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
-import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
+import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isAccountUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
 import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
@@ -20,7 +20,7 @@ function startAuth() {
   if (authStarted) return;
   authStarted = true;
   void readyAuth().then((auth) => onAuthStateChanged(auth, (user) => {
-    authState = { loading: false, user: isGoogleUser(user) ? user : null };
+    authState = { loading: false, user: isAccountUser(user) ? user : null };
     authListeners.forEach((listener) => listener());
   }));
 }

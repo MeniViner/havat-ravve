@@ -30,6 +30,16 @@
       "port": 5183
     },
     {
+      "name": "app-dev-ios",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=5293",
+        "node",
+        "scripts/dev.mjs"
+      ],
+      "port": 5293
+    },
+    {
       "name": "console-dev",
       "runtimeExecutable": "env",
       "runtimeArgs": [

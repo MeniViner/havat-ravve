@@ -14,6 +14,7 @@ import { useDoc, write } from '../../db';
 import { nowIso } from '../../clock';
 import { getDemo } from '../../demo/store';
 import type { Profile } from '../../types';
+import { isNative } from '../../native';
 
 export type PushMode = 'off' | 'webpush' | 'fcm';
 export type PushConfig = { mode: PushMode; vapidPublicKey?: string; fcmVapidKey?: string; updatedAt?: string };
@@ -79,6 +80,8 @@ export function usePush(profile: Profile) {
   }, []);
   let state: PushState;
   if (demo) state = prefs?.enabled ? 'on' : 'ask';
+  // The iPhone app has no Web Push (WKWebView); its own native push is a later step (docs/app-store.md). Until then: in-app only.
+  else if (isNative) state = 'off';
   else if (!pushCapable()) state = isIos() && !standalone() ? 'needs-install' : 'unsupported';
   else if (config.mode === 'off') state = 'off';
   else if (perm === 'denied') state = 'denied';
@@ -111,6 +114,7 @@ async function saveDevice(profile: Profile, device: PushDevice | null, patch: Pa
 /** Must run inside a tap (iOS asks only from a user gesture). Resolves to the new state. */
 export async function enablePush(profile: Profile, config: PushConfig): Promise<PushState> {
   if (getDemo().on) { await saveDevice(profile, null, { enabled: true }); return 'on'; }
+  if (isNative) return 'off';
   if (!pushCapable()) return isIos() && !standalone() ? 'needs-install' : 'unsupported';
   if (config.mode === 'off') return 'off';
   const perm = await Notification.requestPermission();

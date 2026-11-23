@@ -14,8 +14,8 @@ import { DAY_LETTERS, MONTHS, dayName, longDate, money } from '../../format';
 import { registrationQuestions, answersFor, missingAnswers } from '../../data/system';
 import { RegistrationQuestions } from '../system/fields';
 import type { Settings } from '../../../types';
-import { type GuestCtx, paths, useSignIn, useReceiptChoice, saveReceipt, payWays } from './data';
-import { StepperCard, TotalBlock, ReceiptSelect, Note } from './parts';
+import { type GuestCtx, paths, useSignIn, ACCOUNT_WORD, useReceiptChoice, saveReceipt, payWays } from './data';
+import { StepperCard, TotalBlock, ReceiptSelect, Note, SignInChoice } from './parts';
 import { UpdatesSwitch } from './account';
 
 // ---------- the date picker (U8) ----------
@@ -74,7 +74,7 @@ export function VisitForm({ ctx }: { ctx: GuestCtx }) {
   return (
     <AppScreen variant="form" gap={14} bar={<BottomBar column={!ctx.profile}>
       <Button size="bar" block={!ctx.profile} grow={!!ctx.profile} disabled={busy || sign.busy || (!!ctx.profile && (!date || !type))} onClick={send}>שליחת הבקשה</Button>
-      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || 'בפעם הראשונה נכנסים עם Google וממלאים פרטי הרשמה.'}</span>}
+      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || `בפעם הראשונה נכנסים עם ${ACCOUNT_WORD} וממלאים פרטי הרשמה.`}</span>}<SignInChoice sign={sign} />
     </BottomBar>}>
       <FormHeader title="תיאום ביקור" onCancel={() => back('/')} />
       <span className="guest-sub">ממלאים כמה פרטים, ואנחנו חוזרים אליכם לסגור שעה.</span>
@@ -116,7 +116,7 @@ export function DonateForm({ ctx }: { ctx: GuestCtx }) {
   return (
     <AppScreen variant="form" gap={14} bar={<BottomBar column={!ctx.profile}>
       <Button size="bar" icon="heart" block={!ctx.profile} grow={!!ctx.profile} disabled={busy || sign.busy || (!!ctx.profile && (value < 1 || choice.missing || (receipt && !name)))} onClick={give}>לתרום {money(value)}</Button>
-      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || 'בפעם הראשונה נכנסים עם Google וממלאים פרטי הרשמה.'}</span>}
+      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || `בפעם הראשונה נכנסים עם ${ACCOUNT_WORD} וממלאים פרטי הרשמה.`}</span>}<SignInChoice sign={sign} />
     </BottomBar>}>
       <FormHeader title="תרומה לחווה" onCancel={() => back('/')} />
       <span className="guest-sub">כל תרומה הולכת ישר לעבודה בשטח: עצים, מים, בעלי חיים.</span>
@@ -175,7 +175,7 @@ export function ContactForm({ ctx }: { ctx: GuestCtx }) {
   return (
     <AppScreen variant="form" gap={14} bar={<BottomBar column={!ctx.profile}>
       <Button size="bar" block={!ctx.profile} grow={!!ctx.profile} disabled={busy || sign.busy || (!!ctx.profile && !ok)} onClick={send}>שליחת הפנייה</Button>
-      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || 'כדי שהמנהלים ידעו למי לחזור, נכנסים עם Google.'}</span>}
+      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || `כדי שהמנהלים ידעו למי לחזור, נכנסים עם ${ACCOUNT_WORD}.`}</span>}<SignInChoice sign={sign} />
     </BottomBar>}>
       <FormHeader title="פנייה לחווה" onCancel={leave} />
       <ContactLinks settings={ctx.settings} />
