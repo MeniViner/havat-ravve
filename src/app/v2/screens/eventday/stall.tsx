@@ -3,7 +3,7 @@
 // Q28/Q29: "כבר בחשבון: …" under the buyer opens the account sheet, where the crew removes a line, marks the account paid,
 // and clears the cart (with the undo toast). E9 rows open the account; they carry no buttons (rule 4).
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, TextLink, Chip, ChipRow, EmptyState, GateCamera, UnderlineLink } from '../../kit';
+import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, IconTile, Chip, ChipRow, EmptyState, GateCamera, UnderlineLink } from '../../kit';
 import { gw } from '../../gender';
 import { AppScreen, useToast } from '../../core';
 import { hhmm, money, firstName } from '../../format';
@@ -75,8 +75,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
   const walkIns = query.trim() ? tabs.items.filter((t) => isWalkInTab(t) && t.status === 'open' && (t.guestName.toLowerCase().includes(query.trim().toLowerCase()) || (d.length >= 4 && digits(t.guestPhone).includes(d)))) : [];
   return (
     <AppScreen variant="detail">
-      <TopBar back={live ? { label: 'האירוע חי', ...to(`/manage/events/${id}/live`) } : { label: 'אירוע', ...to('/event' + qs) }}
-        end={<TextLink {...to('/event/stall/tabs' + qs)}>{openTabs.length === 1 ? 'חשבון פתוח אחד' : `${openTabs.length} חשבונות פתוחים`}</TextLink>} />
+      <TopBar back={live ? { label: 'האירוע חי', ...to(`/manage/events/${id}/live`) } : { label: 'אירוע', ...to('/event' + qs) }} />
       <PageTitle>מי קונה?</PageTitle>
       <button type="button" className="eventday-scanbtn" onClick={() => setScan(true)}><Icon name="qr" size={24} />סריקת הכרטיס של האורח</button>
       <SearchField label="חיפוש בשם או טלפון" value={query} active={!!query} onChange={(e) => setQuery(e.target.value)} />
@@ -99,6 +98,8 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
         </ListCard>
       )}
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} onClick={() => setWalk(true)}>לקוח בלי כרטיס</Button>
+      {/* rule 5: the open accounts (E9) are a row in the body, not text beside the back link (E7 had it in the top bar) */}
+      <ListCard><Row minHeight={58} leading={<IconTile icon="cart" />} title={openTabs.length === 1 ? 'חשבון פתוח אחד' : `${openTabs.length} חשבונות פתוחים`} {...to('/event/stall/tabs' + qs)} /></ListCard>
       <WalkInTab open={walk} onClose={() => setWalk(false)} onDone={(g) => { setWalk(false); choose(g); }} />
     </AppScreen>
   );
