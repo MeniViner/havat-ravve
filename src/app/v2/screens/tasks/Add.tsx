@@ -82,7 +82,8 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   // ---- task fields
   const sugId = useMemo(() => suggestPlace(text, ctx.places), [text, ctx.places]);
   const startPlace = template?.placeId || task?.location?.placeId || '';
-  const [where, setWhere] = useState<Where>(task?.location || template?.placeId ? 'other' : 'sug');
+  // a stored place that is also the one the text suggests shows as that chip, not twice
+  const [where, setWhere] = useState<Where>(() => (startPlace && startPlace === suggestPlace(initialText, ctx.places) ? 'sug' : task?.location || startPlace ? 'other' : 'sug'));
   const [otherPlace, setOtherPlace] = useState(startPlace);
   const [herePos, setHerePos] = useState<TaskLocation | null>(null);
   const startWho = template ? (template.assignee ? 'other' : 'free') : !task?.assignee ? 'free' : task.assignee.uid === ctx.user.uid ? 'me' : 'other';
@@ -112,6 +113,9 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   }, [allEvents.items, eventId]);
   const [managersOnly, setManagersOnly] = useState(!!(task?.managersOnly || template?.managersOnly));
   const [sheet, setSheet] = useState<'' | 'place' | 'who' | 'event' | 'note'>('');
+  // a picker closed without a choice puts its chip group back (PickerSheet calls onChange, then onClose, in one event)
+  const chose = useRef(false);
+  const openSheet = (k: typeof sheet) => { chose.current = false; setSheet(k); };
 
   // ---- shopping fields (derived from the text until touched)
   const parsed = parseShopping(text);
@@ -154,7 +158,7 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   ];
 
   const chooseWhere = async (v: Where) => {
-    if (v === 'other') { setWhere('other'); setSheet('place'); return; }
+    if (v === 'other') { setWhere('other'); openSheet('place'); return; }
     if (v === where) { setWhere(''); return; }
     setWhere(v);
     if (v === 'here') {
@@ -165,7 +169,7 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
       } catch (e) { setWhere(''); fail(e); }
     }
   };
-  const chooseWho = (v: Who) => { setWho(v); if (v === 'other') setSheet('who'); };
+  const chooseWho = (v: Who) => { setWho(v); if (v === 'other') openSheet('who'); };
   const chooseWhen = (v: When) => {
     if (v === 'recurring' && who === 'me') { setWho('other'); setOtherWho(ctx.user.uid); }
     if (v !== 'recurring' && who === 'other' && otherWho === ctx.user.uid) { setWho('me'); setOtherWho(''); }
@@ -365,10 +369,10 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
         </>
       )}
 
-      <PickerSheet open={sheet === 'place'} onClose={() => { setSheet(''); if (!pickedPlace && !task?.location) setWhere(sugPlace ? 'sug' : ''); }} title="באיזה מקום"
-        options={ctx.places.map((x) => ({ value: x.id, label: x.name }))} value={otherPlace} onChange={(v) => { setOtherPlace(v); setWhere('other'); }} />
-      <PickerSheet open={sheet === 'who'} onClose={() => { setSheet(''); if (!pickedPerson) setWho('free'); }} title={recurring ? 'מי' : 'על מי'}
-        options={people.map((x) => ({ value: x.uid, label: x.uid === ctx.user.uid ? 'אני' : x.displayName }))} value={otherWho} onChange={(v) => { setOtherWho(v); setWho('other'); }} />
+      <PickerSheet open={sheet === 'place'} onClose={() => { setSheet(''); if (!chose.current && !pickedPlace && !task?.location) setWhere(sugPlace ? 'sug' : ''); }} title="באיזה מקום"
+        options={ctx.places.map((x) => ({ value: x.id, label: x.name }))} value={otherPlace} onChange={(v) => { chose.current = true; setOtherPlace(v); setWhere(v === sugId ? 'sug' : 'other'); }} />
+      <PickerSheet open={sheet === 'who'} onClose={() => { setSheet(''); if (!chose.current && !pickedPerson) setWho('free'); }} title={recurring ? 'מי' : 'על מי'}
+        options={people.map((x) => ({ value: x.uid, label: x.uid === ctx.user.uid ? 'אני' : x.displayName }))} value={otherWho} onChange={(v) => { chose.current = true; setOtherWho(v); setWho('other'); }} />
       <PickerSheet open={sheet === 'event'} onClose={() => setSheet('')} title="קשור לאירוע" value={eventId} onChange={setEventId}
         options={[{ value: '', label: 'לא קשור לאירוע' },
           ...eventOptions.map((e) => ({ value: e.id, label: e.title, meta: e.start ? `${dayName(e.start)} ${ddmm(e.start)}` : undefined })),

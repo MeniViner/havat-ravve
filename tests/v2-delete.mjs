@@ -40,6 +40,9 @@ async function session(persona) {
 }
 const step = async (name, fn) => { try { await fn(); } catch (e) { log(false, `${name}: ${String(e).split('\n')[0]}`); } };
 let today = '';
+/** Tidy rule 6: ⋯ ("עוד פעולות") → "מחיקה" → the confirmation. */
+const more = async (s) => { await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).click(); await s.page.waitForTimeout(250); };
+const viaMore = async (s, title, button = 'מחיקה', opts = {}) => { await more(s); await s.confirm('מחיקה', title, button, { ...opts, locator: s.dialog().getByRole('button', { name: 'מחיקה' }) }); };
 const clean = async (s, who) => { log(!s.errors.length, `${who}: no console errors and nothing outside the demo${s.errors.length ? ' — ' + s.errors.slice(0, 3).join(' | ') : ''}`); await s.ctx.close(); };
 
 // ---------- owner: every entity ----------
@@ -48,36 +51,36 @@ await step('owner', async () => {
 
   // task: cancel keeps it, then delete
   await s.go('/tasks/demo-t-paint/edit');
-  await s.page.getByRole('button', { name: 'מחיקת המשימה' }).click(); await s.page.waitForTimeout(200);
+  await more(s); await s.dialog().getByRole('button', { name: 'מחיקה' }).click(); await s.page.waitForTimeout(300);
   await s.dialog().getByRole('button', { name: 'ביטול' }).click(); await s.page.waitForTimeout(200);
   log(!(await s.dialog().count()) && s.path() === '/tasks/demo-t-paint/edit', 'task: "ביטול" closes the confirmation and keeps the task');
-  await s.confirm('מחיקת המשימה', 'למחוק את המשימה?', 'מחיקה', { text: 'תימחק מהרשימה של כולם' });
+  await viaMore(s, 'למחוק את המשימה?', 'מחיקה', { text: 'תימחק מהרשימה של כולם', label: 'task' });
   log(s.path() === '/tasks' && await s.has('המשימה נמחקה'), 'task: back on the list with "המשימה נמחקה"');
   await s.reload(); log(!(await s.has('לצבוע את דלת המחסן')), 'task: gone after a reload');
   await s.go('/tasks/demo-t-paint'); log(await s.has('המשימה לא נמצאה'), 'task: its page says it is not there');
 
-  // a recurring day's instance: deleted, and not created again on the next load
-  await s.go('/tasks');
+  // a recurring day's instance: deleted, and not created again on the next load (done by me today: under "רק שלי", Q2)
+  await s.go('/tasks?view=mine');
   const href = await s.page.locator('a[href*="demo-tpl-gate_"]').first().getAttribute('href').catch(() => '');
   log(!!href, 'recurring: today\'s gate instance is on the list');
   if (href) {
     const id = href.split('/').pop(); today = id.split('_').pop();
     await s.go(`/tasks/${id}/edit`);
-    await s.confirm('מחיקת המשימה', 'למחוק את המשימה?', 'מחיקה', { text: 'רק המשימה של היום תימחק', label: 'recurring' });
-    await s.reload(); await s.go('/tasks'); await s.page.waitForTimeout(500);
+    await viaMore(s, 'למחוק את המשימה?', 'מחיקה', { text: 'רק המשימה של היום תימחק', label: 'recurring' });
+    await s.reload(); await s.go('/tasks?view=mine'); await s.page.waitForTimeout(500);
     log(!(await s.page.locator(`a[href$="${id}"]`).count()), 'recurring: the day is not recreated after a reload');
     await s.go('/manage/recurring'); log(await s.has('פתיחת שער הכניסה'), 'recurring: the template itself stays');
   }
 
   // recurring template (was instant): now confirms
   await s.go('/manage/recurring/demo-tpl-pots');
-  await s.confirm('מחיקה', 'למחוק את המשימה החוזרת?', 'מחיקה', { label: 'template' });
+  await viaMore(s, 'למחוק את המשימה החוזרת?', 'מחיקה', { label: 'template' });
   log(s.path() === '/manage/recurring', 'template: back on the list');
   await s.reload(); log(!(await s.page.locator('a[href$="/manage/recurring/demo-tpl-pots"]').count()), 'template: gone after a reload');
 
   // place (was instant)
   await s.go('/places/demo-p-pots');
-  await s.confirm('מחיקה', 'למחוק את המקום?', 'מחיקה', { label: 'place' });
+  await viaMore(s, 'למחוק את המקום?', 'מחיקה', { label: 'place' });
   log(s.path() === '/places', 'place: back on the list');
   await s.reload(); log(!(await s.page.locator('a[href$="/places/demo-p-pots"]').count()), 'place: gone after a reload');
 
@@ -98,7 +101,7 @@ await step('owner', async () => {
 
   // project (owner) with its steps
   await s.go('/projects/demo-p-festival/edit'); await s.page.waitForTimeout(300);
-  await s.confirm('מחיקת הפרויקט', 'למחוק את הפרויקט?', 'מחיקה', { text: 'גם אלה שכבר בוצעו' });
+  await viaMore(s, 'למחוק את הפרויקט?', 'מחיקה', { text: 'גם אלה שכבר בוצעו', label: 'project' });
   log(s.path() === '/projects', 'project: back on the list');
   await s.reload(); await s.go('/projects/demo-p-festival'); log(await s.has('הפרויקט לא נמצא'), 'project: gone after a reload');
 
@@ -153,13 +156,13 @@ await step('owner', async () => {
   } else log(false, 'order: a guest row to open');
 
   // the instant deletes that now confirm
-  // shopping item and calendar item: delete is in ⋯ (tidy rule 6)
-  await s.go('/shopping/demo-s-milk');
+  // shopping item and calendar item: delete is in ⋯ on their edit forms (tidy rule 6; the item keeps "עריכה")
+  await s.go('/shopping/demo-s-milk/edit');
   await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).click(); await s.page.waitForTimeout(250);
   await s.dialog().getByRole('button', { name: 'מחיקה' }).click(); await s.page.waitForTimeout(350);
   log((await s.dialog().innerText()).includes('למחוק מהרשימה?'), 'shopping item: the delete asks first');
   await s.dialog().getByRole('button', { name: 'ביטול' }).click(); await s.page.waitForTimeout(200);
-  log(s.path() === '/shopping/demo-s-milk', 'shopping item: "ביטול" keeps it');
+  log(s.path() === '/shopping/demo-s-milk/edit', 'shopping item: "ביטול" keeps it');
   await s.go('/farm/calendar/demo-c-5/edit');
   if (await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).count()) {
     await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).click(); await s.page.waitForTimeout(250);
@@ -180,7 +183,7 @@ await step('owner', async () => {
 await step('manager', async () => {
   const s = await session('manager');
   await s.go('/manage/people/demo-u-david'); log(await s.has('דוד כהן') && !(await s.page.getByRole('button', { name: /^מחיקת / }).count()), 'manager: no person delete (owner only)');
-  await s.go('/projects/demo-p-irrigation/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByRole('button', { name: 'מחיקת הפרויקט' }).count()), 'manager: no project delete (owner only)');
+  await s.go('/projects/demo-p-irrigation/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByRole('button', { name: 'עוד פעולות' }).count()), 'manager: no project delete (owner only)');
   await s.go('/manage/broadcasts/demo-b-2'); log(!(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'manager: no broadcast delete (owner only)');
   await s.go('/manage/visits/demo-vi-photo'); log(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count() > 0, 'manager: visits are deletable');
   await clean(s, 'manager');
@@ -191,7 +194,7 @@ await step('staff', async () => {
   const s = await session('staff');
   // as in the live app, only a manager or the creator edits a task: staff opening someone else's edit link land back on the task
   await s.go('/tasks/demo-t-paint/edit'); await s.page.waitForTimeout(300); log(!(await s.page.getByLabel('מה צריך לעשות').count()) && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no edit or delete on a task someone else created');
-  await s.go('/places/demo-p-pots'); log(!(await s.page.getByRole('button', { name: 'מחיקה', exact: true }).count()), 'staff: no place delete');
+  await s.go('/places/demo-p-pots'); log(!(await s.page.getByRole('button', { name: 'עוד פעולות', exact: true }).count()), 'staff: no place delete');
   if (today) { await s.go(`/tasks/demo-tpl-goats_${today}/edit`); await s.page.waitForTimeout(300); log(!(await s.page.getByLabel('מה צריך לעשות').count()) && !(await s.page.getByRole('button', { name: 'מחיקת המשימה' }).count()), 'staff: no edit or delete on a recurring day'); }
   for (const p of ['/manage/visits/demo-vi-photo', '/manage/people/demo-u-david', '/manage/vendors/demo-v-honey?edit=1', '/manage/donations/demo-d-h-jun']) {
     await s.go(p); log(!(await s.page.getByRole('button', { name: /^מחיקה$|^מחיקת / }).count()), `staff: no delete on ${p}`);
@@ -203,7 +206,7 @@ await step('staff', async () => {
   log(!!own, 'staff: own task added');
   if (own) {
     await s.go(`${own.replace(/^\/app/, '')}/edit`);
-    await s.confirm('מחיקת המשימה', 'למחוק את המשימה?', 'מחיקה', { label: 'staff own task' });
+    await viaMore(s, 'למחוק את המשימה?', 'מחיקה', { label: 'staff own task' });
     await s.reload(); log(!(await s.has('לבדוק את הברז בלול')), 'staff: own task deleted');
   }
   await clean(s, 'staff');

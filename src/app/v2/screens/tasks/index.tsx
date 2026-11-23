@@ -1,13 +1,13 @@
 // v2 screens: tasks. The shell routes to these names (v2/routes.tsx).
-//   TasksRoot        T1-Root, T2-Time, T4-Done, L5-MineEmpty, P1-Root, P6-Full (and the B4 broadcast card slot)
+//   TasksRoot        Q2-TasksTime (T1, T2, T4, L5, P1; P6's 'עליך' now lives under 'רק שלי') and the B4 broadcast card slot
 //   TaskScreen       T3-Task, C3-TaskLinks
 //   AssignScreen     C4-Assign
-//   AddScreen        T5-Add, S5-Add (also /tasks/:id/edit and /shopping/:id/edit)
+//   AddScreen        Q3-AddMore, Q24-AddRecurring, S5-Add (also /tasks/:id/edit and /shopping/:id/edit)
 //   HistoryScreen    T6-History
 //   DonePhotoScreen  C6-DonePhoto
 //   DayEndScreen     C7-DayEnd
 //   RecurringList    L1-Templates
-//   RecurringForm    L2-Template
+//   RecurringForm    Q24: /manage/recurring/new and /:id open the add form (AddForm) on 'חוזרת'
 //   PlacesScreen     L3-Places
 //   PlaceScreen      L4-Place
 import type { V2Ctx } from '../../ctx';
