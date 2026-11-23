@@ -8,7 +8,7 @@
 // change, and the log keeps what each field was before.
 import { ApiError, invalid } from './http';
 import { type Env, Firestore, FsError, type RawDoc, type V, dec, decFields, enc } from './firestore';
-import { BACKUPS, groupOf, pathOf, titleOf } from './backup';
+import { BACKUPS, groupOf, lastBackup, listBackups, pathOf, titleOf } from './backup';
 
 const GROUP_RE = /^[A-Za-z0-9_]{1,100}(\/\*\/[A-Za-z0-9_]{1,100}){0,4}$/;
 const PATH_RE = /^[A-Za-z0-9_]{1,100}\/[^/\s]{1,300}(\/[A-Za-z0-9_]{1,100}\/[^/\s]{1,300}){0,4}$/;
@@ -30,10 +30,8 @@ export async function collections(env: Env, fs: Firestore) {
   let backup: Record<string, number> = {};
   let backupDate: string | null = null;
   try {
-    const days = (await env.FILE_BUCKET?.list({ prefix: BACKUPS, delimiter: '/', limit: 1000 }))?.delimitedPrefixes.map((p) => p.slice(BACKUPS.length, -1)).sort() || [];
-    const last = days[days.length - 1];
-    const m = last ? await env.FILE_BUCKET!.get(`${BACKUPS}${last}/manifest.json`) : null;
-    if (m) { const j = JSON.parse(await m.text()); backup = j.collections || {}; backupDate = j.date; }
+    const j = await lastBackup(env);
+    if (j) { backup = j.collections || {}; backupDate = j.date; }
   } catch { /* no backup yet: live counts only */ }
   const top = await fs.listCollectionIds('');
   const live = Object.fromEntries(await Promise.all(top.map(async (c) => {
@@ -87,12 +85,19 @@ export async function history(env: Env, fs: Firestore, path: string, days = 7) {
   const needle = `"name":${JSON.stringify(name)}`;
   const b = env.FILE_BUCKET;
   const seen: { date: string; doc: RawDoc | null }[] = [];
+  let truncated = false;
   if (b) {
-    const all = (await b.list({ prefix: BACKUPS, delimiter: '/', limit: 1000 })).delimitedPrefixes.map((p) => p.slice(BACKUPS.length, -1)).sort().reverse();
-    for (const date of all.slice(0, Math.min(30, Math.max(1, days)))) {
-      const parts = (await b.list({ prefix: `${BACKUPS}${date}/`, limit: 1000 })).objects.map((o) => o.key).filter((k) => k.endsWith('.ndjson')).sort();
+    // finished backups only (a half-done one would say the record was gone), and at most 40 R2 reads: the free plan
+    // allows 50 subrequests per request, so a long range stops early and says so
+    const finished = (await listBackups(env)).items;
+    let reads = 0;
+    for (const m of finished.slice(0, Math.min(30, Math.max(1, days)))) {
+      const date = m.date;
+      if (reads + m.parts > 40) { truncated = true; break; }
+      const parts = Array.from({ length: m.parts }, (_, i) => `${BACKUPS}${date}/part-${String(i + 1).padStart(4, '0')}.ndjson`);
       let doc: RawDoc | null = null;
       for (const k of parts) {
+        reads++;
         const o = await b.get(k);
         if (!o) continue;
         const text = await o.text();
@@ -130,7 +135,7 @@ export async function history(env: Env, fs: Firestore, path: string, days = 7) {
     activity = rows.map((r) => ({ at: String(r.data.at || ''), text: String(r.data.text || ''), action: String(r.data.action || ''), by: String((r.data.by as { name?: string } | undefined)?.name || ''), via: String((r.data.via as { label?: string } | undefined)?.label || '') }))
       .sort((a, c) => (a.at < c.at ? 1 : -1)).slice(0, 40);
   } catch { /* no activity index or none */ }
-  return { path, now: now ? { updateTime: now.updateTime || null, fields: decFields(now.fields || {}) } : null, versions: changes, activity, days: seen.length };
+  return { path, now: now ? { updateTime: now.updateTime || null, fields: decFields(now.fields || {}) } : null, versions: changes, activity, days: seen.length, truncated };
 }
 
 /** Changes simple fields of a document (text, number, yes/no, empty), only if nobody changed it since `updateTime`. */

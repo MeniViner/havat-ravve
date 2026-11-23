@@ -24,7 +24,7 @@ import { sha256hex } from './util';
 
 export const OUTBOX = 'email_outbox';
 const STATE = '_state';
-const BATCH = 5;
+const BATCH = 4; // about 8 subrequests a send: 4 stay well inside the free 50 per run
 const SCAN_LIMIT = 50;
 /** Re-read the last two minutes on every scan: a commit can become visible just after a later one. */
 const OVERLAP_MS = 2 * 60_000;

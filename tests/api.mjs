@@ -899,6 +899,15 @@ for (const [i, [approved, expectLocked]] of [['', true], ['some-other-project', 
 
 // payment-confirmation email: the cron outbox (api/src/email.ts) against a mock Brevo endpoint.
 // Synthetic people, tickets, donations and tabs in the emulator only. Each run is started with /__scheduled.
+// The Worker has three cron runs (send, people, upkeep: api/src/monitor.ts CRON_GROUPS); a "cron run" here runs all three
+// in order, as one 5-minute round does in production. Returns the first non-200 status, or 200.
+async function cronAll(port) {
+  for (const c of ['*/5+*+*+*+*', '1-59/5+*+*+*+*', '2-59/5+*+*+*+*']) {
+    const st = (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=${c}`)).status;
+    if (st !== 200) return st;
+  }
+  return 200;
+}
 section('payment-confirmation email (cron outbox → mock Brevo)');
 {
   const brevo = { calls: [], rateLimited: new Set(), seenKeys: new Set() };
@@ -947,7 +956,7 @@ section('payment-confirmation email (cron outbox → mock Brevo)');
   await seed('users', 'em-manual', person('em-manual', 'manual@synthetic.test', 'email'));
   await seed('users', 'em-old', person('em-old', 'old@synthetic.test', 'email'));
   await seed('settings', 'app', { templates: { paymentConfirmation: 'שלום [שם],\nקיבלנו [סכום] עבור [עבור].\n\nתודה <3 מחוות רווה' } });
-  const run = async (port) => { const r = await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`); return r.status; };
+  const run = (port) => cronAll(port);
   const outbox = (id) => getDocAdmin('email_outbox', id);
 
   // 1. switch off: a settled payment is neither queued nor sent, and the cron reads nothing
@@ -996,12 +1005,14 @@ section('payment-confirmation email (cron outbox → mock Brevo)');
     check(m.apiKey === 'synthetic-brevo-key' && m.sender?.email === 'sender@synthetic.test' && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/.test(m.key), 'sent with the api-key header, the configured sender and a UUID idempotency key', { key: m.key, sender: m.sender });
     const wa = await outbox('donation_em-d-wa');
     check(wa?.status === 'skipped' && wa.reason === 'whatsapp' && !after1.some((c) => c.to === 'wa@synthetic.test'), 'WhatsApp preference → nothing sent, job skipped', wa);
-    const bad = await outbox('tab_em-tab-bad');
-    check(bad?.status === 'failed' && bad.reason === 'rejected' && after1.filter((c) => c.to === 'bad@synthetic.test').length === 1, 'an address Brevo rejects → fails cleanly after one call, no retry', bad);
     const rate = await outbox('order_em-o2');
     check(rate?.status === 'queued' && rate.reason === 'rate_limited' && rate.attempts === 1, 'rate-limited (429) → queued again for a retry', rate);
     const man = await outbox('donation_em-d-man');
     check(man?.status === 'cancelled' && man.reason === 'manual' && !after1.some((c) => c.to === 'manual@synthetic.test'), 'a manual confirmation recorded before the claim → job cancelled, nothing sent', man);
+    // five jobs: a send run takes up to 4 (email.ts BATCH, inside the free plan's 50 subrequests), so the fifth goes next run
+    await run(onPort);
+    const bad = await outbox('tab_em-tab-bad');
+    check(bad?.status === 'failed' && bad.reason === 'rejected' && brevo.calls.slice(base).filter((c) => c.to === 'bad@synthetic.test').length === 1, 'an address Brevo rejects → fails cleanly after one call, no retry', bad);
 
     // retry, then a replay of the settle
     await run(onPort);
@@ -1103,7 +1114,7 @@ section('account deletion (cron, 30 days after the request)');
     try {
       await waitUp(`http://127.0.0.1:${port}`);
       check(await authExists(gone) && await authExists(stays), 'both synthetic Auth accounts exist before the run');
-      const st = (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+      const st = (await cronAll(port));
       check(st === 200 && !(await authExists(gone)), 'a request older than 30 days → the Firebase Auth account is deleted', { st });
       check(!(await get('users', gone)) && !(await get('account_deletions', gone)), '… and the profile and the request are removed');
       const tk = await get('tickets', 'del-t-' + gone), vs = await get('visits', 'del-v-' + gone), dn = await get('donations', 'del-d-' + gone), tb = await get('tabs', 'del-tab-' + gone), ob = await get('email_outbox', 'donation_del-d-' + gone);
@@ -1114,7 +1125,7 @@ section('account deletion (cron, 30 days after the request)');
       check(ob.to === '' && ob.status === 'sent', 'email outbox job keeps its outcome without the address', ob);
       const keep = await get('users', stays), keepT = await get('tickets', 'del-t-' + stays);
       check(await authExists(stays) && keep?.phone === '0509999999' && keepT.ownerName === 'אורחת' && !!(await get('account_deletions', stays)), 'a request from 2 days ago is untouched (account, profile, records, request)');
-      const st2 = (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+      const st2 = (await cronAll(port));
       check(st2 === 200 && await authExists(stays), 'a second run changes nothing more');
     } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); }
   }
@@ -1208,7 +1219,7 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
   const t = new Date().toISOString();
   const person = (uid, role, push, status = 'active') => ({ uid, email: `${uid}@synthetic.invalid`, displayName: 'סינתטי ' + uid, phone: '0500000000', role, status, customerNumber: 1, acceptedTermsAt: t, createdAt: t, updatedAt: t, ...(push ? { push } : {}) });
   const job = (id, kind, by, to, extra = {}) => seed('push_jobs', id, { id, kind, title: 'הודעה מבני', body: 'מחר מתחילים ב־15:30', link: '/tasks', to, createdBy: { uid: by, name: 'x' }, createdAt: new Date().toISOString(), sentAt: null, urgent: false, tag: id, refId: '', ...extra });
-  const run = async (port) => (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+  const run = async (port) => (await cronAll(port));
   const persist = fs.mkdtempSync('/tmp/hr-push-kv-');
   const baseVars = { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' };
   const webpushVars = { ...baseVars, PUSH_MODE: 'webpush', VAPID_PUBLIC_KEY: VAPID_PUB, VAPID_PRIVATE_KEY: VAPID_PRIV, VAPID_SUBJECT: 'mailto:push-test@synthetic.test', PUSH_TEST_HOSTS: WP_HOST };
@@ -1341,7 +1352,7 @@ section('payment-confirmation email: Resend fallback (mock Brevo + mock Resend)'
   const t = new Date().toISOString();
   const guest = (uid, email) => seed('users', uid, { uid, email, displayName: 'אורח ' + uid, phone: '0501234567', role: 'guest', status: 'active', customerNumber: 8, acceptedTermsAt: t, createdAt: t, updatedAt: t, fields: { receiptPreference: 'email' } });
   const donation = (uid) => ({ uid, name: 'אורח', phone: '', amount: 90, label: '', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt: t, updatedAt: t });
-  const run = async (port) => (await fetch(`http://127.0.0.1:${port}/__scheduled?cron=*/5+*+*+*+*`)).status;
+  const run = async (port) => (await cronAll(port));
   const job = (id) => getDocAdmin('email_outbox', 'donation_' + id);
   const pay = async (id, email) => { await guest(id, email); await seedPaid('donations', id, donation(id)); };
   const port = PORT + 30;

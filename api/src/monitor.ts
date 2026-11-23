@@ -12,7 +12,7 @@
 // writes; the alert settings are their own record, written only when an owner changes them.
 import { type Env, Firestore, monitoringToken } from './firestore';
 import { notifyWrites } from './notify';
-import { listBackups, ilDate } from './backup';
+import { lastBackup, ilDate } from './backup';
 import { listKeys } from './keys';
 import { emailEnabled } from './email';
 import { ApiError, invalid } from './http';
@@ -39,6 +39,37 @@ export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | nu
 export async function readMonitor(env: Env): Promise<MonitorState> {
   try { return JSON.parse((await env.TOKEN_KV?.get(CRON_KEY)) || '{}') || {}; } catch { return {}; }
 }
+/** The three cron runs (wrangler.toml): each is its own invocation, with its own 50 subrequests. */
+export const CRON_GROUPS = { send: '*/5 * * * *', people: '1-59/5 * * * *', upkeep: '2-59/5 * * * *' } as const;
+export type CronGroup = keyof typeof CRON_GROUPS;
+const groupKey = (g: CronGroup) => `console:cron-${g}`;
+type GroupState = { at?: string; jobs?: Record<string, JobRun> };
+const sameResults = (a: Record<string, JobRun> = {}, b: Record<string, JobRun>) =>
+  Object.entries(b).every(([id, j]) => a[id] && a[id].ok === j.ok && JSON.stringify(a[id].result) === JSON.stringify(j.result));
+/**
+ * The send and people runs keep their jobs' last results in their own KV record, written only when a result changed,
+ * a job failed, or an hour passed (KV allows 1,000 writes a day; the upkeep run already writes 288).
+ */
+export async function saveGroup(env: Env, g: Exclude<CronGroup, 'upkeep'>, ran: Record<string, JobRun>, started: number) {
+  if (!env.TOKEN_KV || !Object.keys(ran).length) return;
+  let prev: GroupState = {};
+  try { prev = JSON.parse((await env.TOKEN_KV.get(groupKey(g))) || '{}') || {}; } catch { /* first run */ }
+  const stale = !prev.at || started - Date.parse(prev.at) > 55 * 60_000;
+  if (!stale && sameResults(prev.jobs, ran) && Object.values(ran).every((j) => j.ok)) return;
+  await env.TOKEN_KV.put(groupKey(g), JSON.stringify({ at: new Date().toISOString(), jobs: { ...(prev.jobs || {}), ...ran } }));
+}
+/** Every job's last result, from the three runs and the console's own "run now", the newest of each. */
+export async function readJobs(env: Env, mon?: MonitorState): Promise<Record<string, JobRun>> {
+  const base = mon || await readMonitor(env);
+  const out: Record<string, JobRun> = { ...(base.jobs || {}) };
+  for (const g of ['send', 'people'] as const) {
+    let st: GroupState = {};
+    try { st = JSON.parse((await env.TOKEN_KV?.get(groupKey(g))) || '{}') || {}; } catch { /* none yet */ }
+    for (const [id, j] of Object.entries(st.jobs || {})) if (!out[id] || out[id].at < j.at) out[id] = j;
+  }
+  return out;
+}
+
 /** The last cron run and what it watched (one KV write per run: 288 a day, inside the free 1,000). */
 export async function recordCron(env: Env, run: MonitorState) {
   await env.TOKEN_KV?.put(CRON_KEY, JSON.stringify({ ...run, at: new Date().toISOString() }));
@@ -104,7 +135,11 @@ export async function readQuota(env: Env): Promise<Quota> {
     let res: Response;
     try { res = await fetch(u, { headers: { authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(8000) }); }
     catch { return { at, error: 'failed', detail: 'Cloud Monitoring did not answer' }; }
-    if (res.status === 403) { await res.body?.cancel(); return { at, error: 'permission' }; }
+    if (res.status === 403) {
+      // Google's own reason (role missing, API off, wrong project): a short message, never a token
+      const why = await res.json().then((j: { error?: { message?: string } }) => String(j?.error?.message || ''), () => '');
+      return { at, error: 'permission', detail: why.slice(0, 200) };
+    }
     if (!res.ok) { await res.body?.cancel(); return { at, error: 'failed', detail: `Cloud Monitoring ${res.status}` }; }
     const j = (await res.json()) as { timeSeries?: { points?: { value?: { int64Value?: string } }[] }[] };
     for (const s of j.timeSeries || []) for (const p of s.points || []) out[k] += Number(p.value?.int64Value || 0);
@@ -123,7 +158,8 @@ async function count(fs: Firestore, col: string, filters: [string, string, unkno
 async function r2Size(env: Env): Promise<number | null> {
   if (!env.FILE_BUCKET) return null;
   let total = 0; let cursor: string | undefined;
-  for (let i = 0; i < 30; i++) {
+  // at most 10 pages (10,000 files): the morning check shares the free plan's 50 subrequests with the rest of the run
+  for (let i = 0; i < 10; i++) {
     const page = await env.FILE_BUCKET.list({ cursor, limit: 1000 });
     for (const o of page.objects) total += o.size;
     if (!page.truncated) return total;
@@ -144,8 +180,7 @@ export async function healthCheck(env: Env, fs: Firestore, st: MonitorState, by:
   else add('site', 'האתר', up !== null && up < 99 ? 'warn' : 'ok', `עונה · ${up}% מהבדיקות ביממה האחרונה`);
   // the backup
   try {
-    const b = await listBackups(env);
-    const last = b.items[0];
+    const last = await lastBackup(env);
     const today = ilDate(new Date());
     const age = last ? Date.now() - Date.parse(last.finishedAt) : Infinity;
     if (!last) add('backup', 'גיבוי הלילה', 'bad', 'אין עדיין אף גיבוי');
@@ -251,7 +286,8 @@ export async function monitorStep(env: Env, prev: MonitorState): Promise<Monitor
       if (st.sent) delete st.sent['site-down'];
     }
   }
-  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= 55 * 60_000) {
+  // hourly; every quarter hour while it fails, so a fix (a role granted) shows soon
+  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= (st.quota.error ? 14 : 55) * 60_000) {
     st.quota = await readQuota(env);
     const s = share(st.quota);
     if (s !== null && s >= 0.8) await sendAlert(env, fs, st, { id: 'quota-' + ilDate(now), title: 'המכסה החינמית של Firestore מתקרבת לסוף', sub: `${pct(s)} מהמכסה של היום כבר בשימוש. היא מתחדשת ב־10:00 בבוקר.` }).catch(() => false);

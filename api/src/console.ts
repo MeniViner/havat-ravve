@@ -46,7 +46,7 @@ import { CATALOG, CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
-import { alertSettings, healthCheck, type JobRun, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
+import { alertSettings, healthCheck, type JobRun, LIMITS, readJobs, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
 import { stats } from './stats';
 import { trafficStats } from './traffic';
 import { speed } from './speed';
@@ -313,6 +313,7 @@ const JOB_LIST = [
 
 async function jobsView(env: Env, fs: Firestore) {
   const [mon, sw, cleanup, archive] = await Promise.all([readMonitor(env), readSwitches(env, true), cleanupPreview(env, fs), archiveSummary(env)]);
+  mon.jobs = await readJobs(env, mon);
   return {
     cronAt: mon.at || null, cronMs: mon.wallMs ?? null,
     jobs: JOB_LIST.map((j) => ({ id: j.id, he: j.he, every: j.every, canPause: !!j.pause, paused: j.pause ? !!sw[j.pause] : false, canRun: j.run, last: mon.jobs?.[j.id] || null })),
