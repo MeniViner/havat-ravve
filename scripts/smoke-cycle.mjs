@@ -265,6 +265,15 @@ async function item2() {
   await n.click('כניסה לאפליקציה', { role: 'button', wait: 2500 });
   const np = await until(async () => adminGet('users/' + U.noga));
   check(np?.role === 'staff' && np?.status === 'active', 'C9 profile created with the invited role (staff)', 'new volunteer');
+  // needs-design decision 1: C10 once, as its own step right after C9; "אחר כך" goes on into the app; then never again
+  check(n.path() === '/install' && await n.has('להוסיף למסך הבית') && await n.has('אחר כך'), 'C10 is offered right after the first entry, as its own screen', 'new volunteer');
+  await n.shot('2-C10-after-C9');
+  await n.click('אחר כך', { role: 'button', wait: 1200 });
+  check(n.path() === '/tasks', 'C10 "אחר כך" goes on into the app', 'new volunteer');
+  const strip = () => n.page.locator('aside[aria-label="התקנה למסך הבית"], .system-installbar, .install-banner').count();
+  for (const p of ['/tasks', '/shopping', '/farm', '/me']) { await n.go(p, 900); check(!(await strip()) && n.path() === p, `no install strip on ${p}, and C10 is not offered again`, 'new volunteer'); }
+  await n.click('התקנה למסך הבית', { wait: 800 });
+  check(n.path() === '/install', 'installing stays reachable from the profile row "התקנה למסך הבית"', 'new volunteer');
   await n.go('/tasks', 1500);
   check(await n.has('משימות') && !(await n.has('ניהול')), 'the new volunteer has the team app without the manage tab', 'new volunteer');
   noErrors(n, 'first entry');
