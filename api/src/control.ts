@@ -164,7 +164,7 @@ export const CLEANUP_RULES: Rule[] = [
   { col: OUTBOX, field: 'updatedAt', days: 365, he: 'מיילים שנשלחו', keep: (d) => !FINISHED.has(String(d.fields?.status?.stringValue || '')) },
 ];
 const PAGE = 100;
-type CleanupState = { date: string; rule: number; parts: number; archived: number; deleted: number; done: boolean; at: string; by: string };
+type CleanupState = { date: string; rule: number; parts: number; archived: number; deleted: number; done: boolean; at: string; by: string; failed?: number; error?: string };
 const enc = (iso: string) => ({ stringValue: iso });
 
 async function readCleanup(env: Env): Promise<CleanupState | null> {
@@ -192,7 +192,9 @@ export async function runCleanup(env: Env, opts: { force?: boolean; by?: string 
   if (st?.done && !opts.force) return null;
   if (!opts.force) {
     const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-    if (hour < 3 || hour >= 6) return null;
+    // from 03:00 until 23:00, once tonight's backup is done (a big night backup can run past dawn; deletes check each
+    // record's version, so a busy day is safe)
+    if (hour < 3 || hour >= 23) return null;
     // the backup first: what is cleaned tonight is also in tonight's backup
     const last = JSON.parse((await env.TOKEN_KV.get('console:backup-last')) || 'null') as { date?: string } | null;
     if (last?.date !== today) return null;
@@ -211,17 +213,24 @@ export async function runCleanup(env: Env, opts: { force?: boolean; by?: string 
       limit: PAGE,
     });
     const doomed = page.filter((d) => !r.keep?.(d));
+    let moveOn = false;
     if (doomed.length) {
       st.parts++;
       const body = doomed.map((d) => JSON.stringify({ name: d.name, fields: d.fields || {}, createTime: d.createTime, updateTime: d.updateTime })).join('\n') + '\n';
       await env.FILE_BUCKET.put(`${ARCHIVE}${r.col}/${today}-${String(st.parts).padStart(4, '0')}.ndjson`, body, { httpMetadata: { contentType: 'application/x-ndjson' } });
       st.archived += doomed.length;
       const writes = doomed.map((d) => { const p = pathOf(d.name); const i = p.lastIndexOf('/'); return fs.remove(p.slice(0, i), p.slice(i + 1), d.updateTime); });
-      try { await fs.commit(writes); st.deleted += doomed.length; }
-      catch { /* a record changed meanwhile: the whole page waits for the next run, and it is already archived */ }
+      try { await fs.commit(writes); st.deleted += doomed.length; st.failed = 0; }
+      catch (e) {
+        // a record changed meanwhile: the page waits for the next run (it is already archived). Three failures in a row
+        // (quota, an outage) move on to the next rule instead of archiving the same page again and again.
+        st.failed = (st.failed || 0) + 1;
+        st.error = String(e instanceof Error ? e.message : e).slice(0, 120);
+        if (st.failed >= 3) { moveOn = true; st.failed = 0; }
+      }
     }
     // a full page that was all kept (unfinished emails) cannot move on by date: go to the next rule
-    if (page.length < PAGE || !doomed.length) st.rule++;
+    if (moveOn || page.length < PAGE || !doomed.length) st.rule++;
     if (doomed.length) break;
   }
   st.done = st.rule >= CLEANUP_RULES.length;

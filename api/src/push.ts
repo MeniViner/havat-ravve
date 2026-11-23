@@ -162,7 +162,9 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
   const creator = users.get(by.uid)?.data;
   const role = String(creator?.role || '');
   const active = creator?.status === 'active';
-  const allowed = active && (TEAM.has(role) ? (kind === 'broadcast' || kind === 'system' ? MANAGERS.has(role) : true) : role === 'vendor' && kind === 'vendor');
+  // the server's own alerts to the owners (monitor.ts) have no profile: they are sent by the Worker itself
+  const fromServer = by.uid === 'server' && kind === 'system';
+  const allowed = fromServer || (active && (TEAM.has(role) ? (kind === 'broadcast' || kind === 'system' ? MANAGERS.has(role) : true) : role === 'vendor' && kind === 'vendor'));
   if (!allowed) {
     st.calls++; st.skipped++;
     await fs.commit([fs.patch(JOBS, job.id, { sentAt: iso(nowMs), outcome: 'refused', leaseUntil: null }, lease)]).catch(() => {});

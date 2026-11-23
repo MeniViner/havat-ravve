@@ -72,6 +72,7 @@ export type CredentialDef = {
   previousSha256?: string; previousUntil?: string;
 };
 
+const earliest = (a?: string, b?: string) => (!a ? b : !b ? a : a < b ? a : b);
 /** The keys in the API_CREDENTIALS secret (the original registry; the console's keys in KV override them by id). */
 export function credentials(raw: string | undefined, stored: CredentialDef[] = []): CredentialDef[] {
   if (!raw && !stored.length) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
@@ -85,7 +86,11 @@ export function credentials(raw: string | undefined, stored: CredentialDef[] = [
   };
   const byId = new Map<string, CredentialDef>();
   for (const c of list.filter(valid)) byId.set(c.id, c);
-  for (const c of stored.filter(valid)) byId.set(c.id, c);
+  for (const c of stored.filter(valid)) {
+    // a key from the secret that the console once edited: revoking or expiring it in the secret still counts
+    const s = byId.get(c.id);
+    byId.set(c.id, s ? { ...c, disabled: c.disabled || s.disabled, expiresAt: earliest(c.expiresAt, s.expiresAt) } : c);
+  }
   return [...byId.values()];
 }
 
