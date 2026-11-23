@@ -3,7 +3,7 @@
 // Daily backup. Every night after 03:00 Israel time the cron reads the whole database with one ordered query over every
 // collection (a "kindless" query: one read per document, about 450 today out of the free 50,000 a day) and writes it to
 // R2 as newline-delimited JSON, exactly as the REST API returns each document, so a restore writes back the same types:
-//   backups/<YYYY-MM-DD>/part-0001.ndjson ...   backups/<YYYY-MM-DD>/manifest.json
+//   backups/<YYYY-MM-DD>/pages/<uuid>.page ...   backups/<YYYY-MM-DD>/manifest.json
 // It runs one page per cron run (the free plan allows 10 ms of CPU per run) and keeps its cursor in TOKEN_KV, so a big
 // database simply takes a few more runs. Kept: the last 30 days, and the first of each month for a year.
 //
@@ -73,8 +73,8 @@ async function removePrefix(b: R2, prefix: string) {
 }
 
 // ---------- the daily backup ----------
-type State = { date: string; startedAt: string; cursor: string | null; part: number; docs: number; bytes: number; collections: Record<string, number>; by: string };
-export type Manifest = { date: string; startedAt: string; finishedAt: string; docs: number; bytes: number; parts: number; collections: Record<string, number>; by: string };
+type State = { partKeys: string[]; date: string; startedAt: string; cursor: string | null; part: number; docs: number; bytes: number; collections: Record<string, number>; by: string };
+export type Manifest = { partKeys?: string[]; date: string; startedAt: string; finishedAt: string; docs: number; bytes: number; parts: number; collections: Record<string, number>; by: string };
 
 async function readJson<T>(env: Env, key: string): Promise<T | null> {
   try { return JSON.parse((await env.TOKEN_KV?.get(key)) || 'null') as T | null; } catch { return null; }
@@ -91,6 +91,8 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
   const b = env.FILE_BUCKET;
   const today = ilDate();
   let st = await readJson<State>(env, STATE_KEY);
+  // Restart in-progress legacy runs; their numbered parts are not immutable.
+  if (st && !Array.isArray(st.partKeys)) st = null;
   // a run left over from another day (the Worker was down): start again
   if (st && st.date !== today && Date.now() - Date.parse(st.startedAt) > 20 * 3600_000) st = null;
   if (!st) {
@@ -98,9 +100,7 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
       if (ilHour() < 3) return null;
       if ((await readJson<Manifest>(env, LAST_KEY))?.date === today) return null;
     }
-    // today's folder is not emptied first: parts are rewritten in place and any left over are removed at the end, so a
-    // second backup the same day ("גיבוי עכשיו") never leaves the day without a whole backup to restore from
-    st = { date: today, startedAt: new Date().toISOString(), cursor: null, part: 0, docs: 0, bytes: 0, collections: {}, by: opts.by || 'cron' };
+    st = { partKeys: [], date: today, startedAt: new Date().toISOString(), cursor: null, part: 0, docs: 0, bytes: 0, collections: {}, by: opts.by || 'cron' };
   }
   const fs = new Firestore(env);
   const page = await fs.rawQuery({
@@ -119,7 +119,10 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
   if (lines.length) {
     st.part++;
     const body = new TextEncoder().encode(lines.join('\n') + '\n');
-    await b.put(`${BACKUPS}${st.date}/part-${String(st.part).padStart(4, '0')}.ndjson`, body, { httpMetadata: { contentType: 'application/x-ndjson' } });
+    // Each step gets a unique key, even if two Workers read the same KV cursor.
+    const key = `${BACKUPS}${st.date}/pages/${crypto.randomUUID()}.page`;
+    await b.put(key, body, { httpMetadata: { contentType: 'application/x-ndjson' } });
+    st.partKeys.push(key);
     st.bytes += body.byteLength;
     st.docs += lines.length;
   }
@@ -127,14 +130,12 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
     await env.TOKEN_KV.put(STATE_KEY, JSON.stringify(st));
     return { cron: 'backup', done: false, date: st.date, docs: st.docs, parts: st.part };
   }
-  const manifest: Manifest = { date: st.date, startedAt: st.startedAt, finishedAt: new Date().toISOString(), docs: st.docs, bytes: st.bytes, parts: st.part, collections: st.collections, by: st.by };
+  const manifest: Manifest = { partKeys: st.partKeys, date: st.date, startedAt: st.startedAt, finishedAt: new Date().toISOString(), docs: st.docs, bytes: st.bytes, parts: st.part, collections: st.collections, by: st.by };
+  // Publish the entire ordered snapshot in one R2 write after every part exists.
   await b.put(`${BACKUPS}${st.date}/manifest.json`, JSON.stringify(manifest), { httpMetadata: { contentType: 'application/json' } });
   await env.TOKEN_KV.put(LAST_KEY, JSON.stringify(manifest));
   await env.TOKEN_KV.delete?.(STATE_KEY);
-  // parts from an earlier run of the same day that this run did not reach
-  const extra = (await b.list({ prefix: `${BACKUPS}${st.date}/part-`, limit: 1000 })).objects.map((o) => o.key)
-    .filter((k) => Number(/part-(\d+)/.exec(k)?.[1] || 0) > st!.part);
-  if (extra.length) await b.delete(extra);
+  // Retain older pages until date retention so in-flight readers can finish.
   const index = [manifest, ...(await readIndex(env, b)).filter((m) => m.date !== manifest.date)];
   const pruned = await prune(b, index).catch(() => 0);
   const kept = new Set(await prefixes(b, BACKUPS).catch(() => index.map((m) => m.date)));
@@ -157,7 +158,9 @@ async function prune(b: R2, index: Manifest[]): Promise<number> {
   const recent = ilDate(new Date(Date.now() - 2 * 86400_000));
   let n = 0;
   for (const d of days) {
-    if (keep.has(d) || (!done.has(d) && d >= recent)) continue;
+    if (keep.has(d) || d === ilDate() || (!done.has(d) && d >= recent)) continue;
+    // A stale KV index does not make a date with an R2 manifest an abandoned run.
+    if (!done.has(d) && await b.get(`${BACKUPS}${d}/manifest.json`)) continue;
     await removePrefix(b, `${BACKUPS}${d}/`); n++;
   }
   // the recycle bin keeps 30 days
@@ -188,9 +191,24 @@ export async function listBackups(env: Env) {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 async function partsOf(b: R2, date: string) {
   if (!DATE_RE.test(date)) throw invalid('date', 'YYYY-MM-DD');
-  const parts = (await listAll(b, `${BACKUPS}${date}/`)).filter((o) => o.key.endsWith('.ndjson')).map((o) => o.key).sort();
-  if (!parts.length) throw new ApiError('NOT_FOUND', 'no backup for that day');
-  return parts;
+  const prefix = `${BACKUPS}${date}/`;
+  const object = await b.get(`${prefix}manifest.json`);
+  if (!object) throw new ApiError('NOT_FOUND', 'no finished backup for that day');
+  const manifest = JSON.parse(await object.text()) as Manifest;
+  if (manifest.date !== date || !Number.isSafeInteger(manifest.parts) || manifest.parts < 0) {
+    throw new ApiError('INTERNAL', 'invalid backup manifest');
+  }
+  if (manifest.partKeys !== undefined) {
+    if (!Array.isArray(manifest.partKeys) || manifest.partKeys.length !== manifest.parts ||
+        new Set(manifest.partKeys).size !== manifest.parts ||
+        manifest.partKeys.some((key) => typeof key !== 'string' || !key.startsWith(prefix) ||
+          !/^pages\/[0-9a-f-]{36}\.page$/.test(key.slice(prefix.length)))) {
+      throw new ApiError('INTERNAL', 'invalid backup parts');
+    }
+    return manifest.partKeys;
+  }
+  // Older published backups used sequential names. Ignore extra or unpublished parts.
+  return Array.from({ length: manifest.parts }, (_, i) => `${prefix}part-${String(i + 1).padStart(4, '0')}.ndjson`);
 }
 
 /** The whole backup as one file (the parts one after another, streamed straight from R2). */
@@ -199,7 +217,11 @@ export async function downloadBackup(env: Env, date: string): Promise<Response> 
   const parts = await partsOf(b, date);
   const { readable, writable } = new TransformStream();
   (async () => {
-    for (const k of parts) { const o = await b.get(k); if (o) await o.body.pipeTo(writable, { preventClose: true }); }
+    for (const k of parts) {
+      const o = await b.get(k);
+      if (!o) throw new ApiError('INTERNAL', 'backup part is missing');
+      await o.body.pipeTo(writable, { preventClose: true });
+    }
     await writable.close();
   })().catch((e) => writable.abort(e).catch(() => {}));
   return new Response(readable, { headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'content-disposition': `attachment; filename="havat-ravve-backup-${date}.ndjson"`, 'cache-control': 'no-store' } });
@@ -209,7 +231,7 @@ async function docsOf(b: R2, date: string, want: (path: string) => boolean): Pro
   const out: RawDoc[] = [];
   for (const k of await partsOf(b, date)) {
     const o = await b.get(k);
-    if (!o) continue;
+    if (!o) throw new ApiError('INTERNAL', 'backup part is missing');
     for (const line of (await o.text()).split('\n')) {
       if (!line) continue;
       const i = line.indexOf('"name":"');
