@@ -34,6 +34,39 @@ export type BackupDocRow = { path: string; title: string; updateTime: string | n
 export type BackupDoc = { path: string; then: Record<string, unknown>; now: Record<string, unknown> | null; thenUpdated: string | null; nowUpdated: string | null };
 export type TrashItem = { key: string; path: string; collection: string; title: string; by: string; who: string; requestId: string; deletedAt: string };
 
+export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
+export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'unavailable' | 'failed'; detail?: string };
+export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
+export type Health = { at: string; date: string; by: string; worst: HealthState; items: { id: string; he: string; state: HealthState; detail: string }[]; r2Bytes: number | null };
+export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
+export type Monitor = {
+  site: { url: string; checks: SiteCheck[]; downSince: string | null; incidents: { from: string; to: string | null }[]; uptime: number | null };
+  quota: Quota | null; limits: { reads: number; writes: number; deletes: number; r2Bytes: number }; health: Health | null;
+  alerts: AlertSettings; cronAt: string | null;
+};
+export type SecurityEvent = { at: string; kind: 'refused' | 'limited' | 'console'; who: string; what: string; detail: string; ok: boolean };
+
+export type DataCollection = { group: string; count: number | null; backupCount: number | null; readOnly: boolean };
+export type DataDocRow = { path: string; id: string; title: string; updateTime: string | null };
+export type DataDoc = { path: string; id: string; group: string; title: string; fields: Record<string, unknown>; types: Record<string, string>; createTime: string | null; updateTime: string | null; subcollections: string[]; readOnly: boolean };
+export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; changed: string[] };
+export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number };
+
+export type Debt = { kind: 'ticket' | 'donation' | 'tab'; id: string; who: string; what: string; amount: number; since: string; claimed: boolean };
+export type EventFunnel = { id: string; title: string; start: string; capacity: number; price: number; published: boolean; open: boolean; orders: number; tickets: number; cancelled: number; paid: number; entered: number; ticketMoney: number; stallMoney: number; stallOpen: number; upcoming: boolean };
+export type Stats = {
+  from: string; to: string; days: number;
+  farm: {
+    people: { total: number; byRole: Record<string, number>; joined: number; blocked: number };
+    tasks: { created: number; done: number; open: number; overdue: number; urgentOpen: number; doers: { name: string; count: number }[] };
+    shopping: { added: number; bought: number; open: number };
+    visits: { requests: number; approved: number; rejected: number; waiting: number; people: number };
+    activity: { total: number; days: { day: string; actions: number; tasksDone: number }[]; weekday: number[] };
+  };
+  money: { received: { tickets: number; donations: number; tabs: number; total: number; donors: number }; waiting: { total: number; claimed: number; count: number }; months: { month: string; tickets: number; donations: number; tabs: number }[]; debts: Debt[] };
+  events: EventFunnel[];
+};
+
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -54,6 +87,19 @@ export interface Source {
   restoreBackup(date: string, paths: string[]): Promise<{ restored: number; missing: number }>;
   trash(): Promise<TrashItem[]>;
   restoreTrash(keys: string[]): Promise<{ restored: string[]; exists: string[]; gone: string[] }>;
+  monitor(): Promise<Monitor>;
+  checkNow(): Promise<Monitor>;
+  setAlerts(b: { on?: boolean; push?: boolean }): Promise<AlertSettings>;
+  testAlert(): Promise<{ sent: boolean; push: boolean }>;
+  security(days: number): Promise<{ since: string; items: SecurityEvent[] }>;
+  dataCollections(): Promise<{ items: DataCollection[]; backupDate: string | null }>;
+  dataDocs(group: string, after?: string | null, parent?: string | null): Promise<{ items: DataDocRow[]; next: string | null }>;
+  dataDoc(path: string): Promise<DataDoc>;
+  dataHistory(path: string, days: number): Promise<DocHistory>;
+  editDoc(path: string, set: Record<string, unknown>, updateTime: string): Promise<{ path: string; updateTime: string | null }>;
+  deleteDoc(path: string, updateTime: string): Promise<{ path: string; deleted: boolean }>;
+  exportCsv(group: string): Promise<void>;
+  stats(days: number): Promise<Stats>;
 }
 
 export class ConsoleError extends Error {
@@ -132,6 +178,19 @@ const liveSource: Source = {
   restoreBackup: (date, paths) => call('POST', `/backups/${date}/restore`, { paths }),
   trash: async () => (await call<{ items: TrashItem[] }>('GET', '/trash')).items,
   restoreTrash: (keys) => call('POST', '/trash/restore', { keys }),
+  monitor: () => call('GET', '/monitor'),
+  checkNow: () => call('POST', '/monitor/check'),
+  setAlerts: (b) => call('POST', '/monitor/alerts', b),
+  testAlert: () => call('POST', '/monitor/test-alert'),
+  security: (days) => call('GET', `/security?days=${days}`),
+  dataCollections: () => call('GET', '/data'),
+  dataDocs: (group, after, parent) => call('GET', `/data/docs?collection=${encodeURIComponent(group)}${after ? `&after=${encodeURIComponent(after)}` : ''}${parent ? `&parent=${encodeURIComponent(parent)}` : ''}`),
+  dataDoc: (path) => call('GET', `/data/doc?path=${encodeURIComponent(path)}`),
+  dataHistory: (path, days) => call('GET', `/data/history?path=${encodeURIComponent(path)}&days=${days}`),
+  editDoc: (path, set, updateTime) => call('POST', '/data/edit', { path, set, updateTime }),
+  deleteDoc: (path, updateTime) => call('POST', '/data/delete', { path, updateTime }),
+  stats: (days) => call('GET', `/stats?days=${days}`),
+  exportCsv: (group) => download(`/data/export?collection=${encodeURIComponent(group)}`, `havat-ravve-${group.replace(/\/\*\//g, '-')}.csv`),
 };
 
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };

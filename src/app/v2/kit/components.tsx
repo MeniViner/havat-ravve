@@ -1519,7 +1519,7 @@ export function Bar({ value, tone = 'default', label, className, style }: BarPro
 }
 
 export interface BarListProps extends Base {
-  items: Array<{ label: ReactNode; value: number }>;
+  items: Array<{ label: ReactNode; value: number; /** Shown instead of the raw number (e.g. a sum in ₪). */ display?: ReactNode }>;
   /** Value that fills the bar; default the largest value. */
   max?: number;
 }
@@ -1532,7 +1532,7 @@ export function BarList({ items, max, className, style }: BarListProps) {
         <li key={i} className="k-barrow">
           <span className="k-barrow__label">{it.label}</span>
           <Bar tone="chart" value={it.value / top} />
-          <b className="k-barrow__value">{it.value}</b>
+          <b className="k-barrow__value">{it.display ?? it.value}</b>
         </li>
       ))}
     </ul>
