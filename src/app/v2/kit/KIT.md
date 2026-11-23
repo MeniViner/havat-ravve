@@ -178,7 +178,7 @@ Build every secondary action, choice and delete from these. A screen never grows
 | `MoreButton` | `onClick`, `label='עוד פעולות'` | The bare 44px outlined ⋯. |
 | `ConfirmSheet` | `title` (question), `text` (what is deleted · logged · cannot be undone), `confirmLabel='מחיקה'`, `onConfirm` | Q8: red filled button with a bin beside an outlined "ביטול". |
 | `SelectRow` | `label`, `value`, `leading`, `linkLabel`, `onClick` | One choice of many in its own card (rule 9): chevron (U3, U8) or a "החלפה" link (Q17). Opens a `PickerSheet`. |
-| `PickerSheet` | `title`, `options: PickOption[]`, `value`, `onChange`, `head` | Sheet with one radio list; `head` holds a search field for long lists. |
+| `PickerSheet` | `title`, `options: PickOption[]`, `value`, `onChange`, `head`, `multiple`, `values` | Sheet with one radio list; `head` holds a search field for long lists. `multiple`: check boxes, `values` are the chosen ones, each tap toggles through `onChange`, the sheet stays open until "סיום" (Q31 "מי משתתף" when there are more than five people). |
 | `Dropdown` | `label`, `options`, `value`, `onChange` | Q16: field-like 44px button with a down chevron; two side by side replace two chip rows. |
 | `MoreDetails` | `title='עוד פרטים'`, `defaultOpen` | Q3: collapsible card for fields beyond the designed set (rule 8). Open when any field inside has a value. Children are rows. |
 | `useReorder` / `DragHandle` | `handle(i, name)`, `rowStyle(i)` | Q21: the handle is the first thing in the row; arrows move with the keyboard. No up/down arrow pairs. |
