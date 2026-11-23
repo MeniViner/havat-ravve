@@ -18,6 +18,7 @@ import { ToastProvider as V2Toasts } from './v2/core';
 import { V2DemoStrip } from './v2/DemoChrome';
 import { DemoIntro } from './v2/DemoIntro';
 import { pendingVendorInvite, forgetVendorInvite, claimVendorInvite } from './v2/data/vendor';
+import { isTeamLink, claimTeamLink } from './v2/data/invite';
 
 // ---------- navigation ----------
 type NavItem = { path: string; icon: string; label: string; badge?: number; match?: (r: string) => boolean; sub?: boolean };
@@ -115,6 +116,22 @@ function VendorClaim({ user, code }: { user: Session; code: string }) {
   return <div className="splash" role="alert"><div className="title">לא הצלחנו לחבר את הדוכן</div><div>{error}</div><button type="button" className="btn ghost" onClick={() => location.replace('/app')}>המשך</button></div>;
 }
 
+/** Q27: a guest account that opens a one-time team link (?k=t-…): the role is given once, then the team app opens by itself.
+ *  A new account claims the link in its first entry (FirstEntry) instead. */
+function TeamClaim({ user, code }: { user: Session; code: string }) {
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    const key = user.uid + ':' + code;
+    const claim = claiming.get(key) || claimTeamLink(user, code);
+    claiming.set(key, claim);
+    claim.then(() => forgetVendorInvite()).catch((e: Error) => { forgetVendorInvite(); claiming.delete(key); if (live) setError(e.message || 'הקישור לא תקין'); });
+    return () => { live = false; };
+  }, [user.uid, code]);
+  if (!error) return <Splash />;
+  return <div className="splash" role="alert"><div className="title">לא הצלחנו לצרף אותך לצוות</div><div>{error}</div><button type="button" className="btn ghost" onClick={() => location.replace('/app')}>המשך</button></div>;
+}
+
 function Splash() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(t); }, []);
@@ -143,12 +160,14 @@ export default function App() {
   if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
-  if (user && invite && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
+  const teamLink = isTeamLink(invite);
+  if (user && invite && !teamLink && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
+  if (user && profile && teamLink && !demo.on && profile.role === 'guest' && profile.status === 'active' && pendingVendorInvite()) return <TeamClaim user={user} code={invite} />;
   if (user && (missing || !profile)) {
     if (route === '/terms' || route === '/privacy') return <TermsPage />; // the terms link on C9 works before the profile exists
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
-    return <ToastProvider><V2DemoStrip /><FirstEntry key={user.uid} user={user} settings={settings} /></ToastProvider>;
+    return <ToastProvider><V2DemoStrip /><FirstEntry key={user.uid} user={user} settings={settings} link={teamLink && !demo.on && pendingVendorInvite() ? invite : undefined} /></ToastProvider>;
   }
   if (user && profile && deletion.item) return <ToastProvider><V2DemoStrip /><DeletionScheduledPage profile={profile} request={deletion.item} /></ToastProvider>;
   // X2: a suspended team member or vendor sees the new suspended screen; a suspended guest keeps the guest page

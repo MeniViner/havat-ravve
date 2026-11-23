@@ -53,6 +53,11 @@ const slice: Slice = (seed) => {
 
   // ---- N13/G5: the pending invite is a manager, set a week ago ----
   patch(seed, 'role_invites', 'farm.ravve@gmail.com', { role: 'manager', createdAt: ago(7 * 24) });
+  // ---- Q27: a volunteer added ahead by phone yesterday; the one-time WhatsApp link is still open (team_links/{code}) ----
+  put(seed, 'team_links', [
+    { id: 't-demo2k7q9mfx4r', code: 't-demo2k7q9mfx4r', role: 'staff', name: '', phone: '054-000-0421', fem: true, active: true, usedBy: null, usedAt: null,
+      createdBy: A.beni, createdAt: ago(26), expiresMs: new Date(ago(26)).getTime() + 14 * 86400_000 },
+  ]);
 
   // ---- N6/N7/G1/G4 settings (new keys are optional extras, see docs/redesign-data/manage.md) ----
   const s = seed.documents['settings/app'] as Row & { payment: Row; contact: Row; templates: Row };

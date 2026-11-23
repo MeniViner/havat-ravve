@@ -175,10 +175,11 @@ export function allowedRoles(me: { owner: boolean; uid: string }, target: Pick<P
 }
 /** Blocking: never yourself; owners anyone; managers only guests (old screen and rules). */
 export const canBlock = (me: { owner: boolean; uid: string }, target: Pick<Profile, 'uid' | 'role'>) => me.uid !== target.uid && (me.owner || target.role === 'guest');
-/** N13: a manager may pre-assign only volunteers; owners also managers and owners (role_invites rule). */
-/** "אורח" removes an address that was set up in advance (the person comes in as a guest), as the old invite page did. */
-export type InviteRole = 'guest' | 'staff' | 'manager' | 'owner';
-export const inviteRolesFor = (owner: boolean): InviteRole[] => (owner ? ['guest', 'staff', 'manager', 'owner'] : ['guest', 'staff']);
+/** Q27: a manager may add ahead only volunteers; owners also managers and owners (role_invites and team_links rules).
+ *  No "אורח": anyone who signs in is a guest, and the old "אורח" choice only removed an address set up in advance, which is
+ *  "ביטול" on its row in the pending list. */
+export type InviteRole = 'staff' | 'manager' | 'owner';
+export const inviteRolesFor = (owner: boolean): InviteRole[] => (owner ? ['staff', 'manager', 'owner'] : ['staff']);
 export const emailOk = (e: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(e.trim());
 
 export const isTeam = (p: Pick<Profile, 'role' | 'status'>) => (p.role === 'staff' || p.role === 'manager' || p.role === 'owner') && p.status === 'active';

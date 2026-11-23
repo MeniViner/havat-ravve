@@ -1189,5 +1189,111 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
   }
   console.log(`PASS check — vendor rules (ported from tests/v2-vendor.mjs): ${(v2n - vn0) - (v2fail - vf0)} of ${v2n - vn0} passed`);
 }
+// ---------------------------------------------------------------------------------------------------------------------
+// Q27 "להוסיף מישהו מראש" by phone: one-time team links (team_links/{code}), claimed at Google sign-in. Who may create which
+// role, single use, expiry, cancel, and that nobody raises their own role without a valid unclaimed unexpired link.
+// ---------------------------------------------------------------------------------------------------------------------
+const env5=await initializeTestEnvironment({projectId:'demo-havat-ravve-5',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
+{
+  const env = env5;
+  const mail = (uid) => (uid === 'owner' ? 'meniviner@gmail.com' : uid + '@example.com');
+  const db = (uid) => env.authenticatedContext(uid, claims(mail(uid))).firestore();
+  const P = (uid, role, extra = {}) => ({ uid, email: mail(uid), displayName: 'בדיקה', phone: '0500000000', role, status: 'active', customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now, ...extra });
+  const DAY = 86400000, T = Date.now();
+  const L = (code, role, by, extra = {}) => ({ code, role, name: '', phone: '054-000-0421', active: true, usedBy: null, usedAt: null, createdBy: actor(by), createdAt: now, expiresMs: T + 14 * DAY, ...extra });
+  const ok = v2ok, no = v2no;
+  const n0 = v2n, f0 = v2fail;
+  try {
+    await env.withSecurityRulesDisabled(async (c) => {
+      const f = c.firestore();
+      await setDoc(doc(f, 'users/owner'), P('owner', 'owner'));
+      await setDoc(doc(f, 'users/mgr'), P('mgr', 'manager'));
+      await setDoc(doc(f, 'users/staff'), P('staff', 'staff'));
+      await setDoc(doc(f, 'users/guest'), P('guest', 'guest'));
+      await setDoc(doc(f, 'users/guest2'), P('guest2', 'guest'));
+      await setDoc(doc(f, 'users/blockedg'), P('blockedg', 'guest', { status: 'blocked' }));
+      await setDoc(doc(f, 'users/vend'), P('vend', 'vendor', { vendorId: 'v-x', helper: false, addedBy: 'mgr', inviteCode: 'code-vend-001' }));
+      await setDoc(doc(f, 'counters/users'), { value: 10 });
+      await setDoc(doc(f, 'team_links/t-staffopen0001'), L('t-staffopen0001', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-staffopen0002'), L('t-staffopen0002', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-mgropen000001'), L('t-mgropen000001', 'manager', 'owner'));
+      await setDoc(doc(f, 'team_links/t-expired00001'), L('t-expired00001', 'staff', 'mgr', { createdAt: new Date(T - 20 * DAY).toISOString(), expiresMs: T - 6 * DAY }));
+      await setDoc(doc(f, 'team_links/t-cancelme0001'), L('t-cancelme0001', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-forblocked01'), L('t-forblocked01', 'staff', 'mgr'));
+    });
+    const owner = db('owner'), mgr = db('mgr'), staff = db('staff'), guest = db('guest'), guest2 = db('guest2'), blockedg = db('blockedg'), vend = db('vend');
+    const fresh = db('fresh'), fresh2 = db('fresh2'), fresh3 = db('fresh3'), fresh4 = db('fresh4'), anon = env.unauthenticatedContext().firestore();
+
+    // --- who may create which role ---
+    await ok(setDoc(doc(mgr, 'team_links/t-newstaff00001'), L('t-newstaff00001', 'staff', 'mgr')), 'Q27 manager creates a volunteer link');
+    await no(setDoc(doc(mgr, 'team_links/t-newmgr0000001'), L('t-newmgr0000001', 'manager', 'mgr')), 'Q27 a manager cannot create a manager link');
+    await no(setDoc(doc(mgr, 'team_links/t-newowner00001'), L('t-newowner00001', 'owner', 'mgr')), 'Q27 a manager cannot create an owner link');
+    await ok(setDoc(doc(owner, 'team_links/t-newmgr0000002'), L('t-newmgr0000002', 'manager', 'owner')), 'Q27 owner creates a manager link');
+    await ok(setDoc(doc(owner, 'team_links/t-newowner00002'), L('t-newowner00002', 'owner', 'owner')), 'Q27 owner creates an owner link');
+    await no(setDoc(doc(staff, 'team_links/t-bystaff000001'), L('t-bystaff000001', 'staff', 'staff')), 'Q27 a volunteer cannot create a link');
+    await no(setDoc(doc(guest, 'team_links/t-byguest000001'), L('t-byguest000001', 'staff', 'guest')), 'Q27 a guest cannot create a link');
+    await no(setDoc(doc(anon, 'team_links/t-byanon0000001'), L('t-byanon0000001', 'staff', 'mgr')), 'Q27 signed out cannot create a link');
+    await no(setDoc(doc(mgr, 'team_links/t-usedalready1'), L('t-usedalready1', 'staff', 'mgr', { usedBy: 'mgr', usedAt: now, active: false })), 'Q27 a link is created unused');
+    await no(setDoc(doc(mgr, 'team_links/t-toolong00001'), L('t-toolong00001', 'staff', 'mgr', { expiresMs: T + 40 * DAY })), 'Q27 a link lives at most 15 days');
+    await no(setDoc(doc(mgr, 'team_links/t-pastdue00001'), L('t-pastdue00001', 'staff', 'mgr', { expiresMs: T - DAY })), 'Q27 a link is created unexpired');
+    await no(setDoc(doc(mgr, 'team_links/abc-wrongcode'), L('abc-wrongcode', 'staff', 'mgr')), 'Q27 link code shape');
+    await no(setDoc(doc(mgr, 'team_links/t-otheractor01'), L('t-otheractor01', 'staff', 'owner')), 'Q27 createdBy is the writer');
+    await no(updateDoc(doc(mgr, 'team_links/t-staffopen0002'), { role: 'manager' }), 'Q27 a manager cannot turn a link into a manager link');
+    await no(updateDoc(doc(mgr, 'team_links/t-expired00001'), { expiresMs: T + 10 * DAY }), 'Q27 nobody extends an expired link');
+    await ok(getDoc(doc(fresh, 'team_links/t-staffopen0001')), 'Q27 the person opening the link reads it');
+    await no(getDoc(doc(anon, 'team_links/t-staffopen0001')), 'Q27 signed out does not read a link');
+    await no(getDocs(collection(fresh, 'team_links')), 'Q27 only managers list links');
+    await ok(getDocs(collection(mgr, 'team_links')), 'Q27 managers list links');
+
+    // --- nobody raises their own role without a link ---
+    await no(setDoc(doc(fresh, 'users/fresh'), P('fresh', 'staff')), 'Q27 no self-created volunteer without a link');
+    await no(updateDoc(doc(guest, 'users/guest'), { role: 'staff', updatedAt: now }), 'Q27 a guest cannot raise their own role');
+    await no(updateDoc(doc(guest, 'users/guest'), { role: 'staff', teamLink: 't-staffopen0001', updatedAt: now }), 'Q27 naming a link without using it up');
+    await no(updateDoc(doc(guest, 'team_links/t-staffopen0001'), { usedBy: 'guest', usedAt: now, active: false }), 'Q27 using up a link without taking the role');
+    await no(updateDoc(doc(guest, 'users/guest'), { phone: '054-000-0421', role: 'staff', updatedAt: now }), 'Q27 matching the phone on the link gives nothing');
+
+    // --- claim: new account (profile + link + counter in one commit) ---
+    const claimNew = (u, uid, code, role, useLink = true, value = 11) => {
+      const b = writeBatch(u);
+      b.set(doc(u, `users/${uid}`), { ...P(uid, role), customerNumber: value, teamLink: code });
+      b.update(doc(u, 'counters/users'), { value });
+      if (useLink) b.update(doc(u, `team_links/${code}`), { usedBy: uid, usedAt: now, active: false });
+      return b.commit();
+    };
+    await no(claimNew(fresh, 'fresh', 't-staffopen0001', 'manager'), 'Q27 claim must take the link\'s role, not a higher one');
+    await no(claimNew(fresh, 'fresh', 't-expired00001', 'staff'), 'Q27 an expired link is refused');
+    await no(claimNew(fresh4, 'fresh4', 't-staffopen0002', 'staff', false), 'Q27 a volunteer profile without using the link');
+    await ok(claimNew(fresh, 'fresh', 't-staffopen0001', 'staff'), 'Q27 new account claims a volunteer link');
+    await ok(getDoc(doc(fresh, 'users/fresh')), 'Q27 the new volunteer has the profile');
+    await no(claimNew(fresh2, 'fresh2', 't-staffopen0001', 'staff', true, 12), 'Q27 the same link twice (new account)');
+    await ok(setDoc(doc(fresh2, 'users/fresh2'), P('fresh2', 'guest', { customerNumber: 12 })), 'Q27 the refused person still joins as a guest');
+
+    // --- claim: existing guest ---
+    const claimGuest = (u, uid, code, role) => {
+      const b = writeBatch(u);
+      b.update(doc(u, `users/${uid}`), { role, teamLink: code, updatedAt: now });
+      b.update(doc(u, `team_links/${code}`), { usedBy: uid, usedAt: now, active: false });
+      return b.commit();
+    };
+    await no(claimGuest(guest, 'guest', 't-staffopen0001', 'staff'), 'Q27 the same link twice (guest)');
+    await ok(claimGuest(guest, 'guest', 't-mgropen000001', 'manager'), 'Q27 a guest claims a manager link from an owner');
+    await no(claimGuest(guest2, 'guest2', 't-mgropen000001', 'manager'), 'Q27 a second account cannot claim a used link');
+    await no(claimGuest(guest2, 'guest2', 't-expired00001', 'staff'), 'Q27 a guest cannot claim an expired link');
+    await no(claimGuest(staff, 'staff', 't-staffopen0002', 'staff'), 'Q27 a team account does not claim a link');
+    await no(claimGuest(vend, 'vend', 't-staffopen0002', 'staff'), 'Q27 a vendor account does not claim a link');
+    await no(claimGuest(blockedg, 'blockedg', 't-forblocked01', 'staff'), 'Q27 a blocked guest cannot claim');
+
+    // --- cancel ---
+    await no(deleteDoc(doc(staff, 'team_links/t-cancelme0001')), 'Q27 a volunteer cannot cancel a link');
+    await ok(deleteDoc(doc(mgr, 'team_links/t-cancelme0001')), 'Q27 manager cancels a link');
+    await no(claimGuest(guest2, 'guest2', 't-cancelme0001', 'staff'), 'Q27 a cancelled link cannot be claimed (guest)');
+    await no(claimNew(fresh3, 'fresh3', 't-cancelme0001', 'staff', true, 13), 'Q27 a cancelled link cannot be claimed (new account)');
+    await ok(setDoc(doc(mgr, 'team_links/t-cancelme0001'), L('t-cancelme0001', 'staff', 'mgr')), 'Q27 undo of a cancel puts the same link back');
+    await ok(claimGuest(guest2, 'guest2', 't-staffopen0002', 'staff'), 'Q27 another open link still works');
+  } finally {
+    await env.cleanup();
+  }
+  console.log(`PASS check — Q27 team link rules: ${(v2n - n0) - (v2fail - f0)} of ${v2n - n0} passed`);
+}
 console.log(`PASS check — v2 rules: ${v2n-v2fail} of ${v2n} passed`);
 if(v2fail) throw new Error(`v2 rules: ${v2fail} failed`);
