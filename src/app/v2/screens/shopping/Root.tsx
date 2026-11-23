@@ -73,7 +73,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
         </div>
       )}
       {rows.length > 0 && (
-        <ListCard title={TO_BUY[cat]} count={rows.length} tone="quiet">
+        <ListCard title={TO_BUY[cat]} count={rows.length}>
           {rows.map((i) => {
             const going = leaving.has(i.id);
             return (

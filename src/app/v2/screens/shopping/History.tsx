@@ -1,10 +1,10 @@
 // S8-History: what was bought (found and ordered too). Search, list filter, groups (today / this week / earlier) and "שוב" to
 // add it again. What was bought today is folded into one row on the shopping root (Q22) and lands here: swipe a row of today
-// right to put it back on the list (the root's old "נקנה היום" card did that).
+// right to put it back on the list (the root's old "נקנה היום" / "נמצא החודש" card did that; found items: this month).
 import { useMemo, useState } from 'react';
 import { AppScreen, useToast } from '../../core';
 import { BackLink, Button, Chip, ChipRow, EmptyState, ListCard, PageTitle, Row, SearchField, TextLink } from '../../kit';
-import { dayName, ddmm, hhmm } from '../../format';
+import { dayName, ddmm, hhmm, keyOf } from '../../format';
 import { back } from '../../../router';
 import { todayKey } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
@@ -51,7 +51,7 @@ export function ShopHistoryScreen({ ctx }: ScreenProps) {
               <Row key={i.id} title={i.title}
                 meta={[i.qty, first(i.boughtBy?.name || ''), when(g, i), filter === 'all' && i.category !== 'super' ? listLabel(i.category) : ''].filter(Boolean).join(' · ')}
                 actions={<Button variant="outline" icon="plus" iconSize={16} className="shopping-again" onClick={() => again(i)}>שוב</Button>}
-                swipe={g.key === 'today' ? { right: { label: 'להחזיר', icon: 'back', tone: 'done', onAction: () => unmark(i) } } : undefined} />
+                swipe={g.key === 'today' || (i.category === 'giveaway' && keyOf(i.boughtAt!).slice(0, 7) === today.slice(0, 7)) ? { right: { label: 'להחזיר', icon: 'back', tone: 'done', onAction: () => unmark(i) } } : undefined} />
             ))}
           </ListCard>
         );
