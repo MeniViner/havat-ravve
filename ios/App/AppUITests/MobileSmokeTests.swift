@@ -8,7 +8,11 @@ final class MobileSmokeTests: XCTestCase {
 
         let exitDemo = app.buttons["יציאה"]
         let account = app.buttons["החשבון שלי"]
-        if exitDemo.waitForExistence(timeout: 2) { exitDemo.tap() }
+        let enterDemo = app.buttons["כניסה להדגמה"]
+        if exitDemo.waitForExistence(timeout: 2) {
+            exitDemo.tap()
+            if enterDemo.waitForExistence(timeout: 5) { app.buttons["חזרה"].tap() }
+        }
         addTeardownBlock {
             if exitDemo.exists { exitDemo.tap() }
         }
@@ -16,9 +20,12 @@ final class MobileSmokeTests: XCTestCase {
         account.tap()
         XCTAssertTrue(app.buttons["המשך עם Google"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["המשך עם Apple"].exists)
+        let signInScreenshot = XCTAttachment(screenshot: app.screenshot())
+        signInScreenshot.name = "iPhone sign-in options"
+        signInScreenshot.lifetime = .keepAlways
+        add(signInScreenshot)
 
         app.buttons["לראות איך האפליקציה עובדת, בנתוני הדגמה"].tap()
-        let enterDemo = app.buttons["כניסה להדגמה"]
         XCTAssertTrue(enterDemo.waitForExistence(timeout: 5))
         enterDemo.tap()
 
@@ -30,6 +37,6 @@ final class MobileSmokeTests: XCTestCase {
         app.buttons["קניות"].tap()
         XCTAssertTrue(app.buttons["אני בסופר, מתחילים"].waitForExistence(timeout: 5))
         exitDemo.tap()
-        XCTAssertTrue(account.waitForExistence(timeout: 5))
+        XCTAssertTrue(enterDemo.waitForExistence(timeout: 5))
     }
 }
