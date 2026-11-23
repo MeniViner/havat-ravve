@@ -103,20 +103,32 @@ const PHOTO_META = { custom: 'תמונה משלי', google: 'מחשבון Google
 export function ProfileEdit({ ctx }: ScreenProps) {
   const p = ctx.profile;
   const toast = useToast();
-  const questions = registrationQuestions(ctx.settings.registrationFields);
-  const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || '', birthDate: birthText(p.birthDate), receipt: receiptOf(p), answers: answersFor(p.fields, questions) });
+  const all = registrationQuestions(ctx.settings.registrationFields);
+  // C13 has its own "יישוב" and "תאריך לידה" fields: a sign-up question asking the same is not asked twice (rule 7);
+  // on save its answer follows the field
+  const townQ = all.find((f) => f.type !== 'date' && f.label.includes('יישוב'));
+  const birthQ = all.find((f) => f.type === 'date' && f.label.includes('לידה'));
+  const questions = all.filter((f) => f !== townQ && f !== birthQ);
+  const a0 = answersFor(p.fields, all);
+  const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || (townQ ? a0[townQ.id] || '' : ''),
+    birthDate: birthText(p.birthDate || (birthQ ? a0[birthQ.id] || '' : '')), receipt: receiptOf(p), answers: a0 });
   const [optIn, setOptIn] = useState(p.updatesOptIn === true);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const src = photoOf(p);
   const nameErr = tried && !d.displayName.trim() ? 'צריך שם' : '';
   const birthErr = tried && parseBirth(d.birthDate) === null ? 'תאריך בצורה 14.03.1975' : '';
-  const missing = missingAnswers(d.answers, questions);
+  const townMissing = !!townQ?.required && !d.town.trim();
+  const birthMissing = !!birthQ?.required && !d.birthDate.trim();
+  const missing = [...missingAnswers(d.answers, questions), ...(townMissing ? [townQ!.id] : []), ...(birthMissing ? [birthQ!.id] : [])];
   const save = async () => {
     setTried(true);
     if (!d.displayName.trim() || parseBirth(d.birthDate) === null || missing.length || busy) return;
     setBusy(true);
-    try { await saveProfile(p, d); if (optIn !== (p.updatesOptIn === true)) await setUpdatesOptIn(p.uid, optIn); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
+    const answers = { ...(d.answers || {}) };
+    if (townQ) answers[townQ.id] = d.town.trim();
+    if (birthQ) answers[birthQ.id] = parseBirth(d.birthDate) || '';
+    try { await saveProfile(p, { ...d, answers }); if (optIn !== (p.updatesOptIn === true)) await setUpdatesOptIn(p.uid, optIn); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
     catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -131,8 +143,9 @@ export function ProfileEdit({ ctx }: ScreenProps) {
       </button>
       <Field label="שם בעברית" value={d.displayName} onChange={set('displayName')} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={d.phone} onChange={set('phone')} maxLength={25} inputMode="tel" autoComplete="tel" />
-      <Field label="יישוב" value={d.town} onChange={set('town')} maxLength={60} />
-      <Field label="תאריך לידה" value={d.birthDate} onChange={set('birthDate')} placeholder="לא חובה" inputMode="numeric" error={birthErr} />
+      <Field label={townQ?.required ? 'יישוב *' : 'יישוב'} value={d.town} onChange={set('town')} maxLength={60} error={tried && townMissing ? 'צריך למלא' : ''} />
+      <Field label={birthQ?.required ? 'תאריך לידה *' : 'תאריך לידה'} value={d.birthDate} onChange={set('birthDate')} placeholder={birthQ?.required ? '14.03.1975' : 'לא חובה'} inputMode="numeric"
+        error={birthErr || (tried && birthMissing ? 'צריך למלא' : '')} />
       <RegistrationQuestions questions={questions} answers={d.answers || {}} missing={tried ? missing : []}
         onChange={(id, v) => setD((s) => ({ ...s, answers: { ...s.answers, [id]: v } }))} />
       <DetailList className="system-dl"><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>

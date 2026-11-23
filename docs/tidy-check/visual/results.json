@@ -225,9 +225,9 @@
   "scenario": "regular",
   "route": "/manage/people/demo-u-michal",
   "steps": "",
-  "diff": 0.077,
+  "diff": 0.072,
   "errors": [],
-  "at": "2026-11-23T02:02:27.870Z"
+  "at": "2026-11-23T02:40:48.642Z"
  },
  "Q14-Reports": {
   "id": "Q14-Reports",

@@ -43,7 +43,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | F4-Presence | staff | regular | /farm/presence |  |
 | F5-Feed | staff | regular | /farm/today |  |
 | F6-Event | staff | regular | /farm/events/demo-e-festival |  |
-| C11-CalItem | manager | regular | /farm/calendar/new | fill:מה קורה=פגישת צוות לפני הפסטיבל; click:23; fill:משעה=10:30; fill:עד שעה=11:30; click:בני; click:נועה; click:אליה; click:מנהלים בלבד |
+| C11-CalItem | manager | regular | /farm/calendar/new | fill:מה קורה=פגישת צוות לפני הפסטיבל; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה |
 | C5-Teammate | staff | regular | /people/demo-u-noa |  |
 | E1-Home | staff | eventDay | /event |  |
 | E2-Scan | staff | eventDay | /event/gate |  |

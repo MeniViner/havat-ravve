@@ -5,6 +5,7 @@ import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core
 import {
   Avatar, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, MoreMenu, PageTitle, PickerSheet, Row,
   SearchField, SectionHeader, Segmented, Sheet, Tag, TextAreaField, TextLink, TopBar, type ActionItem,
+  MoreDetails,
 } from '../../kit';
 import { tableCell, useTableView } from '../../patterns';
 import { MONTHS, money, relDay, dayName, ddmm, keyOf, dayTime, firstName } from '../../format';
@@ -192,7 +193,6 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
       <DetailList className="manage-dl48">
         <DetailRow term="טלפון"><span dir="ltr">{p.phone || '—'}</span></DetailRow>
         <DetailRow term="מייל"><span dir="ltr">{p.email || '—'}</span></DetailRow>
-        {extra.map(({ f, v }) => <DetailRow key={f.id} term={f.label.replace(/\?$/, '')}>{v}</DetailRow>)}
         <DetailRow term="תפקיד" action={p.role !== 'vendor' && allowed.length > 0 ? <TextLink onClick={() => setSheet('role')}>שינוי</TextLink> : undefined}>
           {roleWord(p.role, female)}{p.role === 'vendor' && p.helper ? ' · עוזר' : ''}
         </DetailRow>
@@ -210,6 +210,12 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
         </Card>
       )}
       <LinkCard onClick={() => setSheet('history')} title={`היסטוריה · ${history.length + 1}`} meta={`האחרון: ${latest.title}, ${latest.meta}`} />
+      {/* Q13 does not show the sign-up answers (parity): they wait, question over answer, in a collapsed card at the bottom */}
+      {extra.length > 0 && (
+        <MoreDetails title="תשובות בהרשמה">
+          {extra.map(({ f, v }) => <Row key={f.id} title={f.label} meta={f.type === 'date' ? String(tableCell.date(v)) : v} />)}
+        </MoreDetails>
+      )}
 
       <Sheet open={sheet === 'items'} onClose={() => setSheet('')} title={`מה היה ${gw(p.displayName, 'לו', 'לה')} אצלנו`}>
         <ListCard aria-label="הכל">{rows.map(itemRow)}</ListCard>

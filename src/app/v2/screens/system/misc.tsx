@@ -1,7 +1,7 @@
 // C9-Welcome (first entry), C10-Install, C8-Offline (the queue of writes kept on the phone) and X2-Suspended.
 import { useEffect, useState } from 'react';
 import { AppScreen, go, useToast, useExternal, waUrl, telUrl, ToastProvider, ToastStack } from '../../core';
-import { TopBar, Button, BottomBar, Field, Hero, Avatar, Segmented, ListCard, Row, IconTile, TextLink, EmptyState, Icon, initials } from '../../kit';
+import { TopBar, Button, BottomBar, Field, Hero, Avatar, Segmented, ListCard, Row, IconTile, TextLink, EmptyState, Icon, MoreDetails, initials } from '../../kit';
 import { back, navigate, depth, useRoute } from '../../../router';
 import { useSync } from '../../../db';
 import { useOnline, createProfile } from '../../../store';
@@ -74,7 +74,16 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
       )}
       <Field label="השם שלך בעברית" placeholder="שם פרטי ומשפחה" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" placeholder="05" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
-      <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      {/* C9 shows name and phone. The farm's sign-up questions (parity) follow rule 8: a required one stays in the form,
+          the optional ones wait in "עוד פרטים". */}
+      <RegistrationQuestions questions={questions.filter((f) => f.required)} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      {questions.some((f) => !f.required) && (
+        <MoreDetails>
+          <li className="k-moredetails__fields">
+            <RegistrationQuestions questions={questions.filter((f) => !f.required)} answers={answers} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+          </li>
+        </MoreDetails>
+      )}
       <span className="system-note">השם יופיע ליד כל משימה שתבצע. <button type="button" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
     </AppScreen>
   );

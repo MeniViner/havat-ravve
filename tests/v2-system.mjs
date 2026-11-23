@@ -245,7 +245,11 @@ if (BASE) {
   { // a team invitee (C9) answers the same questions on first entry
     const s = await open('new', '/');
     const t = await s.text();
-    assert.ok(t.includes('ברוך הבא לצוות') && t.includes('איך שמעתם עלינו?'), 'C9: a team invitee answers the registration questions');
+    // rule 8: a required question stays in the form; the optional ones wait in "עוד פרטים"
+    assert.ok(t.includes('ברוך הבא לצוות') && t.includes('יישוב *') && !t.includes('איך שמעתם עלינו?'), 'C9: required questions in the form, optional ones folded');
+    await s.page.locator('.k-moredetails__head').click(); await s.page.waitForTimeout(200);
+    assert.ok((await s.text()).includes('איך שמעתם עלינו?'), 'C9: a team invitee answers the optional questions under "עוד פרטים"');
+    assert.deepEqual(s.errors, [], 'C9: no page errors');
     await s.ctx.close();
   }
   await browser.close();

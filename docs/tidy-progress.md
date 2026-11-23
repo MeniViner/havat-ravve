@@ -125,7 +125,21 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   edit sheet, delete through ⋯ and Q8, edits apply on "שמירה".
 - Left as designed or decided: Q24 chips wrap (the "בלי תאריך" chip; Q3 wraps the same), C1 trip row with "הוספה" (approved C1),
   Q3 "הוספה, ועוד אחת" (approved T5-Add).
-- Demo coverage for the 46 Q and U screens is being added (`tidy/s7-demo`).
+- Demo coverage: 46 rows in `docs/demo-coverage.md`, seed matched to the designs (Q27 two waiting, U7 six items, Q20, Q25,
+  Q17, Q29 and others). Visual check of the 46 after the fixes: `docs/tidy-check/visual/` (pairs and scores). Remaining
+  differences are real photos, seed text, or logged decisions (Q4/Q14 tiles, Q24/Q3 date chips, Q29 cart line, U1 intro at the
+  bottom, U4 payment note, Q7 e-mail row only for an e-mail preference). The check now waits for a sheet to finish opening.
+- Independent walk (`docs/tidy-check/README.md`): 365 screens as owner 123, manager 122, volunteer 57, vendor 20, guest 27,
+  signed-out 16; no console errors, no X on rows or cards, every ⋯ → מחיקה opened the confirmation. The 119 earlier screens
+  re-shot in `docs/tidy-check/others/` against `docs/visual-check/final/`.
+  - Fixed from the walk: C13 asked "יישוב" and "תאריך לידה" twice (the sign-up questions of the same name now follow the
+    profile fields and are not asked again); C9 lists only required sign-up questions, optional ones in "עוד פרטים" (rule 8);
+    Q13 sign-up answers moved from the details list (labels wrapped one word per line, a raw date) to a collapsed
+    "תשובות בהרשמה" card at the bottom; C11's demo steps follow the Q31 picker.
+  - Differences traced to the parity round (kept, for Meni to see): a volunteer sees "עריכה" only on tasks they created (T3,
+    C3 also "להעביר"); G3 "ענו: X מתוך N"; M4 "פתוח להרשמה"; N12 per-line times; V3 files newest first and "הוספת קישור";
+    S8 "מחפשים" chip; T6 ⋯ "סיכום היום"; Z3 "קישור להדגמה". X2 (team suspended) has no demo persona; the blocked persona is a
+    guest.
 
 ## Decisions (log)
 - `main` is merged into `tidy/placement` (not rebased): the area builders' branches are cut from it, and a rebase would rewrite
@@ -158,6 +172,8 @@ edit details; blocked page; demo: U12 quiet link and /demo).
 - Q24: "בלי תאריך" stays among the "מתי" chips (Q24 leaves it out), so with "חוזרת" the chips wrap to two lines. "הוספה, ועוד
   אחת" stays under the add button (approved T5).
 - The add-note and add-photo buttons after a task is done stay in T3's body (its top bar keeps "עריכה").
+- F1: a "מקומות בחווה" card on the Farm root (places are reached from the Farm tab only, a decision), but F1 has no such
+  card, so the root runs past its design (rule 2). Alternative: a row in the Farm tab's design once Meni draws one.
 - E7: the open stall accounts link was beside the back link in the approved E7; it is now a row in the body (rule 5), like
   the M2/C1 links question.
 - Event-file image preview is gone; "פתיחה" opens the file.

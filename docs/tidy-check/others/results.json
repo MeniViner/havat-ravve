@@ -384,12 +384,10 @@
   "persona": "manager",
   "scenario": "regular",
   "route": "/farm/calendar/new",
-  "steps": "fill:מה קורה=פגישת צוות לפני הפסטיבל; click:23; fill:משעה=10:30; fill:עד שעה=11:30; click:בני; click:נועה; click:אליה; click:מנהלים בלבד",
-  "diff": null,
-  "errors": [
-   "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for getByText('בני').first()\n"
-  ],
-  "at": "2026-11-23T02:15:40.897Z"
+  "steps": "fill:מה קורה=פגישת צוות לפני הפסטיבל; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה",
+  "diff": 0.118,
+  "errors": [],
+  "at": "2026-11-23T02:38:01.665Z"
  },
  "C5-Teammate": {
   "id": "C5-Teammate",
@@ -957,9 +955,9 @@
   "scenario": "regular",
   "route": "/me/edit",
   "steps": "",
-  "diff": 0.025,
+  "diff": 0.034,
   "errors": [],
-  "at": "2026-11-23T02:17:11.612Z"
+  "at": "2026-11-23T02:40:50.151Z"
  },
  "A1-Photo": {
   "id": "A1-Photo",

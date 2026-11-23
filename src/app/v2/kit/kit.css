@@ -776,6 +776,8 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-moredetails__chev { display: flex; color: var(--soft); transition: transform .15s ease; }
 .k-moredetails--open .k-moredetails__chev { transform: rotate(180deg); }
 .k-moredetails .k-row { min-height: 50px; }
+/* form fields inside "עוד פרטים" (rule 8): one list item that stacks them */
+.k-moredetails__fields { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
 .v2 .k-moredetails__head:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
 /* Q21 drag handle */
 .k-draghandle {
