@@ -34,7 +34,7 @@ BREVO_DAILY_LIMIT = "290"
 binding = "CF_VERSION_METADATA"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "1-59/5 * * * *", "2-59/5 * * * *"]
 
 # Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
 [[kv_namespaces]]

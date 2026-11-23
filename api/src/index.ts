@@ -17,7 +17,7 @@ import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
 import { consoleCaller, consoleCors, consoleRoute, isConsolePath } from './console';
-import { type JobRun, monitorStep, readMonitor, recordCron } from './monitor';
+import { CRON_GROUPS, type CronGroup, type JobRun, monitorStep, readMonitor, recordCron, saveGroup } from './monitor';
 import { guardKeys, readSwitches, runCleanup } from './control';
 import { storedKeys } from './keys';
 import { runBackup, trashFor } from './backup';
@@ -62,7 +62,8 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
       caller = consoleSub !== null ? await consoleCaller(req, env, fs) : await authenticate(req, env.API_CREDENTIALS, async (uid) => (await fs.get('users', uid))?.data ?? null, await storedKeys(env));
     } catch (e) {
       // many failed authentications from one address: slow it down
-      if (e instanceof ApiError && e.code === 'UNAUTHENTICATED' && env.AUTH_LIMITER) {
+      // (a Google account that is not an owner, knocking on the console, counts too: each try costs a read)
+      if (e instanceof ApiError && (e.code === 'UNAUTHENTICATED' || (e.code === 'FORBIDDEN' && consoleSub !== null)) && env.AUTH_LIMITER) {
         const ip = req.headers.get('cf-connecting-ip') || 'local';
         if (!(await env.AUTH_LIMITER.limit({ key: 'auth:' + ip })).success) throw new ApiError('RATE_LIMITED', 'too many failed authentications', {}, { 'retry-after': '60' });
       }
@@ -134,6 +135,25 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
   }
 }
 
+/** Which of the three runs this is: by its cron expression, else by the minute it was scheduled for (0 send, 1 people, 2 upkeep). */
+function cronGroup(event: { cron?: string; scheduledTime?: number } | undefined): CronGroup {
+  const norm = (c: string) => c.trim().replace(/\s+/g, ' ');
+  const byCron = (Object.keys(CRON_GROUPS) as CronGroup[]).find((g) => event?.cron && norm(CRON_GROUPS[g]) === norm(event.cron));
+  if (byCron) return byCron;
+  const minute = new Date(event?.scheduledTime || Date.now()).getUTCMinutes() % 5;
+  return minute === 1 ? 'people' : minute === 2 ? 'upkeep' : 'send';
+}
+
+/** True once a minute per key in this isolate: a flood of refused requests records one failure a minute, not one each. */
+const failSeen = new Map<string, number>();
+function firstThisMinute(key: string): boolean {
+  const minute = Math.floor(Date.now() / 60_000);
+  if (failSeen.get(key) === minute) return false;
+  if (failSeen.size > 500) failSeen.clear();
+  failSeen.set(key, minute);
+  return true;
+}
+
 /** A job's result for the console, small: numbers, booleans and short strings only (never addresses or ids lists). */
 function brief(r: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -185,42 +205,60 @@ export default {
     // (signing in, a check, and anything that takes data away, a download or an export, are always kept)
     const KEEP = ['console.me', 'console.monitor.check', 'console.backups.download', 'console.data.export'];
     const quietRead = doc?.credential === 'console' && doc.kind === 'read' && doc.ok && !KEEP.includes(doc.op);
-    if (doc && !quietRead && log.code !== 'QUOTA_EXCEEDED') {
+    // a refused flood (rate limit, quota) writes nothing per request: that would spend the very quota it protects
+    if (doc && !quietRead && log.code !== 'QUOTA_EXCEEDED' && log.code !== 'RATE_LIMITED') {
       const p = writeAudit(env, doc).catch((e) => console.log(JSON.stringify({ requestId: meta.requestId, auditFailed: String(e).slice(0, 200) })));
       if (ctx) ctx.waitUntil(p); else await p;
     }
-    if (res.status >= 500 || log.code === 'RATE_LIMITED' || log.code === 'QUOTA_EXCEEDED') {
+    const limited = log.code === 'RATE_LIMITED' || log.code === 'QUOTA_EXCEEDED';
+    if (res.status >= 500 || (limited && firstThisMinute(String(log.code) + ':' + (log.credential || req.headers.get('cf-connecting-ip') || 'local')))) {
       const p = recordFailure(env, log).catch(() => {});
       if (ctx) ctx.waitUntil(p); else await p;
     }
     return res;
   },
-  /** Cron Trigger (wrangler.toml [triggers]): the payment-confirmation email outbox. Does nothing while EMAIL_ENABLED is off. */
-  async scheduled(_event: unknown, env: Env) {
+  /**
+   * Cron Triggers (wrangler.toml [triggers]): three runs every 5 minutes, two minutes apart, each its own invocation, because
+   * the free plan allows 50 subrequests (fetch, KV and R2 calls alike) per invocation and the jobs together need more:
+   *   send   (minute 0, 5, ...)  payment-confirmation emails
+   *   people (minute 1, 6, ...)  phone push, and account deletion after the grace period
+   *   upkeep (minute 2, 7, ...)  the nightly backup, the night cleanup, watching (site, quota, the morning check)
+   */
+  async scheduled(event: { cron?: string; scheduledTime?: number } | undefined, env: Env) {
     const started = Date.now();
+    const group = cronGroup(event);
+    console.log(JSON.stringify({ cron: 'run', group, trigger: event?.cron || null }));
     // the owners' switches (control.ts): a paused job skips its turn
     const sw = await readSwitches(env, true);
-    const prev = await readMonitor(env);
-    const jobs: Record<string, JobRun> = { ...(prev.jobs || {}) };
+    const ran: Record<string, JobRun> = {};
     // each job: one line per run for `wrangler tail` (counts and ids only, never addresses, keys or message bodies),
-    // and its last result for the console's scheduled-jobs screen (kept in the one KV record written below)
+    // and its last result for the console's scheduled-jobs screen
     const step = async (id: string, run: () => Promise<Record<string, unknown> | null>) => {
       const t = Date.now();
       try {
         const r = await run();
-        if (r) { console.log(JSON.stringify({ ...r, wallMs: Date.now() - t })); jobs[id] = { at: new Date().toISOString(), ms: Date.now() - t, ok: true, result: brief(r) }; }
+        if (r) { console.log(JSON.stringify({ ...r, wallMs: Date.now() - t })); ran[id] = { at: new Date().toISOString(), ms: Date.now() - t, ok: true, result: brief(r) }; }
       } catch (e) {
         const internal = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         console.log(JSON.stringify({ cron: id, internal, wallMs: Date.now() - t }));
-        jobs[id] = { at: new Date().toISOString(), ms: Date.now() - t, ok: false, result: { error: internal.slice(0, 120) } };
+        ran[id] = { at: new Date().toISOString(), ms: Date.now() - t, ok: false, result: { error: internal.slice(0, 120) } };
       }
     };
-    // payment emails (email.ts): paused still queues payments, it only holds the sending
-    await step('email', () => runEmail(env, Date.now(), sw.emailPaused));
-    // account deletion after the grace period: uids are never logged, only counts
-    await step('accounts', () => runAccountDeletions(env));
-    // phone push (push.ts): nothing is read while PUSH_MODE is unset; counts only, never endpoints or message text
-    await step('push', async () => (sw.pushPaused ? { cron: 'push', paused: true } : runPush(env)));
+    if (group === 'send') {
+      // payment emails (email.ts): paused still queues payments, it only holds the sending
+      await step('email', () => runEmail(env, Date.now(), sw.emailPaused));
+      await saveGroup(env, 'send', ran, started).catch(() => {});
+      return;
+    }
+    if (group === 'people') {
+      // phone push (push.ts): nothing is read while PUSH_MODE is unset; counts only, never endpoints or message text
+      await step('push', async () => (sw.pushPaused ? { cron: 'push', paused: true } : runPush(env)));
+      // account deletion after the grace period: uids are never logged, only counts
+      await step('accounts', () => runAccountDeletions(env));
+      await saveGroup(env, 'people', ran, started).catch(() => {});
+      return;
+    }
+    const prev = await readMonitor(env);
     // the nightly backup to R2 (backup.ts): nothing before 03:00 Israel time or once today's is done; one page per run
     await step('backup', async () => (sw.backupPaused ? null : runBackup(env)));
     // cleanup (control.ts): after tonight's backup, old logs and finished jobs go to the R2 archive, a page per run
@@ -228,19 +266,20 @@ export default {
     // watching (monitor.ts): the site every 15 minutes, the free quota every hour, the morning check, alerts to owners
     let mon = prev;
     if (!sw.monitorPaused) {
+      const t = Date.now();
       try {
         mon = await monitorStep(env, prev);
         const c = mon.uptime?.checks[mon.uptime.checks.length - 1];
         const line = { cron: 'monitor', site: c ? { ok: c.ok, ms: c.ms } : null, quota: mon.quota?.error || (mon.quota ? 'ok' : null), health: mon.health?.worst || null };
         console.log(JSON.stringify(line));
-        jobs.monitor = { at: new Date().toISOString(), ms: 0, ok: true, result: brief(line) };
+        ran.monitor = { at: new Date().toISOString(), ms: Date.now() - t, ok: true, result: brief(line) };
       } catch (e) {
         const internal = (e instanceof Error ? e.message : String(e)).slice(0, 300);
         console.log(JSON.stringify({ cron: 'monitor', internal }));
-        jobs.monitor = { at: new Date().toISOString(), ms: 0, ok: false, result: { error: internal.slice(0, 120) } };
+        ran.monitor = { at: new Date().toISOString(), ms: Date.now() - t, ok: false, result: { error: internal.slice(0, 120) } };
       }
     }
-    // the console's "last cron run": when it ran, how long it took, what it watched, each job's last result (one KV write)
-    await recordCron(env, { ...mon, jobs, wallMs: Date.now() - started }).catch(() => {});
+    // the console's "last cron run": when it ran, how long it took, what it watched, each upkeep job's last result (one KV write)
+    await recordCron(env, { ...mon, jobs: { ...(prev.jobs || {}), ...ran }, wallMs: Date.now() - started }).catch(() => {});
   },
 };

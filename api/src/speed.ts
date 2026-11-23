@@ -2,7 +2,7 @@
 // round's own timings (monitor.ts jobs) and the site check (uptime). Computed on request: up to a few thousand reads.
 import type { Env, Firestore } from './firestore';
 import { invalid } from './http';
-import { readMonitor } from './monitor';
+import { readJobs, readMonitor } from './monitor';
 
 const TZ = 'Asia/Jerusalem';
 const dayOf = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso));
@@ -55,7 +55,7 @@ export async function speed(env: Env, fs: Firestore, daysIn: number) {
 
   // the 5-minute round and the site, from the monitor's record (no Firestore read)
   const mon = await readMonitor(env);
-  const jobs = Object.entries(mon.jobs || {}).map(([id, j]) => ({ id, ms: j.ms, at: j.at, ok: j.ok }));
+  const jobs = Object.entries(await readJobs(env, mon)).map(([id, j]) => ({ id, ms: j.ms, at: j.at, ok: j.ok }));
   const checks = (mon.uptime?.checks || []).filter((c) => c.ok && typeof c.ms === 'number').map((c) => c.ms as number).sort((a, b) => a - b);
   return {
     days: daysIn, from, slowMs: SLOW_MS,

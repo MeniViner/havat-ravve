@@ -10,8 +10,8 @@ const TZ = 'Asia/Jerusalem';
 const dayOf = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);
 const hourOf = (d: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(d)) % 24;
 
-/** Beacons a day before counting stops for that day (about 3,000 visits: far beyond the farm's busiest day). */
-export const DAILY_CAP = 6000;
+/** Beacons a day before counting stops for that day (about 1,000 visits, far beyond the farm's busiest day; 10% of the free writes). */
+export const DAILY_CAP = 2000;
 const MAX_BODY = 2048;
 
 // What the site and the app may count. Anything else in a beacon is ignored.
@@ -78,7 +78,9 @@ export async function handleHit(req: Request, env: Env, fs: () => Firestore): Pr
   const now = new Date();
   const day = dayOf(now);
   if (cappedDay === day) return done;
-  if (env.HIT_LIMITER && !(await env.HIT_LIMITER.limit({ key: 'all' })).success) return done;
+  // per address: one visitor (or one script) cannot use up the day, and a crowd at an event still counts
+  if (env.HIT_LIMITER && !(await env.HIT_LIMITER.limit({ key: 'ip:' + (req.headers.get('cf-connecting-ip') || 'local') })).success) return done;
+  if (Number(req.headers.get('content-length') || 0) > MAX_BODY) return done;
   let b: Body;
   try {
     const text = await req.text();
