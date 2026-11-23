@@ -6,6 +6,7 @@ import { AppScreen, go, useRemove, useToast, useExternal, waUrl, telUrl } from '
 import { TopBar, Hero, ListCard, SectionHeader, Tag, Button, BottomBar, Sheet, Field, Row, MoreMenu } from '../../kit';
 import { useEvent, useTab, useNotifications, setTabStatus, removeTabItem } from '../../../data';
 import { useClockVersion } from '../../../clock';
+import { gw } from '../../gender';
 import { money, ddmm, ago, hhmm, firstName, dayTime } from '../../format';
 import { useActivityForEvent, ACTION_LABELS } from '../../../activity';
 import { PayConfirmStatus } from './payconfirm';
@@ -63,7 +64,7 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
     if (ok) { setLine(null); setReason(''); toast.show({ text: `${item.name} הוסר מהחשבון`, check: true }); }
   };
 
-  const statusTag = t.status === 'claimed' ? <Tag tone="waiting">סימן שהעביר {ago(tabClaimedAt(t))}</Tag>
+  const statusTag = t.status === 'claimed' ? <Tag tone="waiting">{gw(t.guestName, 'סימן שהעביר', 'סימנה שהעבירה')} {ago(tabClaimedAt(t))}</Tag>
     : t.status === 'paid' ? <Tag tone="onhero">{TAB_LABELS.paid}</Tag>
     : t.status === 'waived' ? <Tag tone="onhero">{TAB_LABELS.waived}</Tag> : null;
   const bar = owing ? (
