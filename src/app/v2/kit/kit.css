@@ -239,6 +239,27 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-row__chev { display: flex; color: var(--soft); }
 .k-row__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
 
+/* Row swipe: the row slides over one action button and stays open until the button or anything else is pressed.
+   The li keeps the line between rows; the sliding front is the row itself, on the card's white. */
+.k-swipe { position: relative; overflow: hidden; border-top: 1px solid var(--line); touch-action: pan-y; }
+.k-swipe__front { position: relative; z-index: 1; border-top: 0; background: var(--surface); transition: transform .22s cubic-bezier(.2, .8, .2, 1); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.k-swipe--drag .k-swipe__front { transition: none; }
+.k-swipe__front a, .k-swipe__front img { -webkit-user-drag: none; }
+.k-swipe__under { position: absolute; inset-block: 0; display: flex; align-items: stretch; direction: ltr; }
+.k-swipe__under--right { left: 0; }
+.k-swipe__under--left { right: 0; }
+.k-swipe__btn {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%;
+  border: 0; background: var(--soft); color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 6px;
+  direction: rtl; white-space: nowrap;
+}
+.k-swipe__btn--done { background: var(--selected); }
+.k-swipe__btn--action { background: var(--action); }
+.k-swipe__btn--neutral { background: var(--soft); }
+.k-swipe__btn--danger { background: var(--red); }
+.v2 .k-swipe__btn:focus-visible { outline: 2px solid #FFFFFF; outline-offset: -4px; }
+@media (prefers-reduced-motion: reduce) { .k-swipe__front { transition: none; } }
+
 .k-icontile {
   flex: none; display: flex; align-items: center; justify-content: center;
   width: 36px; height: 36px; border-radius: 8px; background: var(--bg); color: var(--action);
