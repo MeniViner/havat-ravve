@@ -254,12 +254,24 @@ export const helperText = (v: VendorDoc, name: string, link: string, role: 'owne
   role === 'owner'
     ? `שלום ${first(name)}, זה הקישור לאפליקציה של חוות רווה בשביל ${v.name}: ${link} נכנסים עם חשבון Google.`
     : `שלום ${first(name)}, צירפתי אותך לדוכן ${v.name} באפליקציה של חוות רווה. נכנסים כאן עם חשבון Google: ${link}`;
-/** Removes a helper from the stall and closes their invite (D7 sheet). The account itself stays, without the stall. */
+/** Removes a helper from the stall and closes their invite (D7 sheet). Access comes from the helper's profile, not from the
+ *  people list, so an account that already signed in goes back to guest as well (as V6 does); the account itself stays. */
 export async function removePerson(v: VendorDoc, p: VendorPerson) {
+  const at = nowIso();
   const people = (v.people || []).filter((x) => !(x.code ? x.code === p.code : x.name === p.name && x.role === p.role));
-  const ops: Parameters<typeof write.batch>[0] = [{ op: 'update', col: 'vendors', id: v.id, data: { people, updatedAt: nowIso() } }];
+  const ops: Parameters<typeof write.batch>[0] = [{ op: 'update', col: 'vendors', id: v.id, data: { people, updatedAt: at } }];
   if (p.code) ops.push({ op: 'update', col: 'vendor_invites', id: p.code, data: { active: false } });
   await write.batch(ops);
+  if (p.role !== 'helper') return;
+  const uid = p.uid || (p.code ? await claimedBy(p.code) : '');
+  // The rules allow this only while the profile is still a helper of this stall (users: helperRevoke). A refusal means the
+  // account has no access here anymore (already a guest, or linked elsewhere since), so there is nothing to undo.
+  if (uid) await write.update('users', uid, { role: 'guest', updatedAt: at }, { quiet: true }).catch(() => {});
+}
+/** The account that used an access link, read from the invite (the D7 list may not have loaded the invites yet). */
+async function claimedBy(code: string) {
+  try { return await transact(async (tx) => (await tx.get<VendorInviteDoc>('vendor_invites', code))?.usedBy || ''); }
+  catch { return ''; }
 }
 
 // ---------- manager actions (V1, V2, V6, N8, V7) ----------

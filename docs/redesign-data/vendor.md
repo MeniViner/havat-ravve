@@ -47,7 +47,7 @@ The role `vendor` is new. `activeRole()` returns it, while `isStaff()` and `isMa
 | `notes` | string, legacy | **always `''` from now on.** The team's notes moved to `private/main` |
 | `createdAt`, `updatedAt` | ISO | |
 
-`people` is for display only. Access comes from `users/{uid}.vendorId`, so editing `people` grants nothing. `entered` is worked out from the invite (`usedBy`) as well.
+`people` grants nothing by itself. Access comes from `users/{uid}.vendorId`, so editing `people` alone neither gives nor takes access. That is why removing a person also sets their account back to `guest`: D7 (the owner, for a helper of their own stall, rule `helperRevoke()`), `vendors.removePerson` in the API, and V6 for the whole stall. `entered` is worked out from the invite (`usedBy`) as well, and so is the uid of the account to set back.
 
 ### `vendors/{vid}/private/main` (new, managers only)
 
@@ -179,6 +179,8 @@ These seven blocks are now in `firestore.rules`. The cases in the table at the e
 ```
 
 `managerEdit()` stays as it is. Setting a vendor back to `guest` is how V6 "הסרת הגישה" removes access. A manager cannot set the role to `vendor`: only a claim can.
+
+`helperRevoke()` lets a stall's owner do one thing to another profile: set the role of a helper of their own stall (`role: vendor`, `helper: true`, the owner's `vendorId`) back to `guest`, changing only `role` and `updatedAt`. D7 "להסיר מהדוכן" writes it after closing the invite. A refusal means the account is no longer that stall's helper, so the app ignores it.
 
 **`rules:events-read`.** Replaces `allow read: if resource.data.published == true || isStaff();` inside `match /events/{id}`:
 
@@ -315,3 +317,5 @@ Set-up data:
 | 26 | raz | revoke tamar's invite | allow; raz revoking an owner invite denied |
 | 27 | manager | set raz back to `guest` (V6) | allow; then raz reads `vendors/v-raz` denied |
 | 28 | raz | get `users/tamar` | deny |
+| 29 | raz | remove a helper (D7): close the invite, then set the helper's profile to `guest` | allow; the helper then reads the stall, its requests and the live count denied, creates a request denied; raz and the other helper keep theirs |
+| 30 | raz | set another stall's helper, a co-owner, or the helper's other fields | deny; a helper cannot remove anyone |

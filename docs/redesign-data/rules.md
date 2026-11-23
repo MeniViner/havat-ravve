@@ -26,7 +26,7 @@ from `tests/v2-vendor.mjs` (72), 553 in all. The suite counts every case and fai
 
 | collection | read | write |
 |---|---|---|
-| `users/{uid}` | self; staff read the team list | self creates (role from bootstrap, invite or vendor claim); self edits name, phone, fields, photo, photoSource, googlePhoto, town, birthDate, push, welcomedAt, never role/status/vendorId/helper; managers set role guest/staff/blocked status and notes (owner: any role); `vendor` only through a claim |
+| `users/{uid}` | self; staff read the team list | self creates (role from bootstrap, invite or vendor claim); self edits name, phone, fields, photo, photoSource, googlePhoto, town, birthDate, push, welcomedAt, never role/status/vendorId/helper; managers set role guest/staff/blocked status and notes (owner: any role); `vendor` only through a claim; a stall's owner sets a helper of their own stall back to `guest` (D7) |
 | `users/{uid}/notifications` | self | staff create kind task/urgent/trip/event/vendor (managers also broadcast/system) with `by` = self and an in-app link; a vendor creates kind `vendor` to a team member only; self marks `readAt`, deletes; a manager may overwrite a broadcast notification (resend) |
 | `tasks` | staff (managers-only to managers) | as before, plus: a non-creator staff may take a free open task, release or hand on their own, add a photo or `shoppingId`; a task on someone else cannot be taken (late offline take refused) |
 | `task_templates` | staff | managers; `assignee` (actor or null), `placeId`, `skip` (days whose instance a manager deleted, 30 max) |

@@ -77,15 +77,19 @@ service cloud.firestore {
    function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']) || claimsInvite());}
    // the person's own details; never role, status, email, customerNumber, notes, log or the vendor link
    function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
-   // a vendor stays a vendor (status, notes); a manager never makes one: only a claim can (V6 sets the role back to guest)
+   // a vendor stays a vendor (status, notes); a manager never makes one: only a claim can (V6 sets the role back to guest,
+   // and a stall's owner may do the same for their own helper: helperRevoke)
    function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && (incoming().role in ['guest','staff','manager','owner'] || (incoming().role == 'vendor' && resource.data.role == 'vendor')) && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
    function claimEdit(){return self(id) && resource.data.role in ['guest','vendor'] && resource.data.status == 'active' && changed().hasOnly(['role','vendorId','helper','addedBy','inviteCode','updatedAt']) && claimsInvite();}
+   // D7: a stall's owner removes a helper of their own stall, so the helper's access ends: only the role, back to guest
+   // (the owner cannot read the profile, so no log line; the Worker and V6 write one)
+   function helperRevoke(){return resource.data.get('helper', false) == true && resource.data.role == 'vendor' && incoming().role == 'guest' && changed().hasOnly(['role','updatedAt']) && !self(id) && vendorOwner(resource.data.get('vendorId', ''));}
    allow get: if self(id) || isManager();
    // volunteers need the names of the team (who a task is on), never the guests
    allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
    function fieldsOk(){return incoming().get('fields', {}) is map && incoming().get('fields', {}).get('receiptPreference', '') in ['', 'whatsapp', 'email'];}
    allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole() && (incoming().role == 'vendor' || !incoming().keys().hasAny(['vendorId','helper','addedBy','inviteCode']));
-   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit());
+   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit() || helperRevoke());
    allow delete: if isOwner();
 
    // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()
@@ -352,7 +356,8 @@ service cloud.firestore {
    function poolShape(){return incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt','contact','sells','needs','note','photo','events','people','inviteNext','fem']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().get('product', ''), 300) && str(incoming().get('sells', ''), 300) && str(incoming().get('contact', ''), 80) && incoming().get('external', true) is bool && incoming().get('fem', false) is bool && str(incoming().get('notes', ''), 2000) && str(incoming().get('note', ''), 1000) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && incoming().get('events', []) is list && incoming().get('events', []).size() <= 300 && incoming().get('people', []) is list && incoming().get('people', []).size() <= 12 && photoOk(incoming().get('photo', '')) && incoming().get('inviteNext', false) is bool;}
    // D2, D7, D9, D10: the owner edits what the farm shows about the stall, never the farm's fields
    function ownerEdit(){return changed().hasOnly(['name','phone','product','sells','needs','note','photo','inviteNext','updatedAt']) && vendorOwner(id);}
-   // D8 adds a helper, D7 removes one (display only: access comes from users/{uid}.vendorId)
+   // D8 adds a helper, D7 removes one. The list itself grants nothing: access comes from users/{uid}.vendorId, so D7 also
+   // sets the removed helper's profile back to guest (users: helperRevoke)
    function ownerPeople(){return changed().hasOnly(['people','updatedAt']) && vendorOwner(id);}
    allow get: if isStaff() || vendorPerson(id);
    allow list: if isStaff();

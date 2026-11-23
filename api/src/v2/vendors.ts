@@ -139,10 +139,18 @@ def('vendors.removePerson', 'vendors:write', 'הסרת אדם מהדוכן וס�
   const p = people.find(match);
   if (!p) throw notFound('person of this stall');
   const rest = people.filter((x) => !(p.code ? x.code === p.code : x.name === p.name && x.role === p.role));
-  const writes: Write[] = [c.fs.patch('vendors', v.id, { people: rest, updatedAt: nowIso() }, v.updateTime)];
-  if (p.code && await c.fs.get('vendor_invites', p.code, c.tx)) writes.push(c.fs.patch('vendor_invites', p.code, { active: false }));
-  return { writes, refs: [{ col: 'vendors', id: v.id }], data: { removed: p } };
-}, ['Destructive: confirm with the user first. An account that already signed in keeps existing (without the stall\'s screens only after vendors.removeAccess).']);
+  const at = nowIso();
+  const writes: Write[] = [c.fs.patch('vendors', v.id, { people: rest, updatedAt: at }, v.updateTime)];
+  const invite = p.code ? await c.fs.get('vendor_invites', p.code, c.tx) : null;
+  if (invite) writes.push(c.fs.patch('vendor_invites', invite.id, { active: false }));
+  // access comes from users/{uid}.vendorId, not from the people list: the account that signed in with this person's link goes
+  // back to guest, but only while it is still linked to this stall through this link (it may have claimed another one since)
+  const uid = String(p.uid || invite?.data.usedBy || '');
+  const u = uid ? await c.fs.get('users', uid, c.tx) : null;
+  const linked = !!u && u.data.role === 'vendor' && u.data.vendorId === v.id && (!p.code || !u.data.inviteCode || u.data.inviteCode === p.code);
+  if (linked && u) writes.push(toGuest(c, u, `הגישה לדוכן ${v.data.name} הוסרה`, at));
+  return { writes, refs: [{ col: 'vendors', id: v.id }], data: { removed: p, accessRemoved: linked } };
+}, ['Destructive: confirm with the user first. An account that already signed in with this person\'s link goes back to guest (it keeps existing, without the stall).']);
 // removeAccess()
 def('vendors.removeAccess', 'vendors:write', 'הסרת הגישה של דוכן לאפליקציה: כל הקישורים נסגרים והחשבונות חוזרים לאורח', { vendorId: req() }, async (c) => {
   const v = await vendorFor(c, c.input.vendorId);

@@ -1060,8 +1060,11 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'users/staff'), profile('staff', 'staff'));
       await setDoc(doc(f, 'users/guest'), profile('guest', 'guest'));
       await setDoc(doc(f, 'users/raz'), profile('raz', 'vendor', { vendorId: 'v-raz', helper: false, addedBy: 'mgr', inviteCode: 'code-raz-0001' }));
-      await setDoc(doc(f, 'users/tamar'), profile('tamar', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-tamar-01' }));
+      // a full-sized profile (log, push, photo, fields), so D7's removal is checked against the rules' expression budget
+      const heavy = { notes: 'הערה', log: Array.from({ length: 30 }, (_, i) => ({ at: now, by: actor('mgr'), text: 'שורה ' + i })), fields: { receiptPreference: 'whatsapp' }, photo: 'https://havat-ravve-api.meniviner.workers.dev/v1/files/avatar/tamar/' + 'a'.repeat(32) + '.jpg', photoSource: 'custom', googlePhoto: 'https://lh3.googleusercontent.com/a/x', town: 'רווה', birthDate: '1990-01-01', push: { enabled: true, kinds: ['task', 'vendor', 'event'], devices: Array.from({ length: 6 }, (_, i) => ({ token: 't' + i, at: now })), updatedAt: now }, welcomedAt: now, joinCode: '' };
+      await setDoc(doc(f, 'users/tamar'), profile('tamar', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-tamar-01', ...heavy }));
       await setDoc(doc(f, 'users/dana'), profile('dana', 'vendor', { vendorId: 'v-dana', helper: false, addedBy: 'mgr', inviteCode: 'code-dana-001' }));
+      await setDoc(doc(f, 'users/omer'), profile('omer', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-omer-001' }));
       await setDoc(doc(f, 'counters/users'), { value: 6 });
       await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'] }));
       await setDoc(doc(f, 'vendors/v-raz/private/main'), { notes: 'משלם באיחור', updatedAt: now });
@@ -1080,7 +1083,9 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'vendor_invites/code-owner-new'), invite('code-owner-new', 'v-raz', 'owner'));
       await setDoc(doc(f, 'vendor_invites/code-guest-001'), invite('code-guest-001', 'v-dana', 'helper', { createdBy: actor('dana') }));
       await setDoc(doc(f, 'vendor_invites/code-used-0001'), invite('code-used-0001', 'v-raz', 'helper', { active: false, usedBy: 'someone', usedAt: now }));
+      await setDoc(doc(f, 'vendor_invites/code-omer-001'), invite('code-omer-001', 'v-raz', 'helper', { active: false, usedBy: 'omer', usedAt: now, createdBy: actor('raz') }));
     });
+    const omer = db('omer');
     const raz = db('raz'), tamar = db('tamar'), dana = db('dana'), staff = db('staff'), mgr = db('mgr'), guest = db('guest'), fresh = db('fresh'), fresh2 = db('fresh2');
 
     vsection('Rules: own stall, invited events, nothing of other people');
@@ -1179,6 +1184,37 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await ok(getDoc(doc(guest, 'events/e-other')), '24 the new helper reads the invited event');
     await no(updateDoc(doc(guest, 'users/guest'), { vendorId: 'v-raz', updatedAt: now }), 'a vendor cannot switch stall by itself');
     await no(updateDoc(doc(mgr, 'users/staff'), { role: 'vendor', status: 'active', notes: '', updatedAt: now }), 'a manager cannot make a vendor without a claim');
+
+    vsection('Rules: the owner removes a helper (D7)');
+    const backToGuest = { role: 'guest', updatedAt: now };
+    const liveRef = (u) => doc(u, 'events/e-hidden/counters/live');
+    const stallReqs = (u) => getDocs(query(collection(u, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz')));
+    await no(updateDoc(doc(tamar, 'users/omer'), backToGuest), '30 a helper cannot remove another helper');
+    await no(updateDoc(doc(raz, 'users/guest'), backToGuest), '30 owner cannot remove a helper of another stall');
+    await no(updateDoc(doc(raz, 'users/fresh'), backToGuest), '30 owner cannot remove a co-owner');
+    await no(updateDoc(doc(raz, 'users/tamar'), { role: 'staff', updatedAt: now }), '30 owner can only set the helper to guest');
+    await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, displayName: 'אחר' }), '30 owner cannot touch other fields of the helper');
+    await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, vendorId: '' }), '30 owner cannot clear the vendor link itself');
+    await ok(getDoc(doc(tamar, 'vendors/v-raz')), '29 before: the helper reads the stall');
+    await ok(updateDoc(doc(raz, 'vendor_invites/code-tamar-01'), { active: false }), '29 owner closes the helper\'s invite');
+    await ok(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 owner sets the removed helper back to guest');
+    await no(getDoc(doc(tamar, 'vendors/v-raz')), '29 the removed helper no longer reads the stall');
+    await no(getDoc(doc(tamar, 'events/e-hidden')), '29 nor the invited event');
+    await no(getDoc(liveRef(tamar)), '29 nor its live counters');
+    await no(stallReqs(tamar), '29 nor the stall\'s requests (list)');
+    await no(getDoc(reqRef(tamar, 'r2')), '29 nor a request they created');
+    await no(setDoc(reqRef(tamar, 'r6'), request('r6', 'e-hidden', 'v-raz', 'tamar')), '29 and cannot create a request');
+    await no(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { guidelinesReadAt: now }), '29 nor write the stall\'s event record');
+    await ok(getDoc(doc(tamar, 'users/tamar')), '29 the account itself stays (own profile)');
+    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 removing again is refused (already a guest; the app ignores it)');
+    await ok(getDoc(doc(raz, 'vendors/v-raz')), '29 the owner keeps the stall');
+    await ok(getDoc(liveRef(raz)), '29 the owner keeps the live counters');
+    await ok(stallReqs(raz), '29 the owner keeps the requests');
+    await ok(getDoc(doc(omer, 'vendors/v-raz')), '29 the other helper keeps the stall');
+    await ok(getDoc(doc(omer, 'events/e-hidden')), '29 the other helper keeps the event');
+    await ok(getDoc(liveRef(omer)), '29 the other helper keeps the live counters');
+    await ok(stallReqs(omer), '29 the other helper keeps the requests');
+    await ok(setDoc(reqRef(omer, 'r7'), request('r7', 'e-hidden', 'v-raz', 'omer')), '29 the other helper still creates a request');
 
     vsection('Rules: removing access (V6)');
     await ok(updateDoc(doc(mgr, 'users/raz'), { role: 'guest', notes: '', updatedAt: now, log: [] }), '27 manager sets the vendor back to guest');
