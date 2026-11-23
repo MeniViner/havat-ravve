@@ -112,7 +112,6 @@
 
 /* "באיחור": the overdue group and its rows in the late tone (the old list's late section) */
 .v2 .tasks-late .k-cardhead__title { color: var(--red); }
-.v2 .tasks-row--late .k-row__meta { color: var(--red); }
 /* T3: the tags sit beside the title (small-additions table) */
 .tasks-titlerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tasks-titlerow > .k-h1 { flex: 0 1 auto; min-width: 0; }
