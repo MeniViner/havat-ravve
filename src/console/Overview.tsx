@@ -1,28 +1,41 @@
 // מצב השרת: is the server up, which version runs, how busy the last day was, what waits in the queues, when the
 // scheduled jobs last ran, which switches are on, and the latest actions of the keys and the console.
 import { Button, Card, Dot, ListCard, Row, StatRow, StatTile, Tag } from '../app/v2/kit';
-import { ago, fmt, Section, useLoad } from './shared';
+import { ago, fmt, outHref, Section, useLoad } from './shared';
 import { source } from './source';
+import { ON_NOW } from './Switches';
 
 const PUSH: Record<string, string> = { webpush: 'פועלות (Web Push)', fcm: 'פועלות (Firebase)', off: 'כבויות' };
+/** The switches that change what people can do: when one is on, the overview says so at the top. */
+const LOUD = new Set(['maintenance', 'readOnly', 'keysStopped', 'registrationClosed']);
 
 export function OverviewScreen() {
   const ov = useLoad(() => source.overview());
   const recent = useLoad(() => source.recent(8));
+  const sw = useLoad(() => source.switches());
   const o = ov.data;
   const cronLate = o?.crons ? Date.now() - Date.parse(o.crons.at) > 15 * 60_000 : true;
+  const s = sw.data?.switches;
+  const loud = s ? ON_NOW.filter(([k]) => LOUD.has(k) && s[k]).map(([, he]) => he) : [];
+  const quiet = s ? ON_NOW.filter(([k]) => !LOUD.has(k) && s[k]).map(([, he]) => he) : [];
   return (
     <>
       <div className="c-title">
         <div>
           <h1 className="c-h1">מצב השרת</h1>
-          <p className="c-sub">השרת של החווה ב־Cloudflare, המסלול החינמי.</p>
+          <p className="c-sub">השרת של החווה, במסלול החינמי.</p>
         </div>
-        <Button variant="neutral" onClick={() => { ov.reload(); recent.reload(); }} disabled={ov.loading}>רענון</Button>
+        <Button variant="neutral" onClick={() => { ov.reload(); recent.reload(); sw.reload(); }} disabled={ov.loading}>רענון</Button>
       </div>
+      {loud.length > 0 && (
+        <Card pad="md" className="c-warn">
+          <b>דלוק עכשיו: {loud.join(' · ')}.</b> <a className="c-link c-linkbtn" href="#/switches">למסך המתגים</a>
+        </Card>
+      )}
       {ov.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא את מצב השרת. {ov.error}</Card>}
+      {ov.loading && !o && <p className="c-soft">טוען…</p>}
       {o && (
-        <>
+        <div className={ov.loading ? 'c-stack c-loading' : 'c-stack'}>
           <Card pad="lg" className="c-health">
             <Dot tone={o.server.status === 'ok' ? 'green' : 'red'} />
             <div className="c-health__body">
@@ -30,7 +43,7 @@ export function OverviewScreen() {
               <span className="c-soft">
                 גרסה <span className="k-ltr k-num">{o.server.version ? o.server.version.slice(0, 8) : '—'}</span>
                 {o.server.deployedAt && <> · עלתה {ago(o.server.deployedAt)}</>}
-                {' '}· קטלוג <span className="k-num">{o.server.catalogVersion}</span>
+                {' '}· רשימת הפעולות בגרסה <bdi className="k-num">{o.server.catalogVersion}</bdi>
               </span>
             </div>
           </Card>
@@ -54,12 +67,13 @@ export function OverviewScreen() {
             </Section>
             <Section title="מתגים">
               <ListCard>
-                <Row title="התראות לטלפון" meta={o.switches.push.missing ? 'חסרות הגדרות בשרת' : undefined} value={PUSH[o.switches.push.mode] || o.switches.push.mode} />
+                <Row title="התראות לטלפון" meta={o.switches.push.missing ? 'חסרות הגדרות בשרת' : s?.pushPaused ? 'בהשהיה' : undefined} value={PUSH[o.switches.push.mode] || o.switches.push.mode} />
                 <Row title="מיילים" meta={o.switches.email.configured ? (o.switches.email.brevo ? 'דרך Brevo' : o.switches.email.resend ? 'דרך Resend' : 'אין ספק מוגדר') : undefined}
-                  value={o.switches.email.on ? 'פועלים' : 'כבויים'} />
-                <Row title="אחסון קבצים (R2)" value={o.switches.files.r2 ? 'מחובר' : 'לא מחובר'} />
+                  value={!o.switches.email.on ? 'כבויים' : s?.emailPaused ? 'בהשהיה' : 'פועלים'} />
+                <Row title="אחסון קבצים" value={o.switches.files.r2 ? 'מחובר' : 'לא מחובר'} />
               </ListCard>
-              <p className="c-note">שינוי המתגים מכאן יגיע בשלב הבא.</p>
+              {quiet.length > 0 && <p className="c-note">גם: {quiet.join(' · ')}.</p>}
+              <p className="c-note"><a className="c-link c-linkbtn" href="#/switches">להדליק ולכבות במסך המתגים</a></p>
             </Section>
           </div>
 
@@ -70,14 +84,15 @@ export function OverviewScreen() {
                 tags={o.crons && cronLate ? <Tag tone="urgent">מאחרות</Tag> : undefined} />
             </ListCard>
           </Section>
-        </>
+        </div>
       )}
 
-      <Section title="פעולות אחרונות" aside={<a className="c-link" href="/app/manage/instinct">ליומן המלא</a>}>
+      <Section title="פעולות אחרונות" aside={<a className="c-link c-linkbtn" href={outHref('/app/manage/instinct')}>ליומן המלא</a>}>
         {recent.error && <Card pad="md" className="c-error">{recent.error}</Card>}
+        {recent.loading && !recent.data && <p className="c-soft">טוען…</p>}
         {recent.data && !recent.data.length && <Card pad="md" className="c-soft">עוד אין פעולות ביומן.</Card>}
         {!!recent.data?.length && (
-          <ListCard>
+          <ListCard className={recent.loading ? 'c-loading' : undefined}>
             {recent.data.map((e) => (
               <Row key={e.id} title={<><b>{e.keyLabel}</b> {e.verb}: {e.opHe || e.op}</>} meta={ago(e.at)}
                 tags={!e.ok ? <Tag tone="urgent">נכשל</Tag> : undefined} />

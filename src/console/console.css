@@ -12,7 +12,14 @@ html, body { margin: 0; background: #F3F4F2; }
   .c-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .c-demo { grid-column: 1 / -1; }
   .c-top { display: none; }
-  .c-side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100dvh; box-sizing: border-box; padding: 24px 16px; background: var(--surface); border-inline-end: 1px solid var(--line); }
+  /* scrolls on its own when the window is short, so the last tabs, the links and the account block stay reachable */
+  .c-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; height: 100dvh; box-sizing: border-box; padding: 20px 16px; background: var(--surface); border-inline-end: 1px solid var(--line); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .c-side .c-nav { gap: 2px; }
+  .c-side .c-nav__item { min-height: 40px; }
+  .c-side .c-me { padding-bottom: 4px; }
+  /* the demo line stays on top, and the side column fits under it */
+  .c-demo { position: sticky; top: 0; z-index: 6; box-sizing: border-box; height: 32px; line-height: 20px; }
+  .c-demo ~ .c-side { top: 32px; height: calc(100dvh - 32px); }
   .c-main { padding: 32px 40px 96px; gap: 24px; }
 }
 
@@ -67,6 +74,11 @@ html, body { margin: 0; background: #F3F4F2; }
 .c-top .k-tabs { overflow-x: auto; scrollbar-width: none; }
 .c-top .k-tabs::-webkit-scrollbar { display: none; }
 .c-top .k-tabs__tab { flex: 1 0 auto; padding: 0 14px; }
+/* a fade on the edge that has more tabs past it (start = right, end = left in RTL) */
+.c-tabs { --fade: 44px; }
+.c-tabs--end .k-tabs { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); }
+.c-tabs--start .k-tabs { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); }
+.c-tabs--start.c-tabs--end .k-tabs { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); }
 
 /* a document in a backup next to how it is today */
 .c-compare { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; font-size: 14px; }
@@ -124,8 +136,11 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 .c-loading { opacity: .6; transition: opacity .15s; }
 .c-cols { margin: 0; }
 .c-cols__plot { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); direction: ltr; }
-.c-cols__col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+.c-cols__col { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; cursor: pointer; border-radius: 4px 4px 0 0; }
 .c-cols__col:hover .c-cols__bar { opacity: 1; }
+.c-cols__col:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+.c-cols__col[aria-pressed='true'] .c-cols__bar { opacity: 1; background: var(--action); }
+.c-cols__tip { margin: 8px 0 0; min-height: 1.5em; font-size: 14px; line-height: 1.5; font-weight: 600; }
 .c-cols__bar { display: block; width: 100%; max-width: 28px; margin: 0 auto; background: var(--selected); opacity: .85; border-radius: 4px 4px 0 0; }
 .c-cols__axis { display: flex; gap: 2px; direction: ltr; margin-top: 6px; }
 .c-cols__axis span { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--soft); text-align: center; white-space: nowrap; overflow: visible; font-variant-numeric: tabular-nums; }
@@ -201,3 +216,19 @@ button.c-link { background: none; border: 0; padding: 0; font: inherit; font-wei
 .c-filepick:focus-within { outline: 2px solid var(--action); outline-offset: 2px; }
 .c-map { display: grid; gap: 12px; }
 @media (min-width: 700px) { .c-map { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ---------- fix round: field names, tap targets, technical details ---------- */
+/* a stored field: its Hebrew name, and the stored name small and left-to-right beside it */
+.c-fname__raw { display: inline-block; font-size: 12px; color: var(--soft); font-weight: 400; }
+.c-compare__row .c-fname__raw, .c-fields__key .c-fname__raw { display: block; }
+.c-fields__key .c-fname { color: var(--ink); font-size: 14px; }
+/* a small text link that is still a 44px target */
+.c-linkbtn { display: inline-flex; align-items: center; min-height: 44px; margin-block: -12px; padding-inline: 4px; }
+.c-tech { font-size: 13px; color: var(--soft); }
+.c-tech summary { cursor: pointer; font-size: 14px; padding: 6px 0; list-style: none; }
+.c-tech summary::-webkit-details-marker { display: none; }
+.c-tech summary::before { content: '◂'; display: inline-block; width: 1em; }
+.c-tech[open] > summary::before { content: '▾'; }
+.c-tech p { margin: 6px 0 0; }
+.c-tech .c-json { margin-top: 8px; }
+.c-raw { font-size: 12px; color: var(--soft); }
