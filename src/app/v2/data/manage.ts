@@ -17,6 +17,7 @@ import { useToast } from '../core';
 import { ROLE_LABELS } from '../../types';
 import type { Actor, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, VendorRequest, RoleInvite } from '../../types';
 import type { PaymentExtra } from '../screens/manage/calc';
+import type { PayConfirmTarget } from '../patterns';
 
 export * from '../screens/manage/calc';
 export {
@@ -164,3 +165,13 @@ export const canDeletePerson = (me: { owner: boolean; uid: string }, p: Profile)
 export const saveSettings = (actor: Actor, patch: Partial<ManageSettings>, what: string) => saveSettingsPart(actor, patch as Partial<Settings>, what);
 
 export const stamp = () => nowIso();
+
+// ---------- Q7: what the payment confirmation sheet needs after an approval ----------
+/** The usePayConfirm target of an approved payment (donation, stall account, ticket order). */
+export function payTarget(p: PayItem): PayConfirmTarget {
+  if (p.kind === 'donation') return { collection: 'donations', ids: [p.doc.id], uid: p.doc.uid, name: p.doc.name, phone: p.doc.phone, amount: p.doc.amount, purpose: 'תרומה לחווה' };
+  if (p.kind === 'tab') return { collection: 'tabs', ids: [p.doc.id], uid: p.doc.guestUid, name: p.doc.guestName, phone: p.doc.guestPhone, amount: p.doc.total, purpose: `חשבון הדוכן באירוע ${p.doc.eventTitle}`, event: p.doc.eventTitle };
+  const ts = p.tickets.filter((t) => t.status === 'valid' && (t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'));
+  const t = ts[0] || p.tickets[0];
+  return { collection: 'tickets', ids: ts.map((x) => x.id), uid: t?.ownerUid || '', name: t?.ownerName || '', phone: t?.ownerPhone || '', amount: ts.reduce((s, x) => s + x.price, 0), purpose: `כרטיסים לאירוע ${t?.eventTitle || ''}`, event: t?.eventTitle };
+}
