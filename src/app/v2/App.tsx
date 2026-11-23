@@ -156,6 +156,6 @@ export function V2Root(props: { user: Session; profile: Profile; settings: Setti
 function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
   const demo = useDemo(); const toast = useToast();
   if (demo.on) return null;
-  return <DemoIntro profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
+  return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
 }
 export { canManage };

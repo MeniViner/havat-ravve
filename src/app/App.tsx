@@ -79,7 +79,7 @@ function GuestApp({ user, profile, settings }: { user: Session | null; profile: 
   return <>
     <Shell nav={nav} profile={profile} online={online} master={screen} narrow center />
     {/* first visits in demo, for a real signed-in account only */}
-    {user && profile && !demo.on && <DemoIntro profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast({ text }, 4500)} />}
+    {user && profile && !demo.on && <DemoIntro shell="guest" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast({ text }, 4500)} />}
   </>;
 }
 function guestRoutes(route: string, ctx: GuestCtx): ReactNode | null {

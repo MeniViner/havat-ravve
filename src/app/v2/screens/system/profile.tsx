@@ -5,7 +5,6 @@ import { TopBar, Button, Icon, StatRow, StatTile, DetailList, DetailRow, TextLin
 import { back } from '../../../router';
 import { signOutUser } from '../../../firebase';
 import { useDemo, setDemo } from '../../../demo/store';
-import { startOwnDemo, introPersona, leaveDemoTarget } from '../../../demo/intro';
 import { setViewAsStaff } from '../../App';
 import type { ScreenProps } from '../../ctx';
 import type { Profile } from '../../../types';
@@ -78,12 +77,6 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         <Row leading={<IconTile icon="farm" />} title="האתר של החווה" meta="" href="/"
           onClick={(e) => { e.preventDefault(); window.open('/', '_blank', 'noopener'); }} />
         {!demo.on && <Row leading={<IconTile icon="help" />} title="לראות איך האפליקציה עובדת" meta="הדגמה עם נתונים לא אמיתיים" onClick={() => go('/demo')} />}
-        <Row leading={<IconTile icon="sliders" />} title="מצב דמו" meta={demo.on ? 'פעיל. כיבוי מחזיר לנתונים האמיתיים' : 'נתונים לדוגמה, באותו תפקיד שלך'}
-          actions={<Toggle checked={demo.on} label="מצב דמו" onChange={(on) => {
-            if (on) startOwnDemo(introPersona(p, ctx.owner, ctx.manager));
-            else setDemo({ on: false });
-            go(on ? '/' : leaveDemoTarget(), true);
-          }} />} />
       </ListCard>
       <div className="system-foot">
         <Button variant="outline" size="tall" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>

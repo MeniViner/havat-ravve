@@ -2,11 +2,11 @@
 // Rendered next to the real app only (never while demo is on), for guests in the old shell and for the team and vendors in v2.
 import { useEffect, useState } from 'react';
 import { navigate } from '../router';
-import { runIntro, answerIntro, introPersona } from '../demo/intro';
+import { runIntro, answerIntro, introPersona, INTRO_DECLINED } from '../demo/intro';
 import type { Profile } from '../types';
 import { Sheet, Button } from './kit';
 
-export function DemoIntro({ profile, owner, manager, notify }: { profile: Profile; owner: boolean; manager: boolean; notify: (text: string) => void }) {
+export function DemoIntro({ profile, owner, manager, shell, notify }: { profile: Profile; owner: boolean; manager: boolean; shell: keyof typeof INTRO_DECLINED; notify: (text: string) => void }) {
   const [ask, setAsk] = useState(false);
   useEffect(() => {
     const action = runIntro(profile, owner, manager);
@@ -17,7 +17,7 @@ export function DemoIntro({ profile, owner, manager, notify }: { profile: Profil
     setAsk(false);
     answerIntro(profile.uid, on, introPersona(profile, owner, manager));
     if (on) navigate('/', true);
-    else notify('תמיד אפשר להפעיל מצב דמו בהגדרות');
+    else notify(INTRO_DECLINED[shell]);
   };
   // closing the sheet without a button is an answer too (the question is asked once), without the toast
   const dismiss = () => { setAsk(false); answerIntro(profile.uid, false, 'guest'); };

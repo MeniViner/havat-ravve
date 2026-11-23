@@ -10,13 +10,21 @@ import type { Profile } from '../types';
 export type IntroStage = 'demo' | 'left' | 'done';
 export type IntroAction = 'start' | 'ask' | 'none';
 
+/** The toast after "לא תודה": where demo can be turned on again, in each shell, named as the existing entry is.
+ *  Team and vendors: the profile row "לראות איך האפליקציה עובדת" (/me → /demo). Guests: "מצב הדגמה" on החשבון שלי.
+ *  A demo switch in Settings proper needs a design first; when the tidy round moves the guest entry, change it here. */
+export const INTRO_DECLINED = {
+  team: 'אפשר לחזור לדמו בכל רגע מהפרופיל, ב״לראות איך האפליקציה עובדת״',
+  guest: 'אפשר לחזור לדמו בכל רגע מ״החשבון שלי״, ב״מצב הדגמה״',
+} as const;
+
 /** Accounts created from this day get the first-visit demo. Older accounts (the working team) are left as they are. */
 export const INTRO_FROM = '2026-11-23';
 
 const STAGE = (uid: string) => 'farm-demo-intro:' + uid;
 /** sessionStorage: demo was left during this opening of the app (the question waits for the next opening). */
 const LEFT_NOW = 'farm-demo-intro-left';
-/** localStorage: the demo now on was started for the real account (first visit, the question, or the profile switch):
+/** localStorage: the demo now on was started for the real account (the first visit or the question):
  *  leaving it goes back to the account, not to the persona chooser (/demo). */
 const OWNED = 'farm-demo-intro-owned';
 /** localStorage: ?demo-intro=reset on this device: the next real account to open starts the first-visit demo from the beginning. */
@@ -94,7 +102,7 @@ export function answerIntro(uid: string, on: boolean, persona: Persona) {
   if (on) startOwnDemo(persona);
 }
 
-/** Demo for the real account at its own role (first visit, the question, the profile switch). */
+/** Demo for the real account at its own role (the first visit, or הפעלה on the question). */
 export function startOwnDemo(persona: Persona) {
   ls.set(OWNED, '1');
   setDemo({ on: true, persona });
