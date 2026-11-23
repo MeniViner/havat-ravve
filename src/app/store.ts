@@ -12,21 +12,28 @@ import { nowMs } from './clock';
 import { linkOpen, LINK_GONE, type TeamLink } from './v2/data/invite';
 
 // ---------- auth ----------
-type AuthState = { loading: boolean; user: User | null };
-let authState: AuthState = { loading: true, user: null };
+type AuthState = { loading: boolean; user: User | null; bootstrapOwner: boolean };
+let authState: AuthState = { loading: true, user: null, bootstrapOwner: false };
 let authStarted = false;
 const authListeners = new Set<() => void>();
 function startAuth() {
   if (authStarted) return;
   authStarted = true;
-  void readyAuth().then((auth) => onAuthStateChanged(auth, (user) => {
-    authState = { loading: false, user: isAccountUser(user) ? user : null };
+  void readyAuth().then((auth) => onAuthStateChanged(auth, async (user) => {
+    const account = isAccountUser(user) ? user : null;
+    let bootstrapOwner = false;
+    if (account && isOwnerEmail(account.email)) {
+      const token = await account.getIdTokenResult().catch(() => null);
+      bootstrapOwner = token?.claims.email_verified === true && token.signInProvider === 'google.com';
+    }
+    if (auth.currentUser !== user) return;
+    authState = { loading: false, user: account, bootstrapOwner };
     authListeners.forEach((listener) => listener());
   }));
 }
 const useFirebaseAuth = () => useSyncExternalStore((l) => { authListeners.add(l); return () => authListeners.delete(l); }, () => authState);
 
-/** The current session: the signed-in Google account, or the active demo persona. */
+/** The current session: the signed-in account or the active demo persona. */
 export function useAuth(): { loading: boolean; user: Session | null; real: boolean } {
   const fb = useFirebaseAuth();
   const demo = useDemo();
@@ -39,7 +46,7 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
       const p = uid ? (demoDoc('users/' + uid) as Profile | null) : null;
       return { loading: false, user: p ? { uid: p.uid, email: p.email, displayName: p.displayName } : null, real: false };
     }
-    return { loading: fb.loading, user: fb.user ? { uid: fb.user.uid, email: fb.user.email || '', displayName: fb.user.displayName || '' } : null, real: true };
+    return { loading: fb.loading, user: fb.user ? { uid: fb.user.uid, email: fb.user.email || '', displayName: fb.user.displayName || '', bootstrapOwner: fb.bootstrapOwner } : null, real: true };
   }, [fb, demo.on, demo.persona]);
 }
 
@@ -51,9 +58,9 @@ export function useProfile(user: Session | null) {
 }
 
 export const isOwnerEmail = (email?: string | null) => !!email && email.toLowerCase() === ownerEmail.toLowerCase();
-export const canManage = (p: Profile | null, email?: string | null) => isOwnerEmail(email) || (!!p && p.status === 'active' && (p.role === 'owner' || p.role === 'manager'));
-export const isOwner = (p: Profile | null, email?: string | null) => isOwnerEmail(email) || (!!p && p.status === 'active' && p.role === 'owner');
-export const isTeam = (p: Profile | null, email?: string | null) => canManage(p, email) || (!!p && p.status === 'active' && p.role === 'staff');
+export const isOwner = (p: Profile | null, user: Session | null) => user?.bootstrapOwner === true || (!!p && p.status === 'active' && p.role === 'owner');
+export const canManage = (p: Profile | null, user: Session | null) => isOwner(p, user) || (!!p && p.status === 'active' && p.role === 'manager');
+export const isTeam = (p: Profile | null, user: Session | null) => canManage(p, user) || (!!p && p.status === 'active' && p.role === 'staff');
 export const actorOf = (user: Session, p: Profile | null): Actor => ({ uid: user.uid, name: p?.displayName || user.displayName || user.email || '' });
 
 export function useCmsEditor(user: Session, enabled: boolean) {
@@ -76,7 +83,7 @@ export function useCmsEditor(user: Session, enabled: boolean) {
   return item?.active === true && (item.uid === null || item.uid === user.uid);
 }
 
-/** The role for a brand-new account: owner by bootstrap email; otherwise the role of the one-time team link the person came
+/** The role for a brand-new account: owner for the verified Google bootstrap account; otherwise the role of the one-time team link the person came
  *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
  *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
 export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }, link = '') {
@@ -92,7 +99,7 @@ export async function createProfile(user: Session, data: { displayName: string; 
   const counterRef = doc(db, 'counters', 'users');
   const userRef = doc(db, 'users', user.uid);
   const inviteRef = doc(db, 'role_invites', email);
-  const linkRef = link && !isOwnerEmail(email) ? doc(db, 'team_links', link) : null;
+  const linkRef = link && !user.bootstrapOwner ? doc(db, 'team_links', link) : null;
   await runTransaction(db, async (t) => {
     const existing = await t.get(userRef);
     if (existing.exists()) return;
@@ -100,10 +107,10 @@ export async function createProfile(user: Session, data: { displayName: string; 
     const linkSnap = linkRef ? await t.get(linkRef) : null;
     const team = linkSnap?.exists() ? (linkSnap.data() as TeamLink) : null;
     if (linkRef && !linkOpen(team)) throw new Error(LINK_GONE);
-    const invite = isOwnerEmail(email) || team ? null : await t.get(inviteRef).catch(() => null);
+    const invite = user.bootstrapOwner || team ? null : await t.get(inviteRef).catch(() => null);
     const value = (counter.exists() ? counter.data().value : 0) + 1;
     if (counter.exists()) t.update(counterRef, { value }); else t.set(counterRef, { value });
-    const role: Role = isOwnerEmail(email) ? 'owner' : team ? team.role : (invite?.exists() ? (invite.data().role as Role) : 'guest');
+    const role: Role = user.bootstrapOwner ? 'owner' : team ? team.role : (invite?.exists() ? (invite.data().role as Role) : 'guest');
     const profile: Profile = { ...details, role, customerNumber: value, ...(team ? { teamLink: link } : {}) };
     t.set(userRef, profile);
     if (linkRef && team) t.update(linkRef, { usedBy: user.uid, usedAt: now, active: false });

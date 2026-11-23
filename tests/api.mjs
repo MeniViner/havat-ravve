@@ -1452,6 +1452,11 @@ section('files: R2 uploads for the app (Firebase sign-in token, roles, types, se
     check((await up('avatar', JPEG, 'image/jpeg', jwt(claims))).status === 201, '(control) the same unsigned claims, valid → 201 in emulator mode only');
     const pre = await fetch(`${base}/v1/files`, { method: 'OPTIONS', headers: { origin: 'https://havat-ravve--pr19-redesign-v2-wou9u5ju.web.app', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
     check(pre.status === 204 && pre.headers.get('access-control-allow-origin') === 'https://havat-ravve--pr19-redesign-v2-wou9u5ju.web.app' && /authorization/.test(pre.headers.get('access-control-allow-headers') || ''), 'preflight from a preview channel → allowed');
+    const iosOrigin = 'capacitor://localhost';
+    const ios = await fetch(`${base}/v1/files`, { method: 'OPTIONS', headers: { origin: iosOrigin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
+    check(ios.status === 204 && ios.headers.get('access-control-allow-origin') === iosOrigin && /authorization/.test(ios.headers.get('access-control-allow-headers') || ''), 'preflight from the iPhone app → allowed');
+    const iosUpload = await up('avatar', JPEG, 'image/jpeg', people.guest.idToken, iosOrigin);
+    check(iosUpload.status === 201 && iosUpload.headers.get('access-control-allow-origin') === iosOrigin, 'signed-in iPhone app receives a readable upload response');
     const evil = await fetch(`${base}/v1/files`, { method: 'OPTIONS', headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' } });
     check(!evil.headers.get('access-control-allow-origin'), 'preflight from another site → no CORS allowance');
     check((await fetch(`${base}/v1/files/avatar/x/short.jpg`)).status === 404 && (await fetch(`${base}/v1/files/avatar/${people.guest.localId}/${'A'.repeat(32)}.jpg`)).status === 404 && (await fetch(`${base}/v1/files/..%2F..%2Fsecret`)).status === 404, 'malformed, unknown and traversal keys → 404');

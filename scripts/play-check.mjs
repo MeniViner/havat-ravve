@@ -82,6 +82,9 @@ if (!gradle) add('Android', 'generated project targets API 36 (required for new 
 else {
   const target = Number((gradle.match(/targetSdk(?:Version)?\s*=?\s*(\d+)/) || [])[1]);
   ok('Android', 'targetSdk is at least 36 (required for new apps)', target >= 36, `targetSdk ${target || 'not found'}`);
+  const versionCode = Number(gradle.match(/^\s*versionCode\s*=?\s*(\d+)/m)?.[1]);
+  const versionName = gradle.match(/^\s*versionName\s*=?\s*["']([^"']*)/m)?.[1];
+  ok('Android', 'version name and code match the Bubblewrap manifest', !!versionName && versionName === twa?.appVersion && versionCode > 0 && versionCode === twa?.appVersionCode, 'update appVersion and appVersionCode, then regenerate the Android project');
 }
 let tracked = '';
 try { tracked = execSync('git ls-files', { encoding: 'utf8' }); } catch {}

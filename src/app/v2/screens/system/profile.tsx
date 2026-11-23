@@ -19,7 +19,7 @@ import {
   receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { RegistrationQuestions } from './fields';
-import { isNative, publicOrigin } from '../../../native';
+import { isNative, openSitePage } from '../../../native';
 import './system.css';
 
 export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
@@ -78,7 +78,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
       </ListCard>
       <div className="system-foot">
         <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
-        <Button variant="quiet" onClick={() => window.open(publicOrigin() + '/', '_blank', 'noopener')}>האתר של החווה</Button>
+        <Button variant="quiet" onClick={() => openSitePage('/')}>האתר של החווה</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
         {/* the demo link (parity): a quiet link too, only while the demo is off */}
         {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}

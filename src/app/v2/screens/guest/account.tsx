@@ -13,6 +13,7 @@ import { useDemo } from '../../../demo/store';
 import { write } from '../../../db';
 import { nowIso } from '../../../clock';
 import { back, navigate, param } from '../../../router';
+import { isNative } from '../../../native';
 import { dayName, daysFromToday, ddmm, longDate, money } from '../../format';
 import { isRead, markRead, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import { usePush, enablePush, disablePush } from '../../data/push';
@@ -133,7 +134,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       </ListCard>
       <div className="guest-foot">
         <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
-        <Button variant="quiet" onClick={() => go('/install')}>התקנה</Button>
+        {!isNative && <Button variant="quiet" onClick={() => go('/install')}>התקנה</Button>}
         <Button variant="quiet" href="/">האתר</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאים</Button>
       </div>

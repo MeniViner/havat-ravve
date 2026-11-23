@@ -17,6 +17,7 @@ import {
 import { daysFromToday, money } from '../../format';
 import { useRoute } from '../../../router';
 import { getDemo } from '../../../demo/store';
+import { openSitePage } from '../../../native';
 import type { RegistrationField, Settings } from '../../../types';
 import {
   usePeople, useRoleInvites, useActivityAll, saveSettings, useRun, donationOptionsOf, contactMoreOf, paymentForm, paymentPatch, numberOk,
@@ -38,7 +39,7 @@ export function SettingsScreen({ ctx }: ScreenProps) {
   const owners = people.filter((p) => p.role === 'owner' && p.status === 'active').length + invites.filter((i) => i.role === 'owner').length;
   const managers = people.filter((p) => p.role === 'manager' && p.status === 'active').length + invites.filter((i) => i.role === 'manager').length;
   const l = settingsLines(s, owners, managers);
-  const site = () => { if (getDemo().on) toast.show({ text: 'עריכת האתר זמינה בחשבון האמיתי', duration: 3000 }); else window.open('/edit', '_blank', 'noopener'); };
+  const site = () => { if (getDemo().on) toast.show({ text: 'עריכת האתר זמינה בחשבון האמיתי', duration: 3000 }); else openSitePage('/edit'); };
   const siteItems: ActionItem[] = [
     { label: 'עריכת אתר החווה', icon: 'globe', meta: 'נפתח בחלון נפרד', onSelect: site },
     { label: 'תנאי שימוש ופרטיות', icon: 'file', meta: 'הנוסח שהאורחים מאשרים', onSelect: () => go('/terms') },

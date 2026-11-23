@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth, useProfile, isOwner, isOwnerEmail, isTeam } from './store';
+import { useAuth, useProfile, isOwner, isTeam } from './store';
 import { useSettings, useSwitchesDoc } from './data';
 import { publishSwitches, useAppSwitches } from './switches';
 import { signOutUser } from './firebase';
@@ -91,17 +91,17 @@ export default function App() {
   const deletion = useDeletionRequest(user && profile ? user.uid : undefined);
   // the owners' switches from the console: maintenance, closed registration, read-only (owners keep working)
   const switchesDoc = useSwitchesDoc();
-  const owner = !!user && isOwner(profile, user.email);
+  const owner = !!user && isOwner(profile, user);
   useEffect(() => { publishSwitches(demo.on ? null : switchesDoc.item, owner); }, [switchesDoc.item, owner, demo.on]);
   const sw = useAppSwitches();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
     if (loading || profileLoading || demo.on) return;
     try {
-      if (user && profile) localStorage.setItem('farm-me', JSON.stringify({ name: profile.displayName, role: isOwner(profile, user.email) ? ROLE_LABELS.owner : ROLE_LABELS[profile.role] }));
+      if (user && profile) localStorage.setItem('farm-me', JSON.stringify({ name: profile.displayName, role: owner ? ROLE_LABELS.owner : ROLE_LABELS[profile.role] }));
       else if (!user) localStorage.removeItem('farm-me');
     } catch { /* private mode */ }
-  }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
+  }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, owner, demo.on, demo.persona]);
   // the owners' console counts app usage (usage.ts): opens and screens only, never in the demo
   useUsage(route, !loading && !(user && profileLoading), user ? (owner ? 'owner' : profile?.role || 'guest') : null, demo.on);
   // Z1: the demo start page works for everyone, signed in or not, demo on or off
@@ -116,17 +116,17 @@ export default function App() {
     if (route === '/terms' || route === '/privacy') return <GuestFrame><TermsPage /></GuestFrame>; // the terms link on C9 / U13 works before the profile exists
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
-    if (sw.registrationClosed && !demo.on && !isOwnerEmail(user.email)) return <RegistrationClosedPage />;
+    if (sw.registrationClosed && !demo.on && !user.bootstrapOwner) return <RegistrationClosedPage />;
     return <GuestFrame><FirstEntry key={user.uid} user={user} settings={settings} link={teamLink && !demo.on && pendingVendorInvite() ? invite : undefined} /></GuestFrame>;
   }
   if (user && profile && deletion.item) return <GuestFrame><DeletionScheduledPage profile={profile} request={deletion.item} /></GuestFrame>;
   // X2: a suspended team member or vendor sees the new suspended screen; a suspended guest keeps the guest page
   // (a personal greeting, WhatsApp with the text filled in, and the line that the site stays open to view)
   if (user && profile && profile.status === 'blocked') {
-    if (profile.role === 'guest' && !isOwnerEmail(user.email)) return <GuestFrame><BlockedPage profile={profile} settings={settings} /></GuestFrame>;
+    if (profile.role === 'guest' && !user.bootstrapOwner) return <GuestFrame><BlockedPage profile={profile} settings={settings} /></GuestFrame>;
     return <><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></>;
   }
   // staff, managers, owners and vendors: the redesigned app
-  if (user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
+  if (user && profile && (isTeam(profile, user) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
   return <GuestRoot user={user} profile={profile} settings={settings} />;
 }

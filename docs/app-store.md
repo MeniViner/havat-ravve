@@ -26,7 +26,7 @@ with a website deploy: a change reaches iPhones with the next App Store build. (
 | `scripts/build-native.mjs` | Packs `dist/app.js`, `app.css`, `assets/` and `app.html` (as `index.html`, without the web manifest tags) |
 | `src/app/native.ts` | `isNative`, `publicOrigin()`, the native sign-in plugin by name, links to the website open in Safari |
 | `src/app/firebase.ts` | On native: `initializeAuth` with IndexedDB, Google and Apple through the native sheets; closing a sheet is not an error |
-| `src/app/screens/Guest.tsx` | "המשך עם Apple" under "המשך עם Google" on the sign-in screens, only in the iPhone app |
+| `src/app/v2/screens/guest/parts.tsx` | Sign in with Apple alongside Google on the sign-in screens inside the iPhone app |
 | `firestore.rules` | `account()` accepts `google.com` and `apple.com` for the team app. The website editor (`cms_*`) and the owner bootstrap stay Google only |
 | `api/src/files.ts` | The Worker accepts uploads from `capacitor://localhost` |
 | `ios/` | The Xcode project (Swift Package Manager, no CocoaPods) |
@@ -45,6 +45,17 @@ npm run ios:open       # opens Xcode
 
 In Xcode: pick the team under Signing & Capabilities, then Product → Archive → Distribute → App Store Connect.
 Raise the build number (`CURRENT_PROJECT_VERSION`) for every upload, and `MARKETING_VERSION` for each release.
+
+### Simulator smoke test
+
+Run Product → Test on a signed-out iPhone simulator. The shared App scheme checks both sign-in options and the tasks and shopping screens in the team demo. From the command line:
+
+```sh
+npm run build:ios
+xcodebuild -project ios/App/App.xcodeproj -scheme App \
+  -destination 'platform=iOS Simulator,id=<simulator UDID>' \
+  CODE_SIGNING_ALLOWED=NO test
+```
 
 ## What is left (in order)
 
@@ -84,6 +95,9 @@ Google and Apple sign-in, onboarding, ticket order and the QR, scanning with the
 location, offline open and offline writes, file uploads (the Worker must be deployed with the new origin),
 links to the website and to WhatsApp, `.ics` and CSV downloads (WKWebView may not save blob downloads), account
 deletion, sign-out and signing in with another account.
+
+Apple account deletion also needs token revocation. Configure Apple's OAuth code flow in Firebase and verify revocation
+with a real Apple account before App Store review. The current deletion request schedules account and data deletion in Firestore.
 
 ### 5. App Store Connect listing
 

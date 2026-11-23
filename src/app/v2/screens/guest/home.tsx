@@ -7,6 +7,7 @@ import { useDemo } from '../../../demo/store';
 import { demoPreviousGuestVisit } from '../../../demo/data';
 import { nowIso, now as clockNow } from '../../../clock';
 import { back } from '../../../router';
+import { publicOrigin } from '../../../native';
 import { dayName, daysFromToday, hhmm, ddmm } from '../../format';
 import { isRead, markRead, markSeen, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import type { Broadcast, Profile } from '../../../types';
@@ -151,7 +152,7 @@ export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
       <PhotoHeader src={e.image} height={190} overline={whenLong(e)} title={e.title} label={`תמונה מ${e.title}`} />
       <TopBar className="guest-pull" back={{ label: 'בית', onClick: () => back('/') }} end={<span className="guest-icons">
         <IconButton icon="calendar" label="להוסיף ליומן" variant="bordered" onClick={() => downloadIcs(e)} />
-        <IconButton icon="share" label="שיתוף" variant="bordered" onClick={() => share({ title: e.title, text: `${e.title} בחוות רווה · ${whenLong(e)}`, url: location.href })} />
+        <IconButton icon="share" label="שיתוף" variant="bordered" onClick={() => share({ title: e.title, text: `${e.title} בחוות רווה · ${whenLong(e)}`, url: `${publicOrigin()}/app/events/${e.id}` })} />
       </span>} />
       <DetailList>
         <DetailRow term="איפה" action={<TextLink onClick={() => open(mapsSearch(place))}>ניווט</TextLink>}>{place}</DetailRow>

@@ -25,7 +25,7 @@ The signing key (`*.keystore`, `*.jks`) never enters git; `.gitignore` covers it
   cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew bundleRelease
   jarsigner -keystore ~/.havat-ravve/android/havat-ravve-upload.keystore app/build/outputs/bundle/release/app-release.aab upload
   ```
-  Raise `appVersionCode` in `android/twa-manifest.json` (and regenerate) for every upload.
+  Raise `appVersionCode` in `android/twa-manifest.json` for every upload. Set the user-facing name in `appVersion` and regenerate the Android project.
 - `fingerprints` lists the upload key and, once Play Console shows it, the Play App Signing key. The build writes both into `/.well-known/assetlinks.json`.
 
 ## Account deletion

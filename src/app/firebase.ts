@@ -100,4 +100,4 @@ export const authErrorMessage = (e: any) =>
   })[e?.code as string] || e?.message || 'הפעולה לא הושלמה';
 
 /** Who is using the app right now: a real Google account, or a demo persona. */
-export type Session = { uid: string; email: string; displayName: string };
+export type Session = { uid: string; email: string; displayName: string; bootstrapOwner?: boolean };

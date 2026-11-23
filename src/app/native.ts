@@ -11,6 +11,10 @@ export const isNativeIos = isNative && Capacitor.getPlatform() === 'ios';
 /** The address people can open: the app's own page origin is capacitor://localhost, which means nothing outside the phone. */
 export const publicOrigin = () => (isNative || typeof location === 'undefined' ? config.origin : location.origin);
 
+export function openSitePage(path: string) {
+  window.open(publicOrigin() + path, '_blank', 'noopener');
+}
+
 /**
  * The native sign-in sheets (Google, Apple). Registered by name only, so the website bundle does not carry the
  * plugin's web code; the native side answers only inside the app. `skipNativeAuth` (capacitor.config.json) keeps
@@ -34,6 +38,6 @@ export function installNativeLinks() {
     if (url.protocol !== location.protocol || url.host !== location.host) return;
     if (url.pathname === '/app' || url.pathname.startsWith('/app/')) return;
     e.preventDefault();
-    window.open(config.origin + url.pathname + url.search + url.hash, '_blank');
+    openSitePage(url.pathname + url.search + url.hash);
   }, true);
 }

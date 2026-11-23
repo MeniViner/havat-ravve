@@ -100,7 +100,7 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
         </AppScreen>
       )}>{screen}</Guard>
       {demo.on && <DemoSheet open={sheet} onClose={() => setSheet(false)} />}
-      {ctx.user && ctx.profile && !demo.on && <DemoIntro shell="guest" profile={ctx.profile} owner={isOwner(ctx.profile, ctx.user.email)} manager={canManage(ctx.profile, ctx.user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />}
+      {ctx.user && ctx.profile && !demo.on && <DemoIntro shell="guest" profile={ctx.profile} owner={isOwner(ctx.profile, ctx.user)} manager={canManage(ctx.profile, ctx.user)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />}
     </ChromeProvider>
   );
 }

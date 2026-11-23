@@ -72,7 +72,7 @@ export function DeleteAccountPage({ ctx }: { ctx: GuestCtx }) {
   const toast = useToast();
   const [ask, setAsk] = useState(false);
   const p = ctx.profile;
-  const owner = !!p && isOwner(p, ctx.user?.email);
+  const owner = !!p && isOwner(p, ctx.user);
   const request = async () => {
     if (!p) return;
     try { await write.set('account_deletions', p.uid, { uid: p.uid, email: p.email, requestedAt: serverNow() }); } // the app then shows the scheduled screen
