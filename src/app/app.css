@@ -503,3 +503,4 @@ dialog.sheet[open]::backdrop{animation:fade .2s}
 
 /* the new tasks and shopping screens inside this shell: their bottom bar of actions sits above this shell's bottom navigation */
 .screen .r-dock{bottom:calc(var(--nav-h) + var(--safe-b))}
+.splash-text{max-width:32ch;text-align:center;line-height:1.5;padding:0 16px}

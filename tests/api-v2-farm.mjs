@@ -662,6 +662,61 @@ try {
     check(Array.isArray(sd?.events) && sd.events.every((e) => typeof e.tickets === 'number' && typeof e.paid === 'number' && e.paid <= e.tickets), 'events: each event as tickets → paid → came in', sd?.events?.slice(0, 2));
     check((await api('GET', '/v1/console/stats?days=5', C(own))).status === 400, 'stats: only a week, a month, 3 months or a year');
     check((await api('GET', '/v1/console/stats', C(mgr))).status === 403, 'a manager cannot read the money report');
+
+    // ---------- switches, the send queue, scheduled jobs, cleanup ----------
+    const sw0 = await api('GET', '/v1/console/switches', C(own));
+    check(sw0.status === 200 && sw0.json.data.switches.readOnly === false && sw0.json.data.switches.keysStopped === false && sw0.json.data.server.email.on === false, 'switches: all off to begin with, and what the server is set up for', sw0.json?.data);
+    check((await api('GET', '/v1/console/switches', C(mgr))).status === 403, 'a manager cannot see the switches');
+    check((await api('POST', '/v1/console/switches', { ...C(own), body: { nope: true } })).status === 400 && (await api('POST', '/v1/console/switches', { ...C(own), body: { readOnly: 'yes' } })).status === 400, 'switches: an unknown switch or a value that is not true/false → 400');
+    const swK = await api('POST', '/v1/console/switches', { ...C(own), body: { keysStopped: true } });
+    const keyRefused = await r(MGR, '/v1/tasks');
+    check(swK.status === 200 && keyRefused.status === 403 && keyRefused.json?.error?.details?.switch === 'keysStopped', 'keys stopped: every API key is refused at once', keyRefused.json?.error);
+    check((await api('GET', '/v1/console/api/tasks', C(own))).status === 200, 'keys stopped: the console itself keeps working');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { keysStopped: false, readOnly: true, maintenance: true, maintenanceText: 'שיפוץ קטן', registrationClosed: true } });
+    const roRead = await r(MGR, '/v1/tasks');
+    const roWrite = await w(MGR, 'tasks.create', { title: 'משימה בזמן קריאה בלבד' });
+    check(roRead.status === 200 && roWrite.status === 403 && roWrite.json?.error?.details?.switch === 'readOnly', 'read-only: keys may read but not write', roWrite.json?.error);
+    const appSw = await docOf('settings/switches');
+    check(appSw && appSw.readOnly === true && appSw.maintenance === true && appSw.maintenanceText === 'שיפוץ קטן' && appSw.registrationClosed === true && !('keysStopped' in appSw), 'the app\'s copy (settings/switches): maintenance, its message, registration and read-only only', appSw);
+    const LSW = await (async () => { for (let i = 0; i < 30; i++) { const q = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.switches.set' } } }, limit: 5 } }) }).then((x) => x.json()); if (q.filter((x) => x.document).length >= 2) return q; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(!!LSW, 'every switch change is in the log (and so in the security log)');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { readOnly: false, maintenance: false, registrationClosed: false } });
+    check((await w(MGR, 'tasks.create', { title: 'משימה אחרי קריאה בלבד' })).status < 300 && (await docOf('settings/switches')).readOnly === false, 'read-only off: writes work again, and the app\'s copy says so');
+
+    await seed('email_outbox/donation_qtest', { kind: 'donation', refId: 'stat-claimed', uid: 'syn-staff2', status: 'failed', reason: 'invalid_address', attempts: 1, to: 'nobody@synthetic.invalid', createdAt: nowIso, updatedAt: nowIso, nextAt: null });
+    await seed('push_jobs/pj-qtest', { kind: 'system', title: 'בדיקת תור', body: 'x', link: '/', to: ['syn-staff'], createdBy: { uid: 'syn-mgr', name: 'מנהלת בדיקה' }, createdAt: nowIso, sentAt: null, urgent: false, tag: 'pj-qtest', refId: '' });
+    const qu = await api('GET', '/v1/console/queue', C(own));
+    const qe = qu.json?.data?.emails?.find((e) => e.id === 'donation_qtest');
+    check(qu.status === 200 && qe && qe.who === 'תורמת שנייה' && qe.status === 'failed' && !JSON.stringify(qu.json.data).includes('nobody@synthetic.invalid') && qu.json.data.pushes.some((p) => p.id === 'pj-qtest' && p.to === 1), 'queue: a failed email with the name on the payment (never the address), and a waiting push', qe);
+    const rt = await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: { updateTime: qe.updateTime } });
+    const afterRt = await docOf('email_outbox/donation_qtest');
+    check(rt.status === 200 && afterRt.status === 'queued' && afterRt.attempts === 0 && afterRt.retriedBy === 'נועה בעלים', 'queue: send again puts it back as a fresh first attempt', afterRt);
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: { updateTime: qe.updateTime } })).status === 409, 'queue: an old updateTime → 409');
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/cancel', { ...C(own), body: {} })).status === 200 && (await docOf('email_outbox/donation_qtest')).status === 'cancelled', 'queue: cancel an email');
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: {} })).status === 400, 'queue: a cancelled email cannot be sent again from here');
+    const pc = await api('POST', '/v1/console/queue/push/pj-qtest/cancel', { ...C(own), body: {} });
+    const pj = await docOf('push_jobs/pj-qtest');
+    check(pc.status === 200 && pj.sentAt && pj.result === 'cancelled', 'queue: cancel a phone push (marked as gone, never sent)', pj);
+    check((await api('POST', '/v1/console/queue/push/pj-qtest/cancel', { ...C(mgr), body: {} })).status === 403, 'a manager cannot touch the queue');
+    const pv = await api('GET', '/v1/console/queue/preview', C(own));
+    check(pv.status === 200 && pv.json.data.text.includes('דנה לוי') && pv.json.data.html.includes('<p'), 'queue: the payment email as a guest gets it, with sample values', pv.json?.data?.text);
+
+    const old = '2020-01-01T00:00:00.000Z';
+    await seed('api_idempotency/old-idem-1', { createdAt: old, operation: 'x' });
+    await seed('api_failures/old-failure-1', { at: old, code: 'INTERNAL' });
+    const jb = await api('GET', '/v1/console/jobs', C(own));
+    const due = Object.fromEntries((jb.json?.data?.cleanup?.items || []).map((i) => [i.collection, i.due]));
+    check(jb.status === 200 && jb.json.data.jobs.length === 6 && jb.json.data.jobs.find((j) => j.id === 'accounts').canRun === false && due.api_idempotency >= 1 && due.api_failures >= 1, 'jobs: each scheduled job, and what cleanup would take', due);
+    const c1 = await api('POST', '/v1/console/jobs/cleanup/run', { ...C(own), body: {} });
+    const c2 = await api('POST', '/v1/console/jobs/cleanup/run', { ...C(own), body: {} });
+    const jb2 = await api('GET', '/v1/console/jobs', C(own));
+    const arch = Object.fromEntries((jb2.json?.data?.archive?.collections || []).map((c) => [c.collection, c.files]));
+    check(c1.status === 200 && c2.status === 200 && !(await docOf('api_idempotency/old-idem-1')) && !(await docOf('api_failures/old-failure-1')) && arch.api_idempotency >= 1 && arch.api_failures >= 1, 'cleanup: old records go to the R2 archive first, then out of Firestore', { arch, c2: c2.json?.data });
+    check(!!(await docOf('users/syn-staff')) && jb2.json.data.jobs.find((j) => j.id === 'cleanup').last?.by === 'נועה בעלים', 'cleanup: the farm\'s own data stays, and the run is remembered with who pressed it');
+    check((await api('POST', '/v1/console/jobs/email/run', { ...C(own), body: {} })).status === 200 && (await api('POST', '/v1/console/jobs/accounts/run', { ...C(own), body: {} })).status === 400, 'jobs: run email now; account deletion cannot be run by hand');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: true } });
+    check((await api('POST', '/v1/console/jobs/push/run', { ...C(own), body: {} })).status === 400 && (await api('GET', '/v1/console/jobs', C(own))).json.data.jobs.find((j) => j.id === 'push').paused === true, 'jobs: a paused job shows as paused and does not run by hand');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: false } });
   }
 
   section('the app\'s Rules accept what the API wrote');

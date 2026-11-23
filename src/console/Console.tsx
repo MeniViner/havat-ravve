@@ -1,5 +1,6 @@
 // The owners' console at /admin: the farm's server in one place. Sign in with Google; only an active owner gets in
-// (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, אבטחה, גיבויים.
+// (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, מתגים, תור שליחה, משימות מתוזמנות,
+// אבטחה, גיבויים.
 // /admin?demo shows the same screens over made-up data, without signing in and without reading or writing anything.
 import { useEffect, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
@@ -16,8 +17,11 @@ import { SecurityScreen } from './Security';
 import { DataScreen } from './Data';
 import { StatsScreen } from './Stats';
 import { MoneyScreen } from './Money';
+import { SwitchesScreen } from './Switches';
+import { QueueScreen } from './Queue';
+import { JobsScreen } from './Jobs';
 
-type Tab = 'overview' | 'monitor' | 'stats' | 'money' | 'data' | 'people' | 'keys' | 'security' | 'backups';
+type Tab = 'overview' | 'monitor' | 'stats' | 'money' | 'data' | 'people' | 'keys' | 'switches' | 'queue' | 'jobs' | 'security' | 'backups';
 const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'overview', label: 'מצב השרת', icon: 'server' },
   { value: 'monitor', label: 'ניטור', icon: 'chart' },
@@ -26,6 +30,9 @@ const TABS: { value: Tab; label: string; icon: IconName }[] = [
   { value: 'data', label: 'נתונים', icon: 'grid' },
   { value: 'people', label: 'אנשים', icon: 'people' },
   { value: 'keys', label: 'מפתחות API', icon: 'key' },
+  { value: 'switches', label: 'מתגים', icon: 'sliders' },
+  { value: 'queue', label: 'תור שליחה', icon: 'message' },
+  { value: 'jobs', label: 'משימות מתוזמנות', icon: 'calendar' },
   { value: 'security', label: 'אבטחה', icon: 'blocked' },
   { value: 'backups', label: 'גיבויים', icon: 'box' },
 ];
@@ -123,6 +130,9 @@ function Shell({ me }: { me: Me }) {
         {tab === 'data' && <DataScreen notify={notice.show} />}
         {tab === 'stats' && <StatsScreen />}
         {tab === 'money' && <MoneyScreen />}
+        {tab === 'switches' && <SwitchesScreen notify={notice.show} />}
+        {tab === 'queue' && <QueueScreen notify={notice.show} />}
+        {tab === 'jobs' && <JobsScreen notify={notice.show} />}
       </main>
       {notice.view}
     </div>

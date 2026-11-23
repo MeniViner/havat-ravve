@@ -16,6 +16,7 @@ import { DemoSheet, useInstallBanner, InstallScreen } from '../system';
 import { Guard } from '../../../guard';
 import { V2DemoStrip } from '../../DemoChrome';
 import { DemoIntro } from '../../DemoIntro';
+import { READ_ONLY_TEXT, useAppSwitches } from '../../../switches';
 import type { GuestCtx } from './data';
 import { GuestHome, EventPage } from './home';
 import { OrderPage, PayPage } from './order';
@@ -70,7 +71,10 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
   const offline = !online || (demo.on && states.offline);
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
   const install = useInstallBanner();
-  const top = (demo.on || offline || install) ? <>
+  // the owners turned on read-only from the console (switches.ts), as in the team shell
+  const locked = useAppSwitches().locked && !demo.on;
+  const top = (demo.on || offline || install || locked) ? <>
+    {locked && <Strip icon="blocked">{READ_ONLY_TEXT}</Strip>}
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <Strip icon="offline">{sync.pending ? `אין קליטה. ${sync.pending} פעולות שמורות בטלפון` : 'אין קליטה. הכרטיסים שלך עובדים גם בלי קליטה'}</Strip>}
     {install}

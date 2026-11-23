@@ -16,6 +16,7 @@ import { listBackups, ilDate } from './backup';
 import { listKeys } from './keys';
 import { emailEnabled } from './email';
 import { ApiError, invalid } from './http';
+import { readSwitches } from './control';
 
 export const CRON_KEY = 'console:cron-last';
 const ALERTS_KEY = 'console:alerts';
@@ -30,7 +31,9 @@ export type Quota = { at: string; since: string; reads: number; writes: number; 
 export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
 export type HealthItem = { id: string; he: string; state: HealthState; detail: string };
 export type Health = { at: string; date: string; by: string; worst: HealthState; items: HealthItem[]; r2Bytes: number | null };
-export type MonitorState = { at?: string; wallMs?: number; uptime?: Uptime; quota?: Quota; health?: Health; sent?: Record<string, string> };
+/** One scheduled job's last turn (index.ts scheduled), for the console's scheduled-jobs screen. */
+export type JobRun = { at: string; ms: number; ok: boolean; result: Record<string, unknown>; by?: string };
+export type MonitorState = { at?: string; wallMs?: number; uptime?: Uptime; quota?: Quota; health?: Health; sent?: Record<string, string>; jobs?: Record<string, JobRun> };
 export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
 
 export async function readMonitor(env: Env): Promise<MonitorState> {
@@ -176,6 +179,10 @@ export async function healthCheck(env: Env, fs: Firestore, st: MonitorState, by:
   // the scheduled jobs (the console's "check now" runs between crons)
   const cronAge = st.at ? Date.now() - Date.parse(st.at) : Infinity;
   add('cron', 'משימות מתוזמנות', by === 'cron' || cronAge < 15 * 60_000 ? 'ok' : 'bad', by === 'cron' || cronAge < 15 * 60_000 ? 'רצות כל 5 דקות' : 'לא רצו ברבע השעה האחרונה');
+  // a switch left on overnight (control.ts): said every morning until someone turns it off
+  const sw = await readSwitches(env, true);
+  const on = [sw.maintenance && 'מצב תחזוקה', sw.readOnly && 'קריאה בלבד', sw.keysStopped && 'מפתחות ה־API עצורים', sw.registrationClosed && 'ההרשמה סגורה', sw.emailPaused && 'מיילים בהשהיה', sw.pushPaused && 'התראות לטלפון בהשהיה', sw.backupPaused && 'הגיבוי בהשהיה', sw.cleanupPaused && 'הניקוי בהשהיה'].filter(Boolean);
+  add('switches', 'מתגים', on.length ? 'warn' : 'ok', on.length ? `דלוק: ${on.join(', ')}` : 'הכל פועל כרגיל');
   const order: HealthState[] = ['ok', 'unknown', 'warn', 'bad'];
   const worst = items.reduce<HealthState>((w, i) => (order.indexOf(i.state) > order.indexOf(w) ? i.state : w), 'ok');
   return { at: new Date().toISOString(), date: ilDate(new Date()), by, worst, items, r2Bytes: bytes };
