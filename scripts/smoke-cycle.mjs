@@ -103,9 +103,9 @@ async function item1() {
   check(s.path() === '/notifications', 'bell opens notifications', 'volunteer');
   // profile
   await s.go('/me', 1000);
-  check(await s.has('יואב פרץ') && await s.has('מתנדב'), 'L6 profile renders', 'volunteer');
+  check(await s.has('יואב פרץ') && await s.has('מתנדב'), 'Q18 (L6) profile renders', 'volunteer');
   await s.shot('1-L6-profile');
-  await s.click('עריכה'); await s.settle(500);
+  await s.click('עריכת פרטים'); await s.settle(500);
   const phone = s.page.getByLabel('טלפון').first(); await phone.fill('052-111-2233');
   await s.click('שמירה', { role: 'button' });
   const saved = await until(async () => (await adminGet('users/' + U.yoav))?.phone === '052-111-2233');
