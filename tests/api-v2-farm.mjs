@@ -751,6 +751,33 @@ try {
     const cappedDay = await statsDay();
     const tcap = (await api('GET', '/v1/console/traffic?days=7', C(own))).json?.data;
     check(cappedDay.hits === 6000 && cappedDay.site.views === 4 && tcap.today.capped === true, 'hit: the daily cap stops counting for the day (the free writes stay for the farm)', cappedDay);
+
+    // ---------- limited keys (keys.ts scopes): only part of what the person may do ----------
+    const ro = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'קריאה בלבד', actor: 'user:syn-mgr', scopes: ['tasks:read', 'shopping:read', 'people:read', 'overview:read'] } });
+    const roKey = ro.json?.data?.key, roId = ro.json?.data?.id;
+    const roTask = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'לא אמור להיווצר' } });
+    check(ro.status === 201 && (await api('GET', '/v1/tasks', { key: roKey })).status === 200 && (await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: roKey })).status === 200 && roTask.status === 403 && roTask.json?.error?.details?.requiredScope === 'tasks:create', 'a read-only key reads, and cannot write', roTask.json?.error);
+    const roListed = (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === roId);
+    check(JSON.stringify(roListed?.scopes) === JSON.stringify(['overview:read', 'people:read', 'shopping:read', 'tasks:read']) && (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId)?.scopes === null, 'the list says what each key may do (null: everything its person may)', roListed?.scopes);
+    const sh = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'רק קניות', actor: 'user:syn-staff', scopes: ['shopping:read', 'shopping:write', 'people:read'] } });
+    const shKey = sh.json?.data?.key, shId = sh.json?.data?.id;
+    const shAdd = await api('POST', '/v1/actions/shopping.add', { key: shKey, idem: randomUUID(), body: { title: 'חציר' } });
+    check(shAdd.status >= 200 && shAdd.status < 300 && (await api('GET', '/v1/tasks', { key: shKey })).status === 403, 'a shopping-only key adds to shopping, and cannot read tasks', shAdd.json?.error);
+    check((await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: shKey })).status === 403, 'a key never gets more than its person\'s role (staff has no people:read)');
+    check((await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: ['root:all'] } })).status === 400 && (await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: [] } })).status === 400, 'unknown scopes or an empty list → 400');
+    const widen = await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: null } });
+    const roTask2 = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'עכשיו מותר' } });
+    check(widen.status === 200 && roTask2.status >= 200 && roTask2.status < 300, 'scopes: null gives the key back everything its person may do', roTask2.json?.error);
+    await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: ['tasks:read'] } });
+    check((await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'שוב אסור' } })).status === 403 && (await api('POST', `/v1/console/keys/${shId}/scopes`, { ...C(mgr), body: { scopes: null } })).status === 403, 'scopes can be narrowed again; a manager cannot change them');
+
+    // ---------- speed (speed.ts): from the assistant log's own timings ----------
+    const sp = await api('GET', '/v1/console/speed?days=7', C(own));
+    const spd = sp.json?.data;
+    check(sp.status === 200 && spd.total.count > 0 && spd.total.p95 >= spd.total.p50 && spd.ops.length > 0 && spd.ops.every((o) => o.count > 0 && o.max >= o.p95) && spd.perDay.length === 7 && Array.isArray(spd.cron.jobs), 'speed: per operation and per day, from the log', spd?.total);
+    const cat = await api('GET', '/v1/console/catalog', C(own));
+    check(cat.status === 200 && cat.json.data.operations.length > 50 && cat.json.data.operations.some((o) => o.name === 'tasks.create' && o.body?.title?.required) && (await api('GET', '/v1/console/catalog', C(mgr))).status === 403, 'catalog: every operation with its fields, for the console\'s "run any operation"');
+    check((await api('GET', '/v1/console/speed?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/speed', C(mgr))).status === 403, 'speed: a day, a week or a month; owners only');
   }
 
   section('the app\'s Rules accept what the API wrote');

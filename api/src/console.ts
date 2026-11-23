@@ -28,6 +28,7 @@
 //   GET  /v1/console/data/export?collection=  the collection as a CSV file for Excel
 //   GET  /v1/console/stats?days=30            the farm, the money and each event as a funnel (stats.ts)
 //   GET  /v1/console/traffic?days=30          site visits and app usage, from our own daily counters (traffic.ts)
+//   GET  /v1/console/speed?days=7             how fast the server answers: per operation, per day, the slowest (speed.ts)
 //   GET  /v1/console/switches                 the owners' switches (control.ts) and what the server is set up for
 //   POST /v1/console/switches                 { emailPaused?, pushPaused?, keysStopped?, readOnly?, maintenance?, maintenanceText?, registrationClosed?, ... }
 //   GET  /v1/console/queue                    payment emails and phone pushes that wait or failed
@@ -41,13 +42,14 @@ import { ApiError, invalid } from './http';
 import { type Env, Firestore } from './firestore';
 import { verifyIdToken } from './idtoken';
 import { type Caller, ROLE_SCOPES } from './auth';
-import { CATALOG_VERSION } from './catalog';
+import { CATALOG, CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
 import { type PushEnv, pushMode } from './push';
 import { alertSettings, healthCheck, type JobRun, LIMITS, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct } from './monitor';
 import { stats } from './stats';
 import { trafficStats } from './traffic';
+import { speed } from './speed';
 import { archiveSummary, cancelPush, cleanupPreview, emailAction, emailPreview, readSwitches, runCleanup, saveSwitches, sendQueue } from './control';
 import { runEmail } from './email';
 import { runPush } from './push';
@@ -126,6 +128,7 @@ const OPS: Record<string, ConsoleOp> = {
   'keys.restore': { name: 'console.keys.restore', he: 'החזרת מפתח API שבוטל', kind: 'write' },
   'keys.expire': { name: 'console.keys.expire', he: 'תוקף למפתח API', kind: 'write' },
   'keys.rotate': { name: 'console.keys.rotate', he: 'החלפת מפתח API', kind: 'write' },
+  'keys.scopes': { name: 'console.keys.scopes', he: 'הרשאות של מפתח API', kind: 'write' },
   'backups.list': { name: 'console.backups.list', he: 'רשימת הגיבויים', kind: 'read' },
   'backups.run': { name: 'console.backups.run', he: 'גיבוי עכשיו', kind: 'write' },
   'backups.download': { name: 'console.backups.download', he: 'הורדת גיבוי', kind: 'read' },
@@ -145,6 +148,8 @@ const OPS: Record<string, ConsoleOp> = {
   'data.export': { name: 'console.data.export', he: 'ייצוא לאקסל', kind: 'read' },
   stats: { name: 'console.stats', he: 'סטטיסטיקות', kind: 'read' },
   traffic: { name: 'console.traffic', he: 'ביקורים ושימוש', kind: 'read' },
+  speed: { name: 'console.speed', he: 'מהירות השרת', kind: 'read' },
+  catalog: { name: 'console.catalog', he: 'רשימת הפעולות של ה־API', kind: 'read' },
   'switches.read': { name: 'console.switches.read', he: 'מתגים', kind: 'read' },
   'switches.set': { name: 'console.switches.set', he: 'שינוי מתג', kind: 'write' },
   'queue.read': { name: 'console.queue.read', he: 'תור השליחה', kind: 'read' },
@@ -165,16 +170,16 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
   if (m === 'GET' && path === '/keys') return { op: OPS['keys.list'], data: { items: await listKeys(env) } };
   if (m === 'POST' && path === '/keys') {
     const b = await body();
-    for (const k of Object.keys(b)) if (!['label', 'actor', 'expiresAt', 'id'].includes(k)) throw invalid(k, `unknown field ${k}`);
+    for (const k of Object.keys(b)) if (!['label', 'actor', 'expiresAt', 'id', 'scopes'].includes(k)) throw invalid(k, `unknown field ${k}`);
     // the key acts as an active team member, with that person's role (the same rule as for every key)
     const uid = String(b.actor || '').replace(/^user:/, '');
     const p = (await fs.get('users', uid))?.data;
     if (!p || p.status !== 'active' || !['owner', 'manager', 'staff'].includes(String(p.role))) throw invalid('actor', 'the key must act as an active team member');
-    const made = await createKey(env, { label: String(b.label || ''), actor: 'user:' + uid, expiresAt: b.expiresAt ? String(b.expiresAt) : null, id: b.id ? String(b.id) : undefined }, by);
+    const made = await createKey(env, { label: String(b.label || ''), actor: 'user:' + uid, expiresAt: b.expiresAt ? String(b.expiresAt) : null, id: b.id ? String(b.id) : undefined, scopes: b.scopes }, by);
     // the log keeps what was asked and the new id, never the key
     return { op: OPS['keys.create'], status: 201, data: made, logBody: b, logResult: { id: made.id } };
   }
-  const k = /^\/keys\/([a-z0-9-]{1,60})\/(rename|revoke|restore|expire|rotate)$/.exec(path);
+  const k = /^\/keys\/([a-z0-9-]{1,60})\/(rename|revoke|restore|expire|rotate|scopes)$/.exec(path);
   if (m === 'POST' && k) {
     const b = await body();
     const done = await changeKey(env, k[1], k[2], b, by);
@@ -219,6 +224,8 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
   if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
   if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
   if (m === 'GET' && path === '/stats') return { op: OPS.stats, data: await stats(fs, Number(q.get('days') || 30)) };
+  if (m === 'GET' && path === '/catalog') return { op: OPS.catalog, data: { version: CATALOG.version, operations: CATALOG.operations } };
+  if (m === 'GET' && path === '/speed') return { op: OPS.speed, data: await speed(env, fs, Number(q.get('days') || 7)) };
   if (m === 'GET' && path === '/traffic') return { op: OPS.traffic, data: await trafficStats(fs, Number(q.get('days') || 30)) };
   // the data browser (data.ts)
   if (m === 'GET' && path === '/data') return { op: OPS['data.browse'], data: await collections(env, fs) };
