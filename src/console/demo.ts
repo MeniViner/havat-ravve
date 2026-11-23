@@ -38,9 +38,10 @@ const recent: LogEntry[] = [
 const overview = (): Overview => ({
   server: { status: 'ok', catalogVersion: '3.0.0', version: '68a66274-demo', deployedAt: ago(26 * 60), project: 'havat-ravve' },
   last24h: { requests: 412, writes: 57, failed: 3, failures: 0 },
-  queues: { pushPending: 0, email: { pending: 0, sent: 0, failed: 0 } },
+  // the same queue and switches the תור שליחה and מתגים screens show
+  queues: { pushPending: demoQueue.pushes.length, email: { pending: demoQueue.emails.filter((e) => e.status === 'queued' || e.status === 'sending').length, sent: 0, failed: demoQueue.emails.filter((e) => e.status === 'failed').length } },
   crons: { at: ago(2), wallMs: 840 },
-  switches: { email: { on: false, configured: false, brevo: false, resend: false }, push: { mode: 'webpush' }, files: { r2: true } },
+  switches: { email: { on: demoQueue.email.on, configured: true, brevo: true, resend: false }, push: { mode: demoQueue.push.mode }, files: { r2: true } },
 });
 
 const dayKey = (daysAgo: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date(Date.now() - daysAgo * 86400_000));
@@ -282,8 +283,8 @@ const demoJobs = (): Omit<Jobs, 'jobs'> & { jobs: Omit<Jobs['jobs'][number], 'pa
   ],
   cleanup: {
     items: [
-      { collection: 'api_idempotency', he: 'זיכרון בקשות חוזרות של ה־API', days: 7, due: 38 },
-      { collection: 'api_log', he: 'יומן הבקשות של ה־API', days: 90, due: 0 },
+      { collection: 'api_idempotency', he: 'רישום בקשות למניעת כפילויות', days: 7, due: 38 },
+      { collection: 'api_log', he: 'יומן הבקשות לשרת', days: 90, due: 0 },
       { collection: 'api_failures', he: 'תקלות שרת', days: 90, due: 3 },
       { collection: 'push_jobs', he: 'התראות לטלפון שנשלחו', days: 30, due: 61 },
       { collection: 'email_outbox', he: 'מיילים שנשלחו', days: 365, due: 0 },

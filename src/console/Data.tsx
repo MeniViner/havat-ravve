@@ -4,8 +4,8 @@
 import { useMemo, useState } from 'react';
 import { BackLink, Button, Card, ConfirmSheet, Field, ListCard, Row, SearchField, Segmented, Sheet, Tag, Toggle } from '../app/v2/kit';
 import { ddmm } from '../app/v2/format';
-import { ago, fmt, Section, useLoad } from './shared';
-import { collectionName, valueText } from './labels';
+import { ago, FieldName, fmt, Section, useLoad } from './shared';
+import { collectionName, fieldLabel, valueText } from './labels';
 import { errorText, source, type DataCollection, type DataDoc, type DocVersion } from './source';
 
 type Notify = (t: string, tone?: 'info' | 'alert') => void;
@@ -157,12 +157,12 @@ function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Noti
       <div className="c-fields" role="table" aria-label="השדות של הרשומה">
         {keys.map((k) => (
           <div key={k} role="row" className="c-fields__row">
-            <span role="rowheader" className="c-fields__key k-ltr" dir="ltr">{k}</span>
+            <span role="rowheader" className="c-fields__key"><FieldName k={k} /></span>
             <span role="cell" className="c-fields__val">
               {edit && editable(k)
                 ? d.types[k] === 'boolean'
-                  ? <Toggle checked={!!draft[k]} onChange={(v) => setDraft({ ...draft, [k]: v })} label={k} />
-                  : <Field label={k} labelHidden value={String(draft[k] ?? '')} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} numeric={d.types[k] === 'integer' || d.types[k] === 'double'} ltr={d.types[k] !== 'string' || /^[\x00-\x7F]*$/.test(String(draft[k] ?? ''))} />
+                  ? <Toggle checked={!!draft[k]} onChange={(v) => setDraft({ ...draft, [k]: v })} label={fieldLabel(k) || k} />
+                  : <Field label={fieldLabel(k) || k} labelHidden value={String(draft[k] ?? '')} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} numeric={d.types[k] === 'integer' || d.types[k] === 'double'} ltr={d.types[k] !== 'string' || /^[\x00-\x7F]*$/.test(String(draft[k] ?? ''))} />
                 : <bdi>{valueText(d.fields[k])}</bdi>}
             </span>
           </div>
@@ -190,14 +190,14 @@ function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Noti
         <>
           <div className="c-warn">
             <b>השינוי נכתב ישר למסד הנתונים, בלי הבדיקות של האפליקציה.</b>
-            <ul>{Object.entries(parsed).map(([k, v]) => <li key={k}><bdi className="k-ltr">{k}</bdi>: <bdi>{valueText(d.fields[k])}</bdi> ← <bdi>{valueText(v)}</bdi></li>)}</ul>
+            <ul>{Object.entries(parsed).map(([k, v]) => <li key={k}><FieldName k={k} />: <bdi>{valueText(d.fields[k])}</bdi> ← <bdi>{valueText(v)}</bdi></li>)}</ul>
             הערכים הקודמים נשמרים ביומן, ואם מישהו שינה את הרשומה בינתיים השמירה לא תדרוס.
           </div>
           <Button size="lg" block disabled={busy} onClick={save}>{busy ? 'שומר…' : 'כן, לשמור'}</Button>
           <Button variant="quiet" block onClick={() => setConfirm(false)}>חזרה לעריכה</Button>
         </>
       )}
-      <ConfirmSheet open={del} onClose={() => setDel(false)} title="למחוק את הרשומה?" text="היא תעבור לסל המחזור ל־30 יום, ואפשר יהיה להחזיר אותה משם. דברים שתלויים בה באפליקציה לא יימחקו איתה." confirmLabel="מחיקה" onConfirm={remove} />
+      <ConfirmSheet open={del} onClose={() => setDel(false)} title="למחוק את הרשומה?" text="היא תעבור לסל המחזור ל־30 יום, ואפשר יהיה להחזיר אותה משם. דברים שתלויים בה באפליקציה לא יימחקו איתה." confirmLabel="מחיקה" cancelLabel="חזרה" onConfirm={remove} />
     </>
   );
 }
@@ -206,13 +206,11 @@ function History({ path, notify, onRestored }: { path: string; notify: Notify; o
   const [days, setDays] = useState(7);
   const h = useLoad(() => source.dataHistory(path, days), [path, days]);
   const [pick, setPick] = useState<DocVersion | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
   const span = (v: DocVersion) => (v.from === v.to ? ddmm(v.from) : `${ddmm(v.from)}–${ddmm(v.to)}`);
   const restore = async (v: DocVersion) => {
-    setBusy(true);
-    try { await source.restoreBackup(v.to, [path]); notify('הרשומה הוחזרה לגרסה הזאת'); setPick(null); h.reload(); onRestored(); }
+    try { await source.restoreBackup(v.to, [path]); notify('הרשומה הוחזרה לגרסה הזאת. הגרסה הקודמת בסל המחזור'); setAsk(false); setPick(null); h.reload(); onRestored(); }
     catch (e) { notify(errorText(e), 'alert'); }
-    finally { setBusy(false); }
   };
   if (h.loading && !h.data) return <p className="c-soft">קורא את הגיבויים…</p>;
   if (h.error) return <p className="c-err">{h.error}</p>;
@@ -228,11 +226,14 @@ function History({ path, notify, onRestored }: { path: string; notify: Notify; o
           <div className="c-compare__row c-compare__head" role="row"><span role="columnheader">שדה</span><span role="columnheader">אז</span><span role="columnheader">היום</span></div>
           {keys.map((k) => {
             const diff = JSON.stringify(pick.fields?.[k]) !== JSON.stringify(now[k]);
-            return <div key={k} role="row" className={`c-compare__row${diff ? ' c-compare__row--diff' : ''}`}><span role="cell" className="k-ltr" dir="ltr">{k}</span><span role="cell">{valueText(pick.fields?.[k])}</span><span role="cell">{x.now ? valueText(now[k]) : '—'}</span></div>;
+            return <div key={k} role="row" className={`c-compare__row${diff ? ' c-compare__row--diff' : ''}`}><span role="cell"><FieldName k={k} /></span><span role="cell">{valueText(pick.fields?.[k])}</span><span role="cell">{x.now ? valueText(now[k]) : '—'}</span></div>;
           })}
         </div>
-        <Button size="lg" block disabled={busy} onClick={() => restore(pick)}>{busy ? 'משחזר…' : 'להחזיר לגרסה הזאת'}</Button>
-        <p className="c-note">הרשומה תוחלף במה שהיה בגיבוי של {ddmm(pick.to)}. שינויים שנעשו בה מאז יימחקו, והגרסה של היום תישמר בגיבוי של הלילה.</p>
+        <Button size="lg" block onClick={() => setAsk(true)}>להחזיר לגרסה הזאת</Button>
+        <p className="c-note">הרשומה תוחלף בגרסה מ־{ddmm(pick.to)}. הגרסה של היום נשמרת בסל המחזור ל־30 יום.</p>
+        <ConfirmSheet open={ask} onClose={() => setAsk(false)} title={`להחזיר את הרשומה לגרסה מ־${ddmm(pick.to)}?`}
+          text={`הרשומה תוחלף בגרסה מ־${ddmm(pick.to)}. הגרסה של היום נשמרת בסל המחזור ל־30 יום, ואפשר להחזיר אותה משם במסך הגיבויים.`}
+          confirmLabel="כן, להחזיר" cancelLabel="חזרה" onConfirm={() => restore(pick)} />
       </>
     );
   }
@@ -244,7 +245,7 @@ function History({ path, notify, onRestored }: { path: string; notify: Notify; o
           <ListCard>
             {x.versions.map((v, i) => (
               <Row key={v.from + i} title={i === 0 && !v.gone && x.now?.updateTime === v.updateTime ? `${span(v)} · כמו היום` : span(v)}
-                meta={v.gone ? 'לא הייתה קיימת בגיבוי' : v.changed.length ? `השתנו: ${v.changed.join(', ')}` : i === x.versions.length - 1 ? 'הגרסה הכי ישנה בטווח' : 'בלי שינוי בשדות'}
+                meta={v.gone ? 'לא הייתה קיימת בגיבוי' : v.changed.length ? `השתנו: ${v.changed.map((k) => fieldLabel(k) || k).join(', ')}` : i === x.versions.length - 1 ? 'הגרסה הכי ישנה בטווח' : 'בלי שינוי בשדות'}
                 chevron={!v.gone} onClick={v.gone ? undefined : () => setPick(v)} />
             ))}
           </ListCard>

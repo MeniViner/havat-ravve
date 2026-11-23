@@ -5,16 +5,21 @@ import { useMemo, useState } from 'react';
 import { Button, Card, ConfirmSheet, EmptyState, Field, ListCard, Row, Segmented, Tag } from '../app/v2/kit';
 import { Section, useLoad } from './shared';
 import { sec } from './Speed';
+import { fieldLabel } from './labels';
 import { errorText, source, type CatalogOp, type CatalogParam, type OpResult } from './source';
 
 type Values = Record<string, string>;
-const TYPE_HINT: Record<string, string> = { date: 'YYYY-MM-DD', datetime: 'YYYY-MM-DDTHH:mm, שעון ישראל', time: 'HH:mm', uid: 'מזהה של אדם', id: 'מזהה', email: 'כתובת מייל', stringList: 'כמה ערכים, מופרדים בפסיק', intList: 'מספרים, מופרדים בפסיק' };
+// date and time get the browser's own picker, so no format hint for them (it would not match what the picker shows)
+const TYPE_HINT: Record<string, string> = { datetime: 'YYYY-MM-DDTHH:mm, שעון ישראל', uid: 'מזהה של אדם', id: 'מזהה', email: 'כתובת מייל', stringList: 'כמה ערכים, מופרדים בפסיק', intList: 'מספרים, מופרדים בפסיק' };
 
 /** The fields of an operation: its path ids first, then the query (a read) or the body (a change). */
 const fieldsOf = (op: CatalogOp): [string, CatalogParam, 'path' | 'query' | 'body'][] => [
   ...Object.entries(op.pathParams || {}).map(([k, p]) => [k, p, 'path'] as [string, CatalogParam, 'path']),
   ...Object.entries((op.method === 'GET' ? op.params : op.body) || {}).map(([k, p]) => [k, p, op.method === 'GET' ? 'query' : 'body'] as [string, CatalogParam, 'query' | 'body']),
 ];
+
+/** A field's name in Hebrew: the catalog's own words, else our field names, else as the server calls it. */
+const heName = (k: string, p?: CatalogParam) => p?.he || fieldLabel(k) || k;
 
 /** A value from the form in the type the server expects (empty: left out). */
 function typed(p: CatalogParam, raw: string): unknown {
@@ -72,7 +77,7 @@ function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'inf
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<OpResult | null>(null);
-  const missing = fields.filter(([k, p]) => p.required && !vals[k]?.trim()).map(([k]) => k);
+  const missing = fields.filter(([k, p]) => p.required && !vals[k]?.trim()).map(([k, p]) => heName(k, p));
   const build = () => {
     let path = op.path;
     const query = new URLSearchParams();
@@ -97,49 +102,64 @@ function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'inf
     finally { setBusy(false); }
   };
   const set = (k: string, v: string) => setVals((x) => ({ ...x, [k]: v }));
-  const j = res?.json as { ok?: boolean; error?: { code?: string; he?: string; message?: string } } | null;
+  const j = res?.json as { ok?: boolean; error?: { code?: string; he?: string; message?: string; details?: { field?: string } } } | null;
+  const ok = !!res && res.status < 300;
+  const errField = j?.error?.details?.field;
+  const errLine = j?.error ? `${j.error.he || 'השרת לא קיבל את הבקשה'}${errField ? `: ${heName(errField, fields.find(([k]) => k === errField)?.[1])}` : ''}` : 'השרת לא קיבל את הבקשה';
+  const raw = res ? JSON.stringify(res.json, null, 2) : '';
   return (
     <div className="c-stack c-stack--sm">
       <Card pad="lg" className="c-stack c-stack--sm">
         <div>
           <p className="c-card-title">{op.he}</p>
-          <p className="c-note"><span className="k-ltr" dir="ltr">{op.method} {op.path}</span> · הרשאה: <span className="k-ltr" dir="ltr">{op.requiredScope}</span></p>
+          <p className="c-note">{op.kind === 'write' ? 'משנה נתונים של החווה.' : 'רק קוראת, לא משנה כלום.'}</p>
+          <details className="c-tech">
+            <summary>פרטים טכניים</summary>
+            <p><bdi dir="ltr">{op.name}</bdi></p>
+            <p><bdi dir="ltr">{op.method} {op.path}</bdi> · הרשאה: <bdi dir="ltr">{op.requiredScope}</bdi></p>
+          </details>
         </div>
         {fields.length ? fields.map(([k, p]) => <ParamField key={k} name={k} p={p} value={vals[k] || ''} onChange={(v) => set(k, v)} />) : <p className="c-note">לפעולה הזאת אין שדות.</p>}
         {!!op.notes?.length && <details className="c-notes"><summary>הערות לפעולה</summary><ul dir="ltr">{op.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></details>}
         <Button size="lg" block disabled={busy || missing.length > 0} onClick={() => (op.kind === 'write' ? setAsk(true) : go())}>
-          {busy ? 'מריץ…' : missing.length ? `חסר: ${missing.join(', ')}` : op.kind === 'write' ? 'הרצה (משנה נתונים)' : 'הרצה'}
+          {busy ? 'מריץ…' : missing.length ? `${missing.length === 1 ? 'חסר שדה חובה' : 'חסרים שדות חובה'}: ${missing.join(', ')}` : op.kind === 'write' ? 'הרצה (משנה נתונים)' : 'הרצה'}
         </Button>
       </Card>
       {res && (
         <Section title="התשובה">
           <Card pad="lg" className="c-stack c-stack--sm">
-            <p className="c-note">
-              {res.status < 300 ? <Tag tone="paid">הצליחה</Tag> : <Tag tone="urgent">נכשלה</Tag>}
-              {' '}<span className="k-ltr" dir="ltr">HTTP {res.status}</span> · {sec(res.ms)}
-              {j?.error && <> · {j.error.he || j.error.code}</>}
+            <p className="c-card-title">
+              {ok ? <Tag tone="paid">הצליחה</Tag> : <Tag tone="urgent">נכשלה</Tag>}{' '}
+              {ok ? (op.kind === 'write' ? 'הפעולה בוצעה.' : 'התשובה הגיעה.') : errLine}
             </p>
-            <pre className="c-json" dir="ltr">{JSON.stringify(res.json, null, 2)}</pre>
-            <div><Button variant="neutral" icon="file" onClick={() => navigator.clipboard?.writeText(JSON.stringify(res.json, null, 2)).then(() => notify('הועתק'), () => {})}>העתקה</Button></div>
+            <p className="c-note">לקח {sec(res.ms)}.</p>
+            <details className="c-tech">
+              <summary>התשובה המלאה (פרטים טכניים)</summary>
+              <p><bdi dir="ltr">HTTP {res.status}</bdi>{j?.error?.code && <> · <bdi dir="ltr">{j.error.code}</bdi></>}{j?.error?.message && <> · <bdi dir="ltr">{j.error.message}</bdi></>}</p>
+              <pre className="c-json" dir="ltr">{raw}</pre>
+              <div><Button variant="neutral" icon="file" onClick={() => navigator.clipboard?.writeText(raw).then(() => notify('הועתק'), () => {})}>העתקה</Button></div>
+            </details>
           </Card>
         </Section>
       )}
       {ask && (
         <ConfirmSheet open title="להריץ את הפעולה?" text={`"${op.he}" תשנה נתונים אמיתיים של החווה, ותירשם ביומן בשם הקונסולה.`} confirmLabel="כן, להריץ"
-          onClose={() => setAsk(false)} onConfirm={go} />
+          cancelLabel="חזרה" onClose={() => setAsk(false)} onConfirm={go} />
       )}
     </div>
   );
 }
 
 function ParamField({ name, p, value, onChange }: { name: string; p: CatalogParam; value: string; onChange: (v: string) => void }) {
-  const label = <><span className="k-ltr" dir="ltr">{name}</span>{p.required ? ' *' : ''}{p.he ? <span className="c-soft"> · {p.he}</span> : null}</>;
+  // Hebrew first; the server's name small after it, for whoever reads the technical details
+  const he = heName(name, p);
+  const label = <>{he}{p.required ? ' *' : ''}{he !== name && <> <bdi className="c-raw" dir="ltr">{name}</bdi></>}</>;
   if (p.type === 'bool') {
     return (
       <div className="c-param">
         <span className="c-param__label">{label}</span>
-        <Segmented mode="radio" label={name} value={value || 'unset'} onChange={(v) => onChange(v === 'unset' ? '' : v)}
-          options={[{ value: 'unset', label: p.default !== undefined ? `ברירת מחדל (${p.default ? 'כן' : 'לא'})` : 'לא לשלוח' }, { value: 'true', label: 'כן' }, { value: 'false', label: 'לא' }]} />
+        <Segmented mode="radio" label={he} value={value || 'unset'} onChange={(v) => onChange(v === 'unset' ? '' : v)}
+          options={[{ value: 'unset', label: p.default !== undefined ? `כרגיל (${p.default ? 'כן' : 'לא'})` : 'לא לשלוח' }, { value: 'true', label: 'כן' }, { value: 'false', label: 'לא' }]} />
       </div>
     );
   }

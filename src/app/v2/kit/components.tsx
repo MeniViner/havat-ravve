@@ -1396,7 +1396,13 @@ export function Sheet({ open, onClose, title, aside, children, contained, classN
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     panel.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // only the sheet on top closes: Escape on a confirm opened inside another sheet must not close both
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const open = document.querySelectorAll('.k-sheet');
+      if (open.length && open[open.length - 1] !== panel.current?.closest('.k-sheet')) return;
+      onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
@@ -1429,11 +1435,13 @@ export interface ConfirmSheetProps extends Base {
   /** The red button: "מחיקה", "כן, למחוק". */
   confirmLabel: string;
   cancelLabel?: string;
+  /** 'primary' for a confirmation that adds or changes without losing anything (not red). Default 'danger'. */
+  tone?: 'danger' | 'primary';
   /** Runs once per press; both buttons wait while it runs. */
   onConfirm: () => unknown;
 }
 /** The one confirmation before anything is deleted: a Sheet with the question, one line, a red outlined button and "ביטול". */
-export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelLabel = 'ביטול', onConfirm, className, style }: ConfirmSheetProps) {
+export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelLabel = 'ביטול', tone = 'danger', onConfirm, className, style }: ConfirmSheetProps) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!open) setBusy(false); }, [open]);
   const go = async () => {
@@ -1445,7 +1453,7 @@ export function ConfirmSheet({ open, onClose, title, text, confirmLabel, cancelL
     <Sheet open={open} onClose={busy ? () => {} : onClose} title={title} className={cx('k-confirm', className)} style={style}>
       {text && <p className="k-confirm__text">{text}</p>}
       <div className="k-confirm__actions">
-        <Button variant="danger" size="lg" block className="k-confirm__go" disabled={busy} onClick={go}>{confirmLabel}</Button>
+        <Button variant={tone} size="lg" block className={tone === 'danger' ? 'k-confirm__go' : undefined} disabled={busy} onClick={go}>{confirmLabel}</Button>
         <Button variant="secondary" size="lg" block disabled={busy} onClick={onClose}>{cancelLabel}</Button>
       </div>
     </Sheet>

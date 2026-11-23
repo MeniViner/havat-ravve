@@ -9,7 +9,7 @@ import { source } from './source';
 
 export const PERIODS = [7, 30, 90, 365] as const;
 export const periodText = (d: number) => (d === 7 ? 'שבוע' : d === 30 ? 'חודש' : d === 90 ? '3 חודשים' : 'שנה');
-const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'צוות', vendor: 'דוכנים', guest: 'אורחים' };
+const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'מתנדבים', vendor: 'דוכנים', guest: 'אורחים' };
 const WEEKDAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
 export function Period({ days, onChange }: { days: number; onChange: (d: number) => void }) {
@@ -56,7 +56,7 @@ export function StatsScreen() {
             </Card>
             <Card pad="lg">
               <p className="c-card-title">לפי יום בשבוע</p>
-              <Columns rtl label="פעולות לפי יום בשבוע" height={80} data={f.activity.weekday.map((v, i) => ({ key: String(i), value: v, tip: `${WEEKDAY[i]}: ${v} פעולות`, axis: WEEKDAY[i] }))} />
+              <Columns rtl pick="max" label="פעולות לפי יום בשבוע" height={80} data={f.activity.weekday.map((v, i) => ({ key: String(i), value: v, tip: `${WEEKDAY[i]}: ${v} פעולות`, axis: WEEKDAY[i] }))} />
             </Card>
           </Section>
           <div className="c-two">
