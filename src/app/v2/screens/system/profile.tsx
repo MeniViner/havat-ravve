@@ -1,7 +1,9 @@
-// L6-Me (volunteer), C12-Profile (owner / manager), C13-ProfileEdit and the notification preferences sheet.
+// Q18-Profile (replaces L6-Me and C12-Profile), C13-ProfileEdit and the notification preferences sheet.
+// Q18: "עריכת פרטים" is the underlined link at the top end; registration answers are edited in /me/edit, not listed here;
+// the farm website, terms and the demo are quiet links beside "יציאה מהחשבון"; account deletion is at the bottom of /me/edit.
 import { useState } from 'react';
 import { AppScreen, go, useToast } from '../../core';
-import { TopBar, Button, Icon, StatRow, StatTile, DetailList, DetailRow, TextLink, ListCard, Row, IconTile, FormHeader, Field, BottomBar, Toggle, Sheet, initials } from '../../kit';
+import { TopBar, Button, Icon, StatRow, StatTile, DetailList, DetailRow, TextLink, ListCard, Row, IconTile, FormHeader, Field, BottomBar, Toggle, Sheet, UnderlineLink, initials } from '../../kit';
 import { back } from '../../../router';
 import { signOutUser } from '../../../firebase';
 import { useDemo, setDemo } from '../../../demo/store';
@@ -13,7 +15,7 @@ import { PushSettings } from '../broadcast';
 import type { V2Ctx } from '../../ctx';
 import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
-  receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, answerText, missingAnswers, type ProfileDraft,
+  receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { RegistrationQuestions } from './fields';
 import './system.css';
@@ -25,11 +27,10 @@ export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
   void Promise.race([revoke, new Promise((r) => setTimeout(r, 1500))]).then(() => signOutUser()).then(() => go('/', true));
 }
 
-/** L6 / C12: the same structure; managers and owners get the number, "view as volunteer", and no "contact managers". */
+/** Q18 (L6 / C12): the same structure; managers and owners get the number, "view as volunteer", and no "contact managers". */
 export function ProfileScreen({ ctx }: ScreenProps) {
   const p = ctx.profile;
   const demo = useDemo();
-  const toast = useToast();
   const vendor = ctx.role === 'vendor';
   const lead = ctx.manager || ctx.owner;
   const counts = useMyCounts(ctx);
@@ -39,12 +40,11 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const src = photoOf(p);
   const kinds = usePush(p).kinds;
   const role = ctx.viewAsStaff ? 'מתנדב' : roleWord(p, ctx.owner, ctx.manager);
-  const questions = registrationQuestions(ctx.settings.registrationFields);
   const sub = [role, lead && p.customerNumber ? `מספר ${p.customerNumber}` : '', sinceText(p.createdAt)].filter(Boolean).join(' · ');
   return (
     <AppScreen variant="root" gap={10}>
       <TopBar className="system-pull" back={{ label: 'חזרה', onClick: () => back(vendor ? '/vendor' : '/tasks') }}
-        end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => go('/me/edit')}>עריכה</Button>} />
+        end={<UnderlineLink icon="edit" onClick={() => go('/me/edit')}>עריכת פרטים</UnderlineLink>} />
       <div className="system-me">
         <button type="button" className="system-me__avatar" aria-label="החלפת תמונת הפרופיל" onClick={() => go('/me/photo')}>
           {src ? <img src={src} alt="" /> : initials(p.displayName || '')}
@@ -63,7 +63,6 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         <DetailRow term="טלפון"><span dir="ltr">{p.phone || '—'}</span></DetailRow>
         <DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow>
         {!vendor && <DetailRow term="בחווה" action={<TextLink onClick={() => go('/farm/presence')}>שינוי</TextLink>}>{presence}</DetailRow>}
-        {questions.map((f) => <DetailRow key={f.id} term={f.label}>{answerText(p.fields, f) || '—'}</DetailRow>)}
       </DetailList>
       <ListCard>
         <Row leading={<IconTile icon="bell-settings" />} title="התראות" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => setNotifs(true)} />
@@ -74,14 +73,13 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         {!lead && !ctx.viewAsStaff && !vendor && <Row leading={<IconTile icon="people" />} title="פנייה למנהלים" meta="שאלה, בקשה או בעיה" onClick={() => go('/contact?from=team')} />}
         <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />
         {!vendor && <Row leading={<IconTile icon="ticket" />} title="הכרטיסים שלי כאורח" meta="" onClick={() => go('/me/tickets')} />}
-        <Row leading={<IconTile icon="farm" />} title="האתר של החווה" meta="" href="/"
-          onClick={(e) => { e.preventDefault(); window.open('/', '_blank', 'noopener'); }} />
-        {!demo.on && <Row leading={<IconTile icon="help" />} title="לראות איך האפליקציה עובדת" meta="הדגמה עם נתונים לא אמיתיים" onClick={() => go('/demo')} />}
       </ListCard>
       <div className="system-foot">
-        <Button variant="outline" size="tall" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
+        <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
+        <Button variant="quiet" onClick={() => window.open('/', '_blank', 'noopener')}>האתר של החווה</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
-        <Button variant="quiet" onClick={() => go('/delete-account')}>מחיקת החשבון</Button>
+        {/* the demo link (parity): a quiet link too, only while the demo is off */}
+        {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}
       </div>
       <NotificationsSheet open={notifs} onClose={() => setNotifs(false)} ctx={ctx} />
     </AppScreen>
@@ -141,6 +139,8 @@ export function ProfileEdit({ ctx }: ScreenProps) {
         <Row className="system-togglerow" title="אישורי תשלום" meta={`לאן לשלוח לי אישור כשאני משלם כאורח: ${d.receipt === 'whatsapp' ? 'וואטסאפ' : 'מייל'}`}
           actions={<Toggle checked={d.receipt === 'whatsapp'} onChange={(v) => setD((s) => ({ ...s, receipt: v ? 'whatsapp' : 'email' }))} label="אישורי תשלום" />} />
       </ListCard>
+      {/* account deletion lives at the bottom of the edit-details screen (moved from the profile foot, as on the guest account) */}
+      <div className="system-foot"><Button variant="quiet" onClick={() => go('/delete-account')}>מחיקת החשבון</Button></div>
     </AppScreen>
   );
 }

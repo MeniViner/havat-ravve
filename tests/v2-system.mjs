@@ -1,7 +1,8 @@
-// System area (L6, C12, C13, A1, A2, C2, C9, C10, C8, X2, Z1, Z3): the pure helpers (periods, role words, photo source,
+// System area (Q18 profile replacing L6 / C12, C13, A1, A2, C2, C9, C10, C8, X2, Z1, Z3): the pure helpers (periods, role words, photo source,
 // birth date, suspended date, search with role filtering) and the profile writes, run against the demo store with
 // Firestore stubbed out. Writes must stay in demo and touch only the person's own fields.
 //   node tests/v2-system.mjs
+//   node tests/v2-system.mjs --base=http://localhost:5236   (also checks the Q18 placement in the running demo app)
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
@@ -208,4 +209,46 @@ assert.equal(m.demoDoc('users/demo-u-yossi').log.at(-1).text, 'מצב: נחסם'
 assert.equal(sys.suspendedAt(m.demoDoc('users/demo-u-yossi')), '2026-11-18T09:15:00.000Z', 'X2 says 18.11');
 
 assert.deepEqual(globalThis.__calls.filter((c) => /Doc|Batch|Transaction|get/.test(c)), [], 'nothing reached Firestore');
+
+// ---------- Q18 placement in the running app (demo), only with a dev server: --base=http://localhost:52xx or BASE= ----------
+const BASE = (process.argv.find((a) => a.startsWith('--base=')) || '').slice(7) || process.env.BASE || '';
+if (BASE) {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch();
+  const open = async (persona, path) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+    await ctx.addInitScript((p) => { if (sessionStorage.getItem('__vc')) return; sessionStorage.setItem('__vc', '1'); localStorage.clear(); localStorage.setItem('farm-demo', JSON.stringify({ on: true, persona: p, scenario: 'regular' })); }, persona);
+    const page = await ctx.newPage(); page.setDefaultTimeout(4000);
+    const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (x) => { if (x.type() === 'error') errors.push(x.text()); });
+    await page.goto(`${BASE}/app${path}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+    return { ctx, page, errors, text: async () => page.locator('body').innerText() };
+  };
+  for (const persona of ['owner', 'staff']) {
+    const s = await open(persona, '/me');
+    const t = await s.text();
+    assert.equal(await s.page.locator('.k-topbar .k-ulink').filter({ hasText: 'עריכת פרטים' }).count(), 1, `${persona} Q18: "עריכת פרטים" is the underlined link in the top bar`);
+    assert.equal(await s.page.getByRole('button', { name: 'עריכה', exact: true }).count(), 0, `${persona} Q18: no outlined "עריכה" on the profile`);
+    assert.ok(!t.includes('איך שמעתם עלינו?'), `${persona} Q18: registration answers are not listed on /me`);
+    assert.ok(!t.includes('מחיקת החשבון'), `${persona} Q18: account deletion is not on /me`);
+    const foot = await s.page.locator('.system-foot').innerText();
+    assert.ok(foot.includes('יציאה מהחשבון') && foot.includes('האתר של החווה') && foot.includes('תנאי שימוש'), `${persona} Q18: website and terms are quiet links beside sign-out`);
+    assert.equal(await s.page.locator('.k-list').filter({ hasText: 'האתר של החווה' }).count(), 0, `${persona} Q18: the website is not a row`);
+    assert.ok(t.includes(persona === 'owner' ? 'לראות את האפליקציה כמו מתנדב' : 'פנייה למנהלים') && t.includes('התקנה למסך הבית') && t.includes('הכרטיסים שלי כאורח'), `${persona} Q18: the designed rows stay`);
+    await s.page.locator('.k-ulink').filter({ hasText: 'עריכת פרטים' }).click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/me\/edit$/, `${persona}: "עריכת פרטים" opens /me/edit`);
+    const e = await s.text();
+    assert.ok(e.includes('איך שמעתם עלינו?') && e.includes('יישוב *'), `${persona} C13: the registration questions are edited in /me/edit`);
+    assert.ok(e.includes('מחיקת החשבון'), `${persona} C13: account deletion sits at the bottom of /me/edit`);
+    assert.deepEqual(s.errors, [], `${persona}: no page errors`);
+    await s.ctx.close();
+  }
+  { // a team invitee (C9) answers the same questions on first entry
+    const s = await open('new', '/');
+    const t = await s.text();
+    assert.ok(t.includes('ברוך הבא לצוות') && t.includes('איך שמעתם עלינו?'), 'C9: a team invitee answers the registration questions');
+    await s.ctx.close();
+  }
+  await browser.close();
+  console.log('v2-system: Q18 placement checked in the app');
+}
 console.log('v2-system: all passed');
