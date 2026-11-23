@@ -9,6 +9,7 @@ import {
   type Persona, type Scenario,
 } from '../../../demo/store';
 import { nowIso } from '../../../clock';
+import { leaveDemoTarget } from '../../../demo/intro';
 import { setOfflineSince } from '../../data/system';
 import type { ScreenProps } from '../../ctx';
 import './system.css';
@@ -49,7 +50,7 @@ export function DemoStart(_: Partial<ScreenProps>) {
 export function DemoSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const demo = useDemo(); const states = useDemoStates(); const toast = useToast();
   const switchTo = (persona: Persona) => { setDemo({ persona }); onClose(); navigate('/', true); };
-  const exit = () => { onClose(); setDemo({ on: false }); navigate('/demo', true); };
+  const exit = () => { onClose(); setDemo({ on: false }); navigate(leaveDemoTarget(), true); };
   const reset = () => { resetDemoData(); setOfflineSince(''); toast.show({ text: 'נתוני הדוגמה אופסו', duration: 2500 }); };
   // the old profile's "קישור להדגמה": a link that opens the demo as the owner
   const copyLink = () => { void navigator.clipboard?.writeText(location.origin + '/app?demo=owner').then(() => toast.show({ text: 'הקישור הועתק: /app?demo=owner', duration: 3000 })).catch(() => {}); };
