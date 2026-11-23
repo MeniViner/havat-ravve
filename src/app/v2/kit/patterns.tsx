@@ -9,7 +9,7 @@
 //   PayConfirmSheet                      Q7 (after a payment is approved)
 import { useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type KeyboardEvent as RKeyboardEvent, type CSSProperties } from 'react';
 import { Icon, type IconName } from './icons';
-import { Button, ConfirmSheet, IconButton, RadioList, RadioRow, Sheet, cx, type Target } from './components';
+import { Button, CheckboxBox, ConfirmSheet, IconButton, RadioList, RadioRow, Sheet, cx, type Target } from './components';
 
 type Base = { className?: string; style?: CSSProperties };
 
@@ -115,22 +115,52 @@ export interface PickerSheetProps<T extends string> extends Base {
   sub?: ReactNode;
   options: PickOption<T>[];
   value: T | null | undefined;
-  /** Called with the chosen value; the sheet closes. */
+  /** Called with the chosen value; the sheet closes. With `multiple`: called with the tapped value, the sheet stays open. */
   onChange: (v: T) => void;
   /** Shown above the list (a search field for long lists of people). */
   head?: ReactNode;
+  /** Several can be chosen (Q31 "מי משתתף" past five people): check boxes instead of radios, `values` are the chosen ones,
+   *  each tap toggles through `onChange`, and "סיום" closes. */
+  multiple?: boolean;
+  values?: T[];
 }
 /** A sheet with one radio list: the picker behind a SelectRow or a Dropdown (rule 9: never a grid of chips for more than five). */
-export function PickerSheet<T extends string>({ open, onClose, title, sub, options, value, onChange, head, className, style }: PickerSheetProps<T>) {
+export function PickerSheet<T extends string>({ open, onClose, title, sub, options, value, onChange, head, multiple, values = [], className, style }: PickerSheetProps<T>) {
+  const label = typeof title === 'string' ? title : 'בחירה';
   return (
     <Sheet open={open} onClose={onClose} title={title} sub={sub} className={cx('k-picker', className)} style={style}>
       {head}
-      <RadioList label={typeof title === 'string' ? title : 'בחירה'}>
-        {options.map((o) => (
-          <RadioRow key={o.value} checked={o.value === value} disabled={o.disabled} leading={o.leading} title={o.label} meta={o.meta}
-            onSelect={() => { onChange(o.value); onClose(); }} />
-        ))}
-      </RadioList>
+      {multiple ? (
+        <>
+          <section role="group" aria-label={label} className="k-card k-card--list">
+            <ul className="k-list k-list--flush">
+              {options.map((o) => {
+                const on = values.includes(o.value);
+                return (
+                  <li key={o.value} className="k-radioitem">
+                    <button type="button" role="checkbox" aria-checked={on} disabled={o.disabled} onClick={() => onChange(o.value)} className="k-radiorow">
+                      {o.leading}
+                      <span className="k-radiorow__body">
+                        <span className="k-radiorow__title">{o.label}</span>
+                        {o.meta !== undefined && <span className="k-row__meta">{o.meta}</span>}
+                      </span>
+                      <CheckboxBox checked={on} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+          <Button size="bar" block onClick={onClose}>סיום</Button>
+        </>
+      ) : (
+        <RadioList label={label}>
+          {options.map((o) => (
+            <RadioRow key={o.value} checked={o.value === value} disabled={o.disabled} leading={o.leading} title={o.label} meta={o.meta}
+              onSelect={() => { onChange(o.value); onClose(); }} />
+          ))}
+        </RadioList>
+      )}
     </Sheet>
   );
 }
@@ -286,6 +316,15 @@ export function UnderlineLink({ icon, children, href, onClick, className, style 
 /* ═════════════ Table view (Q9) ═════════════ */
 
 export type TableCell = string | number;
+/** Money ("1,076 ₪") sorts as a number and a date ("19.11.2026", with or without a time) by year, month, day. */
+const sortKey = (c: TableCell): TableCell => {
+  if (typeof c === 'number') return c;
+  const m = /^(-?[\d,]+(?:\.\d+)?) ₪$/.exec(c);
+  if (m) return Number(m[1].replace(/,/g, ''));
+  const d = /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?: (\d{1,2}):(\d{2}))?$/.exec(c);
+  if (d) return Number(d[3]) * 1e8 + Number(d[2]) * 1e6 + Number(d[1]) * 1e4 + Number(d[4] || 0) * 100 + Number(d[5] || 0);
+  return c;
+};
 /**
  * The table view's card: a header row of soft 13/600 headings, 15px cells, the first column bold, horizontal scroll inside
  * the card. Tapping a heading sorts by that column (again to reverse).
@@ -295,7 +334,7 @@ export function DataTable({ headers, rows, label = 'טבלה', className, style 
   const visible = useMemo(() => {
     if (!sort) return rows;
     return [...rows].sort((a, b) => {
-      const x = a[sort.col] ?? '', y = b[sort.col] ?? '';
+      const x = sortKey(a[sort.col] ?? ''), y = sortKey(b[sort.col] ?? '');
       const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he', { numeric: true });
       return r * sort.dir;
     });

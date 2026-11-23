@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen } from '../../core';
 import { Avatar, Button, Dropdown, EmptyState, Inline, MoreMenu, PageTitle, SearchField, TopBar } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { dayName, ddmm, daysFromToday, hhmm, keyOf } from '../../format';
 import { KIND_LABELS, type Activity } from '../../../types';
 import { ACTION_LABELS, useActivityForEvent } from '../../../activity';
@@ -57,7 +57,7 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
   const title = eventId ? 'היסטוריית האירוע' : 'כל הפעילות';
   const table = useTableView({
     title, filename: eventId && event ? `${event.title} - היסטוריה.csv` : 'פעילות.csv', headers: ['מתי', 'מי', 'פעולה', 'מה', 'סוג'],
-    rows: () => rows.map(({ a }) => [a.at, a.by.name, ACTION_LABELS[a.action] || a.action, a.text, KIND_LABELS[a.kind] || a.kind]),
+    rows: () => rows.map(({ a }) => [tableCell.time(a.at), a.by.name, ACTION_LABELS[a.action] || a.action, a.text, KIND_LABELS[a.kind] || a.kind]),
   });
   const back = eventId ? { label: event?.title || 'האירוע', path: `/manage/events/${eventId}` } : { label: 'ניהול', path: '/manage' };
   if (table.active) return table.screen;

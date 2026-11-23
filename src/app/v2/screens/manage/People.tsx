@@ -6,7 +6,7 @@ import {
   Avatar, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, MoreMenu, PageTitle, PickerSheet, Row,
   SearchField, SectionHeader, Segmented, Sheet, Tag, TextAreaField, TextLink, TopBar, type ActionItem,
 } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { MONTHS, money, relDay, dayName, ddmm, keyOf, dayTime, firstName } from '../../format';
 import { setUserNotes } from '../../../store';
 import { useActivityForUser, ACTION_LABELS } from '../../../activity';
@@ -36,7 +36,7 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
   const fields = ctx.settings.registrationFields;
   const table = useTableView({
     title: 'אנשים', filename: 'אנשים.csv', headers: ['#', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'נרשם', 'חוב', ...fields.map((f) => f.label)],
-    rows: () => people.map((p) => [p.customerNumber, p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status === 'blocked' ? 'חסום' : 'פעיל', keyOf(p.createdAt), debts.get(p.uid) || '', ...fields.map((f) => p.fields?.[f.id] || '')]),
+    rows: () => people.map((p) => [p.customerNumber, p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status === 'blocked' ? 'חסום' : 'פעיל', tableCell.date(p.createdAt), debts.get(p.uid) ? tableCell.money(debts.get(p.uid)) : '', ...fields.map((f) => p.fields?.[f.id] || '')]),
   });
   if (table.active) return table.screen;
   if (all.loading && !all.items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;

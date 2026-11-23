@@ -1,9 +1,9 @@
 // Q31-CalItem (C11): new (or edit) calendar item: what, its kind ('סוג' chips under the title), when, hours, who sees,
-// participants, reminder. Managers; volunteers go to F4. Editing: delete is in ⋯ beside "ביטול" (rule 6).
+// participants (chips up to five people, past that one row with a check-box picker, rule 9), reminder. Managers; volunteers go to F4. Editing: delete is in ⋯ beside "ביטול" (rule 6).
 import { useEffect, useState } from 'react';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import { back } from '../../../router';
-import { BottomBar, Button, ChoiceChip, EmptyState, Field, FormHeader, ListCard, MoreMenu, Row, Toggle } from '../../kit';
+import { Avatar, BottomBar, Button, ChoiceChip, EmptyState, Field, FormHeader, ListCard, MoreMenu, PickerSheet, Row, SearchField, SelectRow, Toggle } from '../../kit';
 import type { ScreenProps } from '../../ctx';
 import { deleteCalItem, saveCalItem, useCalItem, type FarmCalItem } from '../../data/farm';
 import { TEAM_KINDS, firstOf, hoursOf, hoursValid, isTeamItem, normTime, pickerDays, pickerStart, teamKindOf, type TeamKind } from './logic';
@@ -54,6 +54,11 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
   const people = ctx.team.filter((p) => audience === 'all' || rank(p.role) < 2)
     .sort((a, b) => pos(a.uid) - pos(b.uid) || rank(a.role) - rank(b.role) || a.displayName.localeCompare(b.displayName, 'he'));
   const extra = participants.filter((u) => !people.some((p) => p.uid === u));
+  const all = [...people.map((p) => ({ uid: p.uid, name: p.displayName })), ...extra.map((u) => ({ uid: u, name: ctx.peopleByUid.get(u)?.displayName || u }))];
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState('');
+  const chosen = participants.map((u) => firstOf(all.find((p) => p.uid === u)?.name || u));
+  const whoText = !chosen.length ? 'אין' : chosen.length <= 3 ? chosen.join(', ') : `${chosen.slice(0, 3).join(', ')} ועוד ${chosen.length - 3}`;
   const h = { from: normTime(from) || from, to: normTime(to) || to };
   const fromBad = !!from && !normTime(from), toBad = !!to && !normTime(to);
   const ok = !!title.trim() && !!validDate(date) && hoursValid(h);
@@ -106,13 +111,22 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
           <ChoiceChip selected={audience === 'managers'} onClick={() => pickAudience('managers')}>מנהלים בלבד</ChoiceChip>
         </div>
       </div>
-      <div className="farm-group">
-        <span className="farm-group__label">מי משתתף</span>
-        <div className="k-chips k-chips--wrap">
-          {people.map((p) => <ChoiceChip key={p.uid} selected={participants.includes(p.uid)} onClick={() => toggle(p.uid)}>{firstOf(p.displayName)}</ChoiceChip>)}
-          {extra.map((u) => <ChoiceChip key={u} selected onClick={() => toggle(u)}>{firstOf(ctx.peopleByUid.get(u)?.displayName || u)}</ChoiceChip>)}
+      {all.length <= 5 ? (
+        <div className="farm-group">
+          <span className="farm-group__label">מי משתתף</span>
+          <div className="k-chips k-chips--wrap">
+            {all.map((p) => <ChoiceChip key={p.uid} selected={participants.includes(p.uid)} onClick={() => toggle(p.uid)}>{firstOf(p.name)}</ChoiceChip>)}
+          </div>
         </div>
-      </div>
+      ) : (
+        // rule 9: past five people "מי משתתף" is one row that opens a picker with check boxes
+        <>
+          <SelectRow label="מי משתתף" value={whoText} onClick={() => { setQ(''); setPicking(true); }} />
+          <PickerSheet open={picking} onClose={() => setPicking(false)} title="מי משתתף" multiple values={participants} value={null} onChange={toggle}
+            head={all.length > 8 ? <SearchField label="חיפוש בצוות" placeholder="חיפוש: שם" size="sm" value={q} onChange={(e) => setQ(e.target.value)} /> : undefined}
+            options={(q.trim() ? all.filter((p) => p.name.includes(q.trim())) : all).map((p) => ({ value: p.uid, label: p.name, leading: <Avatar name={p.name} size={32} /> }))} />
+        </>
+      )}
       <ListCard>
         <Row minHeight={58} title="להזכיר שעה לפני" meta="התראה למי שמשתתף" actions={<Toggle checked={reminder} onChange={setReminder} label="להזכיר שעה לפני" />} />
       </ListCard>

@@ -149,6 +149,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
 /* ---------- F4 ---------- */
 .farm-group { display: flex; flex-direction: column; gap: 8px; }
 .farm-note { margin: 0; font-size: 14px; color: var(--soft); }
+.farm-moreli { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
 .farm-group__label { font-size: 14px; font-weight: 600; color: var(--soft); }
 .farm-hours { display: flex; gap: 6px; }
 .farm-row2 { display: flex; gap: 12px; }

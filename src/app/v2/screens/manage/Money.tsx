@@ -8,14 +8,13 @@ import {
   BarList, BottomBar, Button, Card, Chip, ChipRow, DetailList, DetailRow, EmptyState, ListCard, MoreMenu, PageTitle, Quote, Row, SectionHeader,
   StatRow, StatTile, Tag, TextLink, TopBar, type ActionItem,
 } from '../../kit';
-import { useTableView, usePayConfirm } from '../../patterns';
-import { money, num, dayTime, ddmm, daysFromToday, relDay, firstName, keyOf, hhmm } from '../../format';
+import { useTableView, usePayConfirm, payConfirmText, tableCell } from '../../patterns';
+import { money, num, dayTime, ddmm, daysFromToday, relDay, firstName, hhmm } from '../../format';
 import { contactPhoneOk, receiptDestination, setDonation, useAllEvents, useEventTickets, useVisits } from '../../../data';
 import { useDoc } from '../../../db';
 import { useHistoryTasks, useOpenTasks, usePeople as usePeopleAll } from '../../../store';
 import { useActivityFor, ACTION_LABELS } from '../../../activity';
 import { nowIso } from '../../../clock';
-import { PAYMENT_LABELS } from '../../../types';
 import type { Donation, FarmEvent } from '../../../types';
 import {
   useActivityAll, useDonations, useDonation, useTicketsSince, useOpenTickets, useOpenTabs, useNotifications, useMyTickets, useMyVisits, useMyDonations, usePerson,
@@ -57,14 +56,14 @@ export function ReportsScreen({ ctx, params }: ScreenProps) {
   const table = useTableView({
     title: 'דוחות', filter: PERIOD_LABEL[period], filename: `דוח ${PERIOD_LABEL[period]}.csv`, headers: ['סעיף', 'ערך'],
     rows: () => [
-      ['משימות שבוצעו', r.tasksDone], ['ממוצע ביום', r.perDay], ['תרומות ששולמו (₪)', r.donations], ['כרטיסים ששולמו (₪)', r.tickets],
-      ...r.byPerson.map((p) => [`משימות: ${p.label}`, p.value] as (string | number)[]), ['חובות פתוחים (₪)', r.debts.total], ['אנשים עם חוב', r.debts.people],
+      ['משימות שבוצעו', r.tasksDone], ['ממוצע ביום', r.perDay], ['תרומות ששולמו', tableCell.money(r.donations)], ['כרטיסים ששולמו', tableCell.money(r.tickets)],
+      ...r.byPerson.map((p) => [`משימות: ${p.label}`, p.value] as (string | number)[]), ['חובות פתוחים', tableCell.money(r.debts.total)], ['אנשים עם חוב', r.debts.people],
       ['חוזרות בזמן (%)', rec.pct ?? ''], ['פתוחות באיחור', overdue], ['נרשמים חדשים', ps.newPeople], ['ביקורים אושרו', ps.visitsApproved], ['חסומים', ps.blocked],
     ],
   });
   const tasksTable = useTableView({
     title: 'משימות', filter: PERIOD_LABEL[period], filename: `משימות ${PERIOD_LABEL[period]}.csv`, headers: ['משימה', 'בוצע על ידי', 'מתי', 'חוזרת'],
-    rows: () => tasks.map((t) => [t.title, t.doneBy?.name || '', t.doneAt || '', t.templateId ? 'כן' : '']),
+    rows: () => tasks.map((t) => [t.title, t.doneBy?.name || '', tableCell.time(t.doneAt), t.templateId ? 'כן' : '']),
   });
   const section = params.section || '';
   // Two tables (Q14 ⋯): the report at /manage/reports/table and the tasks at /manage/reports/tasks/table.
@@ -152,11 +151,15 @@ const D_FILTERS: { v: DFilter; l: string }[] = [
   { v: 'month', l: 'החודש' }, { v: 'approve', l: 'לאישור' }, { v: 'receipt', l: 'צריכות קבלה' }, { v: 'memorial', l: 'עם הנצחה' }, { v: 'year', l: 'השנה' }, { v: 'all', l: 'הכל' },
 ];
 const shortDay = (iso: string) => { const d = daysFromToday(iso); return d === 0 ? 'היום' : d === -1 ? 'אתמול' : ddmm(iso); };
-const statusTag = (d: Donation) =>
-  d.paymentStatus === 'claimed' ? <Tag tone="waiting">{gw(d.name, 'סימן שהעביר', 'סימנה שהעבירה')}</Tag>
-  : d.paymentStatus === 'pending' ? <Tag tone="waiting">עוד לא שולמה</Tag>
-  : d.paymentStatus === 'cancelled' ? <Tag>בוטלה</Tag>
-  : <Tag tone="paid">שולם</Tag>;
+/** The donation's state in words: the row's tag and the table's "מצב" (Q4, Q9). */
+const statusWord = (d: Donation) =>
+  d.paymentStatus === 'claimed' ? gw(d.name, 'סימן שהעביר', 'סימנה שהעבירה')
+  : d.paymentStatus === 'pending' ? 'עוד לא שולמה'
+  : d.paymentStatus === 'cancelled' ? 'בוטלה'
+  : 'שולם';
+const statusTag = (d: Donation) => (
+  <Tag tone={d.paymentStatus === 'claimed' || d.paymentStatus === 'pending' ? 'waiting' : d.paymentStatus === 'cancelled' ? 'neutral' : 'paid'}>{statusWord(d)}</Tag>
+);
 const receiptText = (d: Donation) => (d.receiptWanted ? (d.receiptSent ? 'קבלה נשלחה' : gw(d.name, 'צריך קבלה', 'צריכה קבלה')) : 'בלי קבלה');
 
 export function DonationsScreen({ ctx }: ScreenProps) {
@@ -168,15 +171,22 @@ export function DonationsScreen({ ctx }: ScreenProps) {
   const label = D_FILTERS.find((f) => f.v === filter)!.l;
   const table = useTableView({
     title: 'תרומות', filter: filter === 'all' ? undefined : label, filename: 'תרומות.csv',
-    headers: ['תאריך', 'מי', 'טלפון', 'סכום', 'כותרת', 'הנצחה', 'הערה', 'תשלום', 'קבלה'],
-    rows: () => list.map((d) => [keyOf(d.createdAt), d.name, d.phone, d.amount, d.label, d.memorial, d.note, PAYMENT_LABELS[d.paymentStatus], d.receiptWanted ? (d.receiptSent ? 'נשלחה' : 'צריך · ' + (d.receiptName || d.name)) : '']),
+    // Q9's six columns in its order, then what the file always carried (phone, title, note, the name on the receipt)
+    headers: ['שם', 'סכום', 'מצב', 'תאריך', 'קבלה', 'הנצחה', 'טלפון', 'כותרת', 'הערה', 'שם לקבלה'],
+    rows: () => list.map((d) => [d.name, tableCell.money(d.amount), statusWord(d), tableCell.date(d.createdAt),
+      d.receiptWanted ? (d.receiptSent ? 'נשלחה' : gw(d.name, 'צריך', 'צריכה')) : 'בלי', d.memorial, d.phone, d.label, d.note, d.receiptWanted ? d.receiptName || d.name : '']),
   });
   if (table.active) return table.screen;
   if (loading && !items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;
   const count = (f: DFilter) => (f === 'approve' ? approve.length : f === 'receipt' ? receipt.length : 0);
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={table.items} />} />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={[
+        ...table.items,
+        // Q5: print the list as shown (as the event summary prints), and the money activity (Activity's "כסף" filter)
+        { label: 'הדפסה', icon: 'print', onSelect: () => window.print() },
+        { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go('/manage/activity?filter=money') },
+      ]} />} />
       <PageTitle>תרומות</PageTitle>
       {/* Q4 shows three stats; "ממתין" stays until it has a design (tidy-plan row 79). */}
       <StatRow grid>
@@ -242,7 +252,7 @@ export function DonationScreen({ ctx, params }: ScreenProps) {
   const thanks = fillTemplate(ctx.settings.templates.donationThanks, { 'שם': firstName(d.name), 'סכום': money(d.amount) });
   const email = receiptDestination({ phone: donor?.phone || d.phone, email: donor?.email || '' }, 'email');
   const mailto = () => {
-    const body = fillTemplate(ctx.settings.templates.paymentConfirmation?.trim() || '', { 'שם': donor?.displayName || d.name, 'סכום': money(d.amount), 'עבור': 'תרומה לחווה', 'אירוע': '' });
+    const body = payConfirmText(ctx.settings.templates.paymentConfirmation, { name: donor?.displayName || d.name, amount: d.amount, purpose: target.purpose, event: target.event });
     ext('mailto:' + encodeURIComponent(email).replace('%40', '@') + '?subject=' + encodeURIComponent('אישור תשלום מחוות רווה') + '&body=' + encodeURIComponent(body));
   };
   const orders = [...new Map(tickets.map((t) => [t.orderId, tickets.filter((x) => x.orderId === t.orderId && x.status === 'valid')])).values()].filter((o) => o.length);

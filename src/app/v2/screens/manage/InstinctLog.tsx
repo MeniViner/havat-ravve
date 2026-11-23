@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go } from '../../core';
 import { Button, Chip, ChipRow, DetailList, DetailRow, Dropdown, EmptyState, Icon, MoreMenu, PageTitle, SearchField, Sheet, Tag, TopBar } from '../../kit';
-import { useTableView } from '../../patterns';
+import { tableCell, useTableView } from '../../patterns';
 import { dayName, ddmm, daysFromToday, firstName, hhmm, keyOf } from '../../format';
 import { useList } from '../../../db';
 import { instinctLine, instinctTarget, type ApiLogEntry } from '../../data/manage';
@@ -35,7 +35,8 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     return items
-      .filter((e) => (show === 'actions' ? e.kind === 'write' && e.ok : show === 'reads' ? e.kind === 'read' && e.ok : show === 'failed' ? !e.ok : true))
+      // Q20: "שינויים" lists every change, a failed one too with its Hebrew reason; its count is the changes that went through
+      .filter((e) => (show === 'actions' ? e.kind === 'write' : show === 'reads' ? e.kind === 'read' : show === 'failed' ? !e.ok : true))
       .filter((e) => !key || e.credential === key)
       .filter((e) => { if (!t) return true; const l = lines.get(e.id)!; return `${e.keyLabel} ${e.actor.name} ${l.title} ${l.meta} ${e.opHe}`.toLowerCase().includes(t); });
   }, [items, show, key, q, lines]);
@@ -53,7 +54,7 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
   const table = useTableView({
     title: 'יומן אינסטינקט', filename: 'יומן אינסטינקט.csv',
     headers: ['מתי', 'מפתח', 'בשם', 'מה קרה', 'פרטים', 'שם הפעולה', 'הצליח', 'קוד', 'הודעה', 'מה נשלח', 'מה חזר', 'רשומות', 'מזהה בקשה'],
-    rows: () => rows.map((e) => { const l = lines.get(e.id)!; return [e.at, e.keyLabel, e.actor.name, l.title, l.meta, e.op, e.ok ? 'כן' : 'לא', e.code, e.message, e.body, e.result, e.refs.map((r) => `${r.col}/${r.id}`).join(' '), e.id]; }),
+    rows: () => rows.map((e) => { const l = lines.get(e.id)!; return [tableCell.time(e.at), e.keyLabel, e.actor.name, l.title, l.meta, e.op, e.ok ? 'כן' : 'לא', e.code, e.message, e.body, e.result, e.refs.map((r) => `${r.col}/${r.id}`).join(' '), e.id]; }),
   });
   const back = { label: 'ניהול', path: '/manage' };
   if (!owner) return (

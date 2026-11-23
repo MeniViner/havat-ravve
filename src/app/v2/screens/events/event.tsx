@@ -22,7 +22,7 @@ import {
   isPaid, cancelledOrdersOf, scansFromTickets, summaryExtras, type EventTab, type GuestFilter, type Order,
 } from './logic';
 import { PayConfirmStatus } from './payconfirm';
-import { usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
+import { tableCell, usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
 import { useCounters, useScans, useCash, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
 import { DEFAULT_SETTINGS, PAYMENT_LABELS, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
@@ -47,7 +47,7 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
   // Q9: the registrants as a table (…/table?tab=guests) and the CSV, from the guests stage's ⋯
   const table = useTableView({
     title: 'נרשמים', filename: `${e.title} - נרשמים.csv`, headers: ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
-    rows: () => ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], ddmm(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]),
+    rows: () => ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], tableCell.date(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]),
   });
   if (table.active) return table.screen;
   if (tab === 'summary' && PARTS.includes(part as Part)) return <SummaryPart ctx={ctx} e={e} part={part as Part} />;

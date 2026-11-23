@@ -1,6 +1,6 @@
 // Screen-level wiring of the shared tidy patterns (the kit parts are in kit/patterns.tsx):
 //   useTableView  Q9: "צפייה בטבלה" opens `<route>/table` (its own screen, same nav tab) and "ייצוא לאקסל" downloads the CSV.
-//                 Both are ⋯ items (Q5), never top-bar text.
+//                 Both are ⋯ items (Q5), never top-bar text. Dates and money in its rows go through `tableCell`.
 //   usePayConfirm Q7: after a payment is approved, the sheet that sends the confirmation (WhatsApp / automatic e-mail / none).
 import { useState, type ReactNode } from 'react';
 import { back, navigate, useRoute, useSearch } from '../router';
@@ -9,7 +9,7 @@ import { Button, DataTable, PageTitle, PayConfirmSheet, TopBar, type ActionItem,
 import { downloadCsv } from './data/manage';
 import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../data';
 import { DEFAULT_SETTINGS } from '../types';
-import { money } from './format';
+import { hhmm, keyOf, money } from './format';
 
 /* ═════════════ Q9 table view ═════════════ */
 
@@ -24,6 +24,20 @@ export type TableViewSpec = {
   headers: string[];
   /** Read when the table opens or the file downloads, so it always follows the current filter. */
   rows: () => Cell[][];
+};
+/**
+ * The one way a table view and its CSV write dates and money (Q9), so every list exports alike:
+ *   tableCell.date("2026-11-19" or an ISO time) → "19.11.2026"; tableCell.time(iso) → "19.11.2026 09:40"; tableCell.money(180) → "180 ₪".
+ * Empty in, empty out. The year stays in the date so a file that spans years still reads right in Excel.
+ */
+export const tableCell = {
+  date: (v: string | null | undefined): string => {
+    if (!v) return '';
+    const k = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : Number.isNaN(Date.parse(v)) ? '' : keyOf(v);
+    return k ? k.split('-').reverse().join('.') : '';
+  },
+  time: (v: string | null | undefined): string => (v && !Number.isNaN(Date.parse(v)) ? `${tableCell.date(v)} ${hhmm(v)}` : ''),
+  money: (n: number | null | undefined | ''): string => (n === null || n === undefined || n === '' || Number.isNaN(Number(n)) ? '' : money(Number(n))),
 };
 const clean = (rows: Cell[][]): TableCell[][] => rows.map((r) => r.map((c) => (c === null || c === undefined ? '' : c)));
 
@@ -64,6 +78,24 @@ function TableScreen({ spec, onBack, onDownload }: { spec: TableViewSpec; onBack
 
 /* ═════════════ Q7 payment confirmation ═════════════ */
 
+/**
+ * The payment confirmation text from the farm's template. [עבור] is what was paid for ("תרומה לחווה", "כרטיסים לאירוע ...");
+ * [אירוע] is the event's name, or the same purpose when there is no event (a donation), so "על [אירוע]" never reads "על .".
+ * A slot that is still empty takes its lead-in word with it ("עבור", "על", "בשביל") and no "[...]" is left.
+ */
+export function payConfirmText(template: string | undefined, v: { name: string; amount: number; purpose: string; event?: string }): string {
+  const t = template?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!;
+  const purpose = v.purpose.trim(), event = (v.event || '').trim() || purpose;
+  const filled = fillTemplate(t, { 'שם': v.name.trim(), 'סכום': money(v.amount), 'עבור': purpose, 'אירוע': event });
+  return filled
+    .replace(/(?:\s+(?:עבור|על|בשביל))?\s*\[[^\]]*\]/g, '')
+    .replace(/\s+(?:עבור|על|בשביל)\s*(?=[.,!?]|$)/g, '')
+    .replace(/\s+([.,!?])/g, '$1')
+    .replace(/,\s*([.!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export type PayConfirmTarget = {
   collection: 'tickets' | 'donations' | 'tabs';
   ids: string[];
@@ -90,9 +122,7 @@ export function usePayConfirm() {
   const wa = t ? receiptDestination(to, 'whatsapp') : '';
   const channels: PayChannel[] = [...(wa ? ['whatsapp' as const] : []), ...(pref === 'email' ? ['email' as const] : [])];
   const name = (profile?.displayName || t?.name || '').trim();
-  const preview = t ? fillTemplate(settings.templates.paymentConfirmation?.trim() || DEFAULT_SETTINGS.templates.paymentConfirmation!, {
-    'שם': name, 'סכום': money(t.amount), 'עבור': t.purpose, 'אירוע': t.event || '',
-  }) : '';
+  const preview = t ? payConfirmText(settings.templates.paymentConfirmation, { name, amount: t.amount, purpose: t.purpose, event: t.event }) : '';
   const send = async (c: PayChannel) => {
     if (!t) return;
     if (c === 'whatsapp') {
