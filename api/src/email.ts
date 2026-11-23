@@ -230,7 +230,8 @@ async function sendDue(fs: Firestore, env: Env, nowMs: number, stats: Stats): Pr
       if (pref !== 'email') { await finish({ status: 'skipped', reason: pref === 'whatsapp' ? 'whatsapp' : 'no_preference', nextAt: null }); stats.skipped++; continue; }
       if (!EMAIL_RE.test(to)) { await finish({ status: 'skipped', reason: 'no_address', nextAt: null }); stats.skipped++; continue; }
       const name = String(profile?.displayName || s.name);
-      const text = fill(template, { 'שם': name, 'סכום': money(s.amount), 'עבור': s.purpose, 'אירוע': s.event });
+      // no event (a donation): [אירוע] reads as the purpose, as in the app's preview, so "על [אירוע]" never reads "על ."
+      const text = fill(template, { 'שם': name, 'סכום': money(s.amount), 'עבור': s.purpose, 'אירוע': s.event || s.purpose });
       const r = await deliver(env, job, attempts >= MAX_ATTEMPTS, { to, name, subject: SUBJECT, text, key: await idempotencyKey(job.id) });
       const via = { provider: r.provider, ...(r.failover ? { failover: r.failover } : {}) };
       if (r.ok) { await finish({ status: 'sent', to, messageId: r.messageId, amount: s.amount, sentAt: iso(Date.now()), nextAt: null, reason: r.duplicate ? 'duplicate_key' : null, ...via }); stats.sent++; if (r.provider === 'resend') stats.viaResend++; continue; }
