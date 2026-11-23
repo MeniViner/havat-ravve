@@ -135,7 +135,11 @@ export async function readQuota(env: Env): Promise<Quota> {
     let res: Response;
     try { res = await fetch(u, { headers: { authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(8000) }); }
     catch { return { at, error: 'failed', detail: 'Cloud Monitoring did not answer' }; }
-    if (res.status === 403) { await res.body?.cancel(); return { at, error: 'permission' }; }
+    if (res.status === 403) {
+      // Google's own reason (role missing, API off, wrong project): a short message, never a token
+      const why = await res.json().then((j: { error?: { message?: string } }) => String(j?.error?.message || ''), () => '');
+      return { at, error: 'permission', detail: why.slice(0, 200) };
+    }
     if (!res.ok) { await res.body?.cancel(); return { at, error: 'failed', detail: `Cloud Monitoring ${res.status}` }; }
     const j = (await res.json()) as { timeSeries?: { points?: { value?: { int64Value?: string } }[] }[] };
     for (const s of j.timeSeries || []) for (const p of s.points || []) out[k] += Number(p.value?.int64Value || 0);
@@ -282,7 +286,8 @@ export async function monitorStep(env: Env, prev: MonitorState): Promise<Monitor
       if (st.sent) delete st.sent['site-down'];
     }
   }
-  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= 55 * 60_000) {
+  // hourly; every quarter hour while it fails, so a fix (a role granted) shows soon
+  if (!st.quota || now.getTime() - Date.parse(st.quota.at) >= (st.quota.error ? 14 : 55) * 60_000) {
     st.quota = await readQuota(env);
     const s = share(st.quota);
     if (s !== null && s >= 0.8) await sendAlert(env, fs, st, { id: 'quota-' + ilDate(now), title: 'המכסה החינמית של Firestore מתקרבת לסוף', sub: `${pct(s)} מהמכסה של היום כבר בשימוש. היא מתחדשת ב־10:00 בבוקר.` }).catch(() => false);

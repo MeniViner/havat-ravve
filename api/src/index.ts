@@ -135,6 +135,15 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
   }
 }
 
+/** Which of the three runs this is: by its cron expression, else by the minute it was scheduled for (0 send, 1 people, 2 upkeep). */
+function cronGroup(event: { cron?: string; scheduledTime?: number } | undefined): CronGroup {
+  const norm = (c: string) => c.trim().replace(/\s+/g, ' ');
+  const byCron = (Object.keys(CRON_GROUPS) as CronGroup[]).find((g) => event?.cron && norm(CRON_GROUPS[g]) === norm(event.cron));
+  if (byCron) return byCron;
+  const minute = new Date(event?.scheduledTime || Date.now()).getUTCMinutes() % 5;
+  return minute === 1 ? 'people' : minute === 2 ? 'upkeep' : 'send';
+}
+
 /** True once a minute per key in this isolate: a flood of refused requests records one failure a minute, not one each. */
 const failSeen = new Map<string, number>();
 function firstThisMinute(key: string): boolean {
@@ -215,9 +224,10 @@ export default {
    *   people (minute 1, 6, ...)  phone push, and account deletion after the grace period
    *   upkeep (minute 2, 7, ...)  the nightly backup, the night cleanup, watching (site, quota, the morning check)
    */
-  async scheduled(event: { cron?: string } | undefined, env: Env) {
+  async scheduled(event: { cron?: string; scheduledTime?: number } | undefined, env: Env) {
     const started = Date.now();
-    const group: CronGroup = (Object.keys(CRON_GROUPS) as CronGroup[]).find((g) => CRON_GROUPS[g] === event?.cron) || 'send';
+    const group = cronGroup(event);
+    console.log(JSON.stringify({ cron: 'run', group, trigger: event?.cron || null }));
     // the owners' switches (control.ts): a paused job skips its turn
     const sw = await readSwitches(env, true);
     const ran: Record<string, JobRun> = {};
