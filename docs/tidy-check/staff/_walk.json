@@ -826,10 +826,58 @@
   },
   {
    "nn": "44",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "44-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/items",
+   "title": "מה יש לי בחווה"
+  },
+  {
+   "nn": "45",
+   "route": "/tasks/demo-tpl-pots_2026-11-19",
+   "scenario": "regular",
+   "shots": [
+    "45-tasks-tpl-pots_2026-11-19.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-tpl-pots_2026-11-19",
+   "title": "להשקות את שורת העציצים"
+  },
+  {
+   "nn": "46",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "46-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/terms",
+   "title": "תנאי שימוש ופרטיות"
+  },
+  {
+   "nn": "47",
    "route": "/install",
    "scenario": "regular",
    "shots": [
-    "44-install.jpg"
+    "47-install.jpg"
    ],
    "findings": [
     {
@@ -843,11 +891,11 @@
    "title": "להוסיף למסך הבית"
   },
   {
-   "nn": "45",
+   "nn": "48",
    "route": "/offline",
    "scenario": "regular",
    "shots": [
-    "45-offline.jpg"
+    "48-offline.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -856,11 +904,11 @@
    "title": "חזרה הכול נשלח אין פעולות שמחכות לקליטה משימות קניות החווה"
   },
   {
-   "nn": "46",
+   "nn": "49",
    "route": "/tasks",
    "scenario": "eventDay",
    "shots": [
-    "46-tasks.eventDay.jpg"
+    "49-tasks.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -869,11 +917,11 @@
    "title": "משימות"
   },
   {
-   "nn": "47",
+   "nn": "50",
    "route": "/farm",
    "scenario": "eventDay",
    "shots": [
-    "47-farm.eventDay.jpg"
+    "50-farm.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -882,11 +930,11 @@
    "title": "החווה"
   },
   {
-   "nn": "48",
+   "nn": "51",
    "route": "/event",
    "scenario": "eventDay",
    "shots": [
-    "48-event.eventDay.jpg"
+    "51-event.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -902,11 +950,11 @@
    }
   },
   {
-   "nn": "49",
+   "nn": "52",
    "route": "/event/gate",
    "scenario": "eventDay",
    "shots": [
-    "49-event-gate.eventDay.jpg"
+    "52-event-gate.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -915,11 +963,11 @@
    "title": "שער · פסטיבל הסתיו יציאה מהשער QR תקין QR לא שולם QR מבוטל תצוגת מצלמה"
   },
   {
-   "nn": "50",
+   "nn": "53",
    "route": "/event/gate/search",
    "scenario": "eventDay",
    "shots": [
-    "50-event-gate-search.eventDay.jpg"
+    "53-event-gate-search.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -928,11 +976,11 @@
    "title": "מי בכניסה?"
   },
   {
-   "nn": "51",
+   "nn": "54",
    "route": "/event/stall",
    "scenario": "eventDay",
    "shots": [
-    "51-event-stall.eventDay.jpg"
+    "54-event-stall.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -941,11 +989,11 @@
    "title": "מי קונה?"
   },
   {
-   "nn": "52",
+   "nn": "55",
    "route": "/event/stall/demo-tab-roni-fest",
    "scenario": "eventDay",
    "shots": [
-    "52-event-stall-tab-roni-fest.eventDay.jpg"
+    "55-event-stall-tab-roni-fest.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -954,11 +1002,24 @@
    "title": "החלפת קונה רל רוני לוי כבר בחשבון: 2 פריטים · 22 ₪ לימונדה 12 ₪ תה צמח"
   },
   {
-   "nn": "53",
+   "nn": "56",
+   "route": "/event/stall/tabs",
+   "scenario": "eventDay",
+   "shots": [
+    "56-event-stall-tabs.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/event/stall/tabs",
+   "title": "חשבונות הדוכן"
+  },
+  {
+   "nn": "57",
    "route": "/manage",
    "scenario": "regular",
    "shots": [
-    "53-manage.jpg"
+    "57-manage.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -967,11 +1028,11 @@
    "title": "משימות"
   },
   {
-   "nn": "54",
+   "nn": "58",
    "route": "/welcome",
    "scenario": "regular",
    "shots": [
-    "54-welcome.jpg"
+    "58-welcome.jpg"
    ],
    "findings": [
     {
@@ -986,10 +1047,7 @@
   }
  ],
  "unvisitedLinks": [
-  "/event/stall/tabs",
-  "/me/items",
   "/tasks/:id_2026-11-18",
-  "/tasks/:id_2026-11-19",
   "/tasks/:id_2026-11-28"
  ]
 }

@@ -1087,10 +1087,58 @@
   },
   {
    "nn": "52",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "52-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/items",
+   "title": "מה יש לי בחווה"
+  },
+  {
+   "nn": "53",
+   "route": "/tasks/demo-tpl-pots_2026-11-19",
+   "scenario": "regular",
+   "shots": [
+    "53-tasks-tpl-pots_2026-11-19.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/tasks/demo-tpl-pots_2026-11-19",
+   "title": "להשקות את שורת העציצים"
+  },
+  {
+   "nn": "54",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "54-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/terms",
+   "title": "תנאי שימוש ופרטיות"
+  },
+  {
+   "nn": "55",
    "route": "/install",
    "scenario": "regular",
    "shots": [
-    "52-install.jpg"
+    "55-install.jpg"
    ],
    "findings": [
     {
@@ -1104,11 +1152,11 @@
    "title": "להוסיף למסך הבית"
   },
   {
-   "nn": "53",
+   "nn": "56",
    "route": "/offline",
    "scenario": "regular",
    "shots": [
-    "53-offline.jpg"
+    "56-offline.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1117,11 +1165,11 @@
    "title": "חזרה הכול נשלח אין פעולות שמחכות לקליטה משימות קניות החווה 4 ניהול , 4"
   },
   {
-   "nn": "54",
+   "nn": "57",
    "route": "/tasks",
    "scenario": "eventDay",
    "shots": [
-    "54-tasks.eventDay.jpg"
+    "57-tasks.eventDay.jpg"
    ],
    "findings": [
     {
@@ -1159,11 +1207,11 @@
    "title": "משימות"
   },
   {
-   "nn": "55",
+   "nn": "58",
    "route": "/farm",
    "scenario": "eventDay",
    "shots": [
-    "55-farm.eventDay.jpg"
+    "58-farm.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1172,11 +1220,11 @@
    "title": "החווה"
   },
   {
-   "nn": "56",
+   "nn": "59",
    "route": "/event",
    "scenario": "eventDay",
    "shots": [
-    "56-event.eventDay.jpg"
+    "59-event.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1192,11 +1240,11 @@
    }
   },
   {
-   "nn": "57",
+   "nn": "60",
    "route": "/event/gate",
    "scenario": "eventDay",
    "shots": [
-    "57-event-gate.eventDay.jpg"
+    "60-event-gate.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1205,11 +1253,11 @@
    "title": "שער · פסטיבל הסתיו יציאה מהשער QR תקין QR לא שולם QR מבוטל תצוגת מצלמה"
   },
   {
-   "nn": "58",
+   "nn": "61",
    "route": "/event/gate/search",
    "scenario": "eventDay",
    "shots": [
-    "58-event-gate-search.eventDay.jpg"
+    "61-event-gate-search.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1218,11 +1266,11 @@
    "title": "מי בכניסה?"
   },
   {
-   "nn": "59",
+   "nn": "62",
    "route": "/event/stall",
    "scenario": "eventDay",
    "shots": [
-    "59-event-stall.eventDay.jpg"
+    "62-event-stall.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1231,11 +1279,11 @@
    "title": "מי קונה?"
   },
   {
-   "nn": "60",
+   "nn": "63",
    "route": "/event/stall/demo-tab-roni-fest",
    "scenario": "eventDay",
    "shots": [
-    "60-event-stall-tab-roni-fest.eventDay.jpg"
+    "63-event-stall-tab-roni-fest.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1244,11 +1292,11 @@
    "title": "החלפת קונה רל רוני לוי כבר בחשבון: 2 פריטים · 22 ₪ לימונדה 12 ₪ תה צמח"
   },
   {
-   "nn": "61",
+   "nn": "64",
    "route": "/event/stall/tabs",
    "scenario": "eventDay",
    "shots": [
-    "61-event-stall-tabs.eventDay.jpg"
+    "64-event-stall-tabs.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1257,11 +1305,11 @@
    "title": "חשבונות הדוכן"
   },
   {
-   "nn": "62",
+   "nn": "65",
    "route": "/manage",
    "scenario": "regular",
    "shots": [
-    "62-manage.jpg"
+    "65-manage.jpg"
    ],
    "findings": [
     {
@@ -1286,11 +1334,11 @@
    }
   },
   {
-   "nn": "63",
+   "nn": "66",
    "route": "/manage/inbox",
    "scenario": "regular",
    "shots": [
-    "63-manage-inbox.jpg"
+    "66-manage-inbox.jpg"
    ],
    "findings": [
     {
@@ -1304,11 +1352,11 @@
    "title": "לטיפול · 4"
   },
   {
-   "nn": "64",
+   "nn": "67",
    "route": "/manage/events",
    "scenario": "regular",
    "shots": [
-    "64-manage-events.jpg"
+    "67-manage-events.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1317,11 +1365,11 @@
    "title": "אירועים"
   },
   {
-   "nn": "65",
+   "nn": "68",
    "route": "/manage/events/new",
    "scenario": "regular",
    "shots": [
-    "65-manage-events-new.jpg"
+    "68-manage-events-new.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1330,11 +1378,11 @@
    "title": "אירוע חדש"
   },
   {
-   "nn": "66",
+   "nn": "69",
    "route": "/manage/events/demo-e-festival?tab=prep",
    "scenario": "regular",
    "shots": [
-    "66-manage-events-e-festival-tab-prep.jpg"
+    "69-manage-events-e-festival-tab-prep.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1343,12 +1391,12 @@
    "title": "פסטיבל הסתיו"
   },
   {
-   "nn": "67",
+   "nn": "70",
    "route": "/manage/events/demo-e-festival?tab=guests",
    "scenario": "regular",
    "shots": [
-    "67-manage-events-e-festival-tab-guests.jpg",
-    "67-manage-events-e-festival-tab-guests-more.jpg"
+    "70-manage-events-e-festival-tab-guests.jpg",
+    "70-manage-events-e-festival-tab-guests-more.jpg"
    ],
    "findings": [
     {
@@ -1357,7 +1405,7 @@
     },
     {
      "rule": "row-controls",
-     "what": "2 controls: \"רוני לוי סימן שהעביר 3 כרטיסים · 054-000-0088 150 ₪\" [בחירה: רוני לוי | רוני לוי סימן שהעביר]"
+     "what": "2 controls: \"רוני לוי סימנה שהעבירה 3 כרטיסים · 054-000-0088 150 ₪\" [בחירה: רוני לוי | רוני לוי סימנה שהעבי]"
     }
    ],
    "errors": [],
@@ -1372,12 +1420,12 @@
    ]
   },
   {
-   "nn": "68",
+   "nn": "71",
    "route": "/manage/events/demo-e-festival/edit",
    "scenario": "regular",
    "shots": [
-    "68-manage-events-e-festival-edit.jpg",
-    "68-manage-events-e-festival-edit-more.jpg"
+    "71-manage-events-e-festival-edit.jpg",
+    "71-manage-events-e-festival-edit-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1397,13 +1445,13 @@
    }
   },
   {
-   "nn": "69",
+   "nn": "72",
    "route": "/manage/events/demo-e-festival/vendors",
    "scenario": "regular",
    "shots": [
-    "69-manage-events-e-festival-vendors.jpg",
-    "69-manage-events-e-festival-vendors-more.jpg",
-    "69-manage-events-e-festival-vendors-row.jpg"
+    "72-manage-events-e-festival-vendors.jpg",
+    "72-manage-events-e-festival-vendors-more.jpg",
+    "72-manage-events-e-festival-vendors-row.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1426,12 +1474,12 @@
    ]
   },
   {
-   "nn": "70",
+   "nn": "73",
    "route": "/manage/events/demo-e-festival/products",
    "scenario": "regular",
    "shots": [
-    "70-manage-events-e-festival-products.jpg",
-    "70-manage-events-e-festival-products-more.jpg"
+    "73-manage-events-e-festival-products.jpg",
+    "73-manage-events-e-festival-products-more.jpg"
    ],
    "findings": [
     {
@@ -1477,11 +1525,11 @@
    ]
   },
   {
-   "nn": "71",
+   "nn": "74",
    "route": "/manage/events/demo-e-festival/products/new",
    "scenario": "regular",
    "shots": [
-    "71-manage-events-e-festival-products-new.jpg"
+    "74-manage-events-e-festival-products-new.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1490,12 +1538,12 @@
    "title": "מוצר בדוכן"
   },
   {
-   "nn": "72",
+   "nn": "75",
    "route": "/manage/events/demo-e-festival/products/demo-pr-lemonade",
    "scenario": "regular",
    "shots": [
-    "72-manage-events-e-festival-products-pr-lemonade.jpg",
-    "72-manage-events-e-festival-products-pr-lemonade-more.jpg"
+    "75-manage-events-e-festival-products-pr-lemonade.jpg",
+    "75-manage-events-e-festival-products-pr-lemonade-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1515,13 +1563,13 @@
    }
   },
   {
-   "nn": "73",
+   "nn": "76",
    "route": "/manage/events/demo-e-festival/files",
    "scenario": "regular",
    "shots": [
-    "73-manage-events-e-festival-files.jpg",
-    "73-manage-events-e-festival-files-more.jpg",
-    "73-manage-events-e-festival-files-row.jpg"
+    "76-manage-events-e-festival-files.jpg",
+    "76-manage-events-e-festival-files-more.jpg",
+    "76-manage-events-e-festival-files-row.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1540,11 +1588,11 @@
    ]
   },
   {
-   "nn": "74",
+   "nn": "77",
    "route": "/manage/events/demo-e-festival/staffing",
    "scenario": "regular",
    "shots": [
-    "74-manage-events-e-festival-staffing.jpg"
+    "77-manage-events-e-festival-staffing.jpg"
    ],
    "findings": [
     {
@@ -1582,12 +1630,12 @@
    "title": "מי עובד באירוע"
   },
   {
-   "nn": "75",
+   "nn": "78",
    "route": "/manage/events/demo-e-october?tab=summary",
    "scenario": "regular",
    "shots": [
-    "75-manage-events-e-october-tab-summary.jpg",
-    "75-manage-events-e-october-tab-summary-more.jpg"
+    "78-manage-events-e-october-tab-summary.jpg",
+    "78-manage-events-e-october-tab-summary-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1604,11 +1652,11 @@
    ]
   },
   {
-   "nn": "76",
+   "nn": "79",
    "route": "/manage/events/demo-e-october?tab=summary&part=sold",
    "scenario": "regular",
    "shots": [
-    "76-manage-events-e-october-tab-summary-part-sold.jpg"
+    "79-manage-events-e-october-tab-summary-part-sold.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1617,11 +1665,11 @@
    "title": "מה נמכר בדוכן"
   },
   {
-   "nn": "77",
+   "nn": "80",
    "route": "/manage/events/demo-e-october?tab=summary&part=money",
    "scenario": "regular",
    "shots": [
-    "77-manage-events-e-october-tab-summary-part-money.jpg"
+    "80-manage-events-e-october-tab-summary-part-money.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1630,11 +1678,11 @@
    "title": "כסף"
   },
   {
-   "nn": "78",
+   "nn": "81",
    "route": "/manage/events/demo-e-october?tab=summary&part=compare",
    "scenario": "regular",
    "shots": [
-    "78-manage-events-e-october-tab-summary-part-compare.jpg"
+    "81-manage-events-e-october-tab-summary-part-compare.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1643,12 +1691,12 @@
    "title": "לעומת אירועים קודמים"
   },
   {
-   "nn": "79",
+   "nn": "82",
    "route": "/manage/events/demo-e-october/tabs",
    "scenario": "regular",
    "shots": [
-    "79-manage-events-e-october-tabs.jpg",
-    "79-manage-events-e-october-tabs-more.jpg"
+    "82-manage-events-e-october-tabs.jpg",
+    "82-manage-events-e-october-tabs-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1663,12 +1711,12 @@
    ]
   },
   {
-   "nn": "80",
+   "nn": "83",
    "route": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
    "scenario": "regular",
    "shots": [
-    "80-manage-events-e-october-tabs-tab-roni-oct.jpg",
-    "80-manage-events-e-october-tabs-tab-roni-oct-more.jpg"
+    "83-manage-events-e-october-tabs-tab-roni-oct.jpg",
+    "83-manage-events-e-october-tabs-tab-roni-oct-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1692,11 +1740,11 @@
    }
   },
   {
-   "nn": "81",
+   "nn": "84",
    "route": "/manage/vendors",
    "scenario": "regular",
    "shots": [
-    "81-manage-vendors.jpg"
+    "84-manage-vendors.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1706,11 +1754,11 @@
    "rowNav": "/manage/vendors/demo-v-raz"
   },
   {
-   "nn": "82",
+   "nn": "85",
    "route": "/manage/vendors/demo-v-raz",
    "scenario": "regular",
    "shots": [
-    "82-manage-vendors-v-raz.jpg"
+    "85-manage-vendors-v-raz.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1720,12 +1768,12 @@
    "rowNav": "/manage/events/demo-e-festival/vendors"
   },
   {
-   "nn": "83",
+   "nn": "86",
    "route": "/manage/vendors/demo-v-raz/access",
    "scenario": "regular",
    "shots": [
-    "83-manage-vendors-v-raz-access.jpg",
-    "83-manage-vendors-v-raz-access-more.jpg"
+    "86-manage-vendors-v-raz-access.jpg",
+    "86-manage-vendors-v-raz-access-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1739,12 +1787,12 @@
    "rowNav": "/manage/people/demo-u-raz"
   },
   {
-   "nn": "84",
+   "nn": "87",
    "route": "/manage/people",
    "scenario": "regular",
    "shots": [
-    "84-manage-people.jpg",
-    "84-manage-people-more.jpg"
+    "87-manage-people.jpg",
+    "87-manage-people-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1761,12 +1809,12 @@
    ]
   },
   {
-   "nn": "85",
+   "nn": "88",
    "route": "/manage/people?filter=team",
    "scenario": "regular",
    "shots": [
-    "85-manage-people-filter-team.jpg",
-    "85-manage-people-filter-team-more.jpg"
+    "88-manage-people-filter-team.jpg",
+    "88-manage-people-filter-team-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1783,11 +1831,11 @@
    ]
   },
   {
-   "nn": "86",
+   "nn": "89",
    "route": "/manage/people?tab=messages",
    "scenario": "regular",
    "shots": [
-    "86-manage-people-tab-messages.jpg"
+    "89-manage-people-tab-messages.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1796,11 +1844,11 @@
    "title": "אנשים והודעות"
   },
   {
-   "nn": "87",
+   "nn": "90",
    "route": "/manage/people/invite",
    "scenario": "regular",
    "shots": [
-    "87-manage-people-invite.jpg"
+    "90-manage-people-invite.jpg"
    ],
    "findings": [
     {
@@ -1814,12 +1862,12 @@
    "title": "להוסיף מישהו מראש"
   },
   {
-   "nn": "88",
+   "nn": "91",
    "route": "/manage/people/messages/demo-b-1",
    "scenario": "regular",
    "shots": [
-    "88-manage-people-messages-b-1.jpg",
-    "88-manage-people-messages-b-1-more.jpg"
+    "91-manage-people-messages-b-1.jpg",
+    "91-manage-people-messages-b-1-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1839,13 +1887,13 @@
    }
   },
   {
-   "nn": "89",
+   "nn": "92",
    "route": "/manage/people/demo-u-michal",
    "scenario": "regular",
    "shots": [
-    "89-manage-people-u-michal.jpg",
-    "89-manage-people-u-michal-more.jpg",
-    "89-manage-people-u-michal-row.jpg"
+    "92-manage-people-u-michal.jpg",
+    "92-manage-people-u-michal-more.jpg",
+    "92-manage-people-u-michal-row.jpg"
    ],
    "findings": [
     {
@@ -1873,13 +1921,13 @@
    "rowSheet": []
   },
   {
-   "nn": "90",
+   "nn": "93",
    "route": "/manage/people/demo-u-yoav",
    "scenario": "regular",
    "shots": [
-    "90-manage-people-u-yoav.jpg",
-    "90-manage-people-u-yoav-more.jpg",
-    "90-manage-people-u-yoav-row.jpg"
+    "93-manage-people-u-yoav.jpg",
+    "93-manage-people-u-yoav-more.jpg",
+    "93-manage-people-u-yoav-row.jpg"
    ],
    "findings": [
     {
@@ -1907,11 +1955,11 @@
    "rowSheet": []
   },
   {
-   "nn": "91",
+   "nn": "94",
    "route": "/manage/broadcasts/new",
    "scenario": "regular",
    "shots": [
-    "91-manage-broadcasts-new.jpg"
+    "94-manage-broadcasts-new.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1920,12 +1968,12 @@
    "title": "הודעה חדשה"
   },
   {
-   "nn": "92",
+   "nn": "95",
    "route": "/manage/reports",
    "scenario": "regular",
    "shots": [
-    "92-manage-reports.jpg",
-    "92-manage-reports-more.jpg"
+    "95-manage-reports.jpg",
+    "95-manage-reports-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1944,11 +1992,11 @@
    ]
   },
   {
-   "nn": "93",
+   "nn": "96",
    "route": "/manage/reports/people",
    "scenario": "regular",
    "shots": [
-    "93-manage-reports-people.jpg"
+    "96-manage-reports-people.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1957,11 +2005,11 @@
    "title": "אנשים ונרשמים"
   },
   {
-   "nn": "94",
+   "nn": "97",
    "route": "/manage/reports/events",
    "scenario": "regular",
    "shots": [
-    "94-manage-reports-events.jpg"
+    "97-manage-reports-events.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1970,12 +2018,12 @@
    "title": "אירועים"
   },
   {
-   "nn": "95",
+   "nn": "98",
    "route": "/manage/reports/tasks",
    "scenario": "regular",
    "shots": [
-    "95-manage-reports-tasks.jpg",
-    "95-manage-reports-tasks-more.jpg"
+    "98-manage-reports-tasks.jpg",
+    "98-manage-reports-tasks-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -1994,12 +2042,12 @@
    ]
   },
   {
-   "nn": "96",
+   "nn": "99",
    "route": "/manage/visits",
    "scenario": "regular",
    "shots": [
-    "96-manage-visits.jpg",
-    "96-manage-visits-more.jpg"
+    "99-manage-visits.jpg",
+    "99-manage-visits-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2014,12 +2062,12 @@
    ]
   },
   {
-   "nn": "97",
+   "nn": "100",
    "route": "/manage/visits/demo-vi-cohen",
    "scenario": "regular",
    "shots": [
-    "97-manage-visits-vi-cohen.jpg",
-    "97-manage-visits-vi-cohen-more.jpg"
+    "100-manage-visits-vi-cohen.jpg",
+    "100-manage-visits-vi-cohen-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2041,12 +2089,12 @@
    }
   },
   {
-   "nn": "98",
+   "nn": "101",
    "route": "/manage/donations",
    "scenario": "regular",
    "shots": [
-    "98-manage-donations.jpg",
-    "98-manage-donations-more.jpg"
+    "101-manage-donations.jpg",
+    "101-manage-donations-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2065,11 +2113,11 @@
    ]
   },
   {
-   "nn": "99",
+   "nn": "102",
    "route": "/manage/donations/table",
    "scenario": "regular",
    "shots": [
-    "99-manage-donations-table.jpg"
+    "102-manage-donations-table.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2078,12 +2126,12 @@
    "title": "תרומות · החודש"
   },
   {
-   "nn": "100",
+   "nn": "103",
    "route": "/manage/donations/demo-d-michal",
    "scenario": "regular",
    "shots": [
-    "100-manage-donations-d-michal.jpg",
-    "100-manage-donations-d-michal-more.jpg"
+    "103-manage-donations-d-michal.jpg",
+    "103-manage-donations-d-michal-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2105,12 +2153,12 @@
    }
   },
   {
-   "nn": "101",
+   "nn": "104",
    "route": "/manage/settings",
    "scenario": "regular",
    "shots": [
-    "101-manage-settings.jpg",
-    "101-manage-settings-row.jpg"
+    "104-manage-settings.jpg",
+    "104-manage-settings-row.jpg"
    ],
    "findings": [
     {
@@ -2130,11 +2178,11 @@
    ]
   },
   {
-   "nn": "102",
+   "nn": "105",
    "route": "/manage/settings/messages",
    "scenario": "regular",
    "shots": [
-    "102-manage-settings-messages.jpg"
+    "105-manage-settings-messages.jpg"
    ],
    "findings": [
     {
@@ -2148,11 +2196,11 @@
    "title": "הודעות מוכנות"
   },
   {
-   "nn": "103",
+   "nn": "106",
    "route": "/manage/settings/questions",
    "scenario": "regular",
    "shots": [
-    "103-manage-settings-questions.jpg"
+    "106-manage-settings-questions.jpg"
    ],
    "findings": [
     {
@@ -2178,11 +2226,11 @@
    "title": "שאלות הרשמה"
   },
   {
-   "nn": "104",
+   "nn": "107",
    "route": "/manage/settings/payments",
    "scenario": "regular",
    "shots": [
-    "104-manage-settings-payments.jpg"
+    "107-manage-settings-payments.jpg"
    ],
    "findings": [
     {
@@ -2196,11 +2244,11 @@
    "title": "איך משלמים"
   },
   {
-   "nn": "105",
+   "nn": "108",
    "route": "/manage/settings/donation-amounts",
    "scenario": "regular",
    "shots": [
-    "105-manage-settings-donation-amounts.jpg"
+    "108-manage-settings-donation-amounts.jpg"
    ],
    "findings": [
     {
@@ -2234,11 +2282,11 @@
    "title": "סכומי תרומה"
   },
   {
-   "nn": "106",
+   "nn": "109",
    "route": "/manage/settings/visit-types",
    "scenario": "regular",
    "shots": [
-    "106-manage-settings-visit-types.jpg"
+    "109-manage-settings-visit-types.jpg"
    ],
    "findings": [
     {
@@ -2264,11 +2312,11 @@
    "title": "סוגי ביקור"
   },
   {
-   "nn": "107",
+   "nn": "110",
    "route": "/manage/settings/contact",
    "scenario": "regular",
    "shots": [
-    "107-manage-settings-contact.jpg"
+    "110-manage-settings-contact.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2277,11 +2325,11 @@
    "title": "פרטי קשר לחווה"
   },
   {
-   "nn": "108",
+   "nn": "111",
    "route": "/manage/settings/guests",
    "scenario": "regular",
    "shots": [
-    "108-manage-settings-guests.jpg"
+    "111-manage-settings-guests.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2290,11 +2338,11 @@
    "title": "סוגי ביקור ושאלות הרשמה"
   },
   {
-   "nn": "109",
+   "nn": "112",
    "route": "/manage/settings/managers",
    "scenario": "regular",
    "shots": [
-    "109-manage-settings-managers.jpg"
+    "112-manage-settings-managers.jpg"
    ],
    "findings": [
     {
@@ -2308,12 +2356,12 @@
    "title": "מנהלים ובעלים"
   },
   {
-   "nn": "110",
+   "nn": "113",
    "route": "/manage/instinct",
    "scenario": "regular",
    "shots": [
-    "110-manage-instinct.jpg",
-    "110-manage-instinct-more.jpg"
+    "113-manage-instinct.jpg",
+    "113-manage-instinct-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2328,12 +2376,12 @@
    ]
   },
   {
-   "nn": "111",
+   "nn": "114",
    "route": "/manage/activity",
    "scenario": "regular",
    "shots": [
-    "111-manage-activity.jpg",
-    "111-manage-activity-more.jpg"
+    "114-manage-activity.jpg",
+    "114-manage-activity-more.jpg"
    ],
    "findings": [
     {
@@ -2353,11 +2401,11 @@
    ]
   },
   {
-   "nn": "112",
+   "nn": "115",
    "route": "/manage",
    "scenario": "eventDay",
    "shots": [
-    "112-manage.eventDay.jpg"
+    "115-manage.eventDay.jpg"
    ],
    "findings": [
     {
@@ -2375,11 +2423,11 @@
    "title": "ניהול"
   },
   {
-   "nn": "113",
+   "nn": "116",
    "route": "/manage/events/demo-e-festival?tab=day",
    "scenario": "eventDay",
    "shots": [
-    "113-manage-events-e-festival-tab-day.eventDay.jpg"
+    "116-manage-events-e-festival-tab-day.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2388,11 +2436,11 @@
    "title": "פסטיבל הסתיו"
   },
   {
-   "nn": "114",
+   "nn": "117",
    "route": "/manage/events/demo-e-festival/live",
    "scenario": "eventDay",
    "shots": [
-    "114-manage-events-e-festival-live.eventDay.jpg"
+    "117-manage-events-e-festival-live.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2401,12 +2449,12 @@
    "title": "פסטיבל הסתיו חי · 17:20 212 נכנסו מתוך 640 כרטיסים 428 עוד לא הגיעו נש"
   },
   {
-   "nn": "115",
+   "nn": "118",
    "route": "/manage/events/demo-e-festival/live/scans",
    "scenario": "eventDay",
    "shots": [
-    "115-manage-events-e-festival-live-scans.eventDay.jpg",
-    "115-manage-events-e-festival-live-scans.eventDay-more.jpg"
+    "118-manage-events-e-festival-live-scans.eventDay.jpg",
+    "118-manage-events-e-festival-live-scans.eventDay-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2421,11 +2469,11 @@
    ]
   },
   {
-   "nn": "116",
+   "nn": "119",
    "route": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
    "scenario": "eventDay",
    "shots": [
-    "116-manage-events-e-festival-live-scans-sc-yossi.eventDay.jpg"
+    "119-manage-events-e-festival-live-scans-sc-yossi.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2434,11 +2482,11 @@
    "title": "יוסי מזרחי"
   },
   {
-   "nn": "117",
+   "nn": "120",
    "route": "/manage/events/demo-e-festival/live/waiting",
    "scenario": "eventDay",
    "shots": [
-    "117-manage-events-e-festival-live-waiting.eventDay.jpg"
+    "120-manage-events-e-festival-live-waiting.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2447,11 +2495,11 @@
    "title": "עוד לא הגיעו"
   },
   {
-   "nn": "118",
+   "nn": "121",
    "route": "/manage/events/demo-e-festival/vendors/today",
    "scenario": "eventDay",
    "shots": [
-    "118-manage-events-e-festival-vendors-today.eventDay.jpg"
+    "121-manage-events-e-festival-vendors-today.eventDay.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2461,11 +2509,11 @@
    "rowNav": "/manage/vendors/demo-v-dana"
   },
   {
-   "nn": "119",
+   "nn": "122",
    "route": "/manage/events/demo-e-festival/close",
    "scenario": "afterEvent",
    "shots": [
-    "119-manage-events-e-festival-close.afterEvent.jpg"
+    "122-manage-events-e-festival-close.afterEvent.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2474,11 +2522,11 @@
    "title": "סגירת האירוע"
   },
   {
-   "nn": "120",
+   "nn": "123",
    "route": "/manage/events/demo-e-october/debts",
    "scenario": "afterEvent",
    "shots": [
-    "120-manage-events-e-october-debts.afterEvent.jpg"
+    "123-manage-events-e-october-debts.afterEvent.jpg"
    ],
    "findings": [
     {
@@ -2504,12 +2552,12 @@
    "title": "תזכורות חוב · 4"
   },
   {
-   "nn": "121",
+   "nn": "124",
    "route": "/manage/events/demo-e-festival?tab=summary",
    "scenario": "afterEvent",
    "shots": [
-    "121-manage-events-e-festival-tab-summary.afterEvent.jpg",
-    "121-manage-events-e-festival-tab-summary.afterEvent-more.jpg"
+    "124-manage-events-e-festival-tab-summary.afterEvent.jpg",
+    "124-manage-events-e-festival-tab-summary.afterEvent-more.jpg"
    ],
    "findings": [],
    "errors": [],
@@ -2527,9 +2575,8 @@
   }
  ],
  "unvisitedLinks": [
-  "/me/items",
   "/tasks/:id_2026-11-18",
-  "/tasks/:id_2026-11-19",
+  "/tasks/:id_2026-11-19/edit",
   "/tasks/:id_2026-11-28"
  ]
 }
