@@ -64,9 +64,10 @@ service cloud.firestore {
   function eventOpen(eid){return eid is string && eid != '' && exists(/databases/$(database)/documents/events/$(eid)) && get(/databases/$(database)/documents/events/$(eid)).data.get('closed', null) == null;}
 
   match /users/{id} {
-   // vendor keys (vendorId, helper, addedBy, inviteCode) are written only by a claim; photo, town, birthDate, push and welcomedAt by the person
+   // vendor keys (vendorId, helper, addedBy, inviteCode) are written only by a claim; photo, town, birthDate, push, welcomedAt and
+   // updatesOptIn ("לקבל עדכונים מהחווה", the consent a message to all users needs) only by the person
    function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt','vendorId','helper','addedBy','inviteCode','teamLink','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt','updatesOptIn']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && str(incoming().get('vendorId', ''), 60) && incoming().get('helper', false) is bool && str(incoming().get('addedBy', ''), 60) && str(incoming().get('inviteCode', ''), 40) && str(incoming().get('teamLink', ''), 40) && ownShapeOk();}
-   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40));}
+   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40)) && incoming().get('updatesOptIn', false) is bool;}
    function pushOk(){let p = incoming().push; return p is map && p.keys().hasOnly(['enabled','kinds','devices','updatedAt']) && p.get('enabled', false) is bool && p.get('kinds', []) is list && p.get('kinds', []).size() <= 10 && p.get('devices', []) is list && p.get('devices', []).size() <= 6 && str(p.get('updatedAt', ''), 40);}
    // a vendor profile is written only in the commit that uses up a matching invite (claimVendorInvite)
    function inviteBefore(){return get(/databases/$(database)/documents/vendor_invites/$(incoming().inviteCode)).data;}
@@ -81,7 +82,7 @@ service cloud.firestore {
    function claimsTeamLink(){return incoming().get('teamLink', '') is string && incoming().get('teamLink', '').size() >= 8 && linkBefore().active == true && linkBefore().usedBy == null && request.time.toMillis() < linkBefore().expiresMs && linkAfter().usedBy == id && linkAfter().active == false && incoming().role == linkBefore().role;}
    function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']) || claimsInvite() || (incoming().role in ['staff','manager','owner'] && claimsTeamLink()));}
    // the person's own details; never role, status, email, customerNumber, notes, log or the vendor link
-   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt','updatesOptIn']) && incoming().get('updatesOptIn', false) is bool && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
+   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt','updatesOptIn']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
    // a vendor stays a vendor (status, notes); a manager never makes one: only a claim can (V6 sets the role back to guest)
    function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && (incoming().role in ['guest','staff','manager','owner'] || (incoming().role == 'vendor' && resource.data.role == 'vendor')) && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
    function claimEdit(){return self(id) && resource.data.role in ['guest','vendor'] && resource.data.status == 'active' && changed().hasOnly(['role','vendorId','helper','addedBy','inviteCode','updatedAt']) && claimsInvite();}
@@ -233,10 +234,19 @@ service cloud.firestore {
   // paidAt: set by the write that settles a payment, to the server's time (serverTimestamp), which the
   // confirmation email cron in the Worker follows. Optional: older documents never have it.
   function paidAtOk(settled){return !changed().hasAny(['paidAt']) || (settled && incoming().paidAt == request.time);}
-  // the Worker's payment-confirmation email outbox: managers see each payment's state, nobody writes from the app
+  // the Worker's email outbox (api/src/email.ts). Payment confirmations (order_, donation_, tab_) are written only by the Worker;
+  // managers see each payment's state. "לשלוח גם במייל" (Q26): a manager queues bc_<broadcastId>_<uid>, one per recipient of a
+  // broadcast they sent, in this exact shape and nothing else; the Worker reads the text from the broadcast and sends it.
+  // No nextAt: the payment lane's query (status + nextAt) never sees these jobs, so they cannot crowd a confirmation out.
   match /email_outbox/{id} {
+   function bcAfter(){return getAfter(/databases/$(database)/documents/broadcasts/$(incoming().broadcastId)).data;}
+   function mailJob(){return incoming().keys().hasOnly(['kind','broadcastId','uid','status','createdBy','createdAt']) && incoming().kind == 'broadcast' && incoming().status == 'queued'
+     && str(incoming().broadcastId, 60) && incoming().broadcastId.matches('[A-Za-z0-9_-]+') && str(incoming().uid, 128) && incoming().uid.matches('[A-Za-z0-9_-]+')
+     && id == 'bc_' + incoming().broadcastId + '_' + incoming().uid && actorOk(incoming().createdBy) && isoTime(incoming().createdAt)
+     && existsAfter(/databases/$(database)/documents/broadcasts/$(incoming().broadcastId)) && bcAfter().by.uid == uid() && incoming().uid in bcAfter().recipients && incoming().uid != uid();}
    allow read: if isManager();
-   allow write: if false;
+   allow create: if isManager() && mailJob();
+   allow update, delete: if false;
   }
   match /settings/{name} {
    // public; settings/push (public keys) is written only by the Worker
@@ -418,9 +428,10 @@ service cloud.firestore {
    allow update: if calendarShape() && (isManager() || (ownsPresence() && changed().hasOnly(['title','date','time','from','to','note'])));
    allow delete: if isManager() || ownsPresence();
   }
-  // B1-B4, D3: team broadcasts. Managers send; a recipient (staff or vendor) reads the ones addressed to them
+  // B1-B4, D3, Q25-Q26: broadcasts. Managers send, to the team or outside it (an event's registrants, vendors, users who agreed
+  // to updates); a recipient (staff, vendor or guest) reads the ones addressed to them and writes only their own receipt
   match /broadcasts/{bid} {
-   function shape(){return incoming().keys().hasOnly(['id','text','audience','eventId','urgent','by','createdAt','recipients','recipientCount','resentAt']) && incoming().id == bid && str(incoming().text, 200) && incoming().text.size() >= 1 && incoming().audience in ['all','farmToday','managers','crew','vendors'] && str(incoming().get('eventId', ''), 60) && incoming().urgent is bool && incoming().recipients is list && incoming().recipients.size() <= 500 && incoming().recipientCount == incoming().recipients.size() && isoTime(incoming().createdAt);}
+   function shape(){return incoming().keys().hasOnly(['id','text','audience','eventId','urgent','by','createdAt','recipients','recipientCount','resentAt']) && incoming().id == bid && str(incoming().text, 200) && incoming().text.size() >= 1 && incoming().audience in ['all','farmToday','managers','crew','vendors','registrants','everyone'] && str(incoming().get('eventId', ''), 60) && incoming().urgent is bool && incoming().recipients is list && incoming().recipients.size() <= 2000 && incoming().recipientCount == incoming().recipients.size() && isoTime(incoming().createdAt);}
    allow get, list: if isManager() || (signed() && uid() in resource.data.recipients);
    allow create: if isManager() && shape() && actorOk(incoming().by) && incoming().resentAt == null;
    allow update: if isManager() && changed().hasOnly(['resentAt']) && isoTime(incoming().resentAt);

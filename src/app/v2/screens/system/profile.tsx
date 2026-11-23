@@ -12,6 +12,7 @@ import type { ScreenProps } from '../../ctx';
 import type { Profile } from '../../../types';
 import { revokeThisDevice, usePush, PUSH_KINDS } from '../../data/push';
 import { PushSettings } from '../broadcast';
+import { setUpdatesOptIn } from '../../data/broadcast';
 import type { V2Ctx } from '../../ctx';
 import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
@@ -104,6 +105,7 @@ export function ProfileEdit({ ctx }: ScreenProps) {
   const toast = useToast();
   const questions = registrationQuestions(ctx.settings.registrationFields);
   const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || '', birthDate: birthText(p.birthDate), receipt: receiptOf(p), answers: answersFor(p.fields, questions) });
+  const [optIn, setOptIn] = useState(p.updatesOptIn === true);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const src = photoOf(p);
@@ -114,7 +116,7 @@ export function ProfileEdit({ ctx }: ScreenProps) {
     setTried(true);
     if (!d.displayName.trim() || parseBirth(d.birthDate) === null || missing.length || busy) return;
     setBusy(true);
-    try { await saveProfile(p, d); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
+    try { await saveProfile(p, d); if (optIn !== (p.updatesOptIn === true)) await setUpdatesOptIn(p.uid, optIn); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
     catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -138,6 +140,9 @@ export function ProfileEdit({ ctx }: ScreenProps) {
       <ListCard>
         <Row className="system-togglerow" title="אישורי תשלום" meta={`לאן לשלוח לי אישור כשאני משלם כאורח: ${d.receipt === 'whatsapp' ? 'וואטסאפ' : 'מייל'}`}
           actions={<Toggle checked={d.receipt === 'whatsapp'} onChange={(v) => setD((s) => ({ ...s, receipt: v ? 'whatsapp' : 'email' }))} label="אישורי תשלום" />} />
+        {/* tidy round (U13 copy): consent to update messages to all users (Q26 "כל המשתמשים" reaches only people with this on) */}
+        <Row className="system-togglerow" title="לקבל עדכונים מהחווה" meta="אירועים חדשים, כמה פעמים בשנה"
+          actions={<Toggle checked={optIn} onChange={setOptIn} label="לקבל עדכונים מהחווה" />} />
       </ListCard>
       {/* account deletion lives at the bottom of the edit-details screen (moved from the profile foot, as on the guest account) */}
       <div className="system-foot"><Button variant="quiet" onClick={() => go('/delete-account')}>מחיקת החשבון</Button></div>

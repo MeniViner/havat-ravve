@@ -60,6 +60,25 @@ One builder per area, each in its own branch, merged into `tidy/placement`:
 - Checks on the merged branch: `npx tsc` clean; unit suites tasks 26, projects, shopping, farm 20, manage, events 18, system,
   core and demo; click-throughs delete 79/79, vendor all passed, event day 39/39, broadcast 37/37.
 
+## Stage 4: messages inside People, new audiences (Q23, Q25, Q26)
+- "אנשים והודעות" `?tab=messages` is the sent-messages segment (`screens/broadcast/Sent.tsx`): audience tag (warm for the
+  team, neutral outside it), read bar, "קראו" / "ראו", filters הכל / לצוות / לאורחים ולכולם; the top bar holds ⋯ on people and
+  "+ הודעה חדשה" on messages. Read details at `/manage/people/messages/:id`; `/manage/broadcasts` and `/:id` redirect there.
+  Removed duplicate: the owners' top-bar "מחיקה" on a message moved into ⋯.
+- Q26: two audience groups with counts. "נרשמי {event}" (everyone holding a ticket that is not cancelled, whatever their
+  consent) opens an event picker when more than one event fits. "כל המשתמשים" reaches active users with `updatesOptIn` only.
+  The phone preview stays, shown only for a team audience. Outside audiences' notifications open `/`.
+- `/me/edit` has "לקבל עדכונים מהחווה" with the U13 note.
+- E-mail: a broadcast lane in `api/src/email.ts` sends at most 100 per message and 100 per day, through Brevo only, only on a
+  cron run with no payment confirmation due, and stops while Brevo's count is within 100 of its daily limit, so payment
+  confirmations always keep room. Skips deleted messages, removed recipients, opted-out people and jobs older than 12 hours.
+  With more than 100 people without push in the audience, Q26 says "המייל יגיע ל־100 מהם". Managers create
+  `email_outbox/bc_<id>_<uid>` only for recipients of their own message (rules).
+- Checks (stage branch): rules 641/641 (54 new), `tests/api.mjs` 375 against a mock Brevo, `v2-broadcast` 66/66.
+- Not done: guests get no lock-screen push (`api/src/push.ts` pushes team and vendors only), so they count as "without push"
+  and get the e-mail; the Instinct API (`api/src/v2/broadcast.ts`) does not know the two new audiences yet; the Q26 e-mail
+  switch starts off while the design shows it on.
+
 ## Stage 6: the guest side on the v2 kit (built, merged)
 Branch `tidy/s6-guest`, merged into `tidy/placement`. U1-U14 in `src/app/v2/screens/guest/` (home, order, tickets,
 account, forms, pages); one pay block serves U4, U6, U9 and U10. Team members reach the same screens through `legacy.tsx`

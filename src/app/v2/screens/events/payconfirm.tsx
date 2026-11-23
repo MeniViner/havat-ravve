@@ -1,6 +1,6 @@
 // The payment confirmation of one paid order, donation or stall account (the old PaymentConfirmationActions, in v2 parts):
 // the guest's preference (WhatsApp or email), send by either, "סימון שהאישור נשלח", and the Worker's automatic email status
-// (email_outbox/order_<orderId> | donation_<id> | tab_<id>; managers read it, nobody writes it from the app).
+// (email_outbox/order_<orderId> | donation_<id> | tab_<id>; managers read it; the app writes only broadcast jobs, bc_<id>_<uid>, never these).
 import { useDoc } from '../../../db';
 import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../../../data';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_LABELS, type PaymentConfirmation } from '../../../types';

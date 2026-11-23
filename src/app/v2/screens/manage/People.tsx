@@ -1,4 +1,4 @@
-// Q23 "אנשים והודעות" (the people segment; the messages segment comes with Q25), Q13 person file, N13 role by email.
+// Q23 "אנשים והודעות" (people segment here, messages segment Q25 in screens/broadcast/Sent.tsx), Q13 person file, N13 role by email.
 import { useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
@@ -21,10 +21,11 @@ import {
 } from '../../data/manage';
 import { lnk, HistorySheet, LinkCard, Loading, NotFound } from './shared';
 import { useTeamLinks } from '../../data/invite';
+import { MessagesSegment, MESSAGES_PATH } from '../broadcast';
 
 // ---------- Q23 ----------
-/** The two segments of "אנשים והודעות". The messages segment (Q25) is still the sent-messages screen at /manage/broadcasts;
- *  when it moves in here, render it in place of <PeopleSegment> for seg === 'messages'. */
+/** The two segments of "אנשים והודעות": people (Q23) and messages (Q25, ?tab=messages, screens/broadcast/Sent.tsx).
+ *  The top bar holds ⋯ on people and the primary "הודעה חדשה" on messages (rule 5, as designed). */
 type Seg = 'people' | 'messages';
 type PFilter = 'all' | 'team' | 'guests' | 'debt' | 'blocked';
 
@@ -39,19 +40,22 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
   });
   if (table.active) return table.screen;
   if (all.loading && !all.items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;
-  const seg: Seg = 'people';
-  const setSeg = (s: Seg) => { if (s === 'messages') go('/manage/broadcasts'); };
+  const seg: Seg = params.tab === 'messages' ? 'messages' : 'people';
+  const setSeg = (s: Seg) => { if (s !== seg) go(s === 'messages' ? MESSAGES_PATH : '/manage/people', true); };
   const more: ActionItem[] = [
     ...table.items,
     { label: 'תפקיד לפי כתובת מייל', icon: 'plus', meta: 'להוסיף מישהו מראש', onSelect: () => go('/manage/people/invite') },
   ];
+  const end = seg === 'messages'
+    ? <Button icon="plus" iconSize={18} onClick={() => go('/manage/broadcasts/new')}>הודעה חדשה</Button>
+    : <MoreMenu title="אנשים" items={more} />;
   return (
     <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="אנשים" items={more} />} />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={end} />
       <PageTitle>אנשים והודעות</PageTitle>
       <Segmented size="lg" label="תצוגה" value={seg} onChange={setSeg}
         options={[{ value: 'people', label: <>אנשים · <span className="k-num">{people.length}</span></> }, { value: 'messages', label: 'הודעות' }]} />
-      <PeopleSegment people={people} debts={debts} initial={params.filter} />
+      {seg === 'messages' ? <MessagesSegment ctx={ctx} /> : <PeopleSegment people={people} debts={debts} initial={params.filter} />}
     </AppScreen>
   );
 }

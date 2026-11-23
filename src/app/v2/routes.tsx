@@ -102,6 +102,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/vendors/:id', vendor.VendorCard, 'manage', 'page', { manager: true }),
   R('/manage/people', manage.PeopleScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/invite', manage.InviteScreen, 'manage', 'page', { manager: true }),
+  R('/manage/people/messages/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }), // B3 under People (Q25)
   R('/manage/people/:uid', manage.PersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports', manage.ReportsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports/:section', manage.ReportsScreen, 'manage', 'tab', { manager: true }), // Q14 drill-ins: people, events
@@ -121,9 +122,8 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/recurring', tasks.RecurringList, 'tasks', 'tab', { manager: true }),
   R('/manage/recurring/new', tasks.RecurringForm, 'tasks', 'page', { manager: true }),
   R('/manage/recurring/:id', tasks.RecurringForm, 'tasks', 'page', { manager: true }),
-  R('/manage/broadcasts', broadcast.BroadcastsSent, 'manage', 'tab', { manager: true }),
+  // Q26 compose keeps its path; the list and the read details live under People (redirects below)
   R('/manage/broadcasts/new', broadcast.BroadcastCompose, 'manage', 'page', { manager: true }),
-  R('/manage/broadcasts/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }),
 ];
 
 /** Vendors and vendor helpers: only their own world. */
@@ -180,6 +180,9 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
   if ((m = match(route, '/manage/events/:id/entry'))) return `/manage/events/${m.id}?tab=day`;
   if ((m = match(route, '/manage/events/:id/report'))) return `/manage/events/${m.id}?tab=summary`;
   if ((m = match(route, '/manage/events/:id/activity'))) return `/manage/activity?event=${m.id}`;
+  // messages moved into People (Q25): the list is its "הודעות" segment, a message's read details are under it
+  if (route === '/manage/broadcasts') return '/manage/people?tab=messages';
+  if ((m = match(route, '/manage/broadcasts/:id')) && m.id !== 'new') return `/manage/people/messages/${m.id}`;
   if (route === '/manage/vendors/new') return '/manage/vendors?new=1' + (search.get('event') ? `&event=${encodeURIComponent(search.get('event')!)}` : '');
   return null;
 }
