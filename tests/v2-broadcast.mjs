@@ -17,7 +17,8 @@ const section = (s) => console.log('\n' + s);
 const browser = await chromium.launch();
 /** A fresh browser profile in demo mode as `persona` (the demo store reads localStorage on load). */
 async function fresh(persona) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+  const ctx = await browser.newContext({ viewport: { width: Number(process.env.TEST_VIEWPORT) || 375, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+  await ctx.route('**/*', (route) => new URL(route.request().url()).origin === new URL(BASE).origin ? route.continue() : route.abort());
   await ctx.addInitScript(([p]) => {
     if (sessionStorage.getItem('__t')) return;
     sessionStorage.setItem('__t', '1');
@@ -78,18 +79,18 @@ try {
   check((await send.innerText()).includes('שליחה ל־5 אנשים'), 'send button names the count', await send.innerText());
   await send.click();
   await page.waitForTimeout(400);
-  check(page.url().endsWith('/app/manage/people?tab=messages') && (await toast(page)).includes('נשלח ל־5 אנשים'), 'send -> Q25 with a toast', { url: page.url(), toast: await toast(page) });
+  check(page.url().endsWith('/app/manage/people?tab=messages') && (await toast(page)).includes('ההודעה נשמרה בהתראות של 5 נמענים'), 'send -> Q25 with a toast', { url: page.url(), toast: await toast(page) });
   // (the demo clock stands at 10:30 while demo-b-1 is stamped 14:10, so the new one is listed second in demo)
   const mine = () => page.locator('a.broadcast-sent', { hasText: MSG });
-  check((await mine().count()) === 1 && (await mine().innerText()).includes('דחוף') && (await mine().innerText()).includes('קראו 1 מתוך 5'), 'new broadcast listed: urgent, read 1 of 5 (the sender)', await page.locator('main').innerText());
+  check((await mine().count()) === 1 && (await mine().innerText()).includes('דחוף') && (await mine().innerText()).includes('קראו 0 מתוך 5'), 'new broadcast listed: urgent, 0 of 5 read, including the sender', await page.locator('main').innerText());
   await page.reload({ waitUntil: 'networkidle' });
   check((await mine().count()) === 1, 'persists after reload');
   await mine().click();
   await page.waitForTimeout(250);
-  check(/\/manage\/people\/messages\/demo-/.test(page.url()) && (await text(page)).includes('עוד לא קראו · 4') && (await text(page)).includes('קראו · 1'), 'row -> B3: 4 not yet, 1 read', await text(page));
+  check(/\/manage\/people\/messages\/demo-/.test(page.url()) && (await text(page)).includes('עוד לא קראו · 5') && (await text(page)).includes('קראו · 0'), 'row -> B3: 5 unread', await text(page));
   await page.getByText('לשלוח שוב').click();
   await page.waitForTimeout(250);
-  check((await toast(page)).includes('נשלח שוב ל־4 אנשים'), '"לשלוח שוב" re-notifies only the 4 without a receipt', await toast(page));
+  check((await toast(page)).includes('ההודעה נשמרה שוב בהתראות של 5 נמענים'), '"לשלוח שוב" re-notifies the 5 without a receipt including the sender', await toast(page));
   await page.getByRole('button', { name: /^וואטסאפ ל/ }).first().click();
   await page.waitForTimeout(200);
   check((await toast(page)).includes('בהדגמה לא נשלח'), 'WhatsApp per person (demo: nothing leaves)');
@@ -117,7 +118,7 @@ try {
     check((await card(page).count()) === 0, 'still gone after reload');
     await become(page, 'owner');
     await go(page, '/manage/people?tab=messages');
-    check((await page.locator('a.broadcast-sent', { hasText: MSG }).innerText()).includes('קראו 2 מתוך 5'), 'the receipt reaches Q25 (2 of 5)');
+    check((await page.locator('a.broadcast-sent', { hasText: MSG }).innerText()).includes('קראו 1 מתוך 5'), 'the receipt reaches Q25 (1 of 5)');
   }
   await ctx.close();
 
@@ -198,13 +199,15 @@ try {
   });
   check(pickerTitle.includes('נרשמי איזה אירוע') && pickerTitle.includes('פסטיבל הסתיו') && pickerTitle.includes('סיור שבת בחווה'), 'registrants: a picker of the events', pickerTitle);
   check(regLabel.includes('שליחה ל־2 הזמנות'), 'send button "שליחה ל־N הזמנות"', regLabel);
-  check(o.page.url().endsWith('/app/manage/people?tab=messages') && (await toast(o.page)).includes('נשלח ל־2 אנשים'), 'sent to the 2 registrants of the tour');
+  check(o.page.url().endsWith('/app/manage/people?tab=messages') && (await toast(o.page)).includes('ההודעה נשמרה בהתראות של 2 נמענים'), 'sent to the 2 registrants of the tour');
   const regCard = o.page.locator('a.broadcast-sent', { hasText: 'בדיקה לנרשמי הסיור' });
   check((await regCard.innerText()).includes('נרשמי סיור שבת בחווה') && (await regCard.innerText()).includes('ראו 0 מתוך 2'), 'listed with its neutral tag and "ראו 0 מתוך 2"', await regCard.innerText());
   let ov = await overrides();
   const bcs = Object.values(ov.broadcasts || {}).filter(Boolean);
   const regB = bcs.find((b) => b.text === 'בדיקה לנרשמי הסיור');
   check(regB && regB.audience === 'registrants' && regB.eventId === 'demo-e-tour' && regB.recipients.length === 2, 'the broadcast in the demo store: registrants of the tour', regB);
+  check(!regB.recipients.includes(regB.by.uid) && !ov[`users/${regB.by.uid}/notifications`]?.['b_' + regB.id],
+    'a broadcast addressed only to registrants does not add the sender');
   const jobs = Object.entries(ov.email_outbox || {}).filter(([id]) => id.startsWith('bc_' + regB?.id));
   check(jobs.length === 2 && jobs.every(([, j]) => j.kind === 'broadcast' && j.status === 'queued' && !('nextAt' in j)), 'two e-mail jobs bc_<id>_<uid>, queued, no nextAt', jobs);
   const notes = regB ? regB.recipients.map((u) => ov[`users/${u}/notifications`]?.['b_' + regB.id]) : [];
@@ -233,9 +236,7 @@ try {
   const self = await fresh('owner');
   const selfMessage = 'בדיקת קבלה גם לשולח';
   await go(self.page, '/manage/broadcasts/new');
-  const selfToggle = self.page.getByRole('switch', { name: 'גם אלי' });
-  check((await selfToggle.getAttribute('aria-checked')) === 'false', 'including myself is opt-in');
-  await selfToggle.click();
+  check(await self.page.getByRole('switch', { name: 'גם אלי' }).count() === 0, 'no self-send opt-in');
   await self.page.getByLabel('תוכן ההודעה').fill(selfMessage);
   await self.page.locator('.k-bottombar button').click();
   const selfCard = self.page.locator('a.broadcast-sent', { hasText: selfMessage });
@@ -244,8 +245,11 @@ try {
   const selfData = await self.page.evaluate(() => JSON.parse(localStorage.getItem('farm-demo-overrides') || '{}'));
   const sentToMe = Object.values(selfData.broadcasts).find((b) => b?.text === selfMessage);
   check(selfData[`users/${sentToMe.by.uid}/notifications`]?.[`b_${sentToMe.id}`]?.readAt === null
-    && Object.values(selfData.push_jobs).some((j) => j.refId === sentToMe.id && j.to.includes(sentToMe.by.uid) && j.includeSelf),
+    && Object.values(selfData.push_jobs).some((j) => j.refId === sentToMe.id && j.to.includes(sentToMe.by.uid)),
   'the author gets an inbox notification and a push job');
+  await go(self.page, '/tasks');
+  check((await card(self.page).innerText()).includes(selfMessage), 'the author can see their own broadcast card');
+  await go(self.page, '/manage/people?tab=messages');
   await selfCard.click();
   await self.page.getByRole('button', { name: 'עוד פעולות' }).click();
   await self.page.getByRole('dialog').getByRole('button', { name: 'מחיקה', exact: true }).click();

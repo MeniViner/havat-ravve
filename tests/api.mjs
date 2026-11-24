@@ -1297,6 +1297,13 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     check(self.length === 8 && new Set(self.map((h) => h.payload.tag)).size === 8,
       'push sends every authorized kind to a selected author once, including a legacy includeSelf job', self.map((h) => h.payload.tag));
 
+    await seed('users', 'pu-vendor', person('pu-vendor', 'vendor', { enabled: true, kinds: ['event'], devices: [sub('ok-vendor-self')] }));
+    await seed('users', 'pu-other-vendor', person('pu-other-vendor', 'vendor', { enabled: true, devices: [sub('ok-other-vendor')] }));
+    await job('pj-vendor-self', 'vendor', 'pu-vendor', ['pu-vendor', 'pu-other-vendor']);
+    await run(p2);
+    check(hits.filter((h) => h.name === 'ok-vendor-self').length === 1 && !hits.some((h) => h.name === 'ok-other-vendor'),
+      'a vendor can receive their own selected copy without opening vendor-to-vendor push');
+
     // a job bigger than one run's budget: continues from its cursor, every device exactly once
     const many = Array.from({ length: 40 }, (_, i) => 'pu-bulk-' + String(i).padStart(2, '0'));
     await seedPeople(many.map((uid) => ({ uid, displayName: 'סינתטי', role: 'staff' })));

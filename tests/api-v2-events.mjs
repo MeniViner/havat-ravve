@@ -238,6 +238,14 @@ try {
     check(sl.status === 200 && sl.json.data.items.length === 2, 'staff read eventStaffing.list');
     ok(await w(MGR, 'events.removeFromStation', { eventId, station: 'kitchen', uid: 'syn-staff2' }), 'removeFromStation');
     check((await docOf(`events/${eventId}/staffing/kitchen`)).people.length === 0 && (await acts(eventId)).some((x) => x.text === 'ערב חנוכה: יואב כהן הוסר/ה ממטבח'), 'removed, with its activity line');
+    const self = { eventId, station: 'kitchen', uid: 'syn-mgr' };
+    ok(await w(MGR, 'events.assignStation', self), 'a manager assigns themself to a station');
+    check((await w(MGR, 'events.assignStation', self)).status === 400, 'a second assignment to the same station is refused');
+    const selfNotes = (await listCol('users/syn-mgr/notifications')).filter((n) => n.refId === eventId && n.kind === 'event');
+    const selfJobs = (await listCol('push_jobs')).filter((j) => j.refId === eventId && j.kind === 'event' && j.to.includes('syn-mgr'));
+    check(selfNotes.length === 1 && selfNotes[0].readAt === null && selfJobs.length === 1 && selfJobs[0].to.join() === 'syn-mgr', 'one unread station assignment copy and one job to self');
+    await w(MGR, 'events.removeFromStation', self);
+    check((await docOf(`events/${eventId}/staffing/kitchen`)).people.length === 0, 'self assignment fixture removed');
   }
 
   section('guests and payments (M5, N12, V5)');
