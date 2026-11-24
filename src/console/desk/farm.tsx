@@ -1,5 +1,5 @@
 // What the three farm screens (סטטיסטיקות, ביקורים ושימוש, כסף ואירועים) share on a computer.
-import { useState, type ReactNode, type CSSProperties, type FocusEvent, type KeyboardEvent } from 'react';
+import { useState, type ReactNode, type CSSProperties, type FocusEvent } from 'react';
 import { Chips, DCard, Skeleton, SkeletonTiles, VBars, type BarDatum } from './desk';
 
 export const PERIODS = [7, 30, 90, 365] as const;
@@ -25,18 +25,10 @@ export function BarsCard({ title, aside, data, label, height = 120, months, styl
   const [at, setAt] = useState<string | null>(null);
   const cur = at === null ? null : data.find((d) => d.key === at);
   const onBlur = (e: FocusEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setAt(null); };
-  // the arrows walk along the columns; the chart runs left to right
-  const onKey = (e: KeyboardEvent) => {
-    const all = [...e.currentTarget.querySelectorAll<HTMLElement>('button')];
-    const i = all.indexOf(e.target as HTMLElement);
-    const to = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : -1;
-    if (to >= 0 && to < all.length) { e.preventDefault(); all[to].focus(); }
-  };
   return (
     <DCard title={title} style={style} aside={<span className="df-aside" title={cur?.tip} aria-live="polite">{cur ? cur.aside ?? cur.tip : aside}</span>}>
-      <div className={data.length >= 28 ? 'df-bars df-bars--days' : months ? 'df-bars df-bars--months' : 'df-bars'} onMouseLeave={() => setAt(null)} onBlur={onBlur} onKeyDown={onKey}>
-        {/* the designs leave 4 px over the tallest column */}
-        <VBars data={data} label={label} height={height - 4} gap={data.length > 60 ? 1 : 4} onPick={setAt} />
+      <div className={data.length >= 28 ? 'df-bars df-bars--days' : months ? 'df-bars df-bars--months' : 'df-bars'} onMouseLeave={() => setAt(null)} onBlur={onBlur}>
+        <VBars data={data} label={label} height={height} gap={data.length > 60 ? 1 : 4} onPick={setAt} />
       </div>
     </DCard>
   );

@@ -49,7 +49,6 @@
 .ds-none { color: var(--line-strong); }
 .ds-week, .ds-events, .ds-ops { overflow-x: auto; }
 .ds-week td { height: 39px; } .ds-week td > span { display: inline-flex; vertical-align: middle; } .ds-week td.is-strong, .ds-week td.is-soft { vertical-align: middle; }
-.ds-chart { padding-top: 4px; }
 
 @media (max-width: 1359px) {
   .ds-check { align-items: baseline; } .ds-check__name { width: 120px; } .ds-check__detail { white-space: normal; } .ds-morning { column-gap: 20px; }

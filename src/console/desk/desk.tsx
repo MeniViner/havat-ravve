@@ -98,7 +98,7 @@ export const Attention = ({ tone, title, text, link, href }: { tone: 'red' | 'am
   <a className={`d-attn d-attn--${tone}`} href={href}><span className="d-attn__text"><b>{title}</b><span>{text}</span></span><span className="d-attn__go">{link}</span></a>;
 /** A round mark with one line and a soft line (the last backup, the security summary). */
 export const Summary = ({ icon, tone, title, text }: { icon: string; tone: 'green' | 'amber' | 'red'; title: ReactNode; text: ReactNode }) =>
-  <section className="d-card d-summary"><span className={`d-summary__mark d-summary__mark--${tone}`}><DIcon name={icon} size={20} /></span><span className="d-summary__text"><b>{title}</b><span>{text}</span></span></section>;
+  <section className="d-card d-summary"><span className={`d-summary__mark d-summary__mark--${tone}`}><DIcon name={icon} size={22} /></span><span className="d-summary__text"><b>{title}</b><span>{text}</span></span></section>;
 export const Hero = ({ children }: { children: ReactNode }) => <section className="d-hero k-on-dark">{children}</section>;
 
 export type TagTone = 'neutral' | 'green' | 'red' | 'amber' | 'warm';
@@ -193,11 +193,21 @@ export type BarDatum = { key: string; value: number; label?: string; tip: string
 /** Vertical bars, oldest on the left unless `rtl`; the current one (`on`) in pine. The card's aside says its numbers. */
 export function VBars({ data, height = 150, label, gap = 4, rtl, max: cap = 44, onPick }: { data: BarDatum[]; height?: number; label: string; gap?: number; rtl?: boolean; max?: number; onPick?: (key: string) => void }) {
   const top = Math.max(1, ...data.map((d) => d.value));
-  const room = height - 18;
+  // the designs leave 4 px over the tallest bar, 4 px and a 14 px label under it
+  const room = height - 22;
+  const first = Math.max(0, data.findIndex((d) => d.on));
+  // one tab stop; the arrows walk along the bars
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const all = [...e.currentTarget.querySelectorAll<HTMLElement>('button')];
+    const i = all.indexOf(e.target as HTMLElement);
+    const step = e.key === 'ArrowRight' ? (rtl ? -1 : 1) : e.key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0;
+    const to = step ? i + step : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : -1;
+    if (i >= 0 && to >= 0 && to < all.length) { e.preventDefault(); all.forEach((b, j) => { b.tabIndex = j === to ? 0 : -1; }); all[to].focus(); }
+  };
   return (
-    <div className="d-bars" role="group" aria-label={label} dir={rtl ? 'rtl' : 'ltr'} style={{ height, gap }}>
-      {data.map((d) => (
-        <button key={d.key} type="button" className="d-bars__col" title={d.tip} aria-label={d.tip} onMouseEnter={() => onPick?.(d.key)} onFocus={() => onPick?.(d.key)} onClick={() => onPick?.(d.key)}>
+    <div className="d-bars" role="group" aria-label={label} dir={rtl ? 'rtl' : 'ltr'} style={{ height, gap }} onKeyDown={onKey}>
+      {data.map((d, i) => (
+        <button key={d.key} type="button" className="d-bars__col" tabIndex={i === first ? 0 : -1} title={d.tip} aria-label={d.tip} onMouseEnter={() => onPick?.(d.key)} onFocus={() => onPick?.(d.key)} onClick={() => onPick?.(d.key)}>
           <span className={cx('d-bars__bar', d.on && 'is-on')} style={{ height: d.value ? Math.max(2, Math.round((d.value / top) * room)) : 0, maxWidth: cap }} />
           <span className="d-bars__label">{d.label || ''}</span>
         </button>

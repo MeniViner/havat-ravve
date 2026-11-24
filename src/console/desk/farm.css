@@ -8,7 +8,6 @@
 .df-aside { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .df-flow .d-card__head h2 { flex: none; max-width: 100%; }
 .df-flow .d-card__aside { min-width: 0; }
-.df-bars { padding-top: 4px; }
 .df-h { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; }
 .df-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--soft); max-width: 90ch; }
 /* six numbers in one row; three a row where they would not fit */

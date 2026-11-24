@@ -78,7 +78,7 @@ function Days({ d }: { d: Speed }) {
   return (
     <DCard title="95% מהבקשות נענו תוך" aside={<span aria-live="polite">{name}: {x.count ? <>{sec(x.p95)} · {many(x.count, 'בקשה אחת', 'בקשות')}</> : 'לא היו בקשות'}</span>}>
       <div className="ds-chart" onMouseLeave={() => setOver(null)}>
-        <VBars height={126} label={`זמן התשובה של 95% מהבקשות, בכל יום, ${d.perDay.length} ימים. עמודה גבוהה: באותו יום היו בקשות איטיות יותר. יום בלי עמודה: לא היו בקשות`} onPick={setOver}
+        <VBars height={130} label={`זמן התשובה של 95% מהבקשות, בכל יום, ${d.perDay.length} ימים. עמודה גבוהה: באותו יום היו בקשות איטיות יותר. יום בלי עמודה: לא היו בקשות`} onPick={setOver}
           data={d.perDay.map((p, i) => ({ key: p.day, value: p.p95, on: p === last, label: (d.perDay.length - 1 - i) % step === 0 ? ddmm(p.day) : '', tip: `${dayName(p.day)} ${ddmm(p.day)}: ${many(p.count, 'בקשה אחת', 'בקשות')}, רגילה ${sec(p.p50)}, 95% עד ${sec(p.p95)}` }))} />
       </div>
       {d.perDay.some((p) => !p.count) && <Small>עמודה גבוהה: באותו יום היו בקשות איטיות יותר. יום בלי עמודה: לא היו בקשות.</Small>}
