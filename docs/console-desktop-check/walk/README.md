@@ -48,7 +48,7 @@ Nothing here can reach the live Worker or the production project (`scripts/smoke
 - Only processes the run started are stopped.
 
 <!-- results:start -->
-Run 2026-11-24 11:11 UTC, commit caeeddb. 676 passed, 1 failed.
+Run 2026-11-24 11:30 UTC, commit a3dbb11. 677 passed, 0 failed.
 
 | Part | Step | Passed | Failed |
 | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ Run 2026-11-24 11:11 UTC, commit caeeddb. 676 passed, 1 failed.
 | actions | import: shopping from a file, a mended cell, a repeat, an old undo | 8 | 0 |
 | actions | run: the list, technical details, more fields, a refused run | 8 | 0 |
 | actions | money, speed, traffic, stats: every export and toggle | 6 | 0 |
-| actions | security: filters, search, periods, export, and what the lines say | 29 | 1 |
+| actions | security: filters, search, periods, export, and what the lines say | 30 | 0 |
 | actions | sign out | 2 | 0 |
 | demo | opens ?demo | 1 | 0 |
 | demo | requests ?demo | 2 | 0 |
@@ -108,7 +108,7 @@ Run 2026-11-24 11:11 UTC, commit caeeddb. 676 passed, 1 failed.
 
 ### Failed checks
 
-- [actions] security: filters, search, periods, export, and what the lines say: no code names. ["היום 13:03 אליה כהן הגדרת תפקיד מראש למייל · ahead.walk@example.com · מתנדב/ת קונסולה "]
+None.
 
 ### Requests to open each screen
 
@@ -127,7 +127,7 @@ Run 2026-11-24 11:11 UTC, commit caeeddb. 676 passed, 1 failed.
 | queue | 2: `GET /queue` `GET /queue/email/order_or-tk-1` | 0 | 2 | 0 |
 | jobs | 1: `GET /jobs` | 0 | 1 | 0 |
 | switches | 1: `GET /switches` | 0 | 1 | 1 |
-| keys | 2: `GET /keys` `GET /keys/cred-/usage` | 1 | 2 | 2 |
+| keys | 2: `GET /keys` `GET /keys/cred-/usage` | 1 | 2 | 1 |
 | run | 1: `GET /catalog` | 0 | 1 | 0 |
 | security | 1: `GET /security?days=…` | 0 | 1 | 0 |
 

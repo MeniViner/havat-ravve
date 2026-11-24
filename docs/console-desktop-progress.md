@@ -7,8 +7,9 @@
 - **Server routes:** done, with tests. Not deployed: until `wrangler deploy` the parts that need them stay hidden.
 - **Stage 2, screens:** done, all sixteen, on a computer and (content only) on a phone.
 - **Stage 3, widths:** done: 1024, 1280, 1440, 1920, a tablet and a phone.
-- **Stage 4, visual check and owner walk:** results in `console-desktop-check/README.md` and
-  `console-desktop-check/walk/README.md`.
+- **Stage 4, visual check and owner walk:** passed on `a3dbb11` with no fixes in between: sixteen screens accepted by a
+  verifier who built none of them (`console-desktop-check/README.md`), 677 of 677 checks in the owner walk
+  (`console-desktop-check/walk/README.md`).
 
 ## Server deploy this needs (Meni's OK)
 
