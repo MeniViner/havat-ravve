@@ -24,6 +24,7 @@ export function OverviewDesk({ ov, mon, q, recent, waits, busy, refresh, checkNo
       <Btn kind="action" icon="pulse" onClick={checkNow} disabled={busy}>{busy ? 'בודק…' : 'בדיקה מלאה עכשיו'}</Btn>
     </>}>
       <StatusHero ov={ov} mon={mon} waits={waits} ready={!!q.data || !!q.error} />
+      {((ov.error && o) || (mon.error && m)) && <DCard><Failed text={`הרענון לא הצליח, ומוצג מה שנקרא קודם. ${ov.error || mon.error}`} retry={refresh} /></DCard>}
       {(o || m) && (waits.length
         ? <div className="ds-waits">{waits.map((w) => <Attention key={w.id} tone={w.tone} title={w.title} text={w.text} link={w.link} href={w.href} />)}</div>
         : (o && m && (q.data || q.error)) ? <section className="d-card ds-calm"><DDot tone="ok" /><span>הכול עובד כרגיל. אין כאן דבר שמחכה לך.</span></section> : null)}
@@ -56,7 +57,7 @@ export function OverviewDesk({ ov, mon, q, recent, waits, busy, refresh, checkNo
 function StatusHero({ ov, mon, waits, ready }: { ov: Load<Overview>; mon: Load<Monitor>; waits: Wait[]; ready: boolean }) {
   const o = ov.data, m = mon.data;
   const down = !!m?.site.downSince;
-  const bad = !!ov.error || (o && o.server.status !== 'ok') || down;
+  const bad = (!!ov.error && !o) || (o && o.server.status !== 'ok') || down;
   const title = ov.error && !o ? 'לא הצלחנו לקרוא את המצב' : down ? 'האתר לא עונה' : !o ? 'בודק…' : o.server.status === 'ok' ? 'השרת עובד' : 'השרת לא עונה כמו שצריך';
   const p50 = o?.last24h.p50;
   const typical = p50 === undefined ? siteTypical(m) : null;

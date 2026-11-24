@@ -121,7 +121,7 @@ function RecordSheet({ path, onClose, notify, onGone, onSub }: { path: string; o
 }
 
 function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Notify; reload: () => void; onGone: () => void; onSub: (sub: string) => void }) {
-  const { edit, setEdit, draft, setDraft, confirm, setConfirm, busy, keys, editable, start, parsed, bad, save, remove } = useRecordEdit(d, notify, reload, onGone);
+  const { edit, setEdit, draft, setDraft, confirm, setConfirm, busy, keys, editable, start, parsed, bad, badKey, kind, save, remove } = useRecordEdit(d, notify, reload, onGone);
   const [del, setDel] = useState(false);
   return (
     <>
@@ -135,7 +135,7 @@ function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Noti
               {edit && editable(k)
                 ? d.types[k] === 'boolean'
                   ? <Toggle checked={!!draft[k]} onChange={(v) => setDraft({ ...draft, [k]: v })} label={fieldLabel(k) || k} />
-                  : <Field label={fieldLabel(k) || k} labelHidden value={String(draft[k] ?? '')} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} numeric={d.types[k] === 'integer' || d.types[k] === 'double'} ltr={d.types[k] !== 'string' || /^[\x00-\x7F]*$/.test(String(draft[k] ?? ''))} />
+                  : <Field label={fieldLabel(k) || k} labelHidden value={String(draft[k] ?? '')} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} type={kind(k) === 'instant' ? 'datetime-local' : kind(k) === 'day' ? 'date' : 'text'} error={badKey(k) ? (kind(k) === 'text' ? 'צריך מספר' : 'צריך תאריך') : undefined} numeric={d.types[k] === 'integer' || d.types[k] === 'double'} ltr={d.types[k] !== 'string' || /^[\x00-\x7F]*$/.test(String(draft[k] ?? ''))} />
                 : <bdi>{valueText(d.fields[k])}</bdi>}
             </span>
           </div>

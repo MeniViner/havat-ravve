@@ -1,5 +1,6 @@
 // The demo's content: נתונים: דפדוף, אנשים, ייבוא, גיבויים (K7-K10).
 import type { AccessChange, Backup, DataDoc, ImportBatch, Person, PersonAccess, Source, TrashItem } from '../source';
+import { ConsoleError } from '../source';
 import { ago, at, DAY, dayKey, DEMO_NOW, wait } from './base';
 
 /* ───────── people (K8) ───────── */
@@ -185,10 +186,10 @@ export const dataDemo: Pick<Source, 'people' | 'action' | 'backups' | 'runBackup
     const r = live || gone!;
     return wait({ path, then: gone && !live ? structuredClone(gone.fields) : asThen(r), now: live ? structuredClone(live.fields) : null, thenUpdated: r.createTime, nowUpdated: live ? live.updateTime : null });
   },
-  restoreBackup: (_date, paths) => {
+  restoreBackup: (date, paths) => {
     for (const p of paths) {
       const live = recs.find((x) => x.path === p), t = trash.findIndex((x) => x.path === p);
-      if (live) { live.fields = asThen(live); live.updateTime = tick(); } else if (t >= 0) recs.push(trash.splice(t, 1)[0].rec);
+      if (live) { live.fields = date >= dayKey(1) ? structuredClone(beforeEdit.get(p) || live.fields) : asThen(live); live.updateTime = tick(); } else if (t >= 0) recs.push(trash.splice(t, 1)[0].rec);
       restoredDocs.add(p); beforeEdit.delete(p);
     }
     return wait({ restored: paths.length, missing: 0 });
@@ -218,7 +219,7 @@ export const dataDemo: Pick<Source, 'people' | 'action' | 'backups' | 'runBackup
     const part = all.slice(from, from + PAGE);
     return wait({ items: part.map((r) => ({ path: r.path, id: r.path.split('/').pop()!, title: titleOfRec(r.fields), updateTime: r.updateTime, fields: simple(r.fields) })), next: from + PAGE < all.length ? part[part.length - 1].path : null });
   },
-  dataDoc: async (path) => { const r = recs.find((x) => x.path === path); await wait(null); if (!r) throw new Error('not found'); return docOfRec(r); },
+  dataDoc: async (path) => { const r = recs.find((x) => x.path === path); await wait(null); if (!r) throw new ConsoleError('NOT_FOUND', 'not found'); return docOfRec(r); },
   dataHistory: (path, days) => {
     const r = recs.find((x) => x.path === path);
     const now = r ? { updateTime: r.updateTime, fields: structuredClone(r.fields) } : null;

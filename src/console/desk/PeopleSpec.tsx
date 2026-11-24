@@ -1,6 +1,6 @@
 // אנשים והרשאות: what the phone and the computer share. Words that follow the person (the app's own rule), who passes
 // the filter, the owner's actions on a person, and what is known about their entries, keys and permission changes.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ddmm, dayTime, daysFromToday, firstName, hhmm } from '../../app/v2/format';
 import { gw } from '../../app/v2/gender';
 import { nowMs } from '../../app/clock';
@@ -69,7 +69,12 @@ export function usePeopleKeys() {
     return out;
   }, [keys]);
 }
-export const useChanges = (p: Person) => useLoad(() => source.accessChanges(p.uid), [p.uid, p.updatedAt]);
+export function useChanges(p: Person) {
+  // walking the list with the arrows asks only for the person it stops on
+  const here = useRef(true);
+  useEffect(() => { here.current = true; return () => { here.current = false; }; }, []);
+  return useLoad(async () => { await new Promise((r) => setTimeout(r, 150)); return here.current ? source.accessChanges(p.uid) : []; }, [p.uid, p.updatedAt]);
+}
 
 /* ───────── actions ───────── */
 export function usePersonActions(p: Person, me: Me, onChanged: () => void, notify: Notify) {

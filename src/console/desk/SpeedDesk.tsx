@@ -4,6 +4,7 @@ import { ddmm, dayName, daysFromToday } from '../../app/v2/format';
 import { ago, fmt, many } from '../shared';
 import type { Speed } from '../source';
 import { Act, Chips, Col, Cols, DCard, Empty, Fact, Facts, Failed, Mono, Page, Ranking, Skeleton, SkeletonTiles, Small, Table, Tiles, VBars, type Column } from './desk';
+import { useRest } from './route';
 import { opShort, sec } from './statusParts';
 
 export const PERIODS = [1, 7, 30] as const;
@@ -35,7 +36,9 @@ export function SpeedDesk({ st, days, setDays }: P) {
 }
 
 function Body({ d, busy }: { d: Speed; busy: boolean }) {
-  const [pick, setPick] = useState<string | null>(null);
+  const [rest, setRest] = useRest('speed');
+  const pick = rest[0] || null;
+  const setPick = (k: string | null) => setRest(k ? [k] : []);
   const op = d.ops.find((o) => o.op === pick) || null;
   const v = verdict(d.total.p95);
   const jobs = d.cron.jobs.map((j) => ({ ...j, tenths: j.ms > 0 ? Math.max(1, Math.round(j.ms / 100)) : 0 }));

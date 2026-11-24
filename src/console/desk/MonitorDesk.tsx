@@ -1,9 +1,9 @@
 // ניטור on a computer: the morning check as a week (check × day), what went wrong lately, the owners' alerts, the quota.
-import { useState } from 'react';
 import { dayTime } from '../../app/v2/format';
 import { ago, type useLoad } from '../shared';
 import { type AlertSettings, type Health, type HealthState, type Monitor, type MonitorEvent } from '../source';
 import { Act, Btn, Col, Cols, DCard, DDot, Fact, Facts, Failed, Page, Skeleton, Switch, Table, type Column } from './desk';
+import { useRest } from './route';
 import { checkDetail, checkName, DOT, eventLong, eventsOf, eventWhen, QuotaBody, QuotaSkeleton, STATE, weekDay, type Notify } from './statusParts';
 
 type MonLoad = ReturnType<typeof useLoad<Monitor>>;
@@ -11,12 +11,16 @@ export type AlertActions = { busy: boolean; set: (b: { on?: boolean; push?: bool
 
 export function MonitorDesk({ mon, busy, checkNow, alerts, notify }: { mon: MonLoad; busy: boolean; checkNow: () => void; alerts: AlertActions; notify: Notify }) {
   const m = mon.data;
-  const [pick, setPick] = useState<string | null>(null);
+  const [rest, setRest] = useRest('monitor');
+  const pick = rest[0] || null;
+  const setPick = (id: string | null) => setRest(id ? [id] : []);
   const item = m?.health?.items.find((i) => i.id === pick) || null;
   return (
     <Page group="מצב" title="ניטור" sub="השרת בודק את עצמו כל רבע שעה, ובדיקה מלאה כל בוקר ב־07:00"
       actions={<Btn kind="action" icon="pulse" onClick={checkNow} disabled={busy || !m}>{busy ? 'בודק…' : 'בדיקה עכשיו'}</Btn>}>
       {mon.error && !m ? <DCard><Failed text={`לא הצלחנו לקרוא את הניטור. ${mon.error}`} retry={mon.reload} /></DCard> : (
+        <>
+        {mon.error && <DCard><Failed text={`הרענון לא הצליח, ומוצג מה שנקרא קודם. ${mon.error}`} retry={mon.reload} /></DCard>}
         <Cols className={busy ? 'ds-mon ds-busy' : 'ds-mon'}>
           <Col>
             <WeekCard m={m} pick={pick} onPick={(id) => setPick(id === pick ? null : id)} />
@@ -31,6 +35,7 @@ export function MonitorDesk({ mon, busy, checkNow, alerts, notify }: { mon: MonL
             </DCard>
           </Col>
         </Cols>
+        </>
       )}
     </Page>
   );

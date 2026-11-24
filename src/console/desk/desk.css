@@ -150,6 +150,9 @@ textarea.d-input { padding: 8px 10px; line-height: 1.5; resize: vertical; }
 .d-skel { display: block; height: 14px; border-radius: 4px; background: #ECEEEC; animation: d-pulse 1.2s ease-in-out infinite alternate; }
 .d-skels { display: flex; flex-direction: column; gap: 10px; }
 @keyframes d-pulse { to { opacity: .5; } }
+/* a low window: the whole sidebar still fits */
+@media (max-height: 892px) { .d-nav { gap: 6px; } .d-nav__head { height: 22px; } .d-nav__item { height: 30px; } .d-nav__item[aria-current='page']::after { top: 5px; bottom: 5px; } }
+@media (max-height: 800px) { .d-brand { padding-bottom: 8px; } .d-nav { gap: 4px; } .d-nav__head { height: 20px; } .d-nav__item { height: 28px; font-size: 13.5px; } }
 @media (prefers-reduced-motion: reduce) { .d-skel { animation: none; } }
 
 /* panel */

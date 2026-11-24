@@ -76,6 +76,25 @@ export function useRecords(place: Place | null) {
   return { rows: cur?.rows ?? null, next: cur?.next ?? null, error, loading, reload: () => load(null), more: () => { if (cur?.next) load(cur.next); } };
 }
 
+const IL = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', dateStyle: 'short', timeStyle: 'short' });
+/** A stored instant as an Israel time for its input, and back. */
+const toInput = (iso: string) => IL.format(new Date(iso)).replace(' ', 'T');
+const fromInput = (v: string) => {
+  const utc = Date.parse(v + ':00Z');
+  if (Number.isNaN(utc)) return null;
+  // the offset is Israel's at that moment, summer or winter
+  const off = Date.parse(toInput(new Date(utc).toISOString()) + ':00Z') - utc;
+  const t = utc - off;
+  return new Date(t - (Date.parse(toInput(new Date(t).toISOString()) + ':00Z') - utc)).toISOString();
+};
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:\d{2})$/;
+/** What a text field really holds: an instant, a day, or just text. An empty one is told by its name. */
+export function textKind(k: string, v: unknown): 'instant' | 'day' | 'text' {
+  if (typeof v !== 'string') return 'text';
+  if (INSTANT_RE.test(v) && !Number.isNaN(Date.parse(v))) return 'instant';
+  if (DAY_RE.test(v)) return 'day';
+  return v ? 'text' : /At$/.test(k) ? 'instant' : /(^d|D)ate$/.test(k) ? 'day' : 'text';
+}
 /** The draft of a careful edit of simple fields, and the two writes (edit, delete) with the record's own time. */
 export function useRecordEdit(d: DataDoc, notify: Notify, done: () => void, gone: () => void) {
   const [edit, setEdit] = useState(false);
@@ -84,17 +103,19 @@ export function useRecordEdit(d: DataDoc, notify: Notify, done: () => void, gone
   const [busy, setBusy] = useState(false);
   const keys = useMemo(() => Object.keys(d.fields).sort(), [d]);
   const editable = (k: string) => !d.readOnly && SIMPLE.has(d.types[k]);
-  const start = () => { setDraft(Object.fromEntries(keys.filter(editable).map((k) => [k, d.types[k] === 'boolean' ? !!d.fields[k] : d.fields[k] === null ? '' : String(d.fields[k])]))); setConfirm(false); setEdit(true); };
+  const kind = (k: string) => (d.types[k] === 'string' ? textKind(k, d.fields[k]) : 'text');
+  const start = () => { setDraft(Object.fromEntries(keys.filter(editable).map((k) => [k, d.types[k] === 'boolean' ? !!d.fields[k] : d.fields[k] === null ? '' : kind(k) === 'instant' && d.fields[k] ? toInput(String(d.fields[k])) : String(d.fields[k])]))); setConfirm(false); setEdit(true); };
   const parsed = useMemo(() => {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(draft)) {
       const t = d.types[k];
-      const val = t === 'boolean' ? v : t === 'integer' || t === 'double' ? (String(v).trim() === '' ? null : Number(v)) : t === 'null' ? (String(v) === '' ? null : v) : v;
+      const val = t === 'boolean' ? v : t === 'integer' || t === 'double' ? (String(v).trim() === '' ? null : Number(v)) : t === 'null' ? (String(v) === '' ? null : v)
+        : kind(k) === 'instant' ? (d.fields[k] && v === toInput(String(d.fields[k])) ? d.fields[k] : v ? fromInput(String(v)) ?? v : v) : v;
       if (JSON.stringify(val) !== JSON.stringify(d.fields[k])) out[k] = val;
     }
     return out;
   }, [draft, d]);
-  const badKey = (k: string) => (d.types[k] === 'integer' || d.types[k] === 'double') && k in parsed && parsed[k] !== null && !Number.isFinite(parsed[k] as number);
+  const badKey = (k: string) => (k in parsed && kind(k) === 'instant' && (Number.isNaN(Date.parse(String(parsed[k]))))) || (k in parsed && kind(k) === 'day' && parsed[k] !== '' && Number.isNaN(Date.parse(String(parsed[k])))) || (d.types[k] === 'integer' || d.types[k] === 'double') && k in parsed && parsed[k] !== null && !Number.isFinite(parsed[k] as number);
   const bad = Object.keys(parsed).some(badKey);
   const save = async () => {
     setBusy(true);
@@ -106,7 +127,7 @@ export function useRecordEdit(d: DataDoc, notify: Notify, done: () => void, gone
     try { await source.deleteDoc(d.path, d.updateTime!); notify('נמחק. אפשר לשחזר מסל המחזור במסך הגיבויים'); gone(); }
     catch (e) { notify(errorText(e), 'alert'); }
   };
-  return { edit, setEdit, draft, setDraft, confirm, setConfirm, busy, keys, editable, start, parsed, bad, badKey, changes: Object.keys(parsed).length, save, remove };
+  return { kind, edit, setEdit, draft, setDraft, confirm, setConfirm, busy, keys, editable, start, parsed, bad, badKey, changes: Object.keys(parsed).length, save, remove };
 }
 
 /* ───────── words ───────── */
@@ -174,7 +195,9 @@ const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהל/�
 const STALL: Record<string, Status> = {
   confirmed: { label: 'אושר', tone: 'green', chip: 'confirmed' }, approved: { label: 'אושר', tone: 'green', chip: 'confirmed' }, pending: { label: 'ממתין', tone: 'amber', chip: 'waiting' }, invited: { label: 'הוזמן', tone: 'amber', chip: 'waiting' }, declined: { label: 'לא מגיע', tone: 'neutral', chip: 'declined' }, cancelled: { label: 'בוטל', tone: 'neutral', chip: 'declined' },
 };
-const made = (f: F) => { const at = typeof f.createdAt === 'string' ? ddmm(f.createdAt) : ''; return [at, name(f.createdBy) || name(f.addedBy)].filter(Boolean).join(' · '); };
+/** A stored time as a short date; text that is no date stays as it is. */
+const dateText = (v: unknown) => (typeof v !== 'string' ? '' : Number.isNaN(Date.parse(v)) ? v : ddmm(v));
+const made = (f: F) => { const at = dateText(f.createdAt); return [at, name(f.createdBy) || name(f.addedBy)].filter(Boolean).join(' · '); };
 const MADE = { label: 'נוצר', text: made };
 
 export const SPECS: Record<string, Spec> = {
@@ -187,7 +210,7 @@ export const SPECS: Record<string, Spec> = {
     facts: [
       { label: 'כותרת', text: str('title') }, { label: 'על מי', text: (f) => name(f.assignee) || (f.templateId ? 'מי שפנוי' : 'פנויה') }, { label: 'מקום', text: (f) => name(f.location) || name(f.place) },
       { label: 'עד מתי', text: str('dueDate') }, { label: 'דחוף', text: yesNo('urgent') }, { label: 'הערה', text: str('note') },
-      { label: 'בוצעה', text: (f) => (f.done ? [typeof f.doneAt === 'string' ? ddmm(f.doneAt) : '', name(f.doneBy)].filter(Boolean).join(' · ') || 'כן' : '') }, { label: 'נוצרה', text: made },
+      { label: 'בוצעה', text: (f) => (f.done ? [dateText(f.doneAt), name(f.doneBy)].filter(Boolean).join(' · ') || 'כן' : '') }, { label: 'נוצרה', text: made },
     ],
   },
   shopping: {
@@ -195,7 +218,7 @@ export const SPECS: Record<string, Spec> = {
     cols: [{ key: 'qty', head: 'כמות', width: 100, text: str('qty') }],
     status: (f) => (f.bought === true ? { label: 'נקנה', tone: 'green', chip: 'bought' } : f.bought !== false ? null : f.urgent ? { label: 'דחוף', tone: 'red', chip: 'open' } : { label: 'לקנות', tone: 'neutral', chip: 'open' }),
     chips: [{ value: 'open', label: 'לקנות' }, { value: 'bought', label: 'נקנו' }],
-    facts: [{ label: 'פריט', text: (f) => str('title')(f) || str('text')(f) }, { label: 'כמות', text: str('qty') }, { label: 'דחוף', text: yesNo('urgent') }, { label: 'הערה', text: str('note') }, { label: 'קישור', text: str('link') }, { label: 'נקנה', text: (f) => (f.bought ? [typeof f.boughtAt === 'string' ? ddmm(f.boughtAt) : '', name(f.boughtBy)].filter(Boolean).join(' · ') || 'כן' : '') }, MADE],
+    facts: [{ label: 'פריט', text: (f) => str('title')(f) || str('text')(f) }, { label: 'כמות', text: str('qty') }, { label: 'דחוף', text: yesNo('urgent') }, { label: 'הערה', text: str('note') }, { label: 'קישור', text: str('link') }, { label: 'נקנה', text: (f) => (f.bought ? [dateText(f.boughtAt), name(f.boughtBy)].filter(Boolean).join(' · ') || 'כן' : '') }, MADE],
   },
   tickets: {
     head: 'כרטיס', cols: [{ key: 'event', head: 'אירוע', width: 150, text: str('eventTitle') }, { key: 'price', head: 'מחיר', width: 80, text: money('price') }],
@@ -207,7 +230,7 @@ export const SPECS: Record<string, Spec> = {
     status: (f) => VISIT[String(f.status)] || null, chips: [{ value: 'new', label: 'חדשים' }, { value: 'approved', label: 'אושרו' }, { value: 'closed', label: 'סגורים' }],
   },
   events: {
-    head: 'אירוע', cols: [{ key: 'date', head: 'תאריך', width: 110, text: (f) => (typeof f.start === 'string' ? ddmm(f.start) : str('date')(f)) }, { key: 'price', head: 'מחיר', width: 80, text: money('price') }],
+    head: 'אירוע', cols: [{ key: 'date', head: 'תאריך', width: 110, text: (f) => (dateText(f.start) || str('date')(f)) }, { key: 'price', head: 'מחיר', width: 80, text: money('price') }],
     status: (f) => (typeof f.published !== 'boolean' ? null : f.published ? { label: 'מפורסם', tone: 'green', chip: 'on' } : { label: 'טיוטה', tone: 'neutral', chip: 'off' }), chips: [{ value: 'on', label: 'מפורסמים' }, { value: 'off', label: 'טיוטות' }],
   },
   users: {

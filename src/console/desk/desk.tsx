@@ -138,9 +138,10 @@ export function Table<T>({ columns, rows, rowKey, selected, onSelect, onEnter, l
     const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? keys.length - 1 : null;
     if (to !== null) { e.preventDefault(); if (to >= 0 && to < keys.length) { onSelect?.(keys[to]); focusRow(to); } return; }
     if (e.key === ' ') { e.preventDefault(); onSelect?.(keys[i]); }
-    if (e.key === 'Enter') { e.preventDefault(); onSelect?.(keys[i]); onEnter?.(rows![i]); }
+    if (e.key === 'Enter') { e.preventDefault(); onSelect?.(keys[i]); if (onEnter) onEnter(rows![i]); else if (on(keys[i])) primary(); }
   };
   const pick = !!onSelect;
+  const on = (k: string) => k === selected;
   return (
     <div className={cx('d-table', inset && 'd-table--inset')}>
       {!!error && !rows?.length ? <Failed text={error} retry={retry} /> : (
@@ -166,6 +167,8 @@ export function Table<T>({ columns, rows, rowKey, selected, onSelect, onEnter, l
     </div>
   );
 }
+/** The open panel's first button: what Enter does on a selected row. */
+const primary = () => document.querySelector<HTMLButtonElement>('.d-panel .d-panel__foot button:not(:disabled)')?.click();
 /** What failed, and a way to try again. */
 export const Failed = ({ text, retry }: { text: ReactNode; retry?: () => void }) => <div className="d-failed" role="alert"><span>{retry && typeof text === 'string' ? text.replace(/[.,]?\s*ו?נסו שוב\.?$/, '') : text}</span>{retry && <Act onClick={retry}>לנסות שוב</Act>}</div>;
 export const Empty = ({ children }: { children: ReactNode }) => <p className="d-empty">{children}</p>;
@@ -271,7 +274,7 @@ export function Dialog({ open, onClose, title, sub, children, footer, width = 56
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    (ref.current?.querySelector<HTMLElement>('.d-dialog__body input, .d-dialog__body textarea, .d-dialog__body select') || ref.current)?.focus();
     const on = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('.k-sheet')) close.current(); };
     document.addEventListener('keydown', on);
     return () => { document.removeEventListener('keydown', on); prev?.focus?.(); };

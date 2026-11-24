@@ -1,13 +1,13 @@
 // דפדוף בנתונים on a computer (K7): collections, the records of one as a table, and the chosen record beside it with its
 // fields, its history and the careful actions. Earlier versions (the nightly backups) open in a window.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmSheet } from '../../app/v2/kit';
 import { ddmm } from '../../app/v2/format';
 import { ago, fmt, useLoad } from '../shared';
 import { collectionName, fieldLabel, valueText } from '../labels';
 import { errorText, source, type DataCollection, type DataDoc, type DataDocRow, type DocVersion } from '../source';
 import { Act, Btn, Chips, Cols, type Column, Dialog, DTag, Empty, Failed, Fact, Facts, Hist, Input, LoadingPanel, Mono, Notice, Page, Panel, EmptyPanel, saveCsv, Search, Select, Skeleton, Small, SubTitle, Switch, Table, TableCard, Toolbar } from './desk';
-import { useRest } from './route';
+import { useRest, useSettled } from './route';
 import { activityText, cut, factsOf, groupOf, type Notify, type Place, placeKey, readAddress, showValue, specOf, useCollections, useRecordEdit, useRecords, when, whenFull, writeAddress } from './DataSpec';
 
 const READ_NOTE = (group: string) => (group === 'users' ? 'אנשים עורכים במסך "אנשים והרשאות", שם שינוי תפקיד עושה את כל מה שצריך.' : 'רשומות של השרת אי אפשר לערוך.');
@@ -37,9 +37,21 @@ export function DataDesk({ notify }: { notify: Notify }) {
   const plus = page.next ? '+' : '';
   const text = q.trim().toLowerCase();
   const shown = sorted && sorted.filter((r) => (chip === 'all' || chipOf(r) === chip) && (!text || `${r.title} ${r.id}`.toLowerCase().includes(text)));
-  const doc = at.doc || shown?.[0]?.path || null;
-  const open = (path: string | null) => place && setRest(writeAddress(place, path));
-  const pick = (p: Place) => setRest(writeAddress(p));
+  // the record in the address, unless the search or the chips hide it; a record just deleted leaves the panel empty
+  const dirty = useRef(false);
+  const [gone, setGone] = useState('');
+  const hidden = !!at.doc && (chip !== 'all' || !!text) && !!shown && !shown.some((r) => r.path === at.doc);
+  const doc = at.doc && (!hidden || dirty.current) ? at.doc : gone === key ? null : shown?.[0]?.path || null;
+  // walking the list with the arrows reads only the record it stops on
+  const settled = useSettled(doc);
+  const set = (p: Place, path: string | null) => { setGone(''); setRest(writeAddress(p, path)); };
+  // the first record goes into the address, so a save that moves it in the list does not swap the panel
+  useEffect(() => { if (place && doc && doc !== at.doc) setRest(writeAddress(place, doc)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [doc, at.doc]);
+  // a change not saved yet is not dropped without asking
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  const guard = (go: () => void) => { if (dirty.current) setLeave({ go: () => { dirty.current = false; go(); } }); else go(); };
+  const open = (path: string) => { if (place && path !== doc) guard(() => set(place, path)); };
+  const pick = (p: Place) => guard(() => set(p, null));
   const name = place ? (place.parent ? collectionName(place.group.split('/*/').pop()!) : collectionName(place.group)) : '';
 
   const withFields = !!page.rows?.some((r) => r.fields);
@@ -81,7 +93,7 @@ export function DataDesk({ notify }: { notify: Notify }) {
     <Page group="נתונים" title="דפדוף בנתונים" sub="כל מה ששמור במסד הנתונים. אפשר לעיין, לייצא, לראות היסטוריה של כל רשומה, ולתקן ערך בזהירות"
       actions={place && !place.parent ? <Btn icon="download" onClick={exportIt} disabled={busy || !page.rows?.length}>{busy ? 'מייצא…' : 'ייצוא האוסף'}</Btn> : undefined}>
       <Toolbar end={<label className="d-inline">להציג גם אוספי מערכת <Switch on={sys} onChange={setSys} label="אוספי מערכת" /></label>}>
-        {place?.parent && <Act onClick={() => setRest(writeAddress({ group: groupOf(place.parent!), ...parentOf(place.parent!) }, place.parent))}>חזרה ל{collectionName(groupOf(place.parent))}</Act>}
+        {place?.parent && <Act onClick={() => guard(() => set({ group: groupOf(place.parent!), ...parentOf(place.parent!) }, place.parent!))}>חזרה ל{collectionName(groupOf(place.parent))}</Act>}
         {/* in a narrow window the list of collections is this choice (data.css) */}
         {list.data && <span className="dd-colpick"><Select label="אוסף" value={place && !place.parent ? place.group : ''} onChange={(g) => g && pick({ group: g })}
           options={[...(place?.parent ? [{ value: '', label: name }] : []), ...[...list.farm, ...(sys ? list.system : [])].map((c) => ({ value: c.group, label: `${collectionName(c.group)} · ${fmt(c.count ?? c.backupCount)}${c.readOnly ? ' · קריאה' : ''}` }))]} /></span>}
@@ -106,9 +118,10 @@ export function DataDesk({ notify }: { notify: Notify }) {
             empty={page.rows?.length ? `אין רשומות שמתאימות${page.next ? '. אפשר לטעון עוד ולחפש שוב' : ''}` : 'האוסף ריק.'} /></div>
           {page.next && !page.error && <div className="dd-more"><Act onClick={page.more} disabled={page.loading}>{page.loading ? 'טוען…' : 'עוד'}</Act></div>}
         </TableCard>
-        {doc ? <Record key={doc} path={doc} notify={notify} onChanged={page.reload} onGone={() => { open(null); page.reload(); list.reload(); }} onSub={(sub) => pick({ group: `${groupOf(doc)}/*/${sub}`, parent: doc })} />
+        {doc ? settled !== doc ? <LoadingPanel /> : <Record key={doc} path={doc} dirty={dirty} notify={notify} onChanged={page.reload} onGone={() => { setGone(key); setRest(writeAddress(place!)); page.reload(); list.reload(); }} onSub={(sub) => pick({ group: `${groupOf(doc)}/*/${sub}`, parent: doc })} />
           : shown ? <EmptyPanel>{page.rows?.length ? 'לא נבחרה רשומה.' : `אין רשומות ב${name}${info?.readOnly ? '' : ' עדיין'}.`}</EmptyPanel> : page.error ? <EmptyPanel>אין מה להציג.</EmptyPanel> : <LoadingPanel />}
       </Cols>
+      <ConfirmSheet open={!!leave} onClose={() => setLeave(null)} title="יש שינויים שלא נשמרו" text="אם עוברים לרשומה אחרת עכשיו, מה ששונה כאן לא יישמר." confirmLabel="לצאת בלי לשמור" cancelLabel="חזרה לעריכה" onConfirm={() => { leave?.go(); setLeave(null); }} />
     </Page>
   );
 }
@@ -118,16 +131,18 @@ function parentOf(path: string): { parent?: string } {
   return p ? { parent: p } : {};
 }
 
-function Record({ path, notify, onChanged, onGone, onSub }: { path: string; notify: Notify; onChanged: () => void; onGone: () => void; onSub: (sub: string) => void }) {
+function Record({ path, dirty, notify, onChanged, onGone, onSub }: { path: string; dirty: { current: boolean }; notify: Notify; onChanged: () => void; onGone: () => void; onSub: (sub: string) => void }) {
   const doc = useLoad(() => source.dataDoc(path), [path]);
   const id = path.split('/').pop()!;
   if (doc.error && !doc.data) return <Panel title={id} sub={<Mono>{path.split('/').join(' / ')}</Mono>}><Failed text={doc.error === 'לא נמצא' ? 'הרשומה לא נמצאה. אולי נמחקה בינתיים.' : `לא הצלחנו לקרוא את הרשומה. ${doc.error}`} retry={doc.reload} /></Panel>;
   if (!doc.data) return <LoadingPanel />;
-  return <RecordPanel d={doc.data} notify={notify} reload={() => { doc.reload(); onChanged(); }} onGone={onGone} onSub={onSub} />;
+  return <RecordPanel d={doc.data} dirty={dirty} notify={notify} reload={() => { doc.reload(); onChanged(); }} onGone={onGone} onSub={onSub} />;
 }
 
-function RecordPanel({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Notify; reload: () => void; onGone: () => void; onSub: (sub: string) => void }) {
+function RecordPanel({ d, dirty, notify, reload, onGone, onSub }: { d: DataDoc; dirty: { current: boolean }; notify: Notify; reload: () => void; onGone: () => void; onSub: (sub: string) => void }) {
   const e = useRecordEdit(d, notify, reload, onGone);
+  dirty.current = e.edit && e.changes > 0;
+  useEffect(() => () => { dirty.current = false; }, [dirty]);
   const [del, setDel] = useState(false);
   const [versions, setVersions] = useState(false);
   const [all, setAll] = useState(false);
@@ -143,8 +158,8 @@ function RecordPanel({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify:
       <div className="dd-form">
         {e.keys.filter(e.editable).map((k) => (d.types[k] === 'boolean'
           ? <div key={k} className="dd-form__yes"><span>{label(k)}</span><Switch on={!!e.draft[k]} onChange={(v) => e.setDraft({ ...e.draft, [k]: v })} label={label(k)} /></div>
-          : <Input key={k} label={label(k)} value={String(e.draft[k] ?? '')} onChange={(v) => e.setDraft({ ...e.draft, [k]: v })} multiline={d.types[k] === 'string' && String(d.fields[k] ?? '').length > 60}
-              ltr={d.types[k] !== 'string' || (!!e.draft[k] && /^[\x00-\x7F]*$/.test(String(e.draft[k])))} error={e.badKey(k) ? 'צריך מספר' : undefined} />))}
+          : <Input key={k} label={label(k)} type={e.kind(k) === 'instant' ? 'datetime-local' : e.kind(k) === 'day' ? 'date' : 'text'} value={String(e.draft[k] ?? '')} onChange={(v) => e.setDraft({ ...e.draft, [k]: v })} multiline={d.types[k] === 'string' && String(d.fields[k] ?? '').length > 60}
+              ltr={d.types[k] !== 'string' || (!!e.draft[k] && /^[\x00-\x7F]*$/.test(String(e.draft[k])))} error={e.badKey(k) ? (e.kind(k) === 'text' ? 'צריך מספר' : 'צריך תאריך') : undefined} />))}
         {e.keys.some((k) => !e.editable(k)) && <Small>שדות שמחזיקים אדם, מקום או רשימה עורכים באפליקציה: {e.keys.filter((k) => !e.editable(k)).map(label).join(', ')}.</Small>}
       </div>
       <Dialog open={e.confirm} onClose={() => e.setConfirm(false)} title="לשמור את השינוי?" sub={d.title || d.id} footer={<>
@@ -192,7 +207,7 @@ function Versions({ d, notify, onClose, onRestored }: { d: DataDoc; notify: Noti
   const diff = (k: string) => JSON.stringify(pick?.fields?.[k]) !== JSON.stringify(now[k]);
   return (
     <Dialog open onClose={onClose} width={760} title="גרסה קודמת" sub={pick ? `${d.title || d.id} · הגרסה שהייתה ב־${span(pick)}, מול היום` : d.title || d.id}
-      footer={pick ? <><Btn kind="primary" onClick={() => setAsk(true)}>להחזיר לגרסה הזאת</Btn><Btn onClick={() => setPick(null)}>כל הגרסאות</Btn></> : undefined}>
+      footer={pick ? <><Btn kind="primary" disabled={!keys.some(diff)} onClick={() => setAsk(true)}>{keys.some(diff) ? 'להחזיר לגרסה הזאת' : 'הגרסה זהה להיום'}</Btn><Btn onClick={() => setPick(null)}>כל הגרסאות</Btn></> : undefined}>
       {h.error && !x && <Failed text={`לא הצלחנו לקרוא את הגיבויים. ${h.error}`} retry={h.reload} />}
       {!x && !h.error && <><p className="dd-soft">קורא את הגיבויים…</p><Skeleton lines={4} /></>}
       {x && !pick && (

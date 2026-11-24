@@ -8,6 +8,8 @@ import { Button, EmptyState, Icon, Tabs } from '../app/v2/kit';
 import { readyAuth, signIn, signOutUser, inAppBrowser } from '../app/firebase';
 import { useLoad, useNotice } from './shared';
 import { currentTab, useWide } from './desk/route';
+import { useModalTrap } from './desk/modal';
+import { Crash } from './desk/Crash';
 import { Sidebar } from './desk/Sidebar';
 import { failedMails, setFailedMails } from './desk/counts';
 import { ConsoleError, errorText, source, type Me } from './source';
@@ -102,6 +104,7 @@ function SignIn() {
 function Shell({ me }: { me: Me }) {
   const [tab, setTab] = useState<Tab>(tabOf);
   const wide = useWide();
+  useModalTrap();
   const notice = useNotice();
   const people = useLoad(() => source.people());
   const main = useRef<HTMLElement>(null);
@@ -115,7 +118,7 @@ function Shell({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide]);
   const screen = (
-    <>
+    <Crash key={tab}>
       {tab === 'overview' && <OverviewScreen />}
       {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
       {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
@@ -132,7 +135,7 @@ function Shell({ me }: { me: Me }) {
       {tab === 'speed' && <SpeedScreen />}
       {tab === 'run' && <RunScreen notify={notice.show} />}
       {tab === 'import' && <ImportScreen notify={notice.show} />}
-    </>
+    </Crash>
   );
   if (wide) return (
     <div className="v2 c-shell d-shell" dir="rtl">
