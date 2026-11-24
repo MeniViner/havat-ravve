@@ -463,11 +463,15 @@ function switchDetail(result: unknown, body: unknown): string {
 }
 const ROLE_WORD: Record<string, string> = { guest: 'אורח/ת', staff: 'מתנדב/ת', manager: 'מנהל/ת', owner: 'בעלים', vendor: 'בעל דוכן' };
 const json = (v: unknown) => { try { return ((typeof v === 'string' ? JSON.parse(v) : v) || {}) as Record<string, unknown>; } catch { return {}; } };
-/** What a console line was about: which switches, whose role and to what, who was blocked, which job. */
-function consoleDetail(op: string, x: Record<string, unknown>, names: Map<string, string>): string {
+const ALERT_HE: Record<string, string> = { on: 'התראות לבעלים', push: 'התראה לטלפון', daily: 'סיכום בוקר יומי' };
+/** What a console line was about: which switches, whose role and to what, who was blocked or deleted, which job, key, email or alert. */
+function consoleDetail(op: string, x: Record<string, unknown>, names: Map<string, string>, keys: Map<string, string>): string {
   if (op === 'console.switches.set') return switchDetail(x.result, x.body);
   const b = json(x.body);
   if (op === 'console.jobs.run') return JOB_HE[String(b.id)] || '';
+  if (op === 'invites.setRole') return [String(b.email || ''), b.role === 'guest' ? 'ביטול' : ROLE_WORD[String(b.role)] || ''].filter(Boolean).join(' · ');
+  if (op === 'console.monitor.alerts') return Object.keys(ALERT_HE).filter((k) => typeof b[k] === 'boolean').map((k) => `${ALERT_HE[k]}: ${b[k] ? 'דלוק' : 'כבוי'}`).join(', ');
+  if (/^console\.keys\./.test(op)) return typeof b.label === 'string' && b.label ? b.label : keys.get(String(b.id || '')) || '';
   if (!/^people\./.test(op)) return '';
   const who = names.get(String(b.uid || '')) || '';
   const what = op === 'people.setRole' ? ROLE_WORD[String(b.role)] || '' : op === 'people.setStatus' ? (b.status === 'blocked' ? 'חסימה' : b.status === 'active' ? 'שחרור' : '') : '';
@@ -476,10 +480,18 @@ function consoleDetail(op: string, x: Record<string, unknown>, names: Map<string
 /** The names of the people the console's lines are about: one batch read, up to 50 people. */
 async function namesIn(fs: Firestore, rows: Record<string, unknown>[]): Promise<Map<string, string>> {
   const uids = [...new Set(rows.filter((x) => x.ok && /^people\./.test(String(x.op))).map((x) => String(json(x.body).uid || '')).filter((u) => /^[A-Za-z0-9_-]{1,128}$/.test(u)))].slice(0, 50);
-  try { return new Map((await fs.rawGet(uids.map((u) => fs.name('users', u)), ['displayName'])).map((d) => [String(d.name).split('/').pop()!, String((d.fields?.displayName as { stringValue?: string } | undefined)?.stringValue || '')])); }
-  catch { return new Map(); }
+  // a person who was deleted has no profile any more: the line of the deletion keeps the name
+  const gone = new Map<string, string>();
+  for (const x of rows) {
+    const uid = x.op === 'people.delete' ? String(json(x.body).uid || '') : '';
+    const name = uid && /"displayName":("(?:[^"\\]|\\.)*")/.exec(String(x.result || ''))?.[1];
+    if (name) try { gone.set(uid, String(JSON.parse(name))); } catch { /* cut short: no name */ }
+  }
+  try { for (const d of await fs.rawGet(uids.map((u) => fs.name('users', u)), ['displayName'])) gone.set(String(d.name).split('/').pop()!, String((d.fields?.displayName as { stringValue?: string } | undefined)?.stringValue || '')); }
+  catch { /* the lines stay, without the names */ }
+  return gone;
 }
-export async function securityLog(fs: Firestore, days: number) {
+export async function securityLog(env: Env, fs: Firestore, days: number) {
   const since = new Date(Date.now() - Math.min(30, Math.max(1, days)) * 86400_000).toISOString();
   const atSince = { fieldFilter: { field: { fieldPath: 'at' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: since } } };
   const [failed, limited, console_] = await Promise.all([
@@ -490,7 +502,7 @@ export async function securityLog(fs: Firestore, days: number) {
   const out: SecurityEvent[] = [];
   for (const d of failed) {
     const x = d.data;
-    if (!REFUSED.has(String(x.code))) continue;
+    if (!REFUSED.has(String(x.code)) || x.credential === 'console') continue; // the console's own come below
     out.push({ at: String(x.at), kind: 'refused', who: String(x.keyLabel || x.credential || ''), what: String(x.opHe || x.op || x.path || ''), detail: String(x.message || x.code || ''), ok: false });
   }
   for (const d of limited) {
@@ -498,11 +510,11 @@ export async function securityLog(fs: Firestore, days: number) {
     if (!['RATE_LIMITED', 'QUOTA_EXCEEDED'].includes(String(x.code))) continue;
     out.push({ at: String(x.at), kind: 'limited', who: String(x.credential || 'כתובת לא מוכרת'), what: String(x.path || ''), detail: x.code === 'RATE_LIMITED' ? 'יותר מדי בקשות בזמן קצר: נחסם לדקה' : 'המכסה היומית נגמרה', ok: false });
   }
-  const names = await namesIn(fs, console_.map((d) => d.data).filter((x) => String(x.at) >= since));
-  for (const d of console_) {
-    const x = d.data;
-    if (String(x.at) < since) continue;
-    out.push({ at: String(x.at), kind: 'console', who: String(x.actor && typeof x.actor === 'object' ? (x.actor as { name?: string }).name || x.keyLabel : x.keyLabel), what: String(x.opHe || x.op || ''), detail: x.ok ? consoleDetail(String(x.op || ''), x, names) : String(x.message || ''), ok: !!x.ok });
+  const mine = console_.map((d) => d.data).filter((x) => String(x.at) >= since);
+  const names = await namesIn(fs, mine);
+  const keys = new Map(mine.some((x) => /^console\.keys\./.test(String(x.op))) ? (await listKeys(env).catch(() => [])).map((k) => [k.id, k.label]) : []);
+  for (const x of mine) {
+    out.push({ at: String(x.at), kind: 'console', who: String(x.actor && typeof x.actor === 'object' ? (x.actor as { name?: string }).name || x.keyLabel : x.keyLabel), what: String(x.opHe || x.op || '').replace(/\s*\(.*$/, '').replace(/\. .*$/, ''), detail: x.ok ? consoleDetail(String(x.op || ''), x, names, keys) : String(x.message || ''), ok: !!x.ok });
   }
   out.sort((a, b) => (a.at < b.at ? 1 : -1));
   return { since, items: out.slice(0, 400) };

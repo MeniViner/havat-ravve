@@ -193,6 +193,23 @@ const OPS: Record<string, ConsoleOp> = {
   'jobs.read': { name: 'console.jobs.read', he: 'משימות מתוזמנות', kind: 'read' },
   'jobs.run': { name: 'console.jobs.run', he: 'הרצת משימה מתוזמנת', kind: 'write' },
 };
+/** Which operation a console request is, by its address: so one that failed is logged by its name too. */
+const ROUTES: [string, RegExp, string | ((id: string) => string)][] = [
+  ['POST', /^\/keys$/, 'keys.create'], ['POST', /^\/keys\/[^/]+\/([a-z]+)$/, (a) => 'keys.' + a], ['GET', /^\/keys\/[^/]+\/usage$/, 'keys.usage'],
+  ['POST', /^\/imports$/, 'imports.save'], ['POST', /^\/imports\/[^/]+\/undo$/, 'imports.undo'],
+  ['POST', /^\/backups\/run$/, 'backups.run'], ['POST', /^\/backups\/[^/]+\/restore$/, 'backups.restore'], ['GET', /^\/backups\/[^/]+\/download$/, 'backups.download'], ['GET', /^\/backups\/[^/]+\/docs?$/, 'backups.browse'],
+  ['POST', /^\/trash\/restore$/, 'trash.restore'], ['POST', /^\/monitor\/check$/, 'monitor.check'], ['POST', /^\/monitor\/alerts$/, 'monitor.alerts'], ['POST', /^\/monitor\/test-alert$/, 'monitor.testAlert'],
+  ['POST', /^\/data\/edit$/, 'data.edit'], ['POST', /^\/data\/delete$/, 'data.delete'], ['GET', /^\/data\/export$/, 'data.export'], ['GET', /^\/data\/history$/, 'data.history'], ['GET', /^\/data(\/docs?)?$/, 'data.browse'],
+  ['POST', /^\/switches$/, 'switches.set'], ['POST', /^\/queue\/email\/[^/]+\/retry$/, 'queue.retry'], ['POST', /^\/queue\/(?:email|push)\/[^/]+\/cancel$/, 'queue.cancel'], ['GET', /^\/queue\/email\/[^/]+$/, 'queue.email'],
+  ['POST', /^\/jobs\/[^/]+\/run$/, 'jobs.run'],
+];
+export function consoleOpAt(method: string, path: string): string | null {
+  for (const [m, re, to] of ROUTES) {
+    const hit = m === method && re.exec(path);
+    if (hit) return OPS[typeof to === 'string' ? to : to(hit[1])]?.name || null;
+  }
+  return null;
+}
 export const consoleOp = (name: string) => Object.values(OPS).find((o) => o.name === name) || null;
 
 /** The console's own routes (not /api/...). Returns the operation for the log and the answer. */
@@ -271,7 +288,7 @@ export async function consoleRoute(req: Request, env: Env, path: string, caller:
     return { op: OPS['monitor.alerts'], data: done, logBody: b, logResult: { on: done.on, push: done.push, daily: done.daily } };
   }
   if (m === 'POST' && path === '/monitor/test-alert') return { op: OPS['monitor.testAlert'], data: await testAlert(env, fs, caller.actor.person.uid) };
-  if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(fs, Number(q.get('days') || 7) || 7) };
+  if (m === 'GET' && path === '/security') return { op: OPS.security, data: await securityLog(env, fs, Number(q.get('days') || 7) || 7) };
   if (m === 'GET' && path === '/stats') return { op: OPS.stats, data: await stats(fs, Number(q.get('days') || 30)) };
   if (m === 'GET' && path === '/catalog') return { op: OPS.catalog, data: { version: CATALOG.version, operations: CATALOG.operations } };
   if (m === 'GET' && path === '/speed') return { op: OPS.speed, data: await speed(env, fs, Number(q.get('days') || 7)) };

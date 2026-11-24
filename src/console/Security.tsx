@@ -72,7 +72,7 @@ function lineOf(e: SecurityEvent, i: number, ops: CatalogOp[] | null, keyNames: 
   const path = e.what.startsWith('/');
   const sw = switchText(e);
   const whoHe = !e.who ? 'כתובת לא מוכרת' : KEY_ID.test(e.who) ? keyNames.get(e.who) || 'מפתח API' : e.who;
-  const why = sw ? '' : reasonText(e.kind === 'limited' ? e.detail.split(':')[0].trim() : e.detail);
+  const why = sw ? '' : e.kind === 'console' && e.ok ? e.detail : reasonText(e.kind === 'limited' ? e.detail.split(':')[0].trim() : e.detail);
   return {
     ...e, id: e.at + '-' + i, whoHe, whatHe: sw?.text || (path ? opName(e.what, ops) || 'בקשה לשרת' : e.what), why,
     from: e.kind === 'console' ? 'קונסולה' : whoHe === 'כתובת לא מוכרת' ? 'אינטרנט' : 'מפתח API',

@@ -16,7 +16,7 @@ import { runEmail } from './email';
 import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
-import { consoleCaller, consoleCors, consoleRoute, isConsolePath } from './console';
+import { consoleCaller, consoleCors, consoleOpAt, consoleRoute, isConsolePath } from './console';
 import { CRON_GROUPS, type CronGroup, type JobRun, type MonitorState, addRound, backupTurn, cronGap, monitorStep, readGroups, readMonitorStrict, recordCron, roundOf, saveGroup } from './monitor';
 import { meter } from './meter';
 import { guardKeys, readSwitches, runCleanup } from './control';
@@ -88,6 +88,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     if (consoleSub === null) await guardKeys(env, m);
     if (consoleSub !== null) {
       if (!consoleSub.startsWith('/api/')) {
+        audit.op = consoleOpAt(m, consoleSub) || undefined;
         const c = await consoleRoute(req, env, consoleSub, caller, fs, () => readBody(req));
         log.op = c.op.name; audit.op = c.op.name; audit.body = c.logBody as Record<string, unknown> | undefined; audit.result = c.logResult ?? c.data;
         return { status: c.status, data: c.data, raw: c.raw };

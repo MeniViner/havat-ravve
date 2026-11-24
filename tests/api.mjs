@@ -1608,9 +1608,18 @@ const ilDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: '
     await conLine('cs-det-block', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-log-who', status: 'blocked' });
     await conLine('cs-det-job', 'console.jobs.run', 'הרצת משימה מתוזמנת', { id: 'cleanup' });
     await conLine('cs-det-gone', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-no-such', status: 'active' });
+    await conLine('cs-det-inv', 'invites.setRole', 'הגדרת תפקיד מראש למייל (יקבל אותו כשיירשם). guest מבטל', { email: 'new@synthetic.test', role: 'staff' });
+    await conLine('cs-det-alert', 'console.monitor.alerts', 'הגדרות התראות', { daily: true });
+    await conLine('cs-det-key', 'console.keys.expire', 'תוקף למפתח API', { id: keyId, expiresAt: null });
+    await seed('api_log', 'cs-det-del', { id: 'cs-det-del', at: new Date().toISOString(), credential: 'console', kind: 'write', op: 'people.delete', opHe: 'מחיקת אדם מהאפליקציה (בעלים בלבד)', ok: true, status: 200, ms: 5, keyLabel: 'קונסולה owner', body: JSON.stringify({ uid: 'cs-was' }), result: JSON.stringify({ deleted: { id: 'cs-was', displayName: 'יעל "שהייתה"' } }) });
+    await conLine('cs-det-was', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-was', status: 'blocked' });
+    const t0 = new Date().toISOString();
+    check((await post('/data/edit', { path: 'users/cs-log-who', fields: { phone: '1' }, updateTime: t0 })).status >= 400, 'a bad edit is refused');
+    await new Promise((r) => setTimeout(r, 900));
     await conLine('cs-det-null', 'people.setRole', 'שינוי תפקיד של אדם', null);
     const det = (await get('/security?days=1')).data?.items?.map((x) => x.what + '|' + x.detail) || [];
-    check(['שינוי תפקיד של אדם|רות לוג · מנהל/ת', 'חסימה או שחרור של אדם|רות לוג · חסימה', 'הרצת משימה מתוזמנת|ניקוי רשומות ישנות', 'חסימה או שחרור של אדם|שחרור', 'שינוי תפקיד של אדם|'].every((x) => det.includes(x)), 'the security log says who and which way, and which job', det.slice(0, 8));
+    check(['שינוי תפקיד של אדם|רות לוג · מנהל/ת', 'חסימה או שחרור של אדם|רות לוג · חסימה', 'הרצת משימה מתוזמנת|ניקוי רשומות ישנות', 'חסימה או שחרור של אדם|שחרור', 'שינוי תפקיד של אדם|', 'הגדרת תפקיד מראש למייל|new@synthetic.test · מתנדב/ת', 'הגדרות התראות|סיכום בוקר יומי: דלוק', 'תוקף למפתח API|console-week', 'מחיקת אדם מהאפליקציה|יעל "שהייתה"', 'חסימה או שחרור של אדם|יעל "שהייתה" · חסימה'].every((x) => det.includes(x)), 'the security log says who and which way, which job, email, alert and key, and the name of who was deleted', det.slice(0, 12));
+    check(det.filter((x) => x.startsWith('עריכת רשומה|')).length === 1 && !det.some((x) => x.includes('/v1/console')), 'a failed console action is in the log once, by its name', det.slice(0, 12));
 
     // the send queue
     const q0 = new Date().toISOString();

@@ -112,6 +112,8 @@ export async function ownerWalk(x) {
     check(/(הדליק|כיבה) מתג: קריאה בלבד/.test(log), 'the security log says it was turned on/off ("הדליק מתג: קריאה בלבד")', log.split('\n').filter((l) => /מתג/.test(l)).slice(0, 5));
     check(/(הדליק|כיבה) מתג: הודעות במייל לנרשמים/.test(log), 'and the broadcast switch', log.split('\n').filter((l) => /מתג/.test(l)).slice(0, 5));
     check(!/readOnly|broadcastEmailPaused/.test(log), 'no code names in the log');
+    const said = log.replace(/[\t ]+/g, ' ').split('\n');
+    for (const [what, re] of [['her role up (to a manager)', /שינוי תפקיד.*אורלי לוי.*מנהל/], ['her role down (to a volunteer)', /שינוי תפקיד.*אורלי לוי.*מתנדב/], ['her block', /חסימה או שחרור.*אורלי לוי.*· חסימה/], ['her release', /חסימה או שחרור.*אורלי לוי.*· שחרור/], ['which job was run', /הרצת משימה מתוזמנת.*בדיקת האתר והמכסה/]]) check(said.some((l) => re.test(l)), `the security log says who and which way: ${what}`, said.filter((l) => /תפקיד|חסימה|משימה/.test(l)).slice(0, 6));
     await s.shot('security-after');
   }, s);
 

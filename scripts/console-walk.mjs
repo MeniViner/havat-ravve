@@ -2,9 +2,10 @@
 // emulators, against this branch's Worker under `wrangler dev`; then the demo; then the same screens against today's
 // Worker (origin/main's api/). Every action is checked on the screen AND in Firestore or the Worker's own answer.
 //
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH node scripts/console-walk.mjs [--only=owner,demo,today] [--shots]
+//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH node scripts/console-walk.mjs [--only=owner,actions,demo,today] [--shots]
 //   WALK_SCRATCH=<folder>   logs, the built page and the Workers' state (default: $TMPDIR/console-walk)
 //   WALK_APP=<folder>       a frozen copy of the commit to walk (default: this folder), and WALK_COMMIT=<its name, for the README>
+//   WALK_STEP=<regex>       only the steps whose name matches (while writing a step)
 //   TODAY_API=<folder>      origin/main's api/ (git archive origin/main api package.json tsconfig.json | tar -x -C <dir>)
 //
 // Needs ports 8080, 9099 (emulators), 5297 (page), 18801, 18802 (Workers). Nothing reaches the live Worker or the
@@ -33,6 +34,7 @@ function check(ok, what, note) {
   return !!ok;
 }
 async function step(name, fn, s) {
+  if (process.env.WALK_STEP && !new RegExp(process.env.WALK_STEP).test(name)) return;
   stepName = name;
   try { await fn(); } catch (e) { check(false, 'ran to its end', String(e?.message || e).split('\n').slice(0, 6).join(' | ')); if (s) await s.page.screenshot({ path: path.join(E.SCRATCH, `fail-${part}-${results.length}.png`) }).catch(() => {}); }
   if (s) { const e = s.take(); if (e.length) check(false, 'no console or page errors', e.slice(0, 4).join(' || ')); await s.closeAll(); }
@@ -128,7 +130,7 @@ const site = await E.page();
 let emu, uids;
 const mail = await E.mailMock();
 const ANY = `demo-${Date.now()}`;
-if (wants('owner') || wants('today')) { emu = await E.emulators(); uids = await seed(); }
+if (wants('owner') || wants('actions') || wants('today')) { emu = await E.emulators(); uids = await seed(); }
 const b64 = (b) => Buffer.from(b).toString('base64url');
 const vapid = (await import('node:crypto')).generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ format: 'jwk' });
 const vars = {
@@ -136,10 +138,14 @@ const vars = {
   PUSH_MODE: 'webpush', VAPID_PUBLIC_KEY: b64(Buffer.concat([Buffer.from([4]), Buffer.from(vapid.x, 'base64url'), Buffer.from(vapid.y, 'base64url')])), VAPID_PRIVATE_KEY: vapid.d, VAPID_SUBJECT: 'mailto:walk@example.com',
 };
 const outbound = {};
-const ctxs = { E, check, step, until, sleep, trouble, session, openAll, counted, requests, SCREENS, PEOPLE, IL, mail, uids, OUT, setPart: (p) => { part = p; }, shots: process.argv.includes('--shots') };
+/** Something seen that is not called a fault: listed, not counted. */
+const notes = [];
+const note = (seen, what, more) => { if (seen) { notes.push({ part, step: stepName, what, more: JSON.stringify(more ?? '').slice(0, 300) }); console.log(`note [${part}] ${stepName}: ${what} · ${JSON.stringify(more ?? '').slice(0, 300)}`); } };
+const ctxs = { E, note, check, step, until, sleep, trouble, session, openAll, counted, requests, SCREENS, PEOPLE, IL, mail, uids, OUT, setPart: (p) => { part = p; }, shots: process.argv.includes('--shots') };
 
 try {
   if (wants('owner')) { const { ownerWalk } = await import('./smoke/console-owner.mjs'); const w = await E.worker({ api: path.join(E.APP, 'api'), port: 18801, name: 'branch', vars }); try { await ownerWalk({ ...ctxs, w, site }); } finally { outbound.branch = w.outbound; await E.stop(w); } }
+  if (wants('actions')) { const { moreWalk } = await import('./smoke/console-more.mjs'); const w = await E.worker({ api: path.join(E.APP, 'api'), port: 18801, name: 'actions', vars }); try { await moreWalk({ ...ctxs, w, site }); } finally { outbound.actions = w.outbound; await E.stop(w); } }
   if (wants('demo')) { const { demoWalk } = await import('./smoke/console-demo.mjs'); await demoWalk({ ...ctxs, site }); }
   if (wants('today')) {
     const api = process.env.TODAY_API;
@@ -155,7 +161,7 @@ const toMd = await import('./smoke/console-report.mjs');
 const pass = results.filter((r) => r.ok).length, fail = results.length - pass;
 const tally = (l) => Object.entries((l || []).reduce((m, x) => ({ ...m, [x]: (m[x] || 0) + 1 }), {}));
 fs.writeFileSync(path.join(E.SCRATCH, `results-${only.join('-') || 'all'}.json`), JSON.stringify({ at: new Date().toISOString(), proof: net.proof, results, requests, aborted, outbound: Object.fromEntries(Object.entries(outbound).map(([k, v]) => [k, tally(v)])) }, null, 1));
-if (!only.length) toMd.report({ OUT, results, requests, aborted, outbound: Object.fromEntries(Object.entries(outbound).map(([k, v]) => [k, tally(v)])), proof: net.proof, SCREENS });
+if (!only.length) toMd.report({ OUT, notes, results, requests, aborted, outbound: Object.fromEntries(Object.entries(outbound).map(([k, v]) => [k, tally(v)])), proof: net.proof, SCREENS });
 console.log(`\n${pass} passed, ${fail} failed`);
 console.log('aborted in the browser:', JSON.stringify(aborted));
 console.log('asked by the Worker, answered or blocked locally:', JSON.stringify(Object.fromEntries(Object.entries(outbound).map(([k, v]) => [k, tally(v)]))));
