@@ -9,6 +9,7 @@ import { nowMs } from '../app/clock';
 import { source, type CatalogOp, type SecurityEvent } from './source';
 import { useWide } from './desk/route';
 import { opTitle } from './desk/runOps';
+import { readSwitchDetail, switchVerb } from './switchNames';
 import { Btn, Chips, Col, Cols, DCard, DTag, Fact, Facts, Failed, Hist, Page, Search, Skeleton, Summary, Table, TableCard, Toolbar, saveCsv } from './desk/desk';
 
 type Filter = 'all' | SecurityEvent['kind'];
@@ -55,20 +56,11 @@ function opName(path: string, ops: CatalogOp[] | null): string | null {
 
 // ---------- what an event says, for both layouts ----------
 const SIGN_IN = 'כניסה לקונסולה';
-/** The owners' switches by name; true: the stored value says it is off. */
-const SWITCH: Record<string, [string, boolean]> = {
-  emailPaused: ['מיילים על תשלומים', true], pushPaused: ['התראות לטלפון', true], broadcastEmailPaused: ['הודעות במייל לנרשמים', true], keysStopped: ['עצירת כל המפתחות', false],
-  readOnly: ['קריאה בלבד', false], maintenance: ['הודעת תחזוקה', false], registrationClosed: ['סגירת ההרשמה', false], backupPaused: ['גיבוי לילי', true], monitorPaused: ['ניטור', true], cleanupPaused: ['ניקוי רשומות ישנות', true],
-};
-/** Which switch changed and to what, when the server says it ({"emailPaused":true} or emailPaused=true in the detail). */
-function switchText(e: SecurityEvent): string | null {
-  if (e.kind !== 'console' || !/מתג/.test(e.what)) return null;
-  const out: string[] = [];
-  for (const m of e.detail.matchAll(/"?([A-Za-z]+)"?\s*[:=]\s*"?(true|false|on|off)\b/g)) {
-    const sw = SWITCH[m[1]];
-    if (sw) out.push(`${(m[2] === 'true' || m[2] === 'on') !== sw[1] ? 'הדליק מתג' : 'כיבה מתג'}: ${sw[0]}`);
-  }
-  return out.length ? out.join(', ') : null;
+/** A switch change as מתגים says it ("הדליק מתג: הודעות במייל לנרשמים"), and why, when the owner gave a reason. */
+function switchText(e: SecurityEvent): { text: string; reason: string } | null {
+  if (e.kind !== 'console' || !e.ok || !/מתג/.test(e.what)) return null;
+  const { said, reason } = readSwitchDetail(e.detail);
+  return said.length ? { text: said.map((x) => `${switchVerb(x.on)}${x.on === null ? '' : ' מתג'}: ${x.name}`).join(', '), reason } : null;
 }
 /** How long an automatic block lasts, as the event says it ("נחסם לדקה", "נחסם ל־10 דקות"); the limiter's own minute when it does not. */
 const blockMinutes = (e: SecurityEvent) => Number(/ל־?\s?(\d+) דק/.exec(e.detail)?.[1] || 1);
@@ -82,15 +74,10 @@ function lineOf(e: SecurityEvent, i: number, ops: CatalogOp[] | null, keyNames: 
   const whoHe = !e.who ? 'כתובת לא מוכרת' : KEY_ID.test(e.who) ? keyNames.get(e.who) || 'מפתח API' : e.who;
   const why = sw ? '' : reasonText(e.kind === 'limited' ? e.detail.split(':')[0].trim() : e.detail);
   return {
-    ...e, id: e.at + '-' + i, whoHe, whatHe: sw || (path ? opName(e.what, ops) || 'בקשה לשרת' : e.what), why,
+    ...e, id: e.at + '-' + i, whoHe, whatHe: sw?.text || (path ? opName(e.what, ops) || 'בקשה לשרת' : e.what), why,
     from: e.kind === 'console' ? 'קונסולה' : whoHe === 'כתובת לא מוכרת' ? 'אינטרנט' : 'מפתח API',
-    raw: [path ? e.what : '', e.detail && e.detail !== why && !sw ? e.detail : ''].filter(Boolean).join(' · '),
+    raw: [path ? e.what : '', sw ? sw.reason : e.detail && e.detail !== why ? e.detail : ''].filter(Boolean).join(' · '),
   };
-}
-/** A sign-in that something was done in right after it is told by what was done: the full list keeps it under "בקונסולה" and in the sign-ins. */
-const VISIT_MS = 20 * 60_000;
-function withoutOpenings(lines: Line[]) {
-  return lines.filter((l) => l.what !== SIGN_IN || !lines.some((x) => x !== l && x.kind === 'console' && x.who === l.who && x.at > l.at && Date.parse(x.at) - Date.parse(l.at) < VISIT_MS));
 }
 const when = (iso: string) => { const d = daysFromToday(iso); return d === 0 ? `היום ${hhmm(iso)}` : d === -1 ? `אתמול ${hhmm(iso)}` : `${dayName(iso)} ${ddmm(iso)}`; };
 const whenFull = (iso: string) => { const d = daysFromToday(iso); return d === 0 || d === -1 ? when(iso) : `${ddmm(iso)} ${hhmm(iso)}`; };
@@ -123,7 +110,7 @@ export function SecurityScreen() {
   const items = useMemo(() => lines.filter((l) => (filter === 'all' || l.kind === filter) && (!t || [l.whoHe, l.whatHe, l.why, l.from, l.raw].some((x) => x.toLowerCase().includes(t)))), [lines, filter, t]);
   const groups = useMemo(() => {
     const out: { day: string; items: Line[] }[] = [];
-    for (const e of items) { const d = dayLabel(e.at); const g = out[out.length - 1]; if (g?.day === d) g.items.push(e); else out.push({ day: d, items: [e] }); }
+    for (const e of items) { const d = dayLabel(e.at); const g = out.find((x) => x.day === d); if (g) g.items.push(e); else out.push({ day: d, items: [e] }); }
     return out;
   }, [items]);
   const counts = log.data ? { refused: log.data.items.filter((e) => e.kind === 'refused').length, limited: log.data.items.filter((e) => e.kind === 'limited').length } : null;
@@ -132,7 +119,7 @@ export function SecurityScreen() {
   const signIns = lines.filter((l) => l.what === SIGN_IN && l.ok).slice(0, 6);
   const what = (e: Line) => (e.what.startsWith('/') ? <>{e.whatHe} <bdi className="c-raw" dir="ltr">{e.what}</bdi></> : <bdi>{e.whatHe}</bdi>);
   if (wide) {
-    const rows = log.data ? (filter === 'all' && !t ? withoutOpenings(items) : items) : null;
+    const rows = log.data ? items : null;
     const bad = counts ? counts.refused + counts.limited : 0;
     return (
       <Page group="גישה ואבטחה" title="יומן אבטחה" sub="בקשות שהשרת דחה, כתובות שנחסמו, וכל מה שנעשה בקונסולה: כניסות, מפתחות, מתגים ושחזורים"
@@ -142,16 +129,16 @@ export function SecurityScreen() {
           <Chips label="תקופה" value={String(days)} onChange={(d) => setDays(Number(d))} options={['1', '7', '30'].map((d) => ({ value: d, label: d === '1' ? 'יממה' : `${d} ימים` }))} />
         </Toolbar>
         <Cols>
-          <TableCard>
+          <TableCard style={{ containerType: 'inline-size' }}>
             <div className={log.loading && log.data ? 'da-old' : undefined}>
               <Table<Line> label="יומן אבטחה" rows={rows} rowKey={(l) => l.id} error={log.error && `לא הצלחנו לקרוא את היומן. ${log.error}`} retry={log.reload}
                 empty={t ? 'לא נמצא כלום. נסו מילה אחרת או תקופה ארוכה יותר.' : 'אין כאן כלום לתקופה הזאת.'}
                 columns={[
-                  { key: 'at', head: 'מתי', cell: (l) => <span title={whenFull(l.at)}>{when(l.at)}</span>, width: 120, soft: true },
-                  { key: 'who', head: 'מי', cell: (l) => l.whoHe, width: 180, strong: true },
-                  { key: 'what', head: 'מה', cell: (l) => <span className="da-what" title={l.raw || undefined}>{l.whatHe}{l.why && ` · ${l.why}`}</span> },
-                  { key: 'from', head: 'מאיפה', cell: (l) => l.from, width: 130, soft: true },
-                  { key: 'tag', head: '', cell: (l) => { const x = tagOf(l); return x && <span title={l.kind === 'refused' ? DENY : undefined}><DTag tone={x.tone}>{x.he}</DTag></span>; }, width: 90, align: 'end' },
+                  { key: 'at', head: 'מתי', cell: (l) => <span title={whenFull(l.at)}>{when(l.at)}</span>, width: 144, soft: true },
+                  { key: 'who', head: 'מי', cell: (l) => l.whoHe, width: 204, strong: true },
+                  { key: 'what', head: 'מה', cell: (l) => <><b className="da-under">{l.whoHe}</b><span className="da-what" title={[`${l.whatHe}${l.why ? ` · ${l.why}` : ''}`, l.raw].filter(Boolean).join('\n')}>{l.whatHe}{l.why && ` · ${l.why}`}</span></> },
+                  { key: 'from', head: 'מאיפה', cell: (l) => l.from, width: 154, soft: true },
+                  { key: 'tag', head: '', cell: (l) => { const x = tagOf(l); return x && <span title={l.kind === 'refused' ? DENY : undefined}><DTag tone={x.tone}>{x.he}</DTag></span>; }, width: 114, align: 'end' },
                 ]} />
             </div>
           </TableCard>
@@ -213,7 +200,7 @@ export function SecurityScreen() {
           <Section key={g.day} title={g.day}>
             <ListCard>
               {g.items.map((e) => (
-                <Row key={e.id} title={<><b>{e.whoHe}</b> · {what(e)}</>}
+                <Row key={e.id} className="da-prow" title={<span><b>{e.whoHe}</b> · {what(e)}</span>}
                   meta={<><span className="k-ltr">{hhmm(e.at)}</span>{e.why && <> · <span title={e.detail}>{e.why}</span></>}</>}
                   tags={<Tag tone={e.kind === 'console' && !e.ok ? 'urgent' : KIND[e.kind].tone}>{e.kind === 'console' && !e.ok ? 'נכשל' : KIND[e.kind].he}</Tag>} />
               ))}
@@ -222,7 +209,7 @@ export function SecurityScreen() {
         ))}
         {log.data && (
           <Section title={`כתובות שנחסמו ${PERIOD[days]} · ${blocks.length}`}>
-            {!!blocks.length && <ListCard>{blocks.slice(0, 5).map((l) => <Row key={l.id} title={l.whoHe} meta={`${when(l.at)} · ${l.why} · ${freed(l)}`} />)}</ListCard>}
+            {!!blocks.length && <ListCard>{blocks.slice(0, 5).map((l) => <Row key={l.id} className="da-prow" title={l.whoHe} meta={`${when(l.at)} · ${l.why} · ${freed(l)}`} />)}</ListCard>}
             <p className="c-note">חסימה אוטומטית נמשכת {block}. בקשה שנדחית לא עולה במכסה.</p>
           </Section>
         )}

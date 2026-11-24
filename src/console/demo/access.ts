@@ -29,9 +29,10 @@ const security: SecurityEvent[] = [
   ev(at('2026-11-23', '12:42'), 'limited', 'כתובת לא מוכרת', '/v1/tasks', 'יותר מדי בקשות בזמן קצר: נחסם ל־10 דקות', false),
   ev(at('2026-11-22', '18:12'), 'console', 'בני גוטמן', IN),
   ev(at('2026-11-21', '18:46'), 'console', 'מני בעלים', 'שחזור מסל המחזור'),
-  ev(at('2026-11-21', '18:40'), 'console', 'מני בעלים', IN),
-  ev(at('2026-11-20', '11:30'), 'console', 'מני בעלים', 'שינוי מתג', '{"broadcastEmailPaused":false}'),
+  ev(at('2026-11-20', '10:12'), 'console', 'מני בעלים', 'שינוי מתג', 'השהיית מיילים לנרשמים: כבוי · אחרי בדיקת המכסה של שירות המייל'),
   ev(at('2026-11-20', '09:12'), 'refused', 'מפתח ישן לניסוי', 'רשימת משימות', 'לא מחובר: the key was revoked', false),
+  // the design's table has eight rows and its list of sign-ins has this one too, so it stands after them
+  ev(at('2026-11-21', '18:40'), 'console', 'מני בעלים', IN),
   ev(at('2026-11-15', '20:04'), 'console', 'בני גוטמן', IN),
   ev(at('2026-11-12', '10:20'), 'console', 'מני בעלים', 'יצירת מפתח API'),
   ev(at('2026-11-12', '10:16'), 'console', 'מני בעלים', IN),
@@ -142,7 +143,9 @@ function write(op: string, body: Rec) {
 }
 const demoRun = (method: string, path: string, body: Rec = {}) => (method === 'GET' ? read(path) : write(path.includes('/actions/') ? path.split('/actions/')[1] : `${path.split('/')[2]}.create`, body));
 
-export const accessDemo: Pick<Source, 'keys' | 'createKey' | 'changeKey' | 'lastUse' | 'security' | 'catalog' | 'runOp' | 'keyUsage'> = {
+const ran = new Map<string, ReturnType<typeof demoRun>>();
+
+export const accessDemo: Pick<Source, 'keys' | 'createKey' | 'changeKey' | 'lastUse' | 'lastUseOf' | 'security' | 'catalog' | 'runOp' | 'keyUsage'> = {
   keys: () => wait(keys),
   createKey: async ({ label, actor, expiresAt, scopes }) => {
     const id = 'cred-demo-' + (keys.length + 1);
@@ -167,9 +170,17 @@ export const accessDemo: Pick<Source, 'keys' | 'createKey' | 'changeKey' | 'last
     }
     return wait({ id });
   },
-  lastUse: (ids) => wait(Object.fromEntries(ids.map((id) => [id, lastUse[id] ?? null]))),
+  lastUse: (ids) => wait({ at: Object.fromEntries(ids.flatMap((id) => (lastUse[id] ? [[id, lastUse[id]]] : []))), since: null }),
+  lastUseOf: (id) => wait(lastUse[id] ?? null),
   security: (days) => wait({ since: ago(days * DAY), items: security.filter((e) => DEMO_NOW - Date.parse(e.at) < days * DAY * 60_000) }),
   catalog: () => wait(demoCatalog),
-  runOp: async (method, path, body) => wait(demoRun(method, path, body)),
+  // the same request again under the same key answers as before and changes nothing, like the server
+  runOp: async (method, path, body, key) => {
+    const before = key ? ran.get(key) : undefined;
+    if (before) return wait({ ...before, json: { ...before.json, data: { ...(before.json as { data?: Rec }).data, replayed: true } } });
+    const r = demoRun(method, path, body);
+    if (key && r.status < 300) ran.set(key, r);
+    return wait(r);
+  },
   keyUsage: (id) => wait(usage[id] || { requests: 0, failed: 0, days: 7 }),
 };

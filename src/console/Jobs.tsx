@@ -8,7 +8,7 @@ import { ago, fmt, many, QRow, Section, useLoad } from './shared';
 import { collectionName, size } from './labels';
 import { errorText, source, type Job, type Switches } from './source';
 import { useWide } from './desk/route';
-import { CLEAN_HE, JobsDesk, KEEP_ACCOUNTS, lastText, roundPlan, roundsText, RoundsStrip, RoundWindow, useRound } from './desk/JobsDesk';
+import { CLEAN_HE, JobsDesk, KEEP_ACCOUNTS, lastRound, lastText, roundPlan, roundsText, RoundsStrip, RoundWindow, useRound } from './desk/JobsDesk';
 
 const PAUSE: Record<string, keyof Switches> = { email: 'emailPaused', push: 'pushPaused', monitor: 'monitorPaused', backup: 'backupPaused', cleanup: 'cleanupPaused' };
 /** What needs a yes first, and what to say. */
@@ -30,6 +30,7 @@ export function JobsScreen({ notify }: { notify: (t: string, tone?: 'info' | 'al
   const busy = round.running ? 'round' : one;
   const [ask, setAsk] = useState<Ask | null>(null);
   const d = st.data;
+  const last = d && lastRound(d);
   const pause = async (j: Job, paused: boolean) => {
     setBusy(j.id);
     try { await source.setSwitches({ [PAUSE[j.id]]: paused }); await st.reload(); notify(paused ? `${j.he}: בהשהיה` : `${j.he}: פועלת שוב`); }
@@ -67,7 +68,7 @@ export function JobsScreen({ notify }: { notify: (t: string, tone?: 'info' | 'al
           {st.loading && !d && <p className="c-soft">טוען…</p>}
           {d && (
             <div className={st.loading ? 'c-stack c-loading' : 'c-stack'}>
-              <p className="c-note">{d.cronAt ? <>הסבב האחרון: {ago(d.cronAt)}{d.cronMs !== null && <>, נמשך <bdi>{(d.cronMs / 1000).toFixed(1)}</bdi> שניות</>}</> : 'עוד לא היה סבב מאז העדכון.'}</p>
+              <p className="c-note">{last ? <>הסבב האחרון: {ago(last.at)}{last.by && `, ידנית, ${last.by}`}{last.ms !== null && <>, נמשך <bdi>{(last.ms / 1000).toFixed(1)}</bdi> שניות</>}</> : 'עוד לא היה סבב מאז העדכון.'}</p>
               <ListCard>
                 {d.jobs.map((j) => (
                   <QRow key={j.id} title={<b>{j.he}</b>} tag={j.paused ? <Tag tone="waiting">בהשהיה</Tag> : null}

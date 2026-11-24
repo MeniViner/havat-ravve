@@ -99,9 +99,9 @@ function Body({ v, busy, flip, saveText }: { v: SwitchesView; busy: boolean; fli
       {on.length > 0 && <Card pad="md" className="c-warn"><b>דלוק עכשיו:</b> {on.join(' · ')}. כל בוקר תגיע תזכורת עד שזה יכובה.</Card>}
       <Section title="מה אנשים רואים באפליקציה">
         <ListCard>
-          <Row title="מצב תחזוקה" meta="כולם חוץ מהבעלים רואים מסך תחזוקה" value={<Toggle checked={s.maintenance} onChange={(x) => flip('maintenance', x)} label="מצב תחזוקה" disabled={busy} />} />
-          <Row title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם באפליקציה (נאכף באפליקציה עצמה)" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
-          <Row title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום באפליקציה ובמפתחות. נאכף בגרסה העדכנית של האפליקציה, לא בכללי מסד הנתונים" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
+          <Row className="dn-prow" title="מצב תחזוקה" meta="כולם חוץ מהבעלים רואים מסך תחזוקה" value={<Toggle checked={s.maintenance} onChange={(x) => flip('maintenance', x)} label="מצב תחזוקה" disabled={busy} />} />
+          <Row className="dn-prow" title="הרשמה פתוחה" meta="כשסגורה, מי שאין לו חשבון לא יכול להירשם באפליקציה (נאכף באפליקציה עצמה)" value={<Toggle checked={!s.registrationClosed} onChange={(x) => flip('registrationClosed', !x)} label="הרשמה פתוחה" disabled={busy} />} />
+          <Row className="dn-prow" title="קריאה בלבד (חירום)" meta="אף אחד חוץ מהבעלים לא משנה כלום באפליקציה ובמפתחות. נאכף בגרסה העדכנית של האפליקציה, לא בכללי מסד הנתונים" value={<Toggle checked={s.readOnly} onChange={(x) => flip('readOnly', x)} label="קריאה בלבד" disabled={busy} />} />
         </ListCard>
         {s.maintenance && (
           <Card pad="lg" className="c-stack c-stack--sm">
@@ -112,23 +112,23 @@ function Body({ v, busy, flip, saveText }: { v: SwitchesView; busy: boolean; fli
       </Section>
       <Section title="שליחה">
         <ListCard>
-          <Row title="מיילים על תשלומים" meta={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחים בכלל' : s.emailPaused ? 'בהשהיה: תשלומים נכנסים לתור ונשלחים כשמדליקים' : 'נשלח לאורח כמה דקות אחרי שתשלום מסומן'}
+          <Row className="dn-prow" title="מיילים על תשלומים" meta={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחים בכלל' : s.emailPaused ? 'בהשהיה: תשלומים נכנסים לתור ונשלחים כשמדליקים' : 'נשלח לאורח כמה דקות אחרי שתשלום מסומן'}
             value={<Toggle checked={!s.emailPaused} onChange={(x) => flip('emailPaused', !x)} label="מיילים על תשלומים" disabled={busy || !emailServer} />} />
-          <Row title="התראות לטלפון" meta={!pushServer ? 'לא מוגדרות בשרת' : s.pushPaused ? 'בהשהיה: ההתראה באפליקציה מגיעה. לטלפון לא יישלח מה שחיכה יותר מ־6 שעות' : 'כל התראה באפליקציה מגיעה גם לטלפון, למי שהפעיל'}
+          <Row className="dn-prow" title="התראות לטלפון" meta={!pushServer ? 'לא מוגדרות בשרת' : s.pushPaused ? 'בהשהיה: ההתראה באפליקציה מגיעה. לטלפון לא יישלח מה שחיכה יותר מ־6 שעות' : 'כל התראה באפליקציה מגיעה גם לטלפון, למי שהפעיל'}
             value={<Toggle checked={!s.pushPaused} onChange={(x) => flip('pushPaused', !x)} label="התראות לטלפון" disabled={busy || !pushServer} />} />
-          {s.broadcastEmailPaused !== undefined && <Row title="הודעות במייל לנרשמים" meta={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחות בכלל' : s.broadcastEmailPaused ? 'בהשהיה: ההודעות מחכות בתור ונשלחות כשמדליקים' : '"לשלוח גם במייל" בהודעות לנרשמים ולכל המשתמשים'}
+          {s.broadcastEmailPaused !== undefined && <Row className="dn-prow" title="הודעות במייל לנרשמים" meta={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחות בכלל' : s.broadcastEmailPaused ? 'בהשהיה: ההודעות מחכות בתור ונשלחות כשמדליקים, אם לא עברו 12 שעות' : '"לשלוח גם במייל" בהודעות לנרשמים ולכל המשתמשים'}
             value={<Toggle checked={!s.broadcastEmailPaused} onChange={(x) => flip('broadcastEmailPaused', !x)} label="הודעות במייל לנרשמים" disabled={busy || !emailServer} />} />}
         </ListCard>
       </Section>
       <Section title="מפתחות API">
         <ListCard>
-          <Row title="כל המפתחות פעילים" meta="כיבוי עוצר את כולם בבת אחת, כולל אינסטינקט. הקונסולה ממשיכה לעבוד" value={<Toggle checked={!s.keysStopped} onChange={(x) => flip('keysStopped', !x)} label="כל המפתחות פעילים" disabled={busy} />} />
+          <Row className="dn-prow" title="כל המפתחות פעילים" meta="כיבוי עוצר את כולם בבת אחת, כולל אינסטינקט. הקונסולה ממשיכה לעבוד" value={<Toggle checked={!s.keysStopped} onChange={(x) => flip('keysStopped', !x)} label="כל המפתחות פעילים" disabled={busy} />} />
         </ListCard>
         <p className="c-note">במצב קריאה בלבד המפתחות עדיין יכולים לקרוא, אבל לא לשנות. מפתח אחד עוצרים במסך מפתחות API.</p>
       </Section>
       {!!changes.list?.length && (
         <Section title="שינויים אחרונים במתגים">
-          <ListCard>{changes.list.map((c) => <Row key={c.id} title={changeText(c)} meta={`${c.by} · ${changeWhen(c)}${c.reason ? ` · ${c.reason}` : ''}`} />)}</ListCard>
+          <ListCard>{changes.list.map((c) => <Row key={c.id} className="dn-prow" title={changeText(c)} meta={`${c.by} · ${changeWhen(c)}${c.reason ? ` · ${c.reason}` : ''}`} />)}</ListCard>
         </Section>
       )}
       {s.updatedBy && <p className="c-note">שונה לאחרונה על ידי {s.updatedBy}, {ago(s.updatedAt)}.</p>}

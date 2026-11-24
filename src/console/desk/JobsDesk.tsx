@@ -19,6 +19,10 @@ const WHEN: Record<string, string> = { email: 'כל 5 דקות', push: 'כל 5 �
 export const KEEP_ACCOUNTS = 'מחיקת חשבונות לא נעצרת מכאן: היא בקשה של המשתמש, והיא מתבצעת 30 יום אחריה.';
 const CLEANUP_TEXT = 'כל לילה, אחרי הגיבוי, רשומות טכניות ישנות עוברות לארכיון בשירות האחסון ונמחקות ממסד הנתונים, כדי שיישאר קטן וחינמי. הנתונים של החווה עצמה (משימות, אנשים, אירועים, תשלומים) לא נמחקים אף פעם.';
 
+/** "9 נשלחו, אחת נכשלה": only what there was; nothing at all is said in words, not as a zero. */
+const told = (parts: [number, string, string][]) => parts.filter(([k]) => k).map(([k, one, other]) => many(k, one, other)).join(', ') || 'לא היה מה לשלוח';
+/** The payment mails, and the messages to registrants that went with them. */
+const mails = (r: Record<string, unknown>) => n(r.sent) + n((r.broadcasts as { sent?: unknown } | undefined)?.sent);
 /** What a job's last turn did, in words. */
 export function lastText(j: Pick<Job, 'id' | 'last'>): string {
   const l = j.last;
@@ -28,8 +32,8 @@ export function lastText(j: Pick<Job, 'id' | 'last'>): string {
   if (!l.ok) { const err = String(r.error || ''); return err && !/[A-Za-z]/.test(err) ? `נכשלה: ${err}` : 'נכשלה בפעם האחרונה'; }
   if (r.nothing) return 'לא היה מה לעשות';
   switch (j.id) {
-    case 'email': return r.enabled === false ? 'כבויה בהגדרות השרת' : r.paused ? `בהשהיה. ${many(n(r.enqueued), 'מייל אחד נכנס לתור', 'נכנסו לתור')}` : `${many(n(r.sent), 'נשלח מייל אחד', 'נשלחו')}${n(r.failed) ? `, ${many(n(r.failed), 'אחד נכשל', 'נכשלו')}` : ''}${n(r.enqueued) ? `, ${many(n(r.enqueued), 'אחד נכנס לתור', 'נכנסו לתור')}` : ''}`;
-    case 'push': return r.paused ? 'בהשהיה' : r.mode === 'unset' ? 'לא מוגדרת בשרת' : r.mode === 'off' ? 'כבויה בהגדרות השרת' : `${many(n(r.delivered), 'נשלחה התראה אחת', 'נשלחו')}${n(r.failed) ? `, ${many(n(r.failed), 'אחת נכשלה', 'נכשלו')}` : ''}`;
+    case 'email': return r.enabled === false ? 'כבויה בהגדרות השרת' : r.paused ? (n(r.enqueued) ? `בהשהיה. ${many(n(r.enqueued), 'מייל אחד נכנס לתור', 'נכנסו לתור')}` : 'בהשהיה') : told([[mails(r), 'נשלח מייל אחד', 'נשלחו'], [n(r.failed), 'אחד נכשל', 'נכשלו'], [n(r.enqueued), 'אחד נכנס לתור', 'נכנסו לתור']]);
+    case 'push': return r.paused ? 'בהשהיה' : r.mode === 'unset' ? 'לא מוגדרת בשרת' : r.mode === 'off' ? 'כבויה בהגדרות השרת' : told([[n(r.delivered), 'נשלחה התראה אחת', 'נשלחו'], [n(r.failed), 'אחת נכשלה', 'נכשלו']]);
     case 'monitor': return r.health ? `בדיקה כללית: ${r.health === 'ok' ? 'הכל תקין' : 'יש מה לבדוק'}` : 'האתר נבדק';
     case 'backup': return r.done ? `הגיבוי הושלם${n(r.docs) ? `: ${fmt(n(r.docs))} רשומות` : ''}` : `בגיבוי: ${fmt(n(r.docs))} רשומות עד עכשיו`;
     case 'cleanup': return r.done ? `הסתיים: ${fmt(n(r.deleted))} רשומות עברו לארכיון ונמחקו` : `${fmt(n(r.deleted))} רשומות עד עכשיו`;
@@ -54,9 +58,17 @@ const secs = (ms: number) => Math.max(0.1, ms / 1000).toFixed(1);
 // ---------- the rounds of the last four hours ----------
 type Rounds = NonNullable<Jobs['rounds']>;
 const CELLS = 48;
+/** The last full round: the server's own, or one run from this screen since (the server's clock does not count that one). */
+export function lastRound(d: Jobs): { at: string; ms: number | null; by: string } | null {
+  const due = d.jobs.filter((j) => ['email', 'push', 'monitor'].includes(j.id) && j.canRun && !j.paused);
+  const here = due.length > 1 && due.every((j) => j.last?.by && (!d.cronAt || j.last.at > d.cronAt));
+  if (here) return { at: due.map((j) => j.last!.at).sort().at(-1)!, ms: due.reduce((s, j) => s + j.last!.ms, 0), by: due[0].last!.by! };
+  return d.cronAt ? { at: d.cronAt, ms: d.cronMs, by: '' } : null;
+}
 export const roundsAside = (d: Jobs) => {
-  const last = d.rounds?.items.at(-1);
-  return [d.cronAt ? `הסבב האחרון: ${ago(d.cronAt)}` : 'עוד לא היה סבב מאז העדכון', d.cronMs !== null && d.cronAt ? `נמשך ${(d.cronMs / 1000).toFixed(1)} שניות` : '', last?.used != null ? `${fmt(last.used)} מתוך ${fmt(d.rounds!.limit)} פניות` : ''].filter(Boolean).join(' · ');
+  const r = lastRound(d);
+  const last = r?.by ? undefined : d.rounds?.items.at(-1);
+  return [r ? `הסבב האחרון: ${ago(r.at)}${r.by ? `, ידנית, ${r.by}` : ''}` : 'עוד לא היה סבב מאז העדכון', r?.ms != null ? `נמשך ${(r.ms / 1000).toFixed(1)} שניות` : '', last?.used != null ? `${fmt(last.used)} מתוך ${fmt(d.rounds!.limit)} פניות` : ''].filter(Boolean).join(' · ');
 };
 export const failedRounds = (r: Rounds) => r.items.filter((x) => !x.ok).length;
 export function roundsText(r: Rounds, jobs: Job[]): string {

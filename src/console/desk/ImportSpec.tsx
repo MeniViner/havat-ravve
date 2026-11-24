@@ -139,6 +139,14 @@ function middle(places: Known[]): { lat: number; lng: number } | null {
   return { lat: avg((p) => p.lat!), lng: avg((p) => p.lng!) };
 }
 
+/** What an undo did: how many went, and how many stayed because someone already changed them. */
+export function undoneText(kind: Kind, removed: number, kept: number): string {
+  const she = kind === 'tasks';
+  const out = !removed ? 'שום דבר לא הוסר' : removed === 1 ? (she ? 'משימה אחת הוסרה' : 'פריט אחד הוסר') : `${fmt(removed)} הוסרו`;
+  return out + (!kept ? '' : kept === 1 ? (she ? ', אחת נשארה כי כבר שינו אותה באפליקציה' : ', אחד נשאר כי כבר שינו אותו באפליקציה') : `, ${fmt(kept)} נשארו כי כבר שינו ${she ? 'אותן' : 'אותם'} באפליקציה`);
+}
+/** "נוספה משימה אחת" / "נוספו 12 פריטים" */
+export const addedText = (kind: Kind, n: number) => (n === 1 ? (kind === 'tasks' ? 'נוספה משימה אחת' : 'נוסף פריט אחד') : `נוספו ${fmt(n)} ${kind === 'tasks' ? 'משימות' : 'פריטים'}`);
 export type Outcome = { n: number; ok: boolean; replayed: boolean; error: string; id: string };
 const dupKey = (c: Checked) => JSON.stringify([norm(String(c.body.title)), c.body.dueDate || '', norm(c.place)]);
 
@@ -147,11 +155,19 @@ export function useImport(notify: Notify) {
   const [text, setTextState] = useState('');
   const [fixes, setFixes] = useState<Record<string, string>>({});
   const [overrides, setOverrides] = useState<Record<string, number>>({});
-  const [skipDups, setSkipDups] = useState(false);
+  // a row that repeats something is left out until the owner says otherwise
+  const [skipDups, setSkipDups] = useState(true);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [outcomes, setOutcomes] = useState<Outcome[] | null>(null);
   const [batch, setBatch] = useState<ImportBatch | null>(null);
-  const reset = () => { setOutcomes(null); setBatch(null); setOverrides({}); setFixes({}); setSkipDups(false); };
+  const [undone, setUndone] = useState<{ removed: number; kept: number } | null>(null);
+  // after an import (or undoing one) what is open in the app has changed: asked again with the next rows
+  const [epoch, setEpoch] = useState(0);
+  const moved = useRef(false);
+  const reset = () => {
+    setOutcomes(null); setBatch(null); setUndone(null); setOverrides({}); setFixes({}); setSkipDups(true);
+    if (moved.current) { moved.current = false; asked.current.delete('tasks'); asked.current.delete('shopping'); setOpenTitles(null); setEpoch((x) => x + 1); }
+  };
   const setText = (t: string) => { setTextState(t); reset(); };
   const setKind = (k: Kind) => { setKindState(k); reset(); };
 
@@ -186,7 +202,7 @@ export function useImport(notify: Notify) {
     if (!ready || asked.current.has(kind)) return;
     asked.current.add(kind);
     source.dataDocs(kind).then((r) => setOpenTitles({ kind, titles: new Set(r.items.filter((x) => x.fields && x.fields.done !== true && x.fields.bought !== true).map((x) => norm(x.title))) })).catch(() => setOpenTitles({ kind, titles: new Set() }));
-  }, [ready, kind]);
+  }, [ready, kind, epoch]);
   const wantPlaces = kind === 'tasks' && map.place >= 0 && ready;
   useEffect(() => {
     if (!wantPlaces || asked.current.has('places')) return;
@@ -205,8 +221,8 @@ export function useImport(notify: Notify) {
     }
     return out;
   }, [checked, openTitles, kind]);
-  const valid = checked.filter((c) => !c.error);
-  const good = skipDups ? valid.filter((c) => !dups.has(c.n)) : valid;
+  // what will enter: the valid rows, without the repeats (unless the owner wants them in)
+  const good = checked.filter((c) => !c.error && !(skipDups && dups.has(c.n)));
   const bad = checked.filter((c) => c.error);
   const centre = useMemo(() => (places ? middle(places) : null), [places]);
   const byName = useMemo(() => new Map((places || []).map((p) => [norm(p.name), p])), [places]);
@@ -244,6 +260,9 @@ export function useImport(notify: Notify) {
       } catch { /* its rows say so below */ }
     }
     if (made.length) setPlaces((x) => [...(x || []), ...made]);
+    // after an import of this kind was undone its rows are new again, not a repeat the server would skip
+    const cancelled = (imports.data || []).filter((b) => b.undone && b.kind === kind).sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+    const again = cancelled ? '\n' + cancelled.id : '';
     // identical rows stay apart by how many times the same row came before
     const seen = new Map<string, number>();
     const seedOf = new Map<number, string>();
@@ -251,7 +270,7 @@ export function useImport(notify: Notify) {
       const base = kind + '\n' + JSON.stringify([...Object.keys(c.body).sort().map((k) => [k, c.body[k]]), ...(c.place ? [['place', norm(c.place)]] : [])]);
       const i = seen.get(base) || 0;
       seen.set(base, i + 1);
-      seedOf.set(c.n, base + '\n' + i);
+      seedOf.set(c.n, base + '\n' + i + again);
     }
     // three at a time: quick, and far below the server's 240 a minute
     for (let i = 0; i < good.length; i += 3) {
@@ -274,9 +293,10 @@ export function useImport(notify: Notify) {
     let saved: ImportBatch | null = null;
     const ids = fresh.map((o) => o.id).filter(Boolean);
     if (ids.length) { try { saved = await source.saveImport(kind, ids); } catch { /* the rows are in; only the undo is missing */ } }
-    setOutcomes(out); setProgress(null); setBatch(saved);
+    setOutcomes(out); setProgress(null); setBatch(saved); setUndone(null);
+    moved.current = true;
     imports.reload();
-    notify(fresh.length ? `נוספו ${count(fresh.length)}` : 'לא נוסף שום דבר חדש', fresh.length ? 'info' : 'alert');
+    notify(fresh.length ? addedText(kind, fresh.length) : 'לא נוסף שום דבר חדש', fresh.length ? 'info' : 'alert');
   };
   const undo = async (b: ImportBatch) => {
     try {
@@ -287,20 +307,30 @@ export function useImport(notify: Notify) {
         removed += r.removed; kept += r.kept;
         if (!r.left) break;
       }
-      setBatch((x) => (x?.id === b.id ? { ...x, undone: true } : x));
-      notify(`הייבוא בוטל: ${fmt(removed)} הוסרו${kept ? `, ${fmt(kept)} נשארו כי כבר שינו אותן באפליקציה` : ''}`);
+      if (batch?.id === b.id) { setBatch({ ...b, undone: true }); setUndone({ removed, kept }); }
+      moved.current = true;
+      notify(`הייבוא בוטל: ${undoneText(b.kind, removed, kept)}`);
     } catch (e) { notify(errorText(e), 'alert'); }
     finally { imports.reload(); }
   };
   const undoable = (b: ImportBatch) => !b.undone && Date.parse(b.undoUntil) > nowMs();
+  const noPlace = good.filter((c) => c.place && !byName.has(norm(c.place))).length;
   const placesText = !named.length ? 'בלי' : !places ? 'בודק…'
     : !newPlaces.length ? 'כולם כבר קיימים'
-      : !centre ? `${newPlaces.length === 1 ? 'מקום אחד לא קיים' : `${fmt(newPlaces.length)} מקומות לא קיימים`}, השורות ייכנסו בלי מקום`
+      : !centre ? `${newPlaces.length === 1 ? 'מקום אחד לא קיים' : `${fmt(newPlaces.length)} מקומות לא קיימים`}, ${noPlace === 1 ? 'השורה שלו תיכנס' : 'השורות האלה ייכנסו'} בלי מקום`
         : newPlaces.length === 1 ? 'מקום חדש אחד ייווצר' : `${fmt(newPlaces.length)} מקומות חדשים ייווצרו`;
-  const askText = `${kind === 'tasks' ? 'הן ייכנסו' : 'הם ייכנסו'} ל${kind === 'tasks' ? 'משימות' : 'רשימת הקניות'} באפליקציה עכשיו.${kind === 'shopping' && good.some((c) => c.body.urgent) ? ' על הפריטים הדחופים כל הצוות יקבל התראה.' : ''}${newPlaces.length && centre ? ` ייווצרו גם המקומות: ${newPlaces.join(', ')}. הם יסומנו באמצע החווה, ואת המיקום המדויק קובעים באפליקציה.` : ''} אם תייבאו שוב אותן שורות, גם אחרי תיקון, מה שכבר נכנס לא ייכנס פעמיים.`;
+  const urgent = kind === 'shopping' ? good.filter((c) => c.body.urgent).length : 0;
+  const enter = good.length === 1 ? (kind === 'tasks' ? 'היא תיכנס' : 'הוא ייכנס') : kind === 'tasks' ? 'הן ייכנסו' : 'הם ייכנסו';
+  const skipped = skipDups ? dups.size : 0;
+  const skippedText = !skipped ? '' : skipped === 1 ? ' שורה אחת שכבר קיימת תידלג.' : ` ${fmt(skipped)} שורות שכבר קיימות יידלגו.`;
+  const askText = `${enter} ל${kind === 'tasks' ? 'משימות' : 'רשימת הקניות'} באפליקציה עכשיו.${skippedText}${urgent ? ` על ${urgent === 1 ? 'הפריט הדחוף' : 'הפריטים הדחופים'} כל הצוות יקבל התראה.` : ''}${newPlaces.length && centre ? (newPlaces.length === 1 ? ` ייווצר גם המקום ${newPlaces[0]}. הוא יסומן באמצע החווה, ואת המיקום המדויק קובעים באפליקציה.` : ` ייווצרו גם המקומות: ${newPlaces.join(', ')}. הם יסומנו באמצע החווה, ואת המיקום המדויק קובעים באפליקציה.`) : ''} אם תייבאו שוב ${good.length === 1 ? 'את אותה שורה' : 'אותן שורות'}, גם אחרי תיקון, מה שכבר נכנס לא ייכנס פעמיים.`;
+  /** The line about repeats, with the count said right. */
+  const dupsText = !dups.size ? 'לא נמצאו' : dups.size === 1 ? (skipDups ? 'שורה אחת תידלג' : 'שורה אחת תיכנס שוב') : skipDups ? `${fmt(dups.size)} שורות יידלגו` : `${fmt(dups.size)} שורות ייכנסו שוב`;
+  const dupsAct = skipDups ? (dups.size === 1 ? 'להכניס גם אותה' : 'להכניס גם אותן') : dups.size === 1 ? 'לדלג עליה' : 'לדלג עליהן';
+  const undoText = (b: ImportBatch) => `${b.count === 1 ? (b.kind === 'tasks' ? 'המשימה מהייבוא הזה תוסר' : 'הפריט מהייבוא הזה יוסר') : `${fmt(b.count)} ${b.kind === 'tasks' ? 'המשימות' : 'הפריטים'} מהייבוא הזה יוסרו`}. מה שכבר שינו באפליקציה נשאר, וגם מקומות שנוצרו נשארים.`;
   return {
-    kind, setKind, text, setText, fields, header, map, columns, colName, total, data, checked, valid, good, bad, dups, skipDups, setSkipDups, fix, fieldOf, setField, setColumn,
-    noun, count, loadFile, progress, outcomes, batch, run, imports, canUndo, undo, undoable, newPlaces, centre, placesText, askText, titled: map.title >= 0, reset: () => setText(''),
+    kind, setKind, text, setText, fields, header, map, columns, colName, total, data, checked, good, bad, dups, skipDups, setSkipDups, fix, fieldOf, setField, setColumn,
+    noun, count, loadFile, progress, outcomes, batch, run, imports, canUndo, undo, undoable, newPlaces, centre, placesText, askText, undoText, dupsText, dupsAct, undone, titled: map.title >= 0, reset: () => setText(''),
     added: (outcomes || []).filter((o) => o.ok && !o.replayed).length, replayed: (outcomes || []).filter((o) => o.replayed).length, failed: (outcomes || []).filter((o) => !o.ok).length,
   };
 }

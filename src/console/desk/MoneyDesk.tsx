@@ -12,11 +12,11 @@ const SHORT_MONTH = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'י
 const monthAt = (ym: string) => Number(ym.slice(5, 7)) - 1;
 
 const COLS: Column<Debt>[] = [
-  { key: 'who', head: 'מי', strong: true, cell: (d) => d.who || 'בלי שם' },
-  { key: 'what', head: 'על מה', cell: (d) => `${KIND[d.kind]} · ${d.what}` },
-  { key: 'since', head: 'ממתי', width: 110, soft: true, cell: (d) => sinceText(d.since) },
-  { key: 'state', head: 'מצב', width: 130, cell: (d) => <DTag tone={d.claimed ? 'amber' : 'neutral'}>{debtState(d)}</DTag> },
-  { key: 'sum', head: 'סכום', width: 80, align: 'end', strong: true, cell: (d) => ils(d.amount) },
+  { key: 'who', head: 'מי', strong: true, cell: (d) => <><span className="df-clip" title={d.who}>{d.who || 'בלי שם'}</span><span className="df-under">{KIND[d.kind]} · {d.what}</span></> },
+  { key: 'what', head: 'על מה', cell: (d) => { const t = `${KIND[d.kind]} · ${d.what}`; return <span className="df-clip" title={t}>{t}</span>; } },
+  { key: 'since', head: 'ממתי', width: 134, soft: true, cell: (d) => sinceText(d.since) },
+  { key: 'state', head: 'מצב', width: 154, cell: (d) => <><DTag tone={d.claimed ? 'amber' : 'neutral'}>{debtState(d)}</DTag><span className="df-under">מאז {sinceText(d.since)}</span></> },
+  { key: 'sum', head: 'סכום', width: 104, align: 'end', strong: true, cell: (d) => ils(d.amount) },
 ];
 
 export function MoneyDesk({ st, days, setDays }: { st: { data: Stats | null; loading: boolean; error: string | null; reload: () => void }; days: number; setDays: (d: number) => void }) {

@@ -30,6 +30,12 @@
 .df-pay { display: flex; flex-direction: column; } .df-pay > .d-table { min-height: 0; overflow: auto; max-height: max(230px, calc(100dvh - 520px)); }
 /* the sum stays in sight when the table is wider than its card */
 .df-pay th:last-child, .df-pay td:last-child { position: sticky; inset-inline-end: 0; background: var(--surface); } .df-pay th:last-child { z-index: 2; }
+.df-clip { display: block; overflow: hidden; text-overflow: ellipsis; } .df-under { display: none; font-size: 12px; font-weight: 400; color: var(--soft); white-space: normal; }
+/* a narrow table: what it is for goes under the name, then since when under the state */
+.df-pay { container-type: inline-size; }
+@container (max-width: 640px) { .df-pay :is(th, td) { width: auto !important; padding-inline: 8px; } .df-pay td:first-child { max-width: 130px; } .df-pay :is(th, td):nth-child(2) { width: 100% !important; max-width: 0; } }
+@container (max-width: 500px) { .df-pay :is(th, td):nth-child(2) { display: none; } .df-pay :is(th, td):first-child { width: 100% !important; max-width: 0; } .df-pay td:first-child .df-under { display: block; } }
+@container (max-width: 400px) { .df-pay :is(th, td):nth-child(3) { display: none; } .df-pay td:nth-child(4) .df-under { display: block; } .df-pay :is(th, td) { padding-inline: 6px; } }
 .df-funnel { display: flex; flex-direction: column; gap: 10px; }
 .df-funnel__step { display: flex; flex-direction: column; gap: 4px; } .df-funnel__head { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; } .df-funnel__head b { font-variant-numeric: tabular-nums; }
 .df-funnel__track { display: block; height: 8px; border-radius: 3px; background: var(--bg); } .df-funnel__track span { display: block; height: 8px; border-radius: 3px; background: var(--selected); }

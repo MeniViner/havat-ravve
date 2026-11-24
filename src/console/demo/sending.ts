@@ -45,8 +45,8 @@ const sent: QueueSent[] = [
   { id: 'n_visit3', type: 'push', kind: 'system', who: 'מנהלים', what: 'בקשת ביקור חדשה', to: 5, attempts: 1, at: at(yesterday, '09:48') },
 ];
 const mails: Record<string, QueueEmailView> = {
-  donation_x81: { id: 'donation_x81', to: 'levi.fam@demo.invalid', subject: 'קיבלנו את התרומה שלך', text: 'שלום משפחת לוי, קיבלנו 180 ₪, עשר פעמים חי. תודה מכל הלב. חוות רווה', uid: 'd-matan', amount: 180, by: 'בני', createdAt: at(today, '13:10'), lastAttemptAt: at(today, '13:36'), providerSaid: 'אין תיבה כזאת' },
-  tab_p02: { id: 'tab_p02', to: 'honey@demo.invalid', subject: 'אישור תשלום מחוות רווה', text: 'שלום דוכן הדבש, קיבלנו את התשלום בסך 340 ₪ עבור חשבון הדוכן. תודה מחוות רווה!', uid: 'd-raz', amount: 340, by: 'מתן', createdAt: at(yesterday, '18:08'), lastAttemptAt: at(yesterday, '18:14'), providerSaid: 'אין תיבה כזאת' },
+  donation_x81: { id: 'donation_x81', to: 'levi.fam@demo.invalid', subject: 'קיבלנו את התרומה שלך', text: 'שלום משפחת לוי, קיבלנו 180 ₪, עשר פעמים חי. תודה מכל הלב. חוות רווה', uid: 'd-levi', amount: 180, by: 'בני', createdAt: at(today, '13:10'), lastAttemptAt: at(today, '13:36'), providerSaid: 'אין תיבה כזאת' },
+  tab_p02: { id: 'tab_p02', to: 'honey@demo.invalid', subject: 'אישור תשלום מחוות רווה', text: 'שלום דוכן הדבש, קיבלנו את התשלום בסך 340 ₪ עבור חשבון הדוכן. תודה מחוות רווה!', uid: 'd-honey', amount: 340, by: 'מתן', createdAt: at(yesterday, '18:08'), lastAttemptAt: at(yesterday, '18:14'), providerSaid: 'אין תיבה כזאת' },
   order_k3h2: { id: 'order_k3h2', to: 'michal@demo.invalid', subject: 'אישור תשלום מחוות רווה', text: 'שלום מיכל אברהם, קיבלנו את התשלום בסך 120 ₪ עבור 2 כרטיסים לחג האסיף. תודה מחוות רווה!', uid: 'd-michal', amount: 120, by: 'בני', createdAt: ago(2), lastAttemptAt: null, providerSaid: '' },
   order_n41: { id: 'order_n41', to: 'noga@demo.invalid', subject: 'אישור תשלום מחוות רווה', text: 'שלום נגה ברק, קיבלנו את התשלום בסך 240 ₪ עבור 4 כרטיסים לחג האסיף. תודה מחוות רווה!', uid: 'd-noga', amount: 240, by: 'בני', createdAt: at(today, '16:14'), lastAttemptAt: at(today, '16:20'), providerSaid: '' },
   donation_t90: { id: 'donation_t90', to: 'noam@demo.invalid', subject: 'קיבלנו את התרומה שלך', text: 'שלום נועם אדרי, קיבלנו 360 ₪. תודה מכל הלב. חוות רווה', uid: '', amount: 360, by: 'בני', createdAt: at(yesterday, '10:57'), lastAttemptAt: at(yesterday, '11:02'), providerSaid: '' },
@@ -84,6 +84,18 @@ const rest: Omit<Jobs, 'jobs'> = {
   },
   archive: { collections: [{ collection: 'api_idempotency', files: 4, bytes: 182_000 }, { collection: 'push_jobs', files: 2, bytes: 64_000 }, { collection: 'api_failures', files: 1, bytes: 3_100 }] },
 };
+/** A whole round run from the screen joins the rounds: the 5-minute jobs that are on, one after the other. */
+let inRound: string[] = [];
+function roundMoved(id: string) {
+  const due = ['email', 'push', 'monitor'].filter((x) => !demoSwitches[PAUSE[x]]);
+  if (id === due[0]) inRound = [];
+  if (due.includes(id) && !inRound.includes(id)) inRound.push(id);
+  if (id !== due[due.length - 1] || inRound.length !== due.length) return;
+  const ms = due.reduce((s, x) => s + (jobs.find((j) => j.id === x)!.last?.ms || 0), 0);
+  inRound = [];
+  rounds.items = [...rounds.items, { at: ago(0), ok: true, ms, used: 18 }].slice(-48);
+  Object.assign(rest, { cronAt: ago(0), cronMs: ms });
+}
 /** What a job answers when it is run from the demo's screen; the queue moves with it. */
 function runDemo(id: string): Record<string, unknown> {
   if (id === 'email') {
@@ -132,6 +144,7 @@ export const sendingDemo: Pick<Source, 'switches' | 'setSwitches' | 'queue' | 'e
     const result = runDemo(id);
     const j = jobs.find((x) => x.id === id)!;
     j.last = { at: ago(0), ms: (j.last?.ms || 400) + 60, ok: true, result, by: 'מני בעלים' } satisfies JobRun;
+    roundMoved(id);
     return wait({ id, result });
   },
   queueEmail: (id) => wait(mails[id] || null),

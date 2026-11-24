@@ -1,6 +1,6 @@
 // תור שליחה on a computer (K11): one table for mail and push, and beside it the chosen one: why it failed, the message
 // itself, send again / do not send. The words and the message's details are shared with the phone screen (Queue.tsx).
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { daysFromToday, dayTime, hhmm } from '../../app/v2/format';
 import { ago, fmt } from '../shared';
 import { errorText, source, type Queue, type QueueEmail, type QueueEmailView, type QueuePush, type QueueSent } from '../source';
@@ -83,6 +83,23 @@ export function useMail(l: QLine | null): [MailState, Record<string, number | nu
   return [{ view: key ? views[key] ?? null : null, loading: !!key && !have && !err, error: err, retry: () => setN((x) => x + 1) }, amounts];
 }
 
+/** The person's card, opened once it is sure there is one: an id nobody has would open whoever is first in the list. */
+function PersonLink({ uid, children }: { uid: string; children: ReactNode }) {
+  const [gone, setGone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const href = toTab('people', uid);
+  const open = async (ev: MouseEvent) => {
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+    ev.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    const people = await source.people().catch(() => null);
+    setBusy(false);
+    if (people && !people.some((p) => p.uid === uid)) setGone(true); else location.hash = href;
+  };
+  return <div className="dn-card">{gone ? <span role="status">אין כרטיס לאדם הזה במסך אנשים והרשאות.</span> : <Act href={href} onClick={open}>{children}</Act>}</div>;
+}
+
 /** What the panel (and the phone's sheet) says about one line, without its title and actions. */
 export function LineDetail({ l, mail }: { l: QLine; mail: MailState }) {
   const { e, p, s } = l;
@@ -127,13 +144,18 @@ export function LineDetail({ l, mail }: { l: QLine; mail: MailState }) {
       {mail.loading ? <div className="dn-mail"><Skeleton lines={3} /></div>
         : mail.error ? <Failed text={`לא הצלחנו להציג את המייל. ${mail.error}`} retry={mail.retry} />
         : v && (v.subject || v.text) ? <div className="dn-mail"><b>{v.subject}</b><p>{v.text}</p></div> : null}
-      {v?.uid && <div className="dn-card"><Act href={toTab('people', v.uid)}>{e && ADDRESS.has(e.reason) ? 'לכרטיס של האדם, לתקן את הכתובת' : 'לכרטיס של האדם'}</Act></div>}
+      {v?.uid && <PersonLink key={v.uid} uid={v.uid}>{e && ADDRESS.has(e.reason) ? 'לכרטיס של האדם, לתקן את הכתובת' : 'לכרטיס של האדם'}</PersonLink>}
     </>
   );
 }
 
+/** Whether it can still be stopped (a sent one, or one on its way out, cannot). */
+const canDrop = (l: QLine) => l.state !== 'sent' && (!!l.p || l.e?.status !== 'sending');
+
 // ---------- the page ----------
 type State = 'all' | 'failed' | 'waiting' | 'sent';
+/** Every state, of one kind only: "הכל" is not what is shown, and pressing it shows everything again. */
+const ONE_KIND = 'kind';
 const NONE: Record<State, string> = {
   all: 'אין מיילים או התראות שמחכים או נכשלו. כל מייל על תשלום יוצא תוך כמה דקות.',
   failed: 'שום דבר לא נכשל.', waiting: 'שום דבר לא מחכה. מיילים והתראות יוצאים בסבב של כל 5 דקות.', sent: 'היום עוד לא נשלח כלום.',
@@ -153,16 +175,17 @@ export function QueueDesk({ d, error, loading, reload, busy, retry, drop, previe
   const l = rows?.find((x) => x.key === sel) || null;
   const [mail, known] = useMail(l);
   useEffect(() => setAmounts(known), [known]);
-  const count = (s: QLine['state']) => all?.filter((x) => x.state === s).length ?? 0;
-  const states: { value: State; label: ReactNode }[] = [
+  // the counts follow the kind that is chosen
+  const count = (s: QLine['state']) => all?.filter((x) => x.state === s && (!type || x.type === type)).length ?? 0;
+  const states: { value: State | typeof ONE_KIND; label: ReactNode }[] = [
     { value: 'all', label: 'הכל' },
     { value: 'failed', label: d ? `נכשלו · ${fmt(count('failed'))}` : 'נכשלו' },
     { value: 'waiting', label: d ? `מחכים · ${fmt(count('waiting'))}` : 'מחכים' },
-    ...(d?.sent ? [{ value: 'sent' as const, label: `נשלחו היום · ${fmt(d.sentToday ?? all!.filter((x) => x.state === 'sent' && x.today).length)}` }] : []),
+    ...(d?.sent ? [{ value: 'sent' as const, label: `נשלחו היום · ${fmt((!type ? d.sentToday : undefined) ?? all!.filter((x) => x.state === 'sent' && x.today && (!type || x.type === type)).length)}` }] : []),
   ];
   const columns: Column<QLine>[] = [
     { key: 'type', head: 'סוג', width: 114, soft: true, cell: (x) => (x.type === 'email' ? 'מייל' : 'התראה') },
-    { key: 'who', head: 'למי', width: 194, strong: true, cell: (x) => x.who },
+    { key: 'who', head: 'למי', width: 194, strong: true, cell: (x) => <><span className="dn-what" title={x.who}>{x.who}</span><span className="dn-under">{x.type === 'email' ? 'מייל' : 'התראה'} · {x.what}</span></> },
     { key: 'what', head: 'על מה', cell: (x) => <span className="dn-what" title={x.what}>{x.what}</span> },
     { key: 'state', head: 'מצב', width: 114, cell: (x) => <DTag tone={x.tone}>{x.tag}</DTag> },
     { key: 'tries', head: 'ניסיונות', width: 104, align: 'end', cell: (x) => fmt(x.tries) },
@@ -172,22 +195,22 @@ export function QueueDesk({ d, error, loading, reload, busy, retry, drop, previe
     <Page group="שליחה ותזמון" title="תור שליחה" sub={d && !d.sent ? 'מיילים והתראות לטלפון שמחכים או שנכשלו' : 'מיילים והתראות לטלפון שמחכים, שנכשלו ושנשלחו'}
       actions={<><Btn icon="refresh" onClick={reload} disabled={loading}>רענון</Btn><Btn onClick={preview}>הצגת תבנית המייל</Btn></>}>
       <Toolbar end={d?.daily && <span className="dn-daily">המכסה היומית של המייל: {fmt(d.daily.used)} מתוך {fmt(d.daily.limit)}</span>}>
-        <Chips label="מצב" options={states} value={state} onChange={setState} />
+        <Chips label="מצב" options={states} value={state === 'all' && type ? ONE_KIND : state} onChange={(v) => { if (v === ONE_KIND) return; setState(v); if (v === 'all') setType(''); }} />
         <Chips label="סוג" options={[{ value: 'email', label: 'מיילים' }, { value: 'push', label: 'התראות' }]} value={type} onChange={(v) => setType(v === type ? '' : v)} />
       </Toolbar>
       {d?.switches.emailPaused && <div className="dn-fixed"><Notice icon="mail"><span>המיילים בהשהיה. תשלומים נכנסים לתור ונשלחים כשמדליקים. <Act href={toTab('switches')}>למתגים</Act></span></Notice></div>}
       {d?.switches.pushPaused && <div className="dn-fixed"><Notice icon="bell"><span>ההתראות לטלפון בהשהיה. <Act href={toTab('switches')}>למתגים</Act></span></Notice></div>}
       {d && !d.email.on && <div className="dn-fixed"><Notice icon="mail">המיילים כבויים בהגדרות השרת, אז כלום לא נשלח מכאן.</Notice></div>}
       <Cols>
-        <div className="dn-queue"><TableCard>
+        <div className="dn-queue"><TableCard style={{ containerType: 'inline-size' }}>
           <Table label="תור שליחה" columns={columns} rows={rows} rowKey={(x) => x.key} selected={sel} onSelect={select} loading={loading}
-            onEnter={(x) => { if (x.state === 'failed' && x.e && !busy) retry(x.e); }}
-            error={error && `לא הצלחנו לקרוא את התור. ${error}`} retry={reload} empty={NONE[state]} />
+            onEnter={(x) => { if (busy === x.key || x.state === 'sent') return; if (x.state === 'failed' && x.e) retry(x.e); else if (canDrop(x)) drop(x); }}
+            error={error && `לא הצלחנו לקרוא את התור. ${error}`} retry={reload} empty={type ? 'אין כאן כלום מהסוג הזה.' : NONE[state]} />
           {hidden > 0 && <p className="dn-more"><Act onClick={() => setState('sent')}>{hidden === 1 ? 'ועוד התראה אחת לאדם אחד שנשלחה' : `ועוד ${fmt(hidden)} התראות לאדם אחד שנשלחו`}</Act></p>}
         </TableCard></div>
         {!d && !error ? <LoadingPanel /> : !l ? <EmptyPanel>{rows?.length ? 'בחרו שורה כדי לראות את ההודעה.' : 'כאן תופיע ההודעה שתבחרו.'}</EmptyPanel> : (
           <Panel label="ההודעה שנבחרה" title={lineTitle(l)} sub={lineSub(l)}
-            footer={l.state !== 'sent' && (l.p || l.e?.status !== 'sending') ? (
+            footer={canDrop(l) ? (
               <>
                 {l.state === 'failed' && <Btn kind="primary" icon="refresh" disabled={busy === l.key} onClick={() => retry(l.e!)}>שליחה שוב</Btn>}
                 <Btn disabled={busy === l.key} onClick={() => drop(l)}>לא לשלוח</Btn>

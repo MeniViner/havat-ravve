@@ -44,16 +44,22 @@
 
 /* a narrow window: the words wrap, so that the state (and the actions) stay in sight */
 @media (min-width: 1024px) and (max-width: 1279px) {
-  .dn-jobs th, .dn-jobs td, .dn-queue th, .dn-queue td { padding-inline: 8px; white-space: normal; }
+  .dn-jobs th, .dn-jobs td { padding-inline: 8px; white-space: normal; }
   .dn-jobs .d-act, .dn-none { white-space: nowrap; } .dn-do { gap: 8px; }
-  .dn-jobs th, .dn-queue th, .dn-bottom th, .dn-changes th { width: auto !important; }
+  .dn-jobs th, .dn-bottom th, .dn-changes th { width: auto !important; }
   .dn-bottom td { white-space: normal; }
   .dn-bottom > .d-card:last-child { width: 272px !important; }
   .dn-sw__row { gap: 8px; } .dn-sw__end { gap: 6px; }
 }
-@media (min-width: 1024px) and (max-width: 1180px) {
-  .dn-queue table { table-layout: fixed; width: 524px; }
-  .dn-queue th:nth-child(1) { width: 60px !important; } .dn-queue th:nth-child(2) { width: 88px !important; } .dn-queue th:nth-child(3) { width: 118px !important; }
-  .dn-queue th:nth-child(4) { width: 72px !important; } .dn-queue th:nth-child(5) { width: 80px !important; } .dn-queue th:nth-child(6) { width: 106px !important; }
-  .dn-queue .d-tag { padding: 1px 5px; }
+/* the queue's table, by its own width: the message's line gives way, then goes under the name */
+.dn-under { display: none; font-size: 12px; font-weight: 400; color: var(--soft); white-space: normal; }
+@container (max-width: 640px) {
+  .dn-queue :is(th, td) { width: auto !important; padding-inline: 8px; } .dn-queue td:nth-child(2) { max-width: 120px; } .dn-queue :is(th, td):nth-child(3) { width: 100% !important; max-width: 0; }
 }
+@container (max-width: 480px) {
+  .dn-queue :is(th, td):is(:nth-child(1), :nth-child(3)) { display: none; } .dn-queue :is(th, td):nth-child(2) { width: 100% !important; max-width: 0; } .dn-under { display: block; }
+  .dn-queue :is(th, td) { padding-inline: 6px; }
+}
+
+/* a phone's row keeps its room above and below when its words take three lines */
+.dn-prow.k-row:not(.k-row--hit), .dn-prow.k-row--hit .k-row__hit { padding-block: 10px; }

@@ -147,6 +147,7 @@ export type ImportBatch = { id: string; kind: 'tasks' | 'shopping'; at: string; 
 /** A line of a person's permission history, from the app's activity log. */
 export type AccessChange = { at: string; text: string; by: string };
 
+export type LastUse = { at: Record<string, string>; since: string | null };
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -156,7 +157,10 @@ export interface Source {
   changeKey(id: string, action: KeyAction, body?: Record<string, unknown>): Promise<{ id: string; key?: string }>;
   people(): Promise<Person[]>;
   recent(n: number): Promise<LogEntry[]>;
-  lastUse(ids: string[]): Promise<Record<string, string | null>>;
+  /** When each key was last used, from the latest requests of all of them: one query. A key that is not in `at` was not used since `since` (never, when it is null). */
+  lastUse(ids: string[]): Promise<LastUse>;
+  /** One key's last use, however long ago. */
+  lastUseOf(id: string): Promise<string | null>;
   /** Any API action (/v1/actions/<op>), as the signed-in owner. */
   action(op: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
   backups(): Promise<Backups>;
@@ -267,6 +271,7 @@ async function ifServed<T>(run: () => Promise<T>): Promise<T | null> {
   try { return await run(); } catch (e) { if (e instanceof ConsoleError && e.code === 'NOT_FOUND') return null; throw e; }
 }
 
+const LAST_USE_ROWS = 100;
 const liveSource: Source = {
   demo: false,
   me: () => call('GET', '/me'),
@@ -277,13 +282,17 @@ const liveSource: Source = {
   people: async () => (await getDocs(collection(db, 'users'))).docs.map((d) => ({ ...(d.data() as Person), uid: d.id })),
   recent: async (n) => (await getDocs(query(collection(db, 'api_log'), where('kind', '==', 'write'), orderBy('at', 'desc'), limit(n)))).docs.map((d) => d.data() as LogEntry),
   lastUse: async (ids) => {
-    const out: Record<string, string | null> = {};
-    await Promise.all(ids.map(async (id) => {
-      const s = await getDocs(query(collection(db, 'api_log'), where('credential', '==', id), orderBy('at', 'desc'), limit(1))).catch(() => null);
-      out[id] = (s?.docs[0]?.data().at as string) || null;
-    }));
+    const out: LastUse = { at: {}, since: null };
+    // "in" takes thirty keys, so up to thirty keys are one query
+    for (let i = 0; i < ids.length; i += 30) {
+      const rows = (await getDocs(query(collection(db, 'api_log'), where('credential', 'in', ids.slice(i, i + 30)), orderBy('at', 'desc'), limit(LAST_USE_ROWS)))).docs.map((d) => d.data() as { credential: string; at: string });
+      for (const r of rows) out.at[r.credential] ||= r.at;
+      const oldest = rows.length === LAST_USE_ROWS ? rows[rows.length - 1].at : null;
+      if (oldest && (!out.since || oldest > out.since)) out.since = oldest;
+    }
     return out;
   },
+  lastUseOf: async (id) => ((await getDocs(query(collection(db, 'api_log'), where('credential', '==', id), orderBy('at', 'desc'), limit(1)))).docs[0]?.data().at as string) || null,
   action: (op, body) => call('POST', '/api/actions/' + op, body),
   backups: () => call('GET', '/backups'),
   runBackup: () => call('POST', '/backups/run'),

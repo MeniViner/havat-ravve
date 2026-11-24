@@ -58,4 +58,21 @@
 @media (max-width: 1180px) { .da-form { grid-template-columns: 1fr; } }
 /* one line while it fits; a long one breaks, but never into a narrow pillar */
 .da-what { display: block; width: max-content; max-width: 48ch; white-space: normal; }
-@media (max-width: 1340px) { .da-what { max-width: 20ch; } .da-clip { max-width: 160px; } }
+@media (max-width: 1340px) { .da-clip { max-width: 160px; } }
+.da-under { display: none; font-size: 12px; font-weight: 400; color: var(--soft); white-space: normal; }
+/* the keys' table, by its own width: what it may gives way, then goes under the name, and at last whose it is too */
+@container (max-width: 640px) {
+  table[aria-label="מפתחות API"] :is(th, td) { width: auto !important; padding-inline: 8px; } table[aria-label="מפתחות API"] :is(th, td):nth-child(3) { width: 100% !important; max-width: 0; } table[aria-label="מפתחות API"] .da-clip { max-width: none; }
+}
+@container (max-width: 540px) { table[aria-label="מפתחות API"] :is(th, td):nth-child(3) { display: none; } table[aria-label="מפתחות API"] :is(th, td):first-child { width: 100% !important; white-space: normal; } .da-under--may { display: block; } }
+@container (max-width: 400px) { table[aria-label="מפתחות API"] :is(th, td):nth-child(2) { display: none; } .da-under--who { display: block; } table[aria-label="מפתחות API"] :is(th, td) { padding-inline: 6px; } }
+/* the security log: what was done takes the room there is, on two lines when it must; then who goes over it */
+@container (max-width: 700px) {
+  table[aria-label="יומן אבטחה"] :is(th, td) { width: auto !important; } table[aria-label="יומן אבטחה"] :is(th, td):nth-child(3) { width: 100% !important; max-width: 0; }
+  table[aria-label="יומן אבטחה"] .da-what { width: auto; max-width: none; }
+}
+@container (max-width: 640px) { table[aria-label="יומן אבטחה"] :is(th, td) { padding-inline: 8px; } }
+@container (max-width: 540px) { table[aria-label="יומן אבטחה"] :is(th, td):nth-child(2) { display: none; } table[aria-label="יומן אבטחה"] b.da-under { display: block; font-size: 14px; font-weight: 600; color: var(--ink); } }
+@container (max-width: 440px) { table[aria-label="יומן אבטחה"] td:first-child { width: 1px; white-space: normal; } table[aria-label="יומן אבטחה"] :is(th, td) { padding-inline: 6px; } }
+.da-facts .d-mono { font-size: 14px; }
+.da-prow.k-row:not(.k-row--hit), .da-prow.k-row--hit .k-row__hit { padding-block: 10px; }

@@ -1,14 +1,14 @@
 // מפתחות API on a computer (K14): the keys as a table, and beside it what the selected key may do, its use and its
 // expiry. The same loads and the same server actions as the phone's (../Keys.tsx).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ConfirmSheet } from '../../app/v2/kit';
 import { ROLE_LABELS } from '../../app/types';
 import { dayName, ddmm, daysFromToday } from '../../app/v2/format';
 import { nowMs } from '../../app/clock';
 import { ago, until, useLoad } from '../shared';
-import { errorText, source, type KeyView, type Person } from '../source';
+import { errorText, source, type KeyView, type LastUse, type Person } from '../source';
 import { allLevels, DESK_AREAS, deskLevels, deskScopes, levelHe, scopesFrom, scopesShort, type DeskArea, type Level, type Levels } from '../scopes';
-import { ACCESS, type Access, accessOf, EXPIRY, type Expiry, GRACE, type Grace, inDays, type Notify, teamOf, usageText } from '../Keys';
+import { ACCESS, type Access, accessOf, EXPIRY, type Expiry, GRACE, type Grace, inDays, type Notify, teamOf, unusedText, usageText, useLastUse } from '../Keys';
 import { Act, Btn, Check, Chips, Cols, DTag, Dialog, EmptyPanel, Fact, Facts, Failed, Input, LoadingPanel, Mono, Notice, Page, Panel, Seg, Select, Skeleton, SubTitle, Table, TableCard, Toolbar } from './desk';
 import { useSelected } from './route';
 
@@ -31,7 +31,7 @@ function StatusTag({ k }: { k: KeyView }) {
 const expiryText = (k: KeyView) => (!k.expiresAt ? 'בלי תאריך סיום' : Date.parse(k.expiresAt) > nowMs() ? `עד ${ddmm(k.expiresAt)}` : `פג ב־${ddmm(k.expiresAt)}`);
 const SOON = 'בדרך כלל תוך דקה, ולכל היותר תוך דקה וחצי';
 
-export function KeysDesk({ keys, error, reload, lastUsed, people, notify }: { keys: KeyView[] | null; error: string | null; reload: () => void; lastUsed: Record<string, string | null> | null; people: Person[]; notify: Notify }) {
+export function KeysDesk({ keys, error, reload, lastUsed, people, notify }: { keys: KeyView[] | null; error: string | null; reload: () => void; lastUsed: LastUse | null; people: Person[]; notify: Notify }) {
   const [view, setView] = useState<'active' | 'inactive'>('active');
   const [creating, setCreating] = useState(false);
   const [revealed, setRevealed] = useState<{ title: string; key: string } | null>(null);
@@ -42,35 +42,57 @@ export function KeysDesk({ keys, error, reload, lastUsed, people, notify }: { ke
   const active = (keys || []).filter((k) => k.status === 'active');
   const inactive = (keys || []).filter((k) => k.status !== 'active');
   const rows = keys && (view === 'active' ? [...active, ...inactive.filter(recent)] : inactive);
+  // what the open key's panel is in the middle of: choices that were not saved are not dropped without asking
+  const work = useRef<Work | null>(null);
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  const guard = (go: () => void) => { if (work.current?.dirty) setLeave({ go }); else go(); };
+  useEffect(() => {
+    // another screen (a link, the back button): the address is put back until the question is answered.
+    // Listens before useSelected does, which would already change the panel
+    const onHash = (e: HashChangeEvent) => {
+      if (!work.current?.dirty) return;
+      e.stopImmediatePropagation();
+      const to = location.hash;
+      history.pushState(history.state, '', e.oldURL);
+      setLeave({ go: () => { location.hash = to; } });
+    };
+    const onClose = (e: BeforeUnloadEvent) => { if (work.current?.dirty) e.preventDefault(); };
+    addEventListener('hashchange', onHash, true); addEventListener('beforeunload', onClose);
+    return () => { removeEventListener('hashchange', onHash, true); removeEventListener('beforeunload', onClose); };
+  }, []);
   const [sel, select] = useSelected('keys', (rows || []).map((k) => k.id));
+  const drop = () => { const w = work.current; const x = leave; work.current = null; w?.drop(); setLeave(null); x?.go(); };
   const open = rows?.find((k) => k.id === sel) || null;
   return (
     <Page group="גישה ואבטחה" title="מפתחות API" sub="כל מפתח פועל בשם אדם מהצוות, ולא יכול לעשות יותר ממה שמותר לאותו אדם"
-      actions={<Btn kind="primary" icon="plus" onClick={() => setCreating(true)}>מפתח חדש</Btn>}>
+      actions={<Btn kind="primary" icon="plus" onClick={() => guard(() => setCreating(true))}>מפתח חדש</Btn>}>
       <Toolbar end={<span className="da-note">מפתח חדש מוצג פעם אחת בלבד. ביטול נכנס לתוקף תוך דקה.</span>}>
-        <Chips label="אילו מפתחות" value={view} onChange={setView} options={[
+        <Chips label="אילו מפתחות" value={view} onChange={(v) => { if (v !== view) guard(() => setView(v)); }} options={[
           { value: 'active', label: keys ? `פעילים · ${active.length}` : 'פעילים' }, { value: 'inactive', label: keys ? `לא פעילים · ${inactive.length}` : 'לא פעילים' }]} />
       </Toolbar>
       <Cols>
-        <TableCard>
-          <Table<KeyView> label="מפתחות API" rows={rows} rowKey={(k) => k.id} selected={sel} onSelect={select} error={error && `לא הצלחנו לקרוא את המפתחות. ${error}`} retry={reload} skeleton={4}
+        <TableCard style={{ containerType: 'inline-size' }}>
+          <Table<KeyView> label="מפתחות API" rows={rows} rowKey={(k) => k.id} selected={sel} onSelect={(id) => { if (id !== sel) guard(() => select(id)); }} onEnter={(k) => { if (k.id === sel) work.current?.save(); }} error={error && `לא הצלחנו לקרוא את המפתחות. ${error}`} retry={reload} skeleton={4}
             empty={view === 'active' ? 'אין מפתחות פעילים. "מפתח חדש" יוצר אחד.' : 'אין מפתחות לא פעילים.'}
             columns={[
-              { key: 'name', head: 'מפתח', cell: (k) => k.label || <Mono>{k.id}</Mono>, strong: true },
-              { key: 'who', head: 'של מי', cell: whoName, width: 130 },
-              { key: 'may', head: 'מה מותר', cell: (k) => { const t = scopesShort(k.scopes, roleName(k)); return <span className="da-clip" title={t}>{t}</span>; }, width: 210 },
-              { key: 'used', head: 'שימוש אחרון', cell: (k) => (!lastUsed ? '' : lastUsed[k.id] ? ago(lastUsed[k.id]) : 'לא היה בשימוש'), width: 130, soft: true },
-              { key: 'status', head: 'מצב', cell: (k) => <StatusTag k={k} />, width: 110, align: 'end' },
+              { key: 'name', head: 'מפתח', strong: true, cell: (k) => (
+                <>{k.label || <Mono>{k.id}</Mono>}<span className="da-under da-under--who">{whoName(k)}</span><span className="da-under da-under--may">{scopesShort(k.scopes, roleName(k))}</span></>
+              ) },
+              { key: 'who', head: 'של מי', cell: whoName, width: 154 },
+              { key: 'may', head: 'מה מותר', cell: (k) => { const t = scopesShort(k.scopes, roleName(k)); return <span className="da-clip" title={t}>{t}</span>; }, width: 234 },
+              { key: 'used', head: 'שימוש אחרון', cell: (k) => (!lastUsed ? '' : lastUsed.at[k.id] ? ago(lastUsed.at[k.id]) : unusedText(lastUsed)), width: 154, soft: true },
+              { key: 'status', head: 'מצב', cell: (k) => <StatusTag k={k} />, width: 134, align: 'end' },
             ]} />
         </TableCard>
         {open
-          ? <KeyPanel key={open.id} k={open} who={whoName(open)} role={roleName(open)} lastUsed={lastUsed ? lastUsed[open.id] ?? null : undefined} notify={notify}
+          ? <KeyPanel key={open.id} work={work} k={open} who={whoName(open)} role={roleName(open)} lastUsed={lastUsed} notify={notify}
             onChanged={(key) => { reload(); if (key) setRevealed({ title: `המפתח החדש של "${open.label || open.id}"`, key }); }} />
           : !keys && !error ? <LoadingPanel /> : <EmptyPanel>בחרו מפתח מהטבלה.</EmptyPanel>}
       </Cols>
       <CreateDialog open={creating} onClose={() => setCreating(false)} people={people} notify={notify}
         onCreated={(label, id, key) => { setCreating(false); setView('active'); select(id); setRevealed({ title: `המפתח "${label}" מוכן`, key }); reload(); }} />
       <RevealDialog shown={revealed} onClose={() => setRevealed(null)} notify={notify} />
+      <ConfirmSheet open={!!leave} title="יש שינויים שלא נשמרו" text={`מה שסימנתם ב"${open?.label || open?.id || 'מפתח'}" לא יישמר.`} confirmLabel="לצאת בלי לשמור" cancelLabel="חזרה לעריכה" onClose={() => setLeave(null)} onConfirm={drop} />
     </Page>
   );
 }
@@ -97,11 +119,14 @@ function Areas({ d, set, main }: { d: Draft; set: (d: Draft) => void; main: bool
   return <>{DESK_AREAS.filter((a) => !!a.main === main).map((a) => <AreaRow key={a.id} a={a} level={d.levels[a.id] || 'none'} onChange={(l) => set({ access: 'custom', levels: { ...d.levels, [a.id]: l } })} />)}</>;
 }
 
-function KeyPanel({ k, who, role, lastUsed, notify, onChanged }: { k: KeyView; who: string; role: string; lastUsed: string | null | undefined; notify: Notify; onChanged: (newKey?: string) => void }) {
+/** What the panel tells the page: is something not saved, how to save it, how to let it go. */
+type Work = { dirty: boolean; save: () => void; drop: () => void };
+function KeyPanel({ work, k, who, role, lastUsed, notify, onChanged }: { work: MutableRefObject<Work | null>; k: KeyView; who: string; role: string; lastUsed: LastUse | null; notify: Notify; onChanged: (newKey?: string) => void }) {
   const scopesKey = JSON.stringify(k.scopes);
   const [d, setD] = useState<Draft>(() => draftOf(k.scopes));
   useEffect(() => { setD(draftOf(k.scopes)); }, [scopesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const usage = useLoad(() => source.keyUsage(k.id), [k.id]);
+  const last = useLastUse(k.id, lastUsed);
   const [ask, setAsk] = useState<null | 'save' | 'revoke' | 'restore' | 'rename' | 'rotate' | 'expire'>(null);
   const [label, setLabel] = useState('');
   const [grace, setGrace] = useState<Grace>('24');
@@ -124,6 +149,8 @@ function KeyPanel({ k, who, role, lastUsed, notify, onChanged }: { k: KeyView; w
     if (next && !next.length) return notify('בחרו לפחות תחום אחד שהמפתח יכול לראות', 'alert');
     setAsk('save');
   };
+  useEffect(() => { work.current = { dirty, save: () => { if (!busy) save(); }, drop: () => setD(draftOf(k.scopes)) }; });
+  useEffect(() => () => { work.current = null; }, [work]);
   const more = DESK_AREAS.filter((a) => !a.main);
   const moreOn = d.access === 'custom' ? more.filter((a) => d.levels[a.id] && d.levels[a.id] !== 'none').length : 0;
   const name = k.label || k.id;
@@ -154,7 +181,7 @@ function KeyPanel({ k, who, role, lastUsed, notify, onChanged }: { k: KeyView; w
         <details className="da-more">
           <summary>פרטי המפתח</summary>
           <Fact label="פועל בשם">{who}{role && ` · ${role}`}</Fact>
-          <Fact label="שימוש אחרון">{lastUsed === undefined ? '' : lastUsed ? ago(lastUsed) : 'עוד לא היה בשימוש'}</Fact>
+          <Fact label="שימוש אחרון">{last}</Fact>
           <Fact label="נוצר">{k.createdAt ? `${ddmm(k.createdAt)}${k.createdBy ? ` · ${k.createdBy}` : ''}` : 'הוגדר בשרת לפני הקונסולה'}</Fact>
           <Fact label="מזהה"><Mono>{k.id}</Mono></Fact>
         </details>

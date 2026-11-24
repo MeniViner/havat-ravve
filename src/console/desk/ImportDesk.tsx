@@ -62,7 +62,7 @@ function StartPanel({ imp, onGo, onUndo }: { imp: ImportState; onGo: () => void;
   const list = imp.imports.data;
   return (
     <Panel title="מה ייכנס" sub={imp.data.length ? 'השורות נקראו' : 'עוד לא הודבקו שורות'} footer={<Btn kind="primary" disabled={!imp.data.length} onClick={onGo}>המשך</Btn>}>
-      {!!imp.data.length && <div className="dd-nums"><Nums items={[{ value: fmt(imp.total), label: 'שורות' }, { value: fmt(imp.columns), label: 'עמודות' }]} /></div>}
+      {!!imp.data.length && <div className="dd-nums"><Nums items={[{ value: fmt(imp.total), label: imp.total === 1 ? 'שורה' : 'שורות' }, { value: fmt(imp.columns), label: imp.columns === 1 ? 'עמודה' : 'עמודות' }]} /></div>}
       <p className="dd-para dd-para--first">{imp.kind === 'tasks' ? 'המשימות נוספות בשמכם ובלי אחראי, כמו משימה חדשה באפליקציה. אפשר לשייך אותן אחר כך.' : 'הפריטים נוספים לרשימת הקניות בשמכם. פריט דחוף שולח התראה לצוות, כמו באפליקציה.'} כל שורה נבדקת בשרת לפני שהיא נשמרת.</p>
       {imp.imports.loading && !list && <div className="dd-load"><Skeleton lines={3} /></div>}
       {list && <SubTitle>ייבואים אחרונים</SubTitle>}
@@ -92,13 +92,16 @@ function Rows({ imp, step }: { imp: ImportState; step: number }) {
   const verdict = (r: R) => {
     const o = outcomes?.find((x) => x.n === r.c.n);
     if (r.c.error) return <span title={r.c.detail}><DTag tone="red">{r.c.error}</DTag></span>;
+    if (o?.ok && !o.replayed && imp.batch?.undone) return <span title={imp.undone?.kept ? 'מה שכבר שינו באפליקציה נשאר' : undefined}><DTag>בוטל</DTag></span>;
     if (o) return o.ok ? <DTag tone="green">{o.replayed ? 'כבר נוסף קודם' : 'נוסף'}</DTag> : <span title={o.error}><DTag tone="red">לא נכנס</DTag></span>;
-    if (imp.dups.has(r.c.n)) return <DTag tone={imp.skipDups ? 'neutral' : 'amber'}>{imp.skipDups ? 'כפילות, לא ייכנס' : 'כבר קיים'}</DTag>;
+    if (imp.dups.has(r.c.n)) return <span title={imp.skipDups ? 'השורה תידלג' : 'השורה תיכנס שוב'}><DTag tone={imp.skipDups ? 'neutral' : 'amber'}>כבר קיים</DTag></span>;
     if (r.c.warn) return <span title={r.c.warn}><DTag tone="amber">יישמר בסופר</DTag></span>;
     return <DTag tone="green">תקין</DTag>;
   };
+  // where the table is narrow, what is said of a row goes under its title
+  const titleCol = Math.max(0, Array.from({ length: imp.columns }, (_, i) => imp.fieldOf(i)).indexOf('title'));
   const columns: Column<R>[] = [
-    { key: '#', head: '#', width: 36, soft: true, cell: (r) => r.c.n },
+    { key: '#', head: '#', width: 60, soft: true, cell: (r) => r.c.n },
     ...Array.from({ length: imp.columns }, (_, col): Column<R> => {
       const key = imp.fieldOf(col);
       return {
@@ -111,18 +114,19 @@ function Rows({ imp, step }: { imp: ImportState; step: number }) {
         ),
         cell: (r) => {
           const id = `${r.i}:${col}`;
-          if (locked) return <span className="dd-cell__text">{shownText(r, col)}</span>;
+          const under = step > 1 && col === titleCol && <span className="dd-under dd-under--row"><span className="dd-under__n">{r.c.n}</span>{verdict(r)}</span>;
+          if (locked) return <><span className="dd-cell__text">{shownText(r, col)}</span>{under}</>;
           if (cell === id) return <CellInput value={r.cells[col] || ''} onDone={(v) => { setCell(null); if (v !== null && v !== r.cells[col]) imp.fix(r.i, col, v); }} />;
-          return <button type="button" className={`dd-cell${r.c.bad && r.c.bad === key ? ' dd-cell--bad' : ''}`} aria-label={`${imp.colName(col)}, שורה ${r.c.n}: ${shownText(r, col) || 'ריק'}. לתיקון`} title={r.c.bad === key ? `${r.c.detail}. לוחצים לתיקון` : 'לוחצים לתיקון'} onClick={() => setCell(id)}>{shownText(r, col) || ' '}</button>;
+          return <><button type="button" className={`dd-cell${r.c.bad && r.c.bad === key ? ' dd-cell--bad' : ''}`} aria-label={`${imp.colName(col)}, שורה ${r.c.n}: ${shownText(r, col) || 'ריק'}. לתיקון`} title={r.c.bad === key ? `${r.c.detail}. לוחצים לתיקון` : 'לוחצים לתיקון'} onClick={() => setCell(id)}>{shownText(r, col) || ' '}</button>{under}</>;
         },
       };
     }),
-    ...(step > 1 ? [{ key: 'v', head: '', width: 150, align: 'end' as const, cell: verdict }] : []),
+    ...(step > 1 ? [{ key: 'v', head: '', width: 174, align: 'end' as const, cell: verdict }] : []),
   ];
   return (
     <>
       {imp.total > MAX_ROWS && <div className="dd-over"><Notice icon="bolt">יש {fmt(imp.total)} שורות. מייבאים עד {MAX_ROWS} בכל פעם: השורות אחרי {MAX_ROWS} לא ייכנסו הפעם.</Notice></div>}
-      <div className={step > 1 ? 'dd-rows' : undefined}><Table label="השורות שהודבקו" columns={columns} rows={rows} rowKey={(r) => String(r.i)} rowTone={step > 1 ? (r) => (r.c.error ? 'red' : undefined) : undefined} empty="אין שורות." /></div>
+      <div className={step > 1 ? 'dd-map-table dd-rows' : 'dd-map-table'}><Table label="השורות שהודבקו" columns={columns} rows={rows} rowKey={(r) => String(r.i)} rowTone={step > 1 ? (r) => (r.c.error ? 'red' : undefined) : undefined} empty="אין שורות." /></div>
     </>
   );
 }
@@ -136,25 +140,26 @@ function CellInput({ value, onDone }: { value: string; onDone: (v: string | null
 }
 
 function CheckPanel({ imp, onImport, onBack }: { imp: ImportState; onImport: () => void; onBack: () => void }) {
-  const { kind, good, bad, valid, dups } = imp;
+  const { kind, good, bad, dups } = imp;
   return (
     <Panel title="מה ייכנס" sub="בדיקה לפני ייבוא" footer={<><Btn kind="primary" icon="upload" disabled={!good.length} onClick={onImport}>ייבוא {imp.count(good.length)}</Btn><Btn onClick={onBack}>חזרה</Btn></>}>
-      <div className="dd-nums"><Nums items={[{ value: fmt(imp.checked.length), label: 'שורות' }, { value: fmt(valid.length), label: 'תקינות' }, { value: fmt(bad.length), label: 'עם בעיה' }]} /></div>
+      <div className="dd-nums"><Nums items={[{ value: fmt(imp.checked.length), label: imp.checked.length === 1 ? 'שורה' : 'שורות' }, { value: fmt(good.length), label: good.length === 1 ? 'תקינה' : 'תקינות' }, { value: fmt(bad.length), label: 'עם בעיה' }]} /></div>
       <div>
         <Fact label="לאן">{kind === 'tasks' ? 'משימות' : 'רשימת קניות'}</Fact>
         {kind === 'tasks' && <Fact label="על מי">פנויות, עד שמישהו לוקח</Fact>}
         {kind === 'tasks' && <Fact label="מקומות">{imp.placesText}</Fact>}
         {kind === 'tasks' && !!imp.newPlaces.length && imp.newPlaces.length > 6 && <Small>{imp.newPlaces.join(', ')}</Small>}
-        <Fact label="כפילויות">{!dups.size ? 'לא נמצאו' : <>{many(dups.size, 'שורה אחת', 'שורות')}{imp.skipDups ? ', לא ייכנסו' : ''} · <Act onClick={() => imp.setSkipDups(!imp.skipDups)}>{imp.skipDups ? 'להכניס גם אותן' : 'לדלג עליהן'}</Act></>}</Fact>
+        <Fact label="כפילויות">{imp.dupsText}{!!dups.size && <> · <Act onClick={() => imp.setSkipDups(!imp.skipDups)}>{imp.dupsAct}</Act></>}</Fact>
         {kind === 'shopping' && good.some((c) => c.body.urgent) && <Fact label="דחופים">{many(good.filter((c) => c.body.urgent).length, 'פריט אחד', 'פריטים')}, כל הצוות יקבל התראה</Fact>}
       </div>
-      <p className="dd-para">שורות עם בעיה לא ייכנסו. אפשר לתקן אותן כאן בטבלה, או לייבא בלעדיהן. הייבוא נרשם ביומן{imp.canUndo ? ' ואפשר לבטל אותו עד מחר' : ''}.</p>
+      <p className="dd-para">{bad.length === 1 ? 'שורה עם בעיה לא תיכנס. אפשר לתקן אותה כאן בטבלה, או לייבא בלעדיה. ' : 'שורות עם בעיה לא ייכנסו. אפשר לתקן אותן כאן בטבלה, או לייבא בלעדיהן. '}הייבוא נרשם ביומן{imp.canUndo ? ' ואפשר לבטל אותו עד מחר' : ''}.</p>
     </Panel>
   );
 }
 
 function DonePanel({ imp, onAgain, onUndo, onFix }: { imp: ImportState; onAgain: () => void; onUndo: (b: ImportBatch) => void; onFix: () => void }) {
   const { progress, batch } = imp;
+  const one = (n: number, she: string, he: string, all: string) => (n !== 1 ? all : imp.kind === 'tasks' ? she : he);
   if (progress) return (
     <Panel title="מייבא" sub={`${fmt(progress.done)} מתוך ${fmt(progress.total)}`}>
       <span className="d-meter__track" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}><span style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} /></span>
@@ -163,11 +168,15 @@ function DonePanel({ imp, onAgain, onUndo, onFix }: { imp: ImportState; onAgain:
   );
   const until = batch && !batch.undone ? (daysFromToday(batch.undoUntil) === 1 ? `מחר ב־${hhmm(batch.undoUntil)}` : daysFromToday(batch.undoUntil) === 0 ? `היום ב־${hhmm(batch.undoUntil)}` : `${ddmm(batch.undoUntil)} ב־${hhmm(batch.undoUntil)}`) : '';
   return (
-    <Panel title={batch?.undone ? 'הייבוא בוטל' : imp.added ? 'הייבוא נגמר' : 'לא נוסף שום דבר חדש'} sub={imp.kind === 'tasks' ? 'משימות' : 'רשימת קניות'}
+    <Panel aside={batch?.undone ? <DTag>בוטל</DTag> : undefined} title={batch?.undone ? 'הייבוא בוטל' : imp.added ? 'הייבוא נגמר' : 'לא נוסף שום דבר חדש'} sub={imp.kind === 'tasks' ? 'משימות' : 'רשימת קניות'}
       footer={<><Btn kind="primary" onClick={onAgain}>ייבוא נוסף</Btn>{batch && imp.undoable(batch) && <Btn kind="danger" onClick={() => onUndo(batch)}>לבטל את הייבוא</Btn>}</>}>
-      <div className="dd-nums"><Nums items={[{ value: fmt(imp.added), label: 'נוספו' }, { value: fmt(imp.replayed), label: 'כבר נוספו קודם' }, { value: fmt(imp.failed), label: 'נכשלו' }]} /></div>
+      <div className="dd-nums"><Nums items={[
+        ...(imp.undone ? [{ value: fmt(imp.undone.removed), label: one(imp.undone.removed, 'בוטלה', 'בוטל', 'בוטלו') }, ...(imp.undone.kept ? [{ value: fmt(imp.undone.kept), label: one(imp.undone.kept, 'נשארה', 'נשאר', 'נשארו') }] : [])] : [{ value: fmt(imp.added), label: one(imp.added, 'נוספה', 'נוסף', 'נוספו') }]),
+        { value: fmt(imp.replayed), label: one(imp.replayed, 'כבר נוספה קודם', 'כבר נוסף קודם', 'כבר נוספו קודם') }, { value: fmt(imp.failed), label: one(imp.failed, 'נכשלה', 'נכשל', 'נכשלו') }]} /></div>
       <Facts>
         {!!imp.bad.length && <Fact label="לא נכנסו">{many(imp.bad.length, 'שורה אחת עם בעיה', 'שורות עם בעיה')}</Fact>}
+        {imp.skipDups && !!imp.dups.size && <Fact label="כפילויות">{many(imp.dups.size, 'שורה אחת דולגה', 'שורות דולגו')}</Fact>}
+        {!!imp.undone?.kept && <Fact label="נשארו">מה שכבר שינו באפליקציה</Fact>}
         {until && <Fact label="אפשר לבטל">עד {until}</Fact>}
       </Facts>
       {(imp.outcomes || []).filter((o) => !o.ok).slice(0, 5).map((o) => <Failed key={o.n} text={`שורה ${o.n}: ${o.error}`} />)}

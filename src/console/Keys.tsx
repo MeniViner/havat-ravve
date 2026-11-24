@@ -5,10 +5,10 @@ import { Button, Card, ChoiceGroup, DetailList, DetailRow, Field, IconTile, List
 import { ROLE_LABELS } from '../app/types';
 import { ddmm } from '../app/v2/format';
 import { ago, fmt, many, Section, until, useLoad } from './shared';
-import { errorText, source, type KeyUsage, type KeyView, type Person } from './source';
+import { errorText, source, type KeyUsage, type KeyView, type LastUse, type Person } from './source';
 import { AREAS, allLevels, isReadOnly, LEVELS, type Level, type Levels, levelsFrom, scopesFrom, scopesText } from './scopes';
 import { nowMs } from '../app/clock';
-import { useWide } from './desk/route';
+import { useRest, useWide } from './desk/route';
 import { KeysDesk } from './desk/KeysDesk';
 
 const STATUS: Record<KeyView['status'], { l: string; tone: 'paid' | 'urgent' | 'neutral' }> = {
@@ -18,7 +18,7 @@ export type Expiry = 'none' | '30' | '90' | '365';
 export const EXPIRY: { value: Expiry; label: string }[] = [{ value: 'none', label: 'בלי תאריך' }, { value: '30', label: '30 יום' }, { value: '90', label: '90 יום' }, { value: '365', label: 'שנה' }];
 export const inDays = (d: Expiry) => (d === 'none' ? null : new Date(nowMs() + Number(d) * 86400_000).toISOString());
 /** "בשימוש לפני 3 דקות", "בשימוש ב־21.11", "לא היה בשימוש" */
-const usedText = (at: string | null | undefined) => { if (!at) return 'לא היה בשימוש'; const t = ago(at); return `בשימוש ${/^\d/.test(t) ? 'ב־' + t : t}`; };
+const usedText = (u: LastUse, id: string) => { const at = u.at[id]; if (!at) return unusedText(u); const t = ago(at); return `בשימוש ${/^\d/.test(t) ? 'ב־' + t : t}`; };
 export type Grace = '0' | '24' | '72';
 export const GRACE: { value: Grace; label: string }[] = [{ value: '24', label: 'יום' }, { value: '72', label: '3 ימים' }, { value: '0', label: 'מיד' }];
 export type Access = 'all' | 'read' | 'custom';
@@ -48,13 +48,27 @@ export const teamOf = (people: Person[]) => people.filter((p) => p.status === 'a
 /** "61 בקשות השבוע · 1 נכשלה" */
 export const usageText = (u: KeyUsage) => (!u.requests ? 'לא היו בקשות השבוע' : `${many(u.requests, 'בקשה אחת', 'בקשות')} השבוע${u.failed ? ` · ${u.failed === 1 ? '1 נכשלה' : `${fmt(u.failed)} נכשלו`}` : ''}`);
 
+/** A key that was not found among the latest requests: never used, or not since they begin. */
+export const unusedText = (u: LastUse) => (u.since ? `לא מאז ${ddmm(u.since)}` : 'לא היה בשימוש');
+/** The open key's last use in words: the list's answer, and one more query only when the list does not reach back far enough. */
+export function useLastUse(id: string, list: LastUse | null): string {
+  const far = !!list && !list.at[id] && !!list.since;
+  const exact = useLoad(() => (far ? source.lastUseOf(id) : Promise.resolve(null)), [id, far]);
+  if (!list) return '';
+  if (!far) return list.at[id] ? ago(list.at[id]) : 'עוד לא היה בשימוש';
+  if (exact.error) return unusedText(list);
+  return exact.loading ? '' : exact.data ? ago(exact.data) : 'עוד לא היה בשימוש';
+}
+
 export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const list = useLoad(() => source.keys());
   const ids = (list.data || []).map((k) => k.id).join(',');
-  const used = useLoad(() => (ids ? source.lastUse(ids.split(',')) : Promise.resolve({} as Record<string, string | null>)), [ids]);
+  const used = useLoad(() => (ids ? source.lastUse(ids.split(',')) : Promise.resolve<LastUse>({ at: {}, since: null })), [ids]);
   const wide = useWide();
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // a link to one key (#/keys/<id>) opens it on a phone too
+  const linked = useRest('keys')[0][0] || null;
+  const [openId, setOpenId] = useState<string | null>(wide ? null : linked);
   const [revealed, setRevealed] = useState<{ title: string; key: string } | null>(null);
   const byUid = useMemo(() => new Map(people.map((p) => [p.uid, p])), [people]);
   const who = (k: KeyView) => {
@@ -70,7 +84,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
   const row = (k: KeyView) => (
     <Row key={k.id} leading={<IconTile icon="key" tone={k.status === 'active' ? 'pine' : 'ink'} />} title={k.label || k.id}
       tags={k.status !== 'active' ? <Tag tone={STATUS[k.status].tone}>{STATUS[k.status].l}</Tag> : k.rotating ? <Tag tone="warm">בהחלפה</Tag> : k.scopes ? <Tag tone="outline">{isReadOnly(k.scopes) ? 'צפייה בלבד' : 'מוגבל'}</Tag> : undefined}
-      meta={<>{who(k).split(' · ')[0]}{k.scopes && (k.rotating || k.status !== 'active') && <> · {isReadOnly(k.scopes) ? 'צפייה בלבד' : 'מוגבל'}</>}{used.data && <> · {usedText(used.data[k.id])}</>}</>}
+      meta={<>{who(k).split(' · ')[0]}{k.scopes && (k.rotating || k.status !== 'active') && <> · {isReadOnly(k.scopes) ? 'צפייה בלבד' : 'מוגבל'}</>}{used.data && <> · {usedText(used.data, k.id)}</>}</>}
       chevron onClick={() => setOpenId(k.id)} muted={k.status !== 'active'} />
   );
   return (
@@ -91,7 +105,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
       <CreateSheet open={creating} onClose={() => setCreating(false)} people={people}
         onCreated={(label, key) => { setCreating(false); setRevealed({ title: `המפתח "${label}" מוכן`, key }); list.reload(); }} notify={notify} />
       {open && (
-        <KeySheet k={open} who={who(open)} lastUsed={used.data?.[open.id] ?? null} onClose={() => setOpenId(null)} notify={notify}
+        <KeySheet k={open} who={who(open)} lastUsed={used.data} onClose={() => setOpenId(null)} notify={notify}
           onChanged={(key) => { list.reload(); if (key) { setOpenId(null); setRevealed({ title: `המפתח החדש של "${open.label || open.id}"`, key }); } }} />
       )}
       <RevealSheet shown={revealed} onClose={() => setRevealed(null)} />
@@ -162,7 +176,7 @@ function RevealSheet({ shown, onClose }: { shown: { title: string; key: string }
 }
 
 type Mode = 'view' | 'rename' | 'rotate' | 'expire' | 'revoke' | 'scopes';
-function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView; who: string; lastUsed: string | null; onClose: () => void; onChanged: (newKey?: string) => void; notify: (t: string, tone?: 'info' | 'alert') => void }) {
+function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView; who: string; lastUsed: LastUse | null; onClose: () => void; onChanged: (newKey?: string) => void; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const [mode, setMode] = useState<Mode>('view');
   const [label, setLabel] = useState(k.label);
   const [grace, setGrace] = useState<Grace>('24');
@@ -171,6 +185,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
   const [levels, setLevels] = useState<Levels>(() => (k.scopes ? levelsFrom(k.scopes) : allLevels('none')));
   const [busy, setBusy] = useState(false);
   const usage = useLoad(() => source.keyUsage(k.id).catch(() => null), [k.id]);
+  const last = useLastUse(k.id, lastUsed);
   const run = async (action: Parameters<typeof source.changeKey>[1], body: Record<string, unknown>, done: string) => {
     setBusy(true);
     try {
@@ -189,7 +204,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
           <DetailList>
             <DetailRow term="פועל בשם">{who}</DetailRow>
             <DetailRow term="מה מותר לו">{scopesText(k.scopes)}</DetailRow>
-            <DetailRow term="שימוש אחרון">{lastUsed ? ago(lastUsed) : 'עוד לא היה בשימוש'}</DetailRow>
+            <DetailRow term="שימוש אחרון">{last}</DetailRow>
             {usage.data && <DetailRow term="השבוע">{usageText(usage.data)}</DetailRow>}
             <DetailRow term="תוקף">{k.expiresAt ? (Date.parse(k.expiresAt) > nowMs() ? `עד ${ddmm(k.expiresAt)}` : `פג ב־${ddmm(k.expiresAt)}`) : 'בלי תאריך'}</DetailRow>
             <DetailRow term="נוצר">{k.createdAt ? `${ddmm(k.createdAt)}${k.createdBy ? ` · ${k.createdBy}` : ''}` : 'הוגדר בשרת לפני הקונסולה'}</DetailRow>

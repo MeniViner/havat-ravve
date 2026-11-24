@@ -6,10 +6,10 @@
 import { useState } from 'react';
 import { Button, Card, ConfirmSheet, Segmented, Strip, Tag, TextAreaField } from '../app/v2/kit';
 import { dayTime } from '../app/v2/format';
-import { fmt, Section } from './shared';
+import { fmt, many, Section } from './shared';
 import { source, type ImportBatch } from './source';
 import { useWide } from './desk/route';
-import { type Kind, MAX_ROWS, type Notify, PLACEHOLDER, useImport } from './desk/ImportSpec';
+import { addedText, type Kind, MAX_ROWS, type Notify, PLACEHOLDER, undoneText, useImport } from './desk/ImportSpec';
 import { ImportDesk } from './desk/ImportDesk';
 import { importSample } from './demo/data';
 export { parseTable, toDate } from './desk/ImportSpec';
@@ -23,11 +23,11 @@ export function ImportScreen({ notify }: { notify: Notify }) {
     <>
       <ConfirmSheet open={ask} tone="primary" title={`להוסיף ${imp.count(imp.good.length)}?`} confirmLabel="כן, להוסיף" cancelLabel="חזרה" onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); imp.run(); }} text={imp.askText} />
       <ConfirmSheet open={!!undoing} title="לבטל את הייבוא?" confirmLabel="כן, לבטל את הייבוא" cancelLabel="חזרה" onClose={() => setUndoing(null)} onConfirm={async () => { await imp.undo(undoing!); setUndoing(null); }}
-        text={undoing ? `${fmt(undoing.count)} ${undoing.kind === 'tasks' ? 'המשימות' : 'הפריטים'} מהייבוא הזה יוסרו. מה שכבר שינו באפליקציה נשאר, וגם מקומות שנוצרו נשארים.` : ''} />
+        text={undoing ? imp.undoText(undoing) : ''} />
     </>
   );
   if (wide) return <><ImportDesk imp={imp} onImport={() => setAsk(true)} onUndo={setUndoing} sample={source.demo ? importSample : null} />{sheets}</>;
-  const { kind, fields, map, data, checked, good, bad, outcomes, progress, noun } = imp;
+  const { kind, fields, map, data, checked, good, bad, outcomes, progress } = imp;
   return (
     <>
       <div className="c-title">
@@ -52,7 +52,7 @@ export function ImportScreen({ notify }: { notify: Notify }) {
       </Card>
 
       {!!data.length && (
-        <Section title={`התאמת עמודות · ${fmt(imp.total)} שורות`}>
+        <Section title={`התאמת עמודות · ${many(imp.total, 'שורה אחת', 'שורות')}`}>
           <Card pad="lg" className="c-map">
             {fields.map((f) => (
               <label key={f.key} className="c-param">
@@ -66,7 +66,7 @@ export function ImportScreen({ notify }: { notify: Notify }) {
           </Card>
           {imp.total > MAX_ROWS && <Strip icon="bolt">יש {fmt(imp.total)} שורות. מייבאים עד {MAX_ROWS} בכל פעם: השורות אחרי {MAX_ROWS} לא ייכנסו הפעם.</Strip>}
           <Card pad="lg" className="c-flat">
-            <p className="c-card-title">{fmt(good.length)} {noun} מוכנים{bad.length ? `, ${fmt(bad.length)} שורות עם בעיה (לא ייכנסו)` : ''}</p>
+            <p className="c-card-title">{good.length === 1 ? `${imp.count(1)} ${kind === 'tasks' ? 'מוכנה' : 'מוכן'}` : `${imp.count(good.length)} ${kind === 'tasks' ? 'מוכנות' : 'מוכנים'}`}{bad.length ? `, ${many(bad.length, 'שורה אחת עם בעיה (לא תיכנס)', 'שורות עם בעיה (לא ייכנסו)')}` : ''}</p>
             <div className="c-tablewrap">
               <table className="c-table">
                 <thead><tr><th>#</th>{fields.filter((f) => map[f.key] >= 0).map((f) => <th key={f.key}>{f.he}</th>)}<th>מצב</th></tr></thead>
@@ -76,7 +76,7 @@ export function ImportScreen({ notify }: { notify: Notify }) {
                     <tr key={c.n}>
                       <td className="k-num">{c.n}</td>
                       {fields.filter((f) => map[f.key] >= 0).map((f) => <td key={f.key}>{f.key === 'urgent' ? (c.body.urgent ? 'כן' : '') : f.key === 'place' ? c.place : String(c.body[f.key] ?? '')}</td>)}
-                      <td>{c.error ? <Tag tone="urgent">{c.detail}</Tag> : o ? (o.ok ? <Tag tone="paid">{o.replayed ? 'כבר נוסף קודם' : 'נוסף'}</Tag> : <Tag tone="urgent">{o.error}</Tag>) : imp.dups.has(c.n) ? <Tag tone="warm">כבר קיים</Tag> : c.warn ? <Tag tone="warm">{c.warn}</Tag> : <Tag tone="neutral">מוכן</Tag>}</td>
+                      <td>{c.error ? <Tag tone="urgent">{c.detail}</Tag> : o?.ok && !o.replayed && imp.batch?.undone ? <Tag tone="neutral">בוטל</Tag> : o ? (o.ok ? <Tag tone="paid">{o.replayed ? 'כבר נוסף קודם' : 'נוסף'}</Tag> : <Tag tone="urgent">{o.error}</Tag>) : imp.dups.has(c.n) ? <Tag tone={imp.skipDups ? 'neutral' : 'warm'}>כבר קיים</Tag> : c.warn ? <Tag tone="warm">{c.warn}</Tag> : <Tag tone="neutral">מוכן</Tag>}</td>
                     </tr>
                   );
                 })}</tbody>
@@ -85,15 +85,15 @@ export function ImportScreen({ notify }: { notify: Notify }) {
             {checked.length > 50 && <p className="c-note">מוצגות 50 השורות הראשונות.</p>}
           </Card>
           {map.place >= 0 && kind === 'tasks' && <p className="c-note">מקומות: {imp.placesText}.</p>}
-          {!!imp.dups.size && <p className="c-note">{fmt(imp.dups.size)} שורות חוזרות על משהו שכבר קיים. <button type="button" className="c-link" onClick={() => imp.setSkipDups(!imp.skipDups)}>{imp.skipDups ? 'להכניס גם אותן' : 'לדלג עליהן'}</button></p>}
+          {!!imp.dups.size && <p className="c-note">כפילויות: {imp.dupsText}. <button type="button" className="c-link" onClick={() => imp.setSkipDups(!imp.skipDups)}>{imp.dupsAct}</button></p>}
           {progress
             ? <Card pad="md" className="c-flat">מוסיף… {fmt(progress.done)} מתוך {fmt(progress.total)}</Card>
             : <div><Button size="lg" disabled={!good.length} onClick={() => setAsk(true)}>{`להוסיף ${imp.count(good.length)}`}</Button></div>}
           {outcomes && (
             <p className="c-note">
-              נוספו {fmt(imp.added)}
-              {!!imp.replayed && <>, {fmt(imp.replayed)} כבר נוספו בייבוא קודם של אותן שורות</>}
-              {!!imp.failed && <>, {fmt(imp.failed)} נכשלו (הסיבה בטבלה)</>}.
+              {imp.undone ? `הייבוא בוטל: ${undoneText(kind, imp.undone.removed, imp.undone.kept)}` : addedText(kind, imp.added)}
+              {!!imp.replayed && `, ${many(imp.replayed, 'שורה אחת כבר נוספה בייבוא קודם', 'כבר נוספו בייבוא קודם של אותן שורות')}`}
+              {!!imp.failed && `, ${many(imp.failed, 'שורה אחת נכשלה', 'נכשלו')} (הסיבה בטבלה)`}.
             </p>
           )}
           <p className="c-note">{kind === 'tasks' ? 'המשימות נוספות בשמכם ובלי אחראי, כמו משימה חדשה באפליקציה. אפשר לשייך אותן אחר כך.' : 'הפריטים נוספים לרשימת הקניות בשמכם. פריט דחוף שולח התראה לצוות, כמו באפליקציה.'} כל שורה נבדקת בשרת לפני שהיא נשמרת.</p>
@@ -103,7 +103,7 @@ export function ImportScreen({ notify }: { notify: Notify }) {
         <Section title="ייבואים אחרונים">
           {imp.imports.data.slice(0, 10).map((b) => (
             <Card key={b.id} pad="md" className="c-flat">
-              <b>{fmt(b.count)} {b.kind === 'tasks' ? 'משימות' : 'פריטי קניות'}</b>
+              <b>{many(b.count, b.kind === 'tasks' ? 'משימה אחת' : 'פריט קניות אחד', b.kind === 'tasks' ? 'משימות' : 'פריטי קניות')}</b>
               <p className="c-note">{dayTime(b.at)} · {b.by}{b.undone ? ' · בוטל' : ''}</p>
               {imp.undoable(b) && <Button variant="neutral" onClick={() => setUndoing(b)}>לבטל את הייבוא</Button>}
             </Card>

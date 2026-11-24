@@ -1,13 +1,13 @@
 // תור שליחה: payment emails and phone pushes that wait or failed, with send again / don't send (asks first: it cannot be
 // undone), what went out lately, the message itself, and the payment email as a guest gets it. Addresses never show in
 // the list: only the name on the payment. The computer's page: desk/QueueDesk.tsx.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, ConfirmSheet, EmptyState, ListCard, Row, Sheet, Strip, Tag } from '../app/v2/kit';
 import { ago, fmt, QRow, Section, useLoad } from './shared';
 import { errorText, source, type QueueEmail, type QueuePush } from './source';
 import { Dialog, Failed, Skeleton } from './desk/desk';
 import { setFailedMails } from './desk/counts';
-import { useWide } from './desk/route';
+import { useRest, useWide } from './desk/route';
 import { KIND, LineDetail, lineSub, lineTitle, lineWhen, PUSH_KIND, QueueDesk, queueLines, useMail, whyText, type QLine } from './desk/QueueDesk';
 
 export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'alert') => void }) {
@@ -31,6 +31,13 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
   useEffect(() => { if (d) setFailedMails(d.emails.filter((e) => e.status === 'failed').length); }, [d]);
   const lines = d ? queueLines(d) : [];
   const lineOf = (id: string) => lines.find((l) => l.key === id) || null;
+  // a link to one line (#/queue/<id>) opens it on a phone too, once the queue is here
+  const linked = useRef(useRest('queue')[0][0] || null);
+  useEffect(() => {
+    if (!d) return;
+    if (linked.current && !wide) setOpen(queueLines(d).find((l) => l.key === linked.current) || null);
+    linked.current = null;
+  }, [d, wide]);
   const closePreview = useCallback(() => setPreview(false), []);
   return (
     <>
@@ -67,7 +74,7 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
               </Section>
               {d.sent && (
                 <Section title={`נשלחו לאחרונה${d.sentToday !== undefined ? ` · ${fmt(d.sentToday)} היום` : ''}`}>
-                  {d.sent.length ? <ListCard>{lines.filter((l) => l.state === 'sent').map((l) => <Row key={l.key} title={l.what} meta={`${l.type === 'email' ? 'מייל' : 'התראה'} · ${l.who} · ${lineWhen(l)}`} onClick={() => setOpen(l)} />)}</ListCard>
+                  {d.sent.length ? <ListCard>{lines.filter((l) => l.state === 'sent').map((l) => <Row key={l.key} className="dn-prow" title={l.what} meta={`${l.type === 'email' ? 'מייל' : 'התראה'} · ${l.who} · ${lineWhen(l)}`} onClick={() => setOpen(l)} />)}</ListCard>
                     : <p className="c-note">עוד לא נשלח כלום.</p>}
                 </Section>
               )}

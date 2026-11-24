@@ -7,31 +7,26 @@ import { source, type LogEntry, type SwitchChange, type Switches, type SwitchesV
 import { Act, Btn, Cols, DCard, DTag, Failed, Input, Notice, Page, Skeleton, Small, Switch, Table, type Column } from './desk';
 import { DIcon } from './icons';
 import { toTab } from './route';
+import { switchKnown, switchSaid, switchTextSaid, switchVerb } from '../switchNames';
 
 /** The switches of this screen. Each is kept as "is it stopped" (maintenance and read-only: "is it on"). */
 export type Key = 'maintenance' | 'readOnly' | 'keysStopped' | 'registrationClosed' | 'emailPaused' | 'pushPaused' | 'broadcastEmailPaused';
 export const MAINTENANCE_PLACEHOLDER = 'אנחנו עובדים על שיפור קטן. נחזור בקרוב.';
-/** A switch's name on the screen, and whether the screen shows it the other way round (on = not stopped). */
-const NAMES: Record<string, [string, boolean]> = {
-  maintenance: ['מצב תחזוקה', false], readOnly: ['קריאה בלבד', false], registrationClosed: ['הרשמה פתוחה', true], emailPaused: ['מיילים על תשלומים', true],
-  pushPaused: ['התראות לטלפון', true], broadcastEmailPaused: ['הודעות במייל לנרשמים', true], keysStopped: ['כל המפתחות פעילים', true],
-  backupPaused: ['גיבוי לילי', true], monitorPaused: ['בדיקת האתר והמכסה', true], cleanupPaused: ['ניקוי רשומות ישנות', true],
-};
 /** One change in words: who turned what on or off. */
 export type Change = { id: string; at: string; by: string; name: string; on: boolean | null; reason: string };
-const fromHistory = (c: SwitchChange): Change => { const [name, flip] = NAMES[c.key] || ['מתג אחר', false]; return { id: '', at: c.at, by: c.by, name, on: flip ? !c.to : c.to, reason: c.reason }; };
+const fromHistory = (c: SwitchChange): Change => ({ id: '', at: c.at, by: c.by, ...switchSaid(c.key, c.to), reason: c.reason });
 /** The same from the server's action log: today's Worker keeps no history of its own, and takes no reason. */
 export function fromLog(log: LogEntry[]): Change[] {
   return log.filter((l) => l.op === 'console.switches.set' && l.ok).flatMap((l) => {
     let b: Record<string, unknown> = {};
     try { b = JSON.parse(l.body || '{}') || {}; } catch { /* cut short in the log: nothing to say about it */ }
     return Object.entries(b).flatMap(([key, v]): Change[] => {
-      if (typeof v === 'boolean' && NAMES[key]) return [fromHistory({ at: l.at, by: l.actor.name, key, to: v, reason: '' })];
-      return key === 'maintenanceText' && Object.keys(b).length === 1 ? [{ id: '', at: l.at, by: l.actor.name, name: 'ההודעה במסך התחזוקה', on: null, reason: '' }] : [];
+      if (typeof v === 'boolean' && switchKnown(key)) return [fromHistory({ at: l.at, by: l.actor.name, key, to: v, reason: '' })];
+      return key === 'maintenanceText' && Object.keys(b).length === 1 ? [{ id: '', at: l.at, by: l.actor.name, ...switchTextSaid, reason: '' }] : [];
     });
   });
 }
-export const changeText = (c: Change) => (c.on === null ? `שינה: ${c.name}` : `${c.on ? 'הדליק' : 'כיבה'}: ${c.name}`);
+export const changeText = (c: Change) => `${switchVerb(c.on)}: ${c.name}`;
 export const changeWhen = (c: Change) => `${relDay(c.at)} ${hhmm(c.at)}`;
 /** The last changes: the server's own history, or (an older server) what its action log says. */
 export function useChanges(v: SwitchesView | null) {
@@ -52,9 +47,9 @@ const ASK_ON: Record<Key, Question> = {
   readOnly: { title: 'לעבור לקריאה בלבד?', text: 'אף אחד חוץ מהבעלים לא יוכל לשנות כלום: לא באפליקציה ולא דרך מפתחות ה־API. אפשר עדיין לצפות בהכל. מתאים לחירום.', go: 'כן, קריאה בלבד', risky: true },
   keysStopped: { title: 'לעצור את כל מפתחות ה־API?', text: 'כל בקשה עם מפתח תיענה בסירוב, גם של אינסטינקט, עד שתפעילו שוב. הקונסולה ממשיכה לעבוד.', go: 'כן, לעצור', risky: true },
   registrationClosed: { title: 'לסגור את ההרשמה?', text: 'מי שאין לו עדיין חשבון יראה "ההרשמה סגורה כרגע". מי שכבר רשום נכנס כרגיל.', go: 'כן, לסגור', risky: true },
-  emailPaused: { title: 'להשהות את המיילים על תשלומים?', text: 'תשלומים ייכנסו לתור, והמיילים יישלחו כשתדליקו שוב.', go: 'כן, להשהות' },
+  emailPaused: { title: 'להשהות את המיילים על תשלומים?', text: 'אישורי תשלום ייכנסו לתור ויישלחו כשתדליקו שוב, גם אם חיכו הרבה. ההשהיה עוצרת גם את ההודעות במייל לנרשמים: מייל כזה, אם עברו יותר מ־12 שעות מאז שההודעה נשלחה, כבר לא יישלח.', go: 'כן, להשהות' },
   pushPaused: { title: 'להשהות את ההתראות לטלפון?', text: 'ההתראה באפליקציה תמשיך להגיע. לטלפון לא יישלח מה שחיכה יותר מ־6 שעות.', go: 'כן, להשהות' },
-  broadcastEmailPaused: { title: 'להשהות את ההודעות במייל לנרשמים?', text: 'הודעות שנשלחו "גם במייל" יחכו בתור, ויישלחו כשתדליקו שוב. באפליקציה הן מגיעות כרגיל.', go: 'כן, להשהות' },
+  broadcastEmailPaused: { title: 'להשהות את ההודעות במייל לנרשמים?', text: 'הודעות שנשלחו "גם במייל" יחכו בתור, ויישלחו כשתדליקו שוב. מייל שחיכה יותר מ־12 שעות מאז שההודעה נשלחה כבר לא יישלח. באפליקציה הן מגיעות כרגיל.', go: 'כן, להשהות' },
 };
 const ASK_OFF: Record<Key, Question> = {
   maintenance: { title: 'לצאת ממצב תחזוקה?', text: 'כולם חוזרים לאפליקציה תוך שניות.', go: 'כן, לצאת מתחזוקה' },
@@ -63,7 +58,7 @@ const ASK_OFF: Record<Key, Question> = {
   registrationClosed: { title: 'לפתוח את ההרשמה?', text: 'מי שאין לו חשבון יוכל להירשם באפליקציה.', go: 'כן, לפתוח' },
   emailPaused: { title: 'להדליק את המיילים על תשלומים?', text: 'מיילים שחיכו בתור יישלחו בסבב הבא (עד 5 דקות).', go: 'כן, להדליק' },
   pushPaused: { title: 'להדליק את ההתראות לטלפון?', text: 'התראות שמחכות יישלחו בסבב הבא. מה שחיכה יותר מ־6 שעות לא יישלח.', go: 'כן, להדליק' },
-  broadcastEmailPaused: { title: 'להדליק את ההודעות במייל לנרשמים?', text: 'הודעות שחיכו יישלחו לפי המכסה היומית של שירות המייל.', go: 'כן, להדליק' },
+  broadcastEmailPaused: { title: 'להדליק את ההודעות במייל לנרשמים?', text: 'הודעות שחיכו יישלחו לפי המכסה היומית של שירות המייל. מה שחיכה יותר מ־12 שעות לא יישלח.', go: 'כן, להדליק' },
 };
 /** What the small print under the phone's switches says, where the computer's shorter lines do not. */
 const FINE: Partial<Record<Key, string>> = {
@@ -113,7 +108,7 @@ export function SwitchesDesk({ v, error, retry, busy, ask, saveText, onNow }: {
           <div className="dn-info">
             <span className="dn-info__icon"><DIcon name="clock" size={20} /></span>
             <span className="dn-info__text">שינוי מתג נכנס לתוקף באפליקציה תוך שניות, ובשרת תוך דקה. {last
-              ? <><b>שונה לאחרונה:</b> {last.by} {last.on === null ? 'שינה' : last.on ? 'הדליק' : 'כיבה'} את "{last.name}", {daysFromToday(last.at) < -1 ? ddmm(last.at) : dayTime(last.at)}.</>
+              ? <><b>שונה לאחרונה:</b> {last.by} {switchVerb(last.on)} את "{last.name}", {daysFromToday(last.at) < -1 ? ddmm(last.at) : dayTime(last.at)}.</>
               : s?.updatedBy ? <><b>שונה לאחרונה:</b> {s.updatedBy}, {ago(s.updatedAt)}.</> : null}</span>
             <Act href={toTab('security')}>להיסטוריית השינויים</Act>
           </div>
@@ -145,7 +140,7 @@ export function SwitchesDesk({ v, error, retry, busy, ask, saveText, onNow }: {
                   {...off('emailPaused')} on={emailServer && !s.emailPaused} disabled={busy || !emailServer} />
                 <Item title="התראות לטלפון" text={!pushServer ? 'לא מוגדרות בשרת.' : s.pushPaused ? 'בהשהיה: ההתראה באפליקציה מגיעה. לטלפון לא יישלח מה שחיכה יותר מ־6 שעות.' : 'כל התראה באפליקציה מגיעה גם לטלפון, למי שהפעיל.'}
                   {...off('pushPaused')} on={pushServer && !s.pushPaused} disabled={busy || !pushServer} />
-                {s.broadcastEmailPaused !== undefined && <Item title="הודעות במייל לנרשמים" text={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחות בכלל.' : s.broadcastEmailPaused ? 'בהשהיה: ההודעות מחכות בתור ונשלחות כשמדליקים.' : '"לשלוח גם במייל" בהודעות לנרשמים ולכל המשתמשים.'}
+                {s.broadcastEmailPaused !== undefined && <Item title="הודעות במייל לנרשמים" text={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחות בכלל.' : s.broadcastEmailPaused ? 'בהשהיה: ההודעות מחכות בתור ונשלחות כשמדליקים, אם לא עברו 12 שעות.' : '"לשלוח גם במייל" בהודעות לנרשמים ולכל המשתמשים.'}
                   {...off('broadcastEmailPaused')} on={emailServer && !s.broadcastEmailPaused} disabled={busy || !emailServer} />}
               </div>
             </DCard>
