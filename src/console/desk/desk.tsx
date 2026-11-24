@@ -167,7 +167,7 @@ export function Table<T>({ columns, rows, rowKey, selected, onSelect, onEnter, l
   );
 }
 /** What failed, and a way to try again. */
-export const Failed = ({ text, retry }: { text: ReactNode; retry?: () => void }) => <div className="d-failed" role="alert"><span>{text}</span>{retry && <Act onClick={retry}>לנסות שוב</Act>}</div>;
+export const Failed = ({ text, retry }: { text: ReactNode; retry?: () => void }) => <div className="d-failed" role="alert"><span>{retry && typeof text === 'string' ? text.replace(/[.,]?\s*ו?נסו שוב\.?$/, '') : text}</span>{retry && <Act onClick={retry}>לנסות שוב</Act>}</div>;
 export const Empty = ({ children }: { children: ReactNode }) => <p className="d-empty">{children}</p>;
 /** Placeholder lines in the layout's own shape while a block loads. */
 export const Skeleton = ({ lines = 3, height = 14 }: { lines?: number; height?: number }) => <div className="d-skels" aria-hidden="true">{Array.from({ length: lines }, (_, i) => <span key={i} className="d-skel" style={{ height, width: `${[92, 74, 84, 60][i % 4]}%` }} />)}</div>;

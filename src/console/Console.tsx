@@ -1,5 +1,5 @@
 // The owners' console at /admin: the farm's server in one place. Sign in with Google; only an active owner gets in
-// (the Worker checks it on every request, this screen only says so). Screens: מצב השרת, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, מתגים, תור שליחה, משימות מתוזמנות,
+// (the Worker checks it on every request, this screen only says so). Screens: מצב כללי, ניטור, סטטיסטיקות, כסף ואירועים, נתונים, אנשים, מפתחות API, מתגים, תור שליחה, משימות מתוזמנות,
 // אבטחה, גיבויים.
 // /admin?demo shows the same screens over made-up data, without signing in and without reading or writing anything.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -30,7 +30,7 @@ import { ImportScreen } from './Import';
 
 type Tab = 'overview' | 'monitor' | 'stats' | 'traffic' | 'money' | 'data' | 'people' | 'keys' | 'switches' | 'queue' | 'jobs' | 'speed' | 'run' | 'import' | 'security' | 'backups';
 const TABS: { value: Tab; label: string }[] = [
-  { value: 'overview', label: 'מצב השרת' },
+  { value: 'overview', label: 'מצב כללי' },
   { value: 'monitor', label: 'ניטור' },
   { value: 'stats', label: 'סטטיסטיקות' },
   { value: 'traffic', label: 'ביקורים ושימוש' },

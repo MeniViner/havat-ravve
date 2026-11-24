@@ -1,21 +1,26 @@
 // נתונים: every collection in the database and its size, the records of one (search, more, export to Excel), and one
 // record: all its fields, careful edits of simple fields, delete to the recycle bin, its history from the nightly
 // backups (put an older version back) and what the app recorded about it.
-import { useMemo, useState } from 'react';
+// Phone: one thing at a time, as before. Computer: three panes (desk/DataDesk.tsx). Loading and edits: desk/DataSpec.tsx.
+import { useState } from 'react';
 import { BackLink, Button, Card, ConfirmSheet, Field, ListCard, Row, SearchField, Segmented, Sheet, Tag, Toggle } from '../app/v2/kit';
 import { ddmm } from '../app/v2/format';
 import { ago, FieldName, fmt, Section, useLoad } from './shared';
 import { collectionName, fieldLabel, valueText } from './labels';
 import { errorText, source, type DataCollection, type DataDoc, type DocVersion } from './source';
-
-type Notify = (t: string, tone?: 'info' | 'alert') => void;
-const SYSTEM = new Set(['api_log', 'api_failures', 'api_idempotency', 'push_jobs', 'email_outbox', 'account_deletions', 'counters']);
-const SIMPLE = new Set(['string', 'integer', 'double', 'boolean', 'null']);
-type Place = { group: string; parent?: string; label?: string };
+import { useRest, useWide } from './desk/route';
+import { activityText, groupOf, type Notify, type Place, readAddress, useCollections, useRecordEdit, useRecords } from './desk/DataSpec';
+import { DataDesk } from './desk/DataDesk';
 
 export function DataScreen({ notify }: { notify: Notify }) {
-  const [place, setPlace] = useState<Place | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  return useWide() ? <DataDesk notify={notify} /> : <DataPhone notify={notify} />;
+}
+
+function DataPhone({ notify }: { notify: Notify }) {
+  // a link to one record (#/data/tasks/<id>) opens it here too
+  const at = readAddress(useRest('data')[0]);
+  const [place, setPlace] = useState<Place | null>(at.place);
+  const [open, setOpen] = useState<string | null>(at.doc);
   const [trail, setTrail] = useState<Place[]>([]);
   const go = (p: Place) => { if (place) setTrail([...trail, place]); setPlace(p); };
   const back = () => { const t = [...trail]; setPlace(t.pop() || null); setTrail(t); };
@@ -24,19 +29,18 @@ export function DataScreen({ notify }: { notify: Notify }) {
       {!place && <Collections onPick={(group) => { setTrail([]); setPlace({ group }); }} />}
       {place && <Records key={place.group + (place.parent || '')} place={place} backLabel={trail.length ? `חזרה ל${collectionName(trail[trail.length - 1].group)}` : 'כל האוספים'} onBack={back} onOpen={setOpen} notify={notify} />}
       {open && <RecordSheet path={open} onClose={() => setOpen(null)} notify={notify} onGone={() => setOpen(null)}
-        onSub={(sub) => { const parent = open; setOpen(null); go({ group: `${parent.split('/').filter((_, i) => i % 2 === 0).join('/*/')}/*/${sub}`, parent, label: parent }); }} />}
+        onSub={(sub) => { const parent = open; setOpen(null); go({ group: `${groupOf(parent)}/*/${sub}`, parent }); }} />}
     </>
   );
 }
 
 function Collections({ onPick }: { onPick: (group: string) => void }) {
-  const list = useLoad(() => source.dataCollections());
+  const list = useCollections();
   const [q, setQ] = useState('');
   const [sys, setSys] = useState(false);
   const match = (c: DataCollection) => !q.trim() || `${collectionName(c.group)} ${c.group}`.toLowerCase().includes(q.trim().toLowerCase());
-  const items = (list.data?.items || []).filter(match);
-  const farm = items.filter((c) => !SYSTEM.has(c.group));
-  const system = items.filter((c) => SYSTEM.has(c.group));
+  const farm = list.farm.filter(match);
+  const system = list.system.filter(match);
   const row = (c: DataCollection) => {
     const n = c.count ?? c.backupCount;
     return <Row key={c.group} title={collectionName(c.group)} meta={<><span className="k-ltr" dir="ltr">{c.group}</span>{c.count === null && c.backupCount !== null ? ' · לפי הגיבוי של הלילה' : ''}</>}
@@ -64,13 +68,8 @@ function Collections({ onPick }: { onPick: (group: string) => void }) {
 }
 
 function Records({ place, backLabel, onBack, onOpen, notify }: { place: Place; backLabel: string; onBack: () => void; onOpen: (path: string) => void; notify: Notify }) {
-  const [after, setAfter] = useState<string | null>(null);
-  const [rows, setRows] = useState<{ path: string; id: string; title: string; updateTime: string | null }[]>([]);
-  const page = useLoad(async () => {
-    const r = await source.dataDocs(place.group, after, place.parent);
-    setRows((prev) => (after ? [...prev, ...r.items] : r.items));
-    return r;
-  }, [place.group, place.parent, after]);
+  const page = useRecords(place);
+  const rows = page.rows || [];
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const shown = rows.filter((d) => !q.trim() || `${d.title} ${d.id}`.toLowerCase().includes(q.trim().toLowerCase()));
@@ -85,7 +84,7 @@ function Records({ place, backLabel, onBack, onOpen, notify }: { place: Place; b
       <div className="c-title">
         <div>
           <h1 className="c-h1">{collectionName(place.group)}</h1>
-          <p className="c-sub"><span className="k-ltr" dir="ltr">{place.parent ? `${place.parent}/${place.group.split('/*/').pop()}` : place.group}</span>{page.data && <> · <span className="k-num">{rows.length}</span>{page.data.next ? '+' : ''} רשומות</>}</p>
+          <p className="c-sub"><span className="k-ltr" dir="ltr">{place.parent ? `${place.parent}/${place.group.split('/*/').pop()}` : place.group}</span>{page.rows && <> · <span className="k-num">{rows.length}</span>{page.next ? '+' : ''} רשומות</>}</p>
         </div>
         {!place.parent && <Button variant="neutral" icon="download" onClick={exportIt} disabled={busy}>{busy ? 'מייצא…' : 'ייצוא לאקסל'}</Button>}
       </div>
@@ -97,9 +96,9 @@ function Records({ place, backLabel, onBack, onOpen, notify }: { place: Place; b
           {shown.map((d) => <Row key={d.path} title={d.title || <span className="k-ltr" dir="ltr">{d.id}</span>} meta={<><span className="k-ltr" dir="ltr">{d.id}</span>{d.updateTime && <> · עודכן {ago(d.updateTime)}</>}</>} chevron onClick={() => onOpen(d.path)} />)}
         </ListCard>
       )}
-      {page.data && !rows.length && <Card pad="md" className="c-soft">האוסף ריק.</Card>}
-      {page.data && !!rows.length && !shown.length && <Card pad="md" className="c-soft">אין רשומות שמתאימות לחיפוש{page.data.next ? '. אפשר לטעון עוד ולחפש שוב' : ''}.</Card>}
-      {page.data?.next && <Button variant="neutral" block onClick={() => setAfter(page.data!.next)} disabled={page.loading}>{page.loading ? 'טוען…' : 'לטעון עוד'}</Button>}
+      {page.rows && !rows.length && <Card pad="md" className="c-soft">האוסף ריק.</Card>}
+      {page.rows && !!rows.length && !shown.length && <Card pad="md" className="c-soft">אין רשומות שמתאימות לחיפוש{page.next ? '. אפשר לטעון עוד ולחפש שוב' : ''}.</Card>}
+      {page.next && <Button variant="neutral" block onClick={page.more} disabled={page.loading}>{page.loading ? 'טוען…' : 'לטעון עוד'}</Button>}
     </>
   );
 }
@@ -115,41 +114,15 @@ function RecordSheet({ path, onClose, notify, onGone, onSub }: { path: string; o
         {doc.error && <p className="c-err">{doc.error}</p>}
         {doc.loading && !d && <p className="c-soft">טוען…</p>}
         {d && tab === 'fields' && <Fields d={d} notify={notify} reload={doc.reload} onGone={onGone} onSub={onSub} />}
-        {d && tab === 'history' && <History path={path} notify={notify} onRestored={doc.reload} />}
+        {d && tab === 'history' && <History path={path} title={d.title} notify={notify} onRestored={doc.reload} />}
       </div>
     </Sheet>
   );
 }
 
 function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Notify; reload: () => void; onGone: () => void; onSub: (sub: string) => void }) {
-  const [edit, setEdit] = useState(false);
-  const [draft, setDraft] = useState<Record<string, string | boolean>>({});
-  const [confirm, setConfirm] = useState(false);
+  const { edit, setEdit, draft, setDraft, confirm, setConfirm, busy, keys, editable, start, parsed, bad, save, remove } = useRecordEdit(d, notify, reload, onGone);
   const [del, setDel] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const keys = Object.keys(d.fields).sort();
-  const editable = (k: string) => !d.readOnly && SIMPLE.has(d.types[k]);
-  const start = () => { setDraft(Object.fromEntries(keys.filter(editable).map((k) => [k, d.types[k] === 'boolean' ? !!d.fields[k] : d.fields[k] === null ? '' : String(d.fields[k])]))); setEdit(true); };
-  const parsed = useMemo(() => {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(draft)) {
-      const t = d.types[k];
-      const val = t === 'boolean' ? v : t === 'integer' || t === 'double' ? (String(v).trim() === '' ? null : Number(v)) : t === 'null' ? (String(v) === '' ? null : v) : v;
-      if (JSON.stringify(val) !== JSON.stringify(d.fields[k])) out[k] = val;
-    }
-    return out;
-  }, [draft, d]);
-  const bad = Object.entries(parsed).some(([k, v]) => (d.types[k] === 'integer' || d.types[k] === 'double') && v !== null && !Number.isFinite(v as number));
-  const save = async () => {
-    setBusy(true);
-    try { await source.editDoc(d.path, parsed, d.updateTime!); notify('נשמר'); setEdit(false); setConfirm(false); reload(); }
-    catch (e) { notify(errorText(e), 'alert'); }
-    finally { setBusy(false); }
-  };
-  const remove = async () => {
-    try { await source.deleteDoc(d.path, d.updateTime!); notify('נמחק. אפשר לשחזר מסל המחזור במסך הגיבויים'); onGone(); }
-    catch (e) { notify(errorText(e), 'alert'); }
-  };
   return (
     <>
       <p className="c-sub"><span className="k-ltr" dir="ltr">{d.path}</span> · נוצר {ago(d.createTime)} · עודכן {ago(d.updateTime)}</p>
@@ -202,7 +175,7 @@ function Fields({ d, notify, reload, onGone, onSub }: { d: DataDoc; notify: Noti
   );
 }
 
-function History({ path, notify, onRestored }: { path: string; notify: Notify; onRestored: () => void }) {
+function History({ path, title, notify, onRestored }: { path: string; title: string; notify: Notify; onRestored: () => void }) {
   const [days, setDays] = useState(7);
   const h = useLoad(() => source.dataHistory(path, days), [path, days]);
   const [pick, setPick] = useState<DocVersion | null>(null);
@@ -254,7 +227,7 @@ function History({ path, notify, onRestored }: { path: string; notify: Notify; o
       </Section>
       <Section title="מה נרשם באפליקציה">
         {!x.activity.length && <Card pad="md" className="c-soft">אין שורות ביומן הפעילות על הרשומה הזאת.</Card>}
-        {!!x.activity.length && <ListCard>{x.activity.map((a, i) => <Row key={a.at + i} title={a.text} meta={<>{a.by}{a.via ? ` · דרך ${a.via}` : ''} · {ago(a.at)}</>} />)}</ListCard>}
+        {!!x.activity.length && <ListCard>{x.activity.map((a, i) => <Row key={a.at + i} title={activityText(a, title)} meta={<>{a.by}{a.via ? ` · דרך ${a.via}` : ''} · {ago(a.at)}</>} />)}</ListCard>}
       </Section>
     </>
   );

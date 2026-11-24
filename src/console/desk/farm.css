@@ -1,1 +1,41 @@
 /* The console on a computer: what only the farm screens need. Shared parts: desk.css. */
+/* these pages are taller than a low window: the page scrolls and keeps its end padding */
+.d-body:has(> .df-flow) { flex: 1 0 auto; }
+.df-flow { display: flex; flex-direction: column; gap: 16px; }
+.df-flow.is-loading { opacity: .6; transition: opacity .15s; }
+.df-row { flex: none; display: flex; gap: 16px; min-width: 0; }
+.df-row > .d-card { flex: 1; }
+.df-aside { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.df-flow .d-card__head h2 { flex: none; max-width: 100%; }
+.df-flow .d-card__aside { min-width: 0; }
+.df-bars { padding-top: 4px; }
+.df-h { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; }
+.df-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--soft); max-width: 90ch; }
+/* six numbers in one row; three a row where they would not fit */
+@media (max-width: 1200px) { .df-flow .d-line { flex-wrap: wrap; } .df-flow .d-line > .d-tile { flex: 1 0 calc(33.3% - 8px); } }
+/* the first and the last date stay inside the card when the columns are narrower than they are */
+.df-bars--days .d-bars__col:first-child .d-bars__label { align-self: flex-start; } .df-bars--days .d-bars__col:last-child .d-bars__label { align-self: flex-end; }
+@media (max-width: 1200px) { .df-pair { flex-direction: column; } .df-three { flex-wrap: wrap; } .df-three > .d-card { flex: 1 0 calc(50% - 8px); } .df-bars--months .d-bars__col:nth-last-child(even) .d-bars__label { visibility: hidden; } }
+/* three rankings side by side need room for the bar itself */
+@media (max-width: 1280px) { .df-rank .d-rank__label { width: 104px !important; } .df-rank .d-rank__row { gap: 8px; } .df-rank .d-rank__share { width: 30px; } }
+
+/* כסף: the hero and the next event */
+.df-hero { padding: 16px 20px; }
+.df-hero__sum { flex: none; display: flex; flex-direction: column; } .df-hero__sum span, .df-hero__side span { font-size: 13px; color: rgba(255, 255, 255, .85); }
+.df-hero__sum b { font-size: 40px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.df-hero__split { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.df-hero__bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, .12); } .df-hero__bar span { display: block; height: 12px; }
+.df-hero__bar .is-tickets { background: #FFFFFF; } .df-hero__bar .is-donations { background: #CFC6BD; } .df-hero__bar .is-tabs { background: #8E827A; }
+.df-hero__parts { display: flex; flex-wrap: wrap; gap: 0 24px; font-size: 14px; }
+.df-hero__side { flex: none; display: flex; gap: 24px; } .df-hero__side > div { display: flex; flex-direction: column; } .df-hero__side b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.df-pay { display: flex; flex-direction: column; } .df-pay > .d-table { min-height: 0; overflow: auto; max-height: max(230px, calc(100dvh - 520px)); }
+/* the sum stays in sight when the table is wider than its card */
+.df-pay th:last-child, .df-pay td:last-child { position: sticky; inset-inline-end: 0; background: var(--surface); } .df-pay th:last-child { z-index: 2; }
+.df-funnel { display: flex; flex-direction: column; gap: 10px; }
+.df-funnel__step { display: flex; flex-direction: column; gap: 4px; } .df-funnel__head { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; } .df-funnel__head b { font-variant-numeric: tabular-nums; }
+.df-funnel__track { display: block; height: 8px; border-radius: 3px; background: var(--bg); } .df-funnel__track span { display: block; height: 8px; border-radius: 3px; background: var(--selected); }
+.df-foot { margin: 10px 0 0; font-size: 13px; color: var(--soft); max-width: 70ch; }
+.df-evlink { color: inherit; text-decoration: none; } .df-evlink:hover { text-decoration: underline; }
+.df-evs { margin-top: -4px; }
+.df-ev { width: 100%; border: 0; border-top: 1px solid var(--line); background: none; text-align: start; color: var(--ink); cursor: pointer; }
+.df-ev:hover { background: #FAFAF9; } .df-ev[aria-pressed='true'] { background: var(--d-warm); }

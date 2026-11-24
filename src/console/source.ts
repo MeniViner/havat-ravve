@@ -119,6 +119,8 @@ export type OpResult = { status: number; ms: number; json: unknown };
 export type Ranked = { key: string; count: number }[];
 export type Traffic = {
   days: number; from: string; cap: number;
+  /** How far back the server counts (365; a newer Worker). */
+  maxDays?: number;
   today: { day: string; views: number; visitors: number; opens: number; users: number; capped: boolean };
   totals: { views: number; visitors: number; returning: number; opens: number; users: number; appReturning: number; hits: number };
   perDay: { day: string; views: number; visitors: number; opens: number; users: number }[];
@@ -200,7 +202,7 @@ export interface Source {
   /** null: the server keeps no imports yet (so nothing can be undone). */
   imports(): Promise<ImportBatch[] | null>;
   saveImport(kind: 'tasks' | 'shopping', ids: string[]): Promise<ImportBatch | null>;
-  undoImport(id: string): Promise<{ removed: number; kept: number }>;
+  undoImport(id: string): Promise<{ removed: number; kept: number; left?: number }>;
   jobs(): Promise<Jobs>;
   runJob(id: string): Promise<{ id: string; result: Record<string, unknown> | null }>;
 }

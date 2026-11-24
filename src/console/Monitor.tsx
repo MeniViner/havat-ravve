@@ -6,11 +6,11 @@ import { hhmm } from '../app/v2/format';
 import { ago, fmt, Section, useLoad } from './shared';
 import { size } from './labels';
 import { errorText, source, type HealthState, type Monitor } from './source';
-import { sec } from './Speed';
+import { copyGrant, eventLong, eventsOf, eventWhen, GRANT, sec, STATE } from './desk/statusParts';
+import { MonitorDesk, type AlertActions } from './desk/MonitorDesk';
+import { useWide } from './desk/route';
 import { nowMs } from '../app/clock';
 
-const GRANT = 'gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:api-worker@havat-ravve.iam.gserviceaccount.com --role=roles/monitoring.viewer';
-const STATE: Record<HealthState, string> = { ok: 'תקין', warn: 'לשים לב', bad: 'לטפל', unknown: 'לא ידוע' };
 /** The morning check's lines by their id, in plain words (the server's own names mention its providers). */
 const HEALTH_HE: Record<string, string> = { quota: 'המכסה החינמית של מסד הנתונים', storage: 'אחסון קבצים וגיבויים' };
 
@@ -19,6 +19,7 @@ function StateMark({ state }: { state: HealthState }) {
 }
 
 export function MonitorScreen({ notify }: { notify: (t: string, tone?: 'info' | 'alert') => void }) {
+  const wide = useWide();
   const mon = useLoad(() => source.monitor());
   const [busy, setBusy] = useState(false);
   const m = mon.data;
@@ -28,6 +29,8 @@ export function MonitorScreen({ notify }: { notify: (t: string, tone?: 'info' | 
     catch (e) { notify(errorText(e), 'alert'); }
     finally { setBusy(false); }
   };
+  const alerts = useAlertActions(m, (a) => { if (mon.data) mon.setData({ ...mon.data, alerts: a }); }, notify);
+  if (wide) return <MonitorDesk mon={mon} busy={busy} checkNow={checkNow} alerts={alerts} notify={notify} />;
   return (
     <>
       <div className="c-title">
@@ -53,7 +56,8 @@ export function MonitorScreen({ notify }: { notify: (t: string, tone?: 'info' | 
               </ListCard>
             )}
           </Section>
-          <AlertsSection m={m} onChange={(alerts) => mon.setData({ ...m, alerts })} notify={notify} />
+          <EventsSection m={m} />
+          <AlertsSection m={m} act={alerts} />
         </div>
       )}
     </>
@@ -112,7 +116,7 @@ function Meter({ label, used, limit, unit }: { label: string; used: number; limi
 
 function QuotaSection({ m, notify }: { m: Monitor; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const q = m.quota;
-  const copy = async () => { try { await navigator.clipboard.writeText(GRANT); notify('הפקודה הועתקה'); } catch { notify('לא הצלחנו להעתיק. אפשר לסמן ולהעתיק ידנית', 'alert'); } };
+  const copy = () => copyGrant(notify);
   return (
     <Section title="מכסות חינם" aside={q && !q.error ? <span className="c-soft">נמדד {ago(q.at)}</span> : undefined}>
       <Card pad="lg" className="c-meters">
@@ -145,23 +149,43 @@ function QuotaSection({ m, notify }: { m: Monitor; notify: (t: string, tone?: 'i
   );
 }
 
-function AlertsSection({ m, onChange, notify }: { m: Monitor; onChange: (a: Monitor['alerts']) => void; notify: (t: string, tone?: 'info' | 'alert') => void }) {
+/** The alert switches and the test alert, for both layouts. */
+function useAlertActions(m: Monitor | null, onChange: (a: Monitor['alerts']) => void, notify: (t: string, tone?: 'info' | 'alert') => void): AlertActions {
   const [busy, setBusy] = useState(false);
-  const set = async (b: { on?: boolean; push?: boolean }) => {
+  const set = async (b: { on?: boolean; push?: boolean; daily?: boolean }) => {
     setBusy(true);
-    try { onChange(await source.setAlerts(b)); } catch (e) { notify(errorText(e), 'alert'); } finally { setBusy(false); }
+    // the answer may be an older server's, without the daily summary it does not offer
+    try { const a = await source.setAlerts(b); onChange(m?.alerts.daily !== undefined && a.daily === undefined ? { ...a, daily: m.alerts.daily } : a); } catch (e) { notify(errorText(e), 'alert'); } finally { setBusy(false); }
   };
   const test = async () => {
     setBusy(true);
     try { const r = await source.testAlert(); notify(r.push ? 'נשלחה. היא תופיע בהתראות באפליקציה ובטלפון' : 'נשלחה. היא תופיע בהתראות באפליקציה'); }
     catch (e) { notify(errorText(e), 'alert'); } finally { setBusy(false); }
   };
+  return { busy, set, test };
+}
+
+function EventsSection({ m }: { m: Monitor }) {
+  const { items, told } = eventsOf(m);
+  // an older server knows only the site's outages, and those are already under its strip
+  if (!told) return null;
+  return (
+    <Section title="מה קרה לאחרונה">
+      {items.length
+        ? <ListCard>{items.map((e) => <Row key={e.at + e.kind} title={e.he} meta={`${eventWhen(e.at)} · ${eventLong(e)} · ${e.alerted ? 'נשלחה התראה' : 'לא נשלחה התראה'}`} />)}</ListCard>
+        : <Card pad="md" className="c-soft">לא קרה דבר חריג לאחרונה.</Card>}
+    </Section>
+  );
+}
+
+function AlertsSection({ m, act: { busy, set, test } }: { m: Monitor; act: AlertActions }) {
   const a = m.alerts;
   return (
     <Section title="התראות לבעלים">
       <ListCard>
         <Row title="התראה כשמשהו לא בסדר" meta="בהתראות באפליקציה של כל הבעלים" value={<Toggle checked={a.on} onChange={(on) => set({ on })} label="התראה כשמשהו לא בסדר" disabled={busy} />} />
         <Row title="גם לטלפון" meta="חוץ מבין 23:00 ל־07:00" value={<Toggle checked={a.push && a.on} onChange={(push) => set({ push })} label="גם לטלפון" disabled={busy || !a.on} />} />
+        {a.daily !== undefined && <Row title="סיכום בוקר יומי" meta="גם כשהכול תקין" value={<Toggle checked={a.daily && a.on} onChange={(daily) => set({ daily })} label="סיכום בוקר יומי" disabled={busy || !a.on} />} />}
       </ListCard>
       <p className="c-note">מתי נשלחת התראה: האתר לא עונה חצי שעה, בדיקת הבוקר מצאה משהו לטפל בו, או שהמכסה החינמית עברה 80%. אותה התראה לא חוזרת לפני 12 שעות.{a.updatedBy && ` שונה לאחרונה על ידי ${a.updatedBy}, ${ago(a.updatedAt)}.`}</p>
       <Button variant="neutral" onClick={test} disabled={busy}>שליחת התראת בדיקה אליי</Button>

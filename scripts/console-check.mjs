@@ -16,9 +16,18 @@ const shotOnly = args.includes('--shot') || width !== 1440;
 export const SCREENS = {
   K1: { file: 'K1-ConsoleStatus', at: 'overview' }, K2: { file: 'K2-Monitor', at: 'monitor' }, K3: { file: 'K3-Speed', at: 'speed' },
   K4: { file: 'K4-Stats', at: 'stats' }, K5: { file: 'K5-Traffic', at: 'traffic' }, K6: { file: 'K6-Money', at: 'money' },
-  K7: { file: 'K7-Data', at: 'data' }, K8: { file: 'K8-People', at: 'people' }, K9: { file: 'K9-Import', at: 'import', do: async () => {} }, K10: { file: 'K10-Backups', at: 'backups' },
+  K7: { file: 'K7-Data', at: 'data' }, K8: { file: 'K8-People', at: 'people/d-matan' }, K9: { file: 'K9-Import', at: 'import', do: async (p) => { await p.getByText('שורות לדוגמה').click(); if (width >= 1024) await p.getByRole('button', { name: 'המשך' }).click(); } }, K10: { file: 'K10-Backups', at: 'backups' },
   K11: { file: 'K11-Queue', at: 'queue' }, K12: { file: 'K12-Jobs', at: 'jobs' }, K13: { file: 'K13-Switches', at: 'switches' },
-  K14: { file: 'K14-Keys', at: 'keys' }, K15: { file: 'K15-Run', at: 'run', do: async () => {} }, K16: { file: 'K16-Security', at: 'security' },
+  K14: { file: 'K14-Keys', at: 'keys/cred-beni' }, K15: { file: 'K15-Run', at: 'run/tasks.create', do: async (page) => {
+    const field = (label) => page.getByLabel(label, { exact: true });
+    await field('מה צריך לעשות · חובה').fill('לבדוק את הטפטפות בחממה');
+    await field('על מי').fill('יואב פרץ');
+    await field('מקום').fill('חממה');
+    await page.getByRole('button', { name: 'הרצה', exact: true }).click();
+    await page.getByRole('button', { name: 'כן, להריץ' }).click();
+    await page.getByText('להציג את התשובה המלאה').waitFor();
+    await page.evaluate(() => document.activeElement?.blur());
+  } }, K16: { file: 'K16-Security', at: 'security' },
 };
 const want = args.filter((a) => /^K\d+$/.test(a));
 const list = want.length ? want : Object.keys(SCREENS);
