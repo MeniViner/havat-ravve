@@ -51,7 +51,7 @@
 .ds-week td { height: 39px; } .ds-week td > span { display: inline-flex; vertical-align: middle; } .ds-week td.is-strong, .ds-week td.is-soft { vertical-align: middle; }
 
 @media (max-width: 1359px) {
-  .ds-check { align-items: baseline; } .ds-check__name { width: 120px; } .ds-check__detail { white-space: normal; } .ds-morning { column-gap: 20px; }
+  .ds-check { align-items: baseline; } .ds-check__name { width: 120px; } .ds-check__detail { white-space: normal; text-wrap: pretty; } .ds-morning { column-gap: 20px; }
   .v2 .d-hero:has(.ds-hero__strip) { flex-wrap: wrap; gap: 14px 24px; }
   .ds-hero__state { flex: 1; } .ds-hero__strip { order: 3; flex: 0 0 100%; }
 }

@@ -34,10 +34,12 @@ export function useRest(tab: string): [string[], (rest: string[]) => void] {
  * One selected id: the one in the address if it is in the list, else (when `auto`) the first, which then goes into the
  * address too, so it stays selected when an action moves it or changes the list. When only the selected row left the
  * list (it was just deleted, sent or cancelled), nothing is selected: the next row must not slide under the same button.
+ * `alias`: another name a link may call a row by (a key's label), as its id.
  */
-export function useSelected(tab: string, ids: string[], auto = true): [string | null, (id: string | null) => void] {
+export function useSelected(tab: string, ids: string[], auto = true, alias?: (want: string) => string | undefined): [string | null, (id: string | null) => void] {
   const [rest, set] = useRest(tab);
-  const want = rest[0] || null;
+  const asked = rest[0] || null;
+  const want = (asked && !ids.includes(asked) && alias?.(asked)) || asked;
   const before = useRef<{ ids: string[]; emptied: string | null }>({ ids: [], emptied: null });
   const key = ids.join('\n');
   let id: string | null = null;
@@ -50,10 +52,36 @@ export function useSelected(tab: string, ids: string[], auto = true): [string | 
   useEffect(() => {
     if (!ids.length) return;
     if (id) before.current = { ids, emptied: null };
-    if (id !== want) { if (id) set([id]); else if (auto) set([]); }
+    if (id !== asked) { if (id) set([id]); else if (auto) set([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, want, key, auto, set]);
+  }, [id, asked, want, key, auto, set]);
   return [id, useCallback((x: string | null) => { before.current.emptied = null; set(x ? [x] : []); }, [set])];
+}
+// A window's listeners run in the order they were added, so this one is added once, before any screen's own.
+let guard: { dirty: () => boolean; ask: (go: () => void) => void } | null = null;
+let through: string | null = null;
+window.addEventListener('hashchange', (e: HashChangeEvent) => {
+  const to = location.hash;
+  if (through === to) { through = null; return; }
+  if (!guard?.dirty()) return;
+  e.stopImmediatePropagation();
+  history.pushState(history.state, '', e.oldURL);
+  guard.ask(() => { through = to; location.hash = to; });
+});
+/**
+ * Work that was not saved is not dropped without asking: `dirty` says if there is any. A move to another screen (a link,
+ * the back button) is put back and handed to `ask` with a way to go on; closing the tab asks the browser's own question.
+ */
+export function useLeaveGuard(dirty: () => boolean, ask: (go: () => void) => void) {
+  const now = useRef({ dirty, ask });
+  now.current = { dirty, ask };
+  useEffect(() => {
+    guard = { dirty: () => now.current.dirty(), ask: (go) => now.current.ask(go) };
+    const mine = guard;
+    const onClose = (e: BeforeUnloadEvent) => { if (now.current.dirty()) e.preventDefault(); };
+    addEventListener('beforeunload', onClose);
+    return () => { if (guard === mine) guard = null; removeEventListener('beforeunload', onClose); };
+  }, []);
 }
 /** A value once it stopped changing for a moment, so walking a list with the arrows asks the server once. */
 export function useSettled<T>(value: T, ms = 150): T {

@@ -27,7 +27,8 @@ function expiring(i: { detail: string } | undefined) {
 export function checkDetail(i: Health['items'][number], cronAt: string | null, agoText: (iso: string) => string): string {
   if (i.id === 'keys' && i.state === 'warn') { const e = expiring(i); if (e) return e.names.length === 1 ? 'אחד פג השבוע' : `${fmt(e.names.length)} פגים השבוע`; }
   if (i.id === 'cron' && i.state === 'ok' && cronAt) return `רצו ${agoText(cronAt)}`;
-  return i.detail;
+  // a number and its unit stay on one line
+  return i.detail.replace(/(\d) (KB|MB|GB)/g, '$1\u00a0$2');
 }
 
 /** "רצה ב־07:00 · הבאה מחר" */
@@ -101,7 +102,7 @@ export function waiting(o: Overview | null, m: Monitor | null, q: Queue | null, 
     const e = i.id === 'keys' ? expiring(i) : null;
     const [tab, link] = FIX[i.id] || ['monitor', 'לניטור'];
     out.push({
-      id: 'h-' + i.id, tone: i.state === 'bad' ? 'red' : 'amber', link, href: toTab(tab),
+      id: 'h-' + i.id, tone: i.state === 'bad' ? 'red' : 'amber', link, href: e?.names.length === 1 ? toTab(tab, e.names[0]) : toTab(tab),
       title: e ? (e.names.length === 1 ? 'מפתח API עומד לפוג' : `${fmt(e.names.length)} מפתחות API עומדים לפוג`) : `${checkName(i)}: ${STATE[i.state]}`,
       text: e ? `${e.names.map((n) => `"${n}"`).join(', ')} · ${e.when}` : i.detail,
     });

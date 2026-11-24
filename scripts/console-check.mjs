@@ -19,6 +19,7 @@ export const SCREENS = {
   K7: { file: 'K7-Data', at: 'data' }, K8: { file: 'K8-People', at: 'people/d-matan' }, K9: { file: 'K9-Import', at: 'import', do: async (p) => { await p.getByText('שורות לדוגמה').click(); if (width >= 1024) await p.getByRole('button', { name: 'המשך' }).click(); } }, K10: { file: 'K10-Backups', at: 'backups' },
   K11: { file: 'K11-Queue', at: 'queue' }, K12: { file: 'K12-Jobs', at: 'jobs' }, K13: { file: 'K13-Switches', at: 'switches' },
   K14: { file: 'K14-Keys', at: 'keys/cred-beni' }, K15: { file: 'K15-Run', at: 'run/tasks.create', do: async (page) => {
+    page.setDefaultTimeout(8000);
     const field = (label) => page.getByLabel(label, { exact: true });
     await field('מה צריך לעשות · חובה').fill('לבדוק את הטפטפות בחממה');
     await field('על מי').fill('יואב פרץ');
@@ -47,8 +48,16 @@ for (const k of list) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(700);
   // a design that is a moment in the middle of work (the mapped table, the run result) is reached by doing the work
-  if (s.do) { await s.do(page); await page.waitForTimeout(500); }
+  let stuck = '';
+  if (s.do) { try { await s.do(page); } catch (e) { if (width >= 1024) throw e; stuck = '  (the phone has its own steps: not done)'; } await page.waitForTimeout(500); }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  // text cut inside the page: a cell or a line wider than its box, or a number broken over lines
+  const cut = await page.evaluate(() => [...document.querySelectorAll('.d-body *')].filter((e) => {
+    if (e.children.length || !e.textContent.trim() || !e.getClientRects().length) return false;
+    const c = getComputedStyle(e);
+    if (c.overflowX === 'hidden' && e.clientWidth > 2 && e.scrollWidth > e.clientWidth + 1 && !e.title && !e.closest('[title]')) return true;
+    return /^[\d.:/]+$/.test(e.textContent.trim()) && (() => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1; })();
+  }).map((e) => e.textContent.trim().slice(0, 30)).slice(0, 4));
   const raw = path.join(out, shotOnly ? `${k}-${width}.png` : `${k}.png`);
   await page.screenshot({ path: raw, scale: 'device' });
   let diff = '';
@@ -71,7 +80,7 @@ for (const k of list) {
     fs.rmSync(raw);
   }
   if (errors.length || outside.length || overflow > 0) bad++;
-  console.log(`${k} ${s.at}${diff}${overflow > 0 ? `  OVERFLOW ${overflow}px` : ''}${errors.length ? '  ERRORS ' + errors.join(' | ').slice(0, 300) : ''}${outside.length ? '  REQUESTS ' + outside.slice(0, 3).join(' ') : ''}`);
+  console.log(`${k} ${s.at}${diff}${stuck}${cut.length ? '  CUT ' + cut.join(' | ') : ''}${overflow > 0 ? `  OVERFLOW ${overflow}px` : ''}${errors.length ? '  ERRORS ' + errors.join(' | ').slice(0, 300) : ''}${outside.length ? '  REQUESTS ' + outside.slice(0, 3).join(' ') : ''}`);
   await page.close();
 }
 await browser.close();

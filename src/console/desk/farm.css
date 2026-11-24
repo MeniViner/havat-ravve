@@ -11,7 +11,8 @@
 .df-h { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; }
 .df-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--soft); max-width: 90ch; }
 /* six numbers in one row; three a row where they would not fit */
-@media (max-width: 1200px) { .df-flow .d-line { flex-wrap: wrap; } .df-flow .d-line > .d-tile { flex: 1 0 calc(33.3% - 8px); } }
+@media (max-width: 1200px) { .df-flow .d-card__head:has(.df-aside) { flex-wrap: wrap; gap: 0 12px; } .df-flow .d-card__aside:has(> .df-aside) { flex: 0 0 100%; }
+  .df-flow .d-line { flex-wrap: wrap; } .df-flow .d-line > .d-tile { flex: 1 0 calc(33.3% - 8px); } }
 /* the first and the last date stay inside the card when the columns are narrower than they are */
 .df-bars--days .d-bars__col:first-child .d-bars__label { align-self: flex-start; } .df-bars--days .d-bars__col:last-child .d-bars__label { align-self: flex-end; }
 @media (max-width: 1200px) { .df-pair { flex-direction: column; } .df-three { flex-wrap: wrap; } .df-three > .d-card { flex: 1 0 calc(50% - 8px); } .df-bars--months .d-bars__col:nth-last-child(even) .d-bars__label { visibility: hidden; } }

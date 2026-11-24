@@ -1,17 +1,21 @@
 // ייבוא מאקסל on a computer (K9): paste, match the columns, check every row (and fix it in the table), import. The panel
 // says what will go in before anything does.
 import { useEffect, useRef, useState } from 'react';
+import { ConfirmSheet } from '../../app/v2/kit';
 import { dayTime, ddmm, hhmm, daysFromToday } from '../../app/v2/format';
 import { fmt, many } from '../shared';
 import type { ImportBatch } from '../source';
 import { Act, Btn, Chips, Cols, type Column, DCard, DTag, Fact, Facts, Failed, Notice, Nums, Page, Panel, Select, Skeleton, Small, Steps, SubTitle, Table, TableCard } from './desk';
 import { type Checked, FIELDS, type ImportState, MAX_ROWS, PLACEHOLDER } from './ImportSpec';
+import { useLeaveGuard } from './route';
 
 const STEPS = ['הדבקה', 'התאמת עמודות', 'בדיקה', 'ייבוא'];
 const KINDS = [{ value: 'tasks' as const, label: 'משימות' }, { value: 'shopping' as const, label: 'רשימת קניות' }];
 
 export function ImportDesk({ imp, onImport, onUndo, sample }: { imp: ImportState; onImport: () => void; onUndo: (b: ImportBatch) => void; sample: string | null }) {
   const [at, setAt] = useState<0 | 1 | 2>(0);
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  useLeaveGuard(() => !!imp.progress || (!!imp.text.trim() && !imp.outcomes), (go) => setLeave({ go }));
   const { kind, data, fields, outcomes, progress } = imp;
   // the fourth step is the import itself: while it runs and once it has run
   const step = progress || outcomes ? 3 : !data.length ? 0 : at;
@@ -20,6 +24,7 @@ export function ImportDesk({ imp, onImport, onUndo, sample }: { imp: ImportState
   const go = () => setAt(matched ? 2 : 1);
   const back = () => { if (outcomes) { imp.reset(); setAt(0); } else setAt(step === 2 ? 1 : 0); };
   return (
+    <>
     <Page group="נתונים" title="ייבוא מאקסל" sub="הרבה משימות או פריטי קניות בבת אחת: מעתיקים את השורות מאקסל או מ־Google Sheets ומדביקים"
       actions={<Chips label="מה מייבאים" options={KINDS} value={kind} onChange={(v) => { if (!progress) { imp.setKind(v); } }} />}>
       <Steps steps={STEPS} at={step} />
@@ -43,6 +48,8 @@ export function ImportDesk({ imp, onImport, onUndo, sample }: { imp: ImportState
         {step === 3 && <DonePanel imp={imp} onAgain={back} onUndo={onUndo} onFix={() => { setAt(2); }} />}
       </Cols>
     </Page>
+    <ConfirmSheet open={!!leave} onClose={() => setLeave(null)} title={progress ? 'הייבוא עוד רץ' : 'השורות עוד לא נכנסו'} text={progress ? 'מה שכבר נכנס יישאר, והשאר לא ייכנס.' : 'מה שהודבק ומה שתוקן כאן לא נשמר. אם יוצאים עכשיו צריך להדביק שוב.'} confirmLabel="לצאת מהייבוא" cancelLabel="להישאר" onConfirm={() => { leave?.go(); setLeave(null); }} />
+    </>
   );
 }
 
@@ -100,6 +107,7 @@ function Rows({ imp, step }: { imp: ImportState; step: number }) {
   };
   // where the table is narrow, what is said of a row goes under its title
   const titleCol = Math.max(0, Array.from({ length: imp.columns }, (_, i) => imp.fieldOf(i)).indexOf('title'));
+  const short = (key: string | undefined) => (key === 'dueDate' ? ' dd-cell--short' : '');
   const columns: Column<R>[] = [
     { key: '#', head: '#', width: 60, soft: true, cell: (r) => r.c.n },
     ...Array.from({ length: imp.columns }, (_, col): Column<R> => {
@@ -115,9 +123,9 @@ function Rows({ imp, step }: { imp: ImportState; step: number }) {
         cell: (r) => {
           const id = `${r.i}:${col}`;
           const under = step > 1 && col === titleCol && <span className="dd-under dd-under--row"><span className="dd-under__n">{r.c.n}</span>{verdict(r)}</span>;
-          if (locked) return <><span className="dd-cell__text">{shownText(r, col)}</span>{under}</>;
+          if (locked) return <><span className={`dd-cell__text${short(key)}`}>{shownText(r, col)}</span>{under}</>;
           if (cell === id) return <CellInput value={r.cells[col] || ''} onDone={(v) => { setCell(null); if (v !== null && v !== r.cells[col]) imp.fix(r.i, col, v); }} />;
-          return <><button type="button" className={`dd-cell${r.c.bad && r.c.bad === key ? ' dd-cell--bad' : ''}`} aria-label={`${imp.colName(col)}, שורה ${r.c.n}: ${shownText(r, col) || 'ריק'}. לתיקון`} title={r.c.bad === key ? `${r.c.detail}. לוחצים לתיקון` : 'לוחצים לתיקון'} onClick={() => setCell(id)}>{shownText(r, col) || ' '}</button>{under}</>;
+          return <><button type="button" className={`dd-cell${short(key)}${r.c.bad && r.c.bad === key ? ' dd-cell--bad' : ''}`} aria-label={`${imp.colName(col)}, שורה ${r.c.n}: ${shownText(r, col) || 'ריק'}. לתיקון`} title={r.c.bad === key ? `${r.c.detail}. לוחצים לתיקון` : 'לוחצים לתיקון'} onClick={() => setCell(id)}>{shownText(r, col) || ' '}</button>{under}</>;
         },
       };
     }),

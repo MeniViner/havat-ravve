@@ -10,7 +10,7 @@ import { errorText, source, type KeyView, type LastUse, type Person } from '../s
 import { allLevels, DESK_AREAS, deskLevels, deskScopes, levelHe, scopesFrom, scopesShort, type DeskArea, type Level, type Levels } from '../scopes';
 import { ACCESS, type Access, accessOf, EXPIRY, type Expiry, GRACE, type Grace, inDays, type Notify, teamOf, unusedText, usageText, useLastUse } from '../Keys';
 import { Act, Btn, Check, Chips, Cols, DTag, Dialog, EmptyPanel, Fact, Facts, Failed, Input, LoadingPanel, Mono, Notice, Page, Panel, Seg, Select, Skeleton, SubTitle, Table, TableCard, Toolbar } from './desk';
-import { useSelected } from './route';
+import { useLeaveGuard, useSelected } from './route';
 
 const DAY = 86400_000;
 /** An inactive key stays beside the active ones for a month: whoever cancelled it by mistake finds it and puts it back. */
@@ -46,21 +46,8 @@ export function KeysDesk({ keys, error, reload, lastUsed, people, notify }: { ke
   const work = useRef<Work | null>(null);
   const [leave, setLeave] = useState<{ go: () => void } | null>(null);
   const guard = (go: () => void) => { if (work.current?.dirty) setLeave({ go }); else go(); };
-  useEffect(() => {
-    // another screen (a link, the back button): the address is put back until the question is answered.
-    // Listens before useSelected does, which would already change the panel
-    const onHash = (e: HashChangeEvent) => {
-      if (!work.current?.dirty) return;
-      e.stopImmediatePropagation();
-      const to = location.hash;
-      history.pushState(history.state, '', e.oldURL);
-      setLeave({ go: () => { location.hash = to; } });
-    };
-    const onClose = (e: BeforeUnloadEvent) => { if (work.current?.dirty) e.preventDefault(); };
-    addEventListener('hashchange', onHash, true); addEventListener('beforeunload', onClose);
-    return () => { removeEventListener('hashchange', onHash, true); removeEventListener('beforeunload', onClose); };
-  }, []);
-  const [sel, select] = useSelected('keys', (rows || []).map((k) => k.id));
+  useLeaveGuard(() => !!work.current?.dirty, (go) => setLeave({ go }));
+  const [sel, select] = useSelected('keys', (rows || []).map((k) => k.id), true, (name) => rows?.find((k) => k.label === name)?.id);
   const drop = () => { const w = work.current; const x = leave; work.current = null; w?.drop(); setLeave(null); x?.go(); };
   const open = rows?.find((k) => k.id === sel) || null;
   return (

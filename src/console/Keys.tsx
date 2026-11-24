@@ -79,7 +79,7 @@ export function KeysScreen({ people, notify }: { people: Person[]; notify: (t: s
   const keys = list.data || [];
   const active = keys.filter((k) => k.status === 'active');
   const inactive = keys.filter((k) => k.status !== 'active');
-  const open = keys.find((k) => k.id === openId) || null;
+  const open = keys.find((k) => k.id === openId) || keys.find((k) => openId && k.label === openId) || null;
   if (wide) return <KeysDesk keys={list.data} error={list.error} reload={list.reload} lastUsed={used.data} people={people} notify={notify} />;
   const row = (k: KeyView) => (
     <Row key={k.id} leading={<IconTile icon="key" tone={k.status === 'active' ? 'pine' : 'ink'} />} title={k.label || k.id}

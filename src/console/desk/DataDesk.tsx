@@ -7,13 +7,20 @@ import { ago, fmt, useLoad } from '../shared';
 import { collectionName, fieldLabel, valueText } from '../labels';
 import { errorText, source, type DataCollection, type DataDoc, type DataDocRow, type DocVersion } from '../source';
 import { Act, Btn, Chips, Cols, type Column, Dialog, DTag, Empty, Failed, Fact, Facts, Hist, Input, LoadingPanel, Mono, Notice, Page, Panel, EmptyPanel, saveCsv, Search, Select, Skeleton, Small, SubTitle, Switch, Table, TableCard, Toolbar } from './desk';
-import { useRest, useSettled } from './route';
+import { useLeaveGuard, useRest, useSettled } from './route';
 import { activityText, cut, factsOf, groupOf, type Notify, type Place, placeKey, readAddress, showValue, specOf, useCollections, useRecordEdit, useRecords, when, whenFull, writeAddress } from './DataSpec';
 
+/** A value that is shown as it is stored (an object) reads left to right. */
+const rawDir = (v: unknown) => (v && typeof v === 'object' && /[{[]/.test(valueText(v)) ? 'ltr' as const : undefined);
 const READ_NOTE = (group: string) => (group === 'users' ? 'אנשים עורכים במסך "אנשים והרשאות", שם שינוי תפקיד עושה את כל מה שצריך.' : 'רשומות של השרת אי אפשר לערוך.');
 
 export function DataDesk({ notify }: { notify: Notify }) {
   const list = useCollections();
+  const dirty = useRef(false);
+  // a change not saved yet is not dropped without asking
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  const guard = (go: () => void) => { if (dirty.current) setLeave({ go: () => { dirty.current = false; go(); } }); else go(); };
+  useLeaveGuard(() => dirty.current, (go) => setLeave({ go }));
   const [rest, setRest] = useRest('data');
   const at = readAddress(rest);
   const [sys, setSys] = useState(false);
@@ -38,7 +45,6 @@ export function DataDesk({ notify }: { notify: Notify }) {
   const text = q.trim().toLowerCase();
   const shown = sorted && sorted.filter((r) => (chip === 'all' || chipOf(r) === chip) && (!text || `${r.title} ${r.id}`.toLowerCase().includes(text)));
   // the record in the address, unless the search or the chips hide it; a record just deleted leaves the panel empty
-  const dirty = useRef(false);
   const [gone, setGone] = useState('');
   const hidden = !!at.doc && (chip !== 'all' || !!text) && !!shown && !shown.some((r) => r.path === at.doc);
   const doc = at.doc && (!hidden || dirty.current) ? at.doc : gone === key ? null : shown?.[0]?.path || null;
@@ -47,9 +53,6 @@ export function DataDesk({ notify }: { notify: Notify }) {
   const set = (p: Place, path: string | null) => { setGone(''); setRest(writeAddress(p, path)); };
   // the first record goes into the address, so a save that moves it in the list does not swap the panel
   useEffect(() => { if (place && doc && doc !== at.doc) setRest(writeAddress(place, doc)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [doc, at.doc]);
-  // a change not saved yet is not dropped without asking
-  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
-  const guard = (go: () => void) => { if (dirty.current) setLeave({ go: () => { dirty.current = false; go(); } }); else go(); };
   const open = (path: string) => { if (place && path !== doc) guard(() => set(place, path)); };
   const pick = (p: Place) => guard(() => set(p, null));
   const name = place ? (place.parent ? collectionName(place.group.split('/*/').pop()!) : collectionName(place.group)) : '';
@@ -121,7 +124,7 @@ export function DataDesk({ notify }: { notify: Notify }) {
         {doc ? settled !== doc ? <LoadingPanel /> : <Record key={doc} path={doc} dirty={dirty} notify={notify} onChanged={page.reload} onGone={() => { setGone(key); setRest(writeAddress(place!)); page.reload(); list.reload(); }} onSub={(sub) => pick({ group: `${groupOf(doc)}/*/${sub}`, parent: doc })} />
           : shown ? <EmptyPanel>{page.rows?.length ? 'לא נבחרה רשומה.' : `אין רשומות ב${name}${info?.readOnly ? '' : ' עדיין'}.`}</EmptyPanel> : page.error ? <EmptyPanel>אין מה להציג.</EmptyPanel> : <LoadingPanel />}
       </Cols>
-      <ConfirmSheet open={!!leave} onClose={() => setLeave(null)} title="יש שינויים שלא נשמרו" text="אם עוברים לרשומה אחרת עכשיו, מה ששונה כאן לא יישמר." confirmLabel="לצאת בלי לשמור" cancelLabel="חזרה לעריכה" onConfirm={() => { leave?.go(); setLeave(null); }} />
+      <ConfirmSheet open={!!leave} onClose={() => setLeave(null)} title="יש שינויים שלא נשמרו" text="אם יוצאים מהרשומה עכשיו, מה ששונה כאן לא יישמר." confirmLabel="לצאת בלי לשמור" cancelLabel="חזרה לעריכה" onConfirm={() => { leave?.go(); setLeave(null); }} />
     </Page>
   );
 }
@@ -143,6 +146,13 @@ function RecordPanel({ d, dirty, notify, reload, onGone, onSub }: { d: DataDoc; 
   const e = useRecordEdit(d, notify, reload, onGone);
   dirty.current = e.edit && e.changes > 0;
   useEffect(() => () => { dirty.current = false; }, [dirty]);
+  // the keyboard goes on inside the form, and back to "עריכה זהירה" when it closes
+  const form = useRef<HTMLDivElement>(null), again = useRef(false);
+  useEffect(() => {
+    if (e.edit) form.current?.querySelector<HTMLElement>('input, textarea, button')?.focus();
+    else if (again.current && document.activeElement === document.body) document.querySelector<HTMLElement>('[aria-label="הרשומה"] .d-panel__foot button')?.focus();
+    again.current = e.edit;
+  }, [e.edit]);
   const [del, setDel] = useState(false);
   const [versions, setVersions] = useState(false);
   const [all, setAll] = useState(false);
@@ -155,7 +165,7 @@ function RecordPanel({ d, dirty, notify, reload, onGone, onSub }: { d: DataDoc; 
       <Btn kind="primary" disabled={!e.changes || e.bad} onClick={() => e.setConfirm(true)}>{e.changes ? `שמירה (${e.changes})` : 'אין שינויים'}</Btn>
       <Btn onClick={() => e.setEdit(false)}>ביטול</Btn>
     </>}>
-      <div className="dd-form">
+      <div className="dd-form" ref={form} onKeyDown={(x) => { if (x.key === 'Escape' && !e.changes && !e.confirm) { x.stopPropagation(); e.setEdit(false); } }}>
         {e.keys.filter(e.editable).map((k) => (d.types[k] === 'boolean'
           ? <div key={k} className="dd-form__yes"><span>{label(k)}</span><Switch on={!!e.draft[k]} onChange={(v) => e.setDraft({ ...e.draft, [k]: v })} label={label(k)} /></div>
           : <Input key={k} label={label(k)} type={e.kind(k) === 'instant' ? 'datetime-local' : e.kind(k) === 'day' ? 'date' : 'text'} value={String(e.draft[k] ?? '')} onChange={(v) => e.setDraft({ ...e.draft, [k]: v })} multiline={d.types[k] === 'string' && String(d.fields[k] ?? '').length > 60}
@@ -183,7 +193,7 @@ function RecordPanel({ d, dirty, notify, reload, onGone, onSub }: { d: DataDoc; 
       {!!hist.data?.activity.length && <><SubTitle>היסטוריה של הרשומה</SubTitle>{hist.data.activity.map((a, i) => <Hist key={a.at + i} when={whenFull(a.at)}>{activityText(a, d.title)}</Hist>)}</>}
       <div className="dd-gap"><Act onClick={() => setAll(true)}>כל השדות כמו שהם שמורים · {e.keys.length}</Act></div>
       <Dialog open={all} onClose={() => setAll(false)} width={640} title={d.title || d.id} sub={<>נוצר {ago(d.createTime)} · עודכן {ago(d.updateTime)}</>}>
-        <div className="dd-all">{e.keys.map((k) => <Fact key={k} labelWidth={190} label={<>{fieldLabel(k) && <>{fieldLabel(k)} </>}<Mono>{k}</Mono></>}><bdi>{cut(valueText(d.fields[k]), 2000)}</bdi></Fact>)}</div>
+        <div className="dd-all">{e.keys.map((k) => <Fact key={k} labelWidth={190} label={<>{fieldLabel(k) && <>{fieldLabel(k)} </>}<Mono>{k}</Mono></>}><bdi dir={rawDir(d.fields[k])}>{cut(valueText(d.fields[k]), 2000)}</bdi></Fact>)}</div>
       </Dialog>
       {versions && <Versions d={d} notify={notify} onClose={() => setVersions(false)} onRestored={reload} />}
       <ConfirmSheet open={del} onClose={() => setDel(false)} title="למחוק את הרשומה?" text="היא תעבור לסל המחזור ל־30 יום, ואפשר יהיה להחזיר אותה משם. דברים שתלויים בה באפליקציה לא יימחקו איתה." confirmLabel="מחיקה" cancelLabel="חזרה" onConfirm={e.remove} />

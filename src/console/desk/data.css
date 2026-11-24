@@ -13,15 +13,15 @@ span.dd-soft { font-size: inherit; }
 .dd-cols__find { padding: 0 2px 6px; }
 .dd-cols__load { padding: 6px 10px; }
 .dd-colpick { display: none; }
-@media (max-width: 1239px) { .dd-cols--ready { display: none; } .dd-colpick { display: block; } }
+@media (max-width: 1359px) { .dd-cols--ready { display: none; } .dd-colpick { display: block; } }
 .dd-col { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 14px; font-weight: 500; text-align: start; }
 .dd-col:hover { background: var(--bg); }
 .dd-col[aria-current] { background: var(--d-warm); font-weight: 700; }
 .dd-col__name { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
 .dd-col__name > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .dd-col__n { font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
-/* a narrow table: the name gives way (the full one is in its tooltip and in the panel) */
-@container (max-width: 480px) { .dd-recs :is(th, td):not(:first-child) { width: auto !important; } .dd-recs :is(th, td) { padding-inline: 8px; } .dd-recs td:first-child { width: 100%; max-width: 0; min-width: 110px; } }
+/* a narrow table: the name goes to a second line before it gives way (the full one is in its tooltip and in the panel) */
+@container (max-width: 480px) { .dd-recs :is(th, td):not(:first-child) { width: auto !important; } .dd-recs :is(th, td) { padding-inline: 8px; } .dd-recs td:first-child { width: 100%; max-width: 0; min-width: 110px; } .dd-recs td:first-child { white-space: normal; } .dd-recs td:first-child .dd-clip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; } }
 .dd-subs { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-top: 12px; font-size: 13px; color: var(--soft); }
 .dd-form { display: flex; flex-direction: column; gap: 12px; padding: 2px 0 4px; }
 .dd-form__yes { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; color: var(--soft); }
@@ -64,6 +64,7 @@ span.dd-soft { font-size: inherit; }
 /* a narrow table: the words wrap inside their columns; narrower still, the number and what is said of the row go under its title */
 @container (max-width: 620px) {
   .dd-map-table :is(th, td) { padding-inline: 8px; white-space: normal; overflow-wrap: anywhere; } .dd-map-table th { width: auto !important; } .dd-map-table th:first-child { width: 1px !important; }
+  .dd-map-table :is(td, th):first-child, .dd-map-table .dd-cell--short { overflow-wrap: normal; white-space: nowrap; }
   .dd-map-table :is(.dd-map, .dd-cell, .dd-cell__text) { min-width: 64px; } .dd-map-table .dd-cell { width: calc(100% + 12px); white-space: pre-wrap; } .dd-map-table .dd-cell__input { min-width: 64px; } .dd-map-table .d-select, .dd-map-table select { max-width: 100%; }
   .dd-rows :is(th, td):last-child { width: 1px !important; white-space: nowrap; }
 }
