@@ -29,8 +29,8 @@ export function DemoIntro({ profile, owner, manager, shell, notify }: { profile:
     <Sheet open={ask} onClose={dismiss} title="רוצה לראות איך נראים נתוני דמו?" className="k-confirm">
       <p className="k-confirm__text">האפליקציה תיפתח עם נתונים לדוגמה, באותו תפקיד שלך. שום דבר לא נשמר באמת, ויוצאים בכל רגע מהפס למעלה.</p>
       <div className="k-confirm__actions">
-        <Button variant="primary" size="lg" block onClick={() => answer(true)}>הפעלה</Button>
-        <Button variant="secondary" size="lg" block onClick={() => answer(false)}>לא תודה</Button>
+        <Button variant="primary" size="md" grow onClick={() => answer(true)}>הפעלה</Button>
+        <Button variant="quiet" size="md" onClick={() => answer(false)}>לא תודה</Button>
       </div>
     </Sheet>
   );
