@@ -120,7 +120,7 @@ function makeSender(env: PushEnv, mode: Mode): Sender {
       if (d.kind !== 'webpush' || !d.endpoint || !d.keys?.p256dh || !d.keys?.auth) return null;
       if (!allowedEndpoint(d.endpoint, testHosts)) return { ok: false, gone: true, status: 0 }; // not a push service we know: drop it
       try {
-        return await sendWebPush({ endpoint: d.endpoint, keys: { p256dh: d.keys.p256dh, auth: d.keys.auth } }, { title: p.title, body: p.body, link: p.link, tag: p.tag, urgent: p.urgent }, vapid, { ttl: p.ttl, urgency: p.urgent ? 'high' : 'normal', topic: p.tag });
+        return await sendWebPush({ endpoint: d.endpoint, keys: { p256dh: d.keys.p256dh, auth: d.keys.auth } }, { title: p.title, body: p.body, link: p.link, tag: p.tag, urgent: p.urgent }, vapid, { ttl: p.ttl, urgency: p.urgent ? 'high' : 'normal', topic: p.tag, fetch: env.FETCH });
       } catch { return { ok: false, gone: true, status: 0 }; } // malformed keys: the subscription can never work
     };
   }

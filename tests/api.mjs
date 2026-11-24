@@ -1512,5 +1512,381 @@ section('files: RS256 sign-in tokens (the production path, local key set)');
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); keys.close(); fs.rmSync(persist, { recursive: true, force: true }); }
 }
 
+// ---------- the owners' console: what its computer version needs (api/src/console.ts) ----------
+// The real Worker (Auth emulator sign-in, local KV and R2). Synthetic people and records in the emulators only.
+section('console: routes, refusals and answers');
+const ilDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(d);
+{
+  const AUTH = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  const authBase = `http://${AUTH}/identitytoolkit.googleapis.com/v1`;
+  const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json());
+  const t = new Date().toISOString();
+  // the bulk people of the search tests: more than people/access reads in one answer
+  {
+    const bulk = [...Array.from({ length: 1100 }, (_, i) => 'aaa-guest-' + String(i).padStart(4, '0')), ...Array.from({ length: 1500 }, (_, i) => 'bulk-staff-' + String(600 + i).padStart(4, '0')), ...Array.from({ length: 600 }, (_, i) => 'bulk-staff-' + String(i).padStart(4, '0'))];
+    for (let i = 0; i < bulk.length; i += 500) await fetch(`${DOCS}:commit`, { method: 'POST', headers: admin, body: JSON.stringify({ writes: bulk.slice(i, i + 500).map((id) => ({ delete: `projects/${PROJECT}/databases/(default)/documents/users/${id}` })) }) });
+  }
+  const who = {};
+  for (const [name, role, devices] of [['owner', 'owner', [{ id: 'a', kind: 'webpush', ua: 'Mac · Chrome', createdAt: '2026-01-01T00:00:00Z' }, { id: 'b', kind: 'webpush', ua: 'iPhone · Safari · app', createdAt: '2026-06-01T00:00:00Z' }]], ['manager', 'manager', [{ id: 'c', kind: 'webpush', ua: 'Windows · Edge', createdAt: t }]]]) {
+    const a = await signUp(`console-${name}-${Date.now()}@synthetic.test`);
+    who[name] = a;
+    await seed('users', a.localId, { uid: a.localId, email: a.email, displayName: 'קונסולה ' + name, phone: '0500000000', role, status: 'active', customerNumber: 5, acceptedTermsAt: t, createdAt: t, updatedAt: t, push: { enabled: true, devices } });
+  }
+  await seed('users', 'cs-never', { uid: 'cs-never', email: 'never@synthetic.test', displayName: 'אין כניסה', phone: '', role: 'staff', status: 'active', createdAt: t, updatedAt: t });
+  const port = PORT + 34;
+  const base = `http://127.0.0.1:${port}`;
+  const persist = fs.mkdtempSync('/tmp/hr-console-');
+  const w = startWorker(port, { FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, FIREBASE_AUTH_EMULATOR_HOST: AUTH, TEST_FAULTS: '1', API_CREDENTIALS: JSON.stringify(CREDENTIALS), EMAIL_ENABLED: 'false' }, ['--test-scheduled', '--persist-to', persist]);
+  const call = async (method, path, { token = who.owner.idToken, body, idem } = {}) => {
+    const r = await fetch(base + '/v1/console' + path, { method, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), ...(method === 'POST' ? { 'content-type': 'application/json', 'idempotency-key': idem || randomUUID() } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => null);
+    return { status: r.status, data: j?.data, error: j?.error };
+  };
+  const get = (path, o) => call('GET', path, o);
+  const post = (path, body, o = {}) => call('POST', path, { ...o, body });
+  const exists = async (col, id) => (await fetch(`${DOCS}/${col}/${id}`, { headers: admin })).status === 200;
+  const logged = async (op) => { for (let i = 0; i < 30; i++) { const rows = (await where('api_log', 'op', op)).filter((x) => x.actor?.uid === who.owner.localId); if (rows.length) return rows; await new Promise((r) => setTimeout(r, 200)); } return []; };
+  try {
+    await waitUp(base);
+
+    // who may: owners only, signed in with Google; an API key never
+    const routes = [['GET', '/keys/cred-test-owner/usage'], ['GET', '/people/access'], ['GET', '/imports'], ['POST', '/imports'], ['POST', '/imports/imp-x/undo'], ['GET', '/queue'], ['GET', '/queue/email/x'], ['GET', '/switches'], ['POST', '/switches'], ['GET', '/jobs'], ['POST', '/monitor/alerts']];
+    const st = async (token) => { const out = []; for (const [m, p] of routes) out.push((await call(m, p, { token, body: m === 'POST' ? {} : undefined })).status); return out; };
+    const manager = await st(who.manager.idToken);
+    check(manager.every((x) => x === 403), 'a manager (not an owner) gets 403 on every new console route', manager);
+    const key = await st(KEYS.owner);
+    check(key.every((x) => x === 401), 'a full owner API key cannot use any of them (401)', key);
+    check((await get('/imports', { token: '' })).status === 401, 'no sign-in → 401');
+
+    // speed and overview over the assistant log's own timings
+    const logRow = (id, ms, extra = {}) => seed('api_log', id, { id, at: new Date(Date.now() - 60_000).toISOString(), credential: 'cred-usage', keyLabel: 'בדיקה', actor: { id: 'user:x', role: 'owner', uid: 'x', name: 'x' }, kind: 'read', op: 'tasks.list', opHe: 'משימות', verb: 'קרא', ok: true, code: '', message: '', status: 200, ms, ...extra });
+    for (let i = 0; i < 12; i++) await logRow(`cs-log-${i}`, 100_000 + i);
+    await logRow('cs-log-old', 5, { at: new Date(Date.now() - 9 * 86400_000).toISOString() });
+    await logRow('cs-log-bad', 100_020, { ok: false, code: 'FORBIDDEN', status: 403 });
+    const ov = await get('/overview');
+    check(ov.status === 200 && typeof ov.data.last24h.p50 === 'number' && ov.data.last24h.p50 >= 0 && ov.data.last24h.requests >= 13, 'overview.last24h.p50 is the median of the latest requests', ov.data?.last24h);
+    for (let i = 0; i < 12; i++) await seed('api_log', `cs-log-${i}`, { id: `cs-log-${i}`, at: new Date().toISOString(), credential: 'cred-usage', kind: 'read', op: 'tasks.list', opHe: 'משימות', ok: true, status: 200, ms: 100 + i, keyLabel: 'בדיקה' });
+    const sp = await get('/speed?days=1');
+    const slow = sp.data?.slowest || [];
+    check(sp.status === 200 && slow.length === 10 && slow[0].ms === 100_020 && slow.every((x, i) => !i || x.ms <= slow[i - 1].ms) && slow.some((x) => x.ms < sp.data.slowMs) && sp.data.total.slow < 10, 'speed.slowest: the ten slowest, also under two seconds; total.slow keeps the threshold', { slow: slow.map((x) => x.ms), total: sp.data?.total });
+
+    // keys: usage of the week
+    const made = await post('/keys', { label: 'console-week', actor: who.owner.localId });
+    const keyId = made.data?.id;
+    for (let i = 0; i < 3; i++) await logRow(`cs-use-${i}`, 10, { credential: keyId });
+    await logRow('cs-use-bad', 10, { credential: keyId, ok: false, status: 403 });
+    await logRow('cs-use-old', 10, { credential: keyId, at: new Date(Date.now() - 8 * 86400_000).toISOString() });
+    const usage = await get(`/keys/${keyId}/usage`);
+    check(usage.status === 200 && JSON.stringify(usage.data) === JSON.stringify({ requests: 4, failed: 1, days: 7 }), 'keys/<id>/usage: 4 requests this week, 1 of them failed, last week\'s left out', usage.data);
+    check((await get('/keys/no-such-key/usage')).status === 404, 'usage of an unknown key → 404');
+
+    // people: last entry and device
+    const pa = await get('/people/access');
+    const me = pa.data?.people?.[who.owner.localId], mgr = pa.data?.people?.[who.manager.localId];
+    check(pa.status === 200 && Math.abs(Date.parse(me?.at) - Date.now()) < 10 * 60_000 && me.device === 'phone' && mgr?.device === 'computer' && JSON.stringify(pa.data.people['cs-never']) === JSON.stringify({ at: null, device: null }), 'people/access: last sign-in from Firebase Auth, device from the newest push subscription, null when unknown', { me, mgr, people: Object.keys(pa.data?.people || {}).length, uid: who.owner.localId });
+
+    // switches: the new switch, the reason and the history
+    const sw0 = await get('/switches');
+    check(sw0.status === 200 && sw0.data.switches.broadcastEmailPaused === false && Array.isArray(sw0.data.history) && sw0.data.history.length === 0 && !('history' in sw0.data.switches), 'switches: broadcastEmailPaused and an empty history', sw0.data);
+    const sw1 = await post('/switches', { broadcastEmailPaused: true, cleanupPaused: true, emailPaused: false, reason: '  בדיקה של הנוסח  ' });
+    const h = sw1.data?.history || [];
+    check(sw1.status === 200 && sw1.data.switches.broadcastEmailPaused === true && h.length === 2 && h.every((x) => x.to === true && x.reason === 'בדיקה של הנוסח' && x.by === 'קונסולה owner' && x.at) && h.map((x) => x.key).sort().join() === 'broadcastEmailPaused,cleanupPaused', 'one history row per switch that changed, with who and why', h);
+    check((await post('/switches', { readOnly: true, reason: 'א'.repeat(201) })).status === 400 && (await post('/switches', { readOnly: true, reason: 5 })).status === 400 && (await get('/switches')).data.switches.readOnly === false, 'a reason over 200 characters or not text → 400, nothing flipped');
+    for (let i = 0; i < 12; i++) await post('/switches', { broadcastEmailPaused: i % 2 === 1, cleanupPaused: i % 2 === 1 });
+    const sw2 = await get('/switches');
+    check(sw2.data.history.length === 20 && sw2.data.history[0].at >= sw2.data.history[19].at, 'the history keeps the last 20, newest first', sw2.data.history.length);
+    await post('/switches', { broadcastEmailPaused: false, cleanupPaused: false });
+    await logged('console.switches.set');
+    await new Promise((r) => setTimeout(r, 500));
+    const sec = await get('/security?days=1');
+    const line = (sec.data?.items || []).find((x) => x.what === 'שינוי מתג' && x.detail.includes('בדיקה של הנוסח'));
+    check(line?.ok === true && line.detail.includes('השהיית מיילים לנרשמים: דלוק') && line.detail.includes('השהיית הניקוי: דלוק') && !line.detail.includes('השהיית מיילים על תשלומים'), 'the security log names the switches and their new state', line);
+
+    await seed('users', 'cs-log-who', { uid: 'cs-log-who', email: 'w@synthetic.test', displayName: 'רות לוג', phone: '', role: 'guest', status: 'active', createdAt: t, updatedAt: t });
+    const conLine = (id, op, opHe, b) => seed('api_log', id, { id, at: new Date().toISOString(), credential: 'console', kind: 'write', op, opHe, ok: true, status: 200, ms: 5, keyLabel: 'קונסולה owner', body: JSON.stringify(b), result: '{}' });
+    await conLine('cs-det-role', 'people.setRole', 'שינוי תפקיד של אדם', { uid: 'cs-log-who', role: 'manager' });
+    await conLine('cs-det-block', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-log-who', status: 'blocked' });
+    await conLine('cs-det-job', 'console.jobs.run', 'הרצת משימה מתוזמנת', { id: 'cleanup' });
+    await conLine('cs-det-gone', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-no-such', status: 'active' });
+    await conLine('cs-det-inv', 'invites.setRole', 'הגדרת תפקיד מראש למייל (יקבל אותו כשיירשם). guest מבטל', { email: 'new@synthetic.test', role: 'staff' });
+    await conLine('cs-det-alert', 'console.monitor.alerts', 'הגדרות התראות', { daily: true });
+    await conLine('cs-det-key', 'console.keys.expire', 'תוקף למפתח API', { id: keyId, expiresAt: null });
+    await seed('api_log', 'cs-det-del', { id: 'cs-det-del', at: new Date().toISOString(), credential: 'console', kind: 'write', op: 'people.delete', opHe: 'מחיקת אדם מהאפליקציה (בעלים בלבד)', ok: true, status: 200, ms: 5, keyLabel: 'קונסולה owner', body: JSON.stringify({ uid: 'cs-was' }), result: JSON.stringify({ deleted: { id: 'cs-was', displayName: 'יעל "שהייתה"' } }) });
+    await conLine('cs-det-was', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-was', status: 'blocked' });
+    const t0 = new Date().toISOString();
+    check((await post('/data/edit', { path: 'users/cs-log-who', fields: { phone: '1' }, updateTime: t0 })).status >= 400, 'a bad edit is refused');
+    await new Promise((r) => setTimeout(r, 900));
+    await conLine('cs-det-null', 'people.setRole', 'שינוי תפקיד של אדם', null);
+    const det = (await get('/security?days=1')).data?.items?.map((x) => x.what + '|' + x.detail) || [];
+    check(['שינוי תפקיד של אדם|רות לוג · מנהל/ת', 'חסימה או שחרור של אדם|רות לוג · חסימה', 'הרצת משימה מתוזמנת|ניקוי רשומות ישנות', 'חסימה או שחרור של אדם|שחרור', 'שינוי תפקיד של אדם|', 'הגדרת תפקיד מראש למייל|new@synthetic.test · מתנדב/ת', 'הגדרות התראות|סיכום בוקר יומי: דלוק', 'תוקף למפתח API|console-week', 'מחיקת אדם מהאפליקציה|יעל "שהייתה"', 'חסימה או שחרור של אדם|יעל "שהייתה" · חסימה'].every((x) => det.includes(x)), 'the security log says who and which way, which job, email, alert and key, and the name of who was deleted', det.slice(0, 12));
+    check(det.filter((x) => x.startsWith('עריכת רשומה|')).length === 1 && !det.some((x) => x.includes('/v1/console')), 'a failed console action is in the log once, by its name', det.slice(0, 12));
+
+    // the send queue
+    const q0 = new Date().toISOString();
+    await seed('settings', 'app', { templates: { paymentConfirmation: 'שלום [שם], קיבלנו [סכום] עבור [עבור].' } });
+    await seed('users', 'cs-guest', { uid: 'cs-guest', email: 'guest@synthetic.test', displayName: 'גילי אורחת', phone: '', role: 'guest', status: 'active', createdAt: t, updatedAt: t });
+    await seed('donations', 'cs-don', { uid: 'cs-guest', name: 'גילי', amount: 180, label: 'חי', paymentStatus: 'paid', createdAt: t, updatedAt: t });
+    await seed('email_outbox', 'donation_cs-don', { kind: 'donation', col: 'donations', refId: 'cs-don', uid: 'cs-guest', status: 'sent', to: 'sent-to@synthetic.test', amount: 180, messageId: '<m-77@mock>', provider: 'brevo', attempts: 2, sentAt: q0, createdAt: t, updatedAt: q0, firstAttemptAt: t });
+    await seed('email_outbox', 'donation_cs-fail', { kind: 'donation', col: 'donations', refId: 'cs-don', uid: 'cs-guest', status: 'failed', reason: 'rejected', error: '400 invalid_parameter <b>email</b> is not\nvalid', provider: 'resend', attempts: 1, createdAt: t, updatedAt: q0 });
+    await seed('broadcasts', 'cs-bc', { id: 'cs-bc', text: 'מחר נפגשים בשער', audience: 'registrants', by: { uid: 'syn-dani-l', name: 'דני לוי' }, createdAt: t, recipients: ['cs-guest'], recipientCount: 1 });
+    await seed('email_outbox', 'bc_cs-bc_cs-guest', { kind: 'broadcast', broadcastId: 'cs-bc', uid: 'cs-guest', status: 'queued', createdBy: { uid: 'syn-dani-l', name: 'דני לוי' }, createdAt: t });
+    await seed('email_outbox', 'donation_cs-lost', { kind: 'donation', refId: 'gone', uid: 'cs-gone', status: 'queued', attempts: 0, createdAt: t, updatedAt: t, nextAt: t });
+    await seed('push_jobs', 'cs-push', { id: 'cs-push', kind: 'task', title: 'משימה חדשה', body: 'x', to: ['cs-guest'], createdBy: { uid: 'syn-dani-l', name: 'דני לוי' }, createdAt: q0, sentAt: q0, outcome: 'sent', attempts: 1 });
+    await seed('push_jobs', 'cs-push-cancelled', { id: 'cs-push-cancelled', kind: 'task', title: 'בוטל', body: 'x', to: ['cs-guest'], createdBy: { uid: 'x', name: 'x' }, createdAt: q0, sentAt: q0, result: 'cancelled' });
+    const qu = await get('/queue');
+    const rowE = qu.data?.sent?.find((x) => x.id === 'donation_cs-don'), rowP = qu.data?.sent?.find((x) => x.id === 'cs-push');
+    check(qu.status === 200 && qu.data.sent.length <= 30 && qu.data.sent.every((x, i, a) => !i || x.at <= a[i - 1].at) && JSON.stringify(rowE) === JSON.stringify({ id: 'donation_cs-don', type: 'email', kind: 'donation', who: 'גילי אורחת', what: 'אישור תשלום · 180 ₪', to: 1, attempts: 2, at: q0 }), 'queue.sent: what went out lately, newest first', rowE);
+    check(rowP?.type === 'push' && rowP.what === 'משימה חדשה' && rowP.who === 'גילי אורחת' && rowP.to === 1 && !qu.data.sent.some((x) => x.id === 'cs-push-cancelled' || x.id === 'donation_cs-fail'), 'a finished push is listed; a cancelled one and a failed mail are not', rowP);
+    check(qu.data.sentToday >= 2 && JSON.stringify(qu.data.daily) === JSON.stringify({ used: 0, limit: 300 }) && qu.data.switches.broadcastEmailPaused === false, 'queue.sentToday and queue.daily', { sentToday: qu.data?.sentToday, daily: qu.data?.daily });
+    const before = qu.data.sentToday;
+    await seed('push_jobs', 'cs-push-2', { id: 'cs-push-2', kind: 'task', title: 'עוד אחת', body: 'x', to: ['a', 'b'], createdBy: { uid: 'x', name: 'x' }, createdAt: new Date().toISOString(), sentAt: new Date().toISOString(), outcome: 'sent' });
+    check((await get('/queue')).data.sentToday === before + 1, 'one more push today → sentToday grows by one');
+    const v1 = await get('/queue/email/donation_cs-don');
+    check(v1.status === 200 && JSON.stringify(v1.data) === JSON.stringify({ id: 'donation_cs-don', to: 'sent-to@synthetic.test', subject: 'אישור תשלום מחוות רווה', text: 'שלום גילי אורחת, קיבלנו 180 ₪ עבור תרומה לחווה.', uid: 'cs-guest', amount: 180, by: 'השרת', createdAt: t, lastAttemptAt: q0, providerSaid: 'Brevo: התקבל (m-77@mock)' }), 'queue/email/<id>: the address, the text as the guest gets it, what the provider said', v1.data);
+    const v2 = await get('/queue/email/donation_cs-fail');
+    check(v2.data?.providerSaid === 'Resend: 400 invalid_parameter email is not valid' && v2.data.to === 'guest@synthetic.test' && v2.data.lastAttemptAt === q0, 'a failed one: the provider\'s words in plain text, the address from the person\'s card', v2.data);
+    const v3 = await get('/queue/email/bc_cs-bc_cs-guest');
+    check(v3.data?.subject === 'הודעה מחוות רווה' && v3.data.text.startsWith('מחר נפגשים בשער\n\nדני, חוות רווה') && v3.data.by === 'דני לוי' && v3.data.amount === null && v3.data.lastAttemptAt === null && v3.data.providerSaid === '', 'a message to registrants: its own text and who wrote it', v3.data);
+    const v4 = await get('/queue/email/donation_cs-lost');
+    check(v4.status === 200 && v4.data.uid === '' && v4.data.to === '' && v4.data.text === '', 'a payment that is gone and no account → empty text, no card', v4.data);
+    check((await get('/queue/email/no-such-job')).status === 404 && (await get('/queue/email/_state')).status === 404, 'an unknown email, or the outbox\'s own state → 404');
+
+    // alerts: the daily summary switch
+    const al0 = await get('/monitor');
+    check(al0.data?.alerts.daily === false && Array.isArray(al0.data.week) && Array.isArray(al0.data.events), 'monitor: week and events are lists, alerts.daily is off by default', al0.data?.alerts);
+    const al1 = await post('/monitor/alerts', { daily: true });
+    check(al1.data?.daily === true && al1.data.on === true && (await get('/monitor')).data.alerts.daily === true, 'setAlerts accepts daily', al1.data);
+    check((await post('/monitor/alerts', { daily: 'yes' })).status === 400, 'daily must be true or false → 400');
+    const chk = await post('/monitor/check', {});
+    check(chk.data?.week.length === 1 && chk.data.week[0].date === ilDay() && chk.data.week[0].states.backup && (await post('/monitor/check', {})).data.week.length === 1, 'a check now fills today\'s column, once', chk.data?.week);
+
+    // the rounds strip
+    const j0 = await get('/jobs');
+    check(j0.data?.rounds?.limit === 50 && j0.data.rounds.items.length === 0, 'jobs.rounds before the first round: empty, limit 50', j0.data?.rounds);
+    await cronAll(port); await cronAll(port);
+    const j1 = await get('/jobs');
+    const rr = j1.data?.rounds.items || [];
+    check(rr.length === 2 && rr.every((x) => x.ok === true && typeof x.ms === 'number' && x.used >= 5 && x.used <= 50 && !x.failed) && rr[0].at < rr[1].at, 'two rounds → two lines, oldest first, with the requests each used', rr);
+    check((await get('/monitor')).data.week.length === 1, 'a cron round keeps the week');
+
+    // imports: saved, undone in steps, into the recycle bin
+    const mk = async (op, title) => { const r = await post('/api/actions/' + op, { title }); return r.data?.taskId || r.data?.itemId || r.data?.record?.id; };
+    const ids = []; for (let i = 0; i < 4; i++) ids.push(await mk('tasks.create', 'ייבוא ' + i));
+    check(ids.every(Boolean), 'tasks made as an import makes them', ids);
+    const oldDoc = 'cs-old-task'; await seed('tasks', oldDoc, { title: 'ישנה', createdAt: t });
+    await seed('tasks', oldDoc, { title: 'ישנה שהשתנתה', createdAt: t });
+    const idem = randomUUID();
+    const im = await post('/imports', { kind: 'tasks', ids: [...ids, oldDoc] }, { idem });
+    const tomorrow = ilDay(new Date(Date.now() + 86400_000));
+    check(im.status === 201 && JSON.stringify(Object.keys(im.data)) === JSON.stringify(['id', 'kind', 'at', 'by', 'count', 'undoUntil', 'undone']) && im.data.count === 5 && im.data.undone === false && ilDay(new Date(im.data.undoUntil)) === tomorrow, 'imports: saved, can be undone until the end of tomorrow', im.data);
+    check((await post('/imports', { kind: 'tasks', ids: [...ids, oldDoc] }, { idem })).data?.id === im.data.id && (await get('/imports')).data.items.length === 1, 'the same Idempotency-Key is the same import');
+    const badBodies = [{}, { kind: 'events', ids }, { kind: 'tasks', ids: [] }, { kind: 'tasks', ids: ['a/b'] }, { kind: 'tasks', ids: Array.from({ length: 201 }, (_, i) => 'x' + i) }, { kind: 'tasks', ids: 'x' }, { kind: 'tasks', ids, more: 1 }];
+    const badSt = []; for (const b of badBodies) badSt.push((await post('/imports', b)).status);
+    check(badSt.every((x) => x === 400), 'bad imports (kind, ids, unknown fields, over 200) → 400', badSt);
+    check((await post('/api/actions/tasks.edit', { taskId: ids[0], title: 'ייבוא שהשתנה' })).status === 200, 'one of them is changed after the import');
+    await post('/data/delete', { path: 'tasks/' + ids[1], updateTime: (await get('/data/doc?path=tasks/' + ids[1])).data.updateTime });
+    const un = await post(`/imports/${im.data.id}/undo`, {});
+    check(un.status === 200 && JSON.stringify(un.data) === JSON.stringify({ removed: 2, kept: 2, left: 0 }), 'undo: the two untouched ones go, the changed one and a record not of this import stay', un.data);
+    check(!(await exists('tasks', ids[2])) && !(await exists('tasks', ids[3])) && (await exists('tasks', ids[0])) && (await exists('tasks', oldDoc)), '… and only those are gone');
+    const trash = (await get('/trash')).data.items.filter((x) => [ids[2], ids[3]].some((i) => x.path === 'tasks/' + i));
+    check(trash.length === 2, 'the undone records are in the recycle bin', trash);
+    const un2 = await post(`/imports/${im.data.id}/undo`, {});
+    check(JSON.stringify(un2.data) === JSON.stringify({ removed: 0, kept: 0, left: 0 }) && (await get('/imports')).data.items[0].undone === true, 'undone twice does nothing more');
+    check((await post('/imports/imp-none/undo', {})).status === 404, 'an unknown import → 404');
+    const many = []; await Promise.all(Array.from({ length: 30 }, async (_, i) => { const id = 'cs-shop-' + i; many.push(id); await seed('shopping', id, { title: 'פריט ' + i, bought: false, createdAt: t }); }));
+    const im2 = await post('/imports', { kind: 'shopping', ids: many });
+    const s1 = await post(`/imports/${im2.data.id}/undo`, {}), s2 = await post(`/imports/${im2.data.id}/undo`, {});
+    check(JSON.stringify(s1.data) === JSON.stringify({ removed: 25, kept: 0, left: 5 }) && JSON.stringify(s2.data) === JSON.stringify({ removed: 5, kept: 0, left: 0 }) && (await get('/imports')).data.items[0].undone === true, '30 records: 25 in the first call, the rest in the second', { s1: s1.data, s2: s2.data });
+    check((await logged('console.imports.add')).length >= 2 && (await logged('console.imports.undo')).length >= 1, 'saving and undoing an import are in the assistant log');
+
+    // traffic: a year, with every number a week has; stats: the events of the last 90 days at least
+    const dayAgo = (d) => ilDay(new Date(Date.now() - d * 86400_000));
+    const day = (d, k) => seed('site_stats', dayAgo(d), { hits: 2 * k, site: { views: k, visitors: k, returning: 1, page: { home: k }, hour: { h09: k }, device: { mobile: k } }, app: { opens: k, visitors: 1, returning: 1, screen: { tasks: k }, hour: { h20: k }, role: { staff: 1 } } });
+    const old7 = (await get('/traffic?days=7')).data, old365 = (await get('/traffic?days=365')).data;
+    await day(3, 5); await day(200, 7); await day(400, 1000);
+    const w7 = await get('/traffic?days=7'), w90 = await get('/traffic?days=90'), yr = await get('/traffic?days=365');
+    const sumK = (d, k) => (d?.find((x) => x.key === k)?.count || 0);
+    check(yr.status === 200 && yr.data.days === 365 && yr.data.maxDays === 365 && yr.data.perDay.length === 365 && yr.data.from === dayAgo(364) && yr.data.totals.views - old365.totals.views === 12 && yr.data.totals.returning - old365.totals.returning === 2 && sumK(yr.data.site.pages, 'home') - sumK(old365.site.pages, 'home') === 12 && yr.data.site.hours[9] - old365.site.hours[9] === 12 && yr.data.app.hours[20] - old365.app.hours[20] === 12 && sumK(yr.data.app.screens, 'tasks') - sumK(old365.app.screens, 'tasks') === 12 && yr.data.perDay.find((x) => x.day === dayAgo(200))?.views === 7, 'traffic?days=365: a year, hours and lists included; older than a year is not counted', { status: yr.status, totals: yr.data?.totals });
+    check(w7.data.maxDays === 365 && w90.data.maxDays === 365 && w7.data.perDay.length === 7 && w90.data.perDay.length === 90 && w7.data.totals.views - old7.totals.views === 5 && w7.data.totals.opens - old7.totals.opens === 5 && w7.data.today.day === ilDay(), 'traffic 7 and 90 as before, maxDays always there', w7.data?.totals);
+    check((await get('/traffic?days=366')).status === 400 && (await get('/traffic?days=abc')).status === 400, 'another number of days → 400');
+    const ev = (id, d) => seed('events', id, { title: id, start: new Date(Date.now() - d * 86400_000).toISOString(), capacity: 10, price: 50, published: true, open: false, createdAt: t });
+    const money0 = (await get('/stats?days=7')).data;
+    await ev('cs-ev-20', 20); await ev('cs-ev-80', 80); await ev('cs-ev-100', 100); await ev('cs-ev-next', -10);
+    await seed('tickets', 'cs-tk', { eventId: 'cs-ev-20', eventTitle: 'cs-ev-20', orderId: 'cs-o', ownerName: 'x', price: 50, paymentStatus: 'paid', status: 'valid', entries: 1, paidAt: new Date(Date.now() - 20 * 86400_000).toISOString(), createdAt: t });
+    const s7 = await get('/stats?days=7'), s365 = await get('/stats?days=365');
+    const mine = (x) => (x.data?.events || []).map((e) => e.id).filter((id) => id.startsWith('cs-ev'));
+    check(mine(s7).join() === 'cs-ev-next,cs-ev-20,cs-ev-80' && mine(s365).join() === 'cs-ev-next,cs-ev-20,cs-ev-80,cs-ev-100', 'stats.events: the last 90 days also for a week, newest first; a year shows its own', { s7: mine(s7), s365: mine(s365) });
+    check(s7.data.events.find((e) => e.id === 'cs-ev-20').ticketMoney === 50 && s7.data.money.received.tickets === money0.money.received.tickets && s7.data.days === 7, 'the money stays within the period: a ticket paid 20 days ago is not in the week', s7.data?.money.received);
+
+    // data: simple fields, and the short history
+    await seed('cs_things', 'one', { title: 'דבר', qty: 4, done: false, empty: null, long: 'א'.repeat(300), assignee: { uid: 'u1', name: 'יואב' }, place: { lat: 1, lng: 2 }, list: ['a'], photo: 'data:image/png;base64,AAAA', secret: 'abc', inviteToken: 'zzz' });
+    const dd = await get('/data/docs?collection=cs_things');
+    const ff = dd.data?.items?.[0]?.fields || {};
+    check(dd.status === 200 && ff.title === 'דבר' && ff.qty === 4 && ff.done === false && ff.empty === null && ff.long.length === 200 && ff.assignee === 'יואב' && ['place', 'list', 'photo', 'secret', 'inviteToken'].every((k) => !(k in ff)), 'data/docs: simple fields only; a person as the name; no secrets, pictures, maps or lists', ff);
+    await seed('activity', 'cs-act', { kind: 'task', refId: ids[0], action: 'created', text: 'ייבוא', by: { uid: 'x', name: 'מני' }, at: t });
+    const hist = await get(`/data/history?path=tasks/${ids[0]}&days=0`);
+    check(hist.status === 200 && hist.data.days === 0 && hist.data.versions.length === 0 && hist.data.activity.some((a) => a.by === 'מני') && hist.data.now, 'data/history?days=0: the activity lines, no backups', hist.data && { days: hist.data.days, versions: hist.data.versions.length, activity: hist.data.activity.length });
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(w).catch((e) => { failures++; console.error(e); }); fs.rmSync(persist, { recursive: true, force: true }); }
+}
+
+// The parts that depend on the clock or on what goes wrong, run directly (bundled) with a KV that counts its calls.
+section('console: the morning check, events, rounds and the broadcast pause (direct)');
+{
+  const { build } = require('esbuild');
+  const out = fs.mkdtempSync('/tmp/hr-console-unit-') + '/worker.mjs';
+  await build({ stdin: { contents: ['monitor', 'control', 'imports', 'people', 'data', 'email', 'firestore', 'meter'].map((m) => `export * as ${m} from './api/src/${m}';`).join('\n') + "\nexport { default as worker } from './api/src/index';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', outfile: out, logLevel: 'error' });
+  const M = await import('file://' + out);
+  const { monitor, imports: imp } = M;
+  const makeKv = (init = {}) => { const m = new Map(Object.entries(init)); return { m, gets: 0, puts: 0, async get(k) { this.gets++; return m.get(k) ?? null; }, async put(k, v) { this.puts++; m.set(k, v); }, async delete(k) { m.delete(k); } }; };
+  const envOf = (kv, extra = {}) => ({ FIRESTORE_PROJECT_ID: PROJECT, FIRESTORE_EMULATOR_HOST: EMU, TEST_FAULTS: '1', TOKEN_KV: kv, API_CREDENTIALS: '[]', ...extra });
+  const logWas = console.log; const quiet = async (fn) => { console.log = (s) => { if (typeof s !== 'string' || !s.startsWith('{')) logWas(s); }; try { return await fn(); } finally { console.log = logWas; } };
+  const owner = 'cs-mon-owner';
+  const t = new Date().toISOString();
+  await seed('users', owner, { uid: owner, email: 'mon@synthetic.test', displayName: 'בעלת ניטור', phone: '', role: 'owner', status: 'active', createdAt: t, updatedAt: t });
+  const notes = async () => { const r = await fetch(`${DOCS}/users/${owner}/notifications?pageSize=100`, { headers: admin }); return ((await r.json()).documents || []).map((d) => Object.fromEntries(Object.entries(d.fields).map(([k, v]) => [k, dec(v)]))); };
+  try {
+    const min = 60_000, now = Date.now(), at = (m) => new Date(now - m * min).toISOString();
+
+    // events
+    {
+      const st = {};
+      monitor.cronGap(st, at(40), now);
+      monitor.cronGap(st, at(6), now);
+      check(JSON.stringify(monitor.eventsView(st)) === JSON.stringify([{ at: at(40), kind: 'cron', he: 'המשימות המתוזמנות לא רצו', minutes: 40, alerted: false }]), 'a 40-minute gap between rounds is an event; 6 minutes is not', st.events);
+      monitor.backupTurn(st, { at: at(30), ms: 1, ok: false, result: { error: 'x' } });
+      monitor.backupTurn(st, { at: at(25), ms: 1, ok: false, result: { error: 'x' } });
+      check(st.events.length === 2 && st.events[0].open && monitor.eventsView(st)[0].minutes === null && !('open' in monitor.eventsView(st)[0]), 'a backup that keeps failing is one open event');
+      monitor.backupTurn(st, { at: at(20), ms: 1, ok: true, result: { done: true } });
+      check(st.events[0].minutes === 10 && !st.events[0].open, 'the finished backup closes it: 10 minutes');
+      for (let i = 0; i < 30; i++) monitor.cronGap(st, at(40), now);
+      check(st.events.length === 20, 'at most 20 events are kept');
+    }
+    {
+      const kv = makeKv(); const env = envOf(kv); const f = new M.firestore.Firestore(env); const st = {};
+      const n0 = (await notes()).length;
+      await monitor.siteStep(env, f, st, { at: at(31), ok: false, ms: 1, status: 0 });
+      await monitor.siteStep(env, f, st, { at: at(16), ok: false, ms: 1, status: 0 });
+      const open = monitor.eventsView(st)[0];
+      await monitor.siteStep(env, f, st, { at: at(1), ok: true, ms: 1, status: 200 });
+      const e = monitor.eventsView(st)[0];
+      check(open.alerted === true && open.minutes === null && e.kind === 'site' && e.minutes === 30 && e.he === 'האתר לא ענה' && st.events.length === 1 && (await notes()).length > n0, 'the site down for 30 minutes: one event, the owners were told', e);
+      const off = envOf(makeKv({ 'console:alerts': JSON.stringify({ on: false }) })); const st2 = {};
+      await monitor.siteStep(off, f, st2, { at: at(31), ok: false, ms: 1, status: 0 }); await monitor.siteStep(off, f, st2, { at: at(16), ok: false, ms: 1, status: 0 });
+      check(st2.events[0].alerted === false, 'alerts off → the event says nobody was told');
+      const st3 = { quota: { at: at(1), since: at(60), reads: 42_000, writes: 1, deletes: 1 } };
+      await monitor.quotaStep(env, f, st3, new Date(now));
+      await monitor.quotaStep(env, f, st3, new Date(now));
+      st3.quota.reads = 10;
+      await monitor.quotaStep(env, f, st3, new Date(now + 7 * min));
+      check(st3.events.length === 1 && st3.events[0].he.startsWith('84%') && st3.events[0].alerted === true && st3.events[0].minutes === 7, 'the quota over 80% is one event, closed when it starts again', st3.events);
+    }
+
+    // the morning check, its week and the daily summary
+    {
+      for (const d of (await (await fetch(`${DOCS}/api_failures?pageSize=300`, { headers: admin })).json()).documents || []) await fetch(`http://${EMU}/v1/${d.name}`, { method: 'DELETE', headers: admin });
+      const good = { 'console:backup-last': JSON.stringify({ date: ilDay(), docs: 5, finishedAt: t }) };
+      const site = { checks: [{ at: t, ok: true, ms: 1, status: 200 }], downSince: null, incidents: [] };
+      const f = new M.firestore.Firestore(envOf(makeKv()));
+      const quietEnv = envOf(makeKv(good)); const stQ = { uptime: site, at: t };
+      const n0 = (await notes()).length;
+      await monitor.morningStep(quietEnv, f, stQ, new Date());
+      check(stQ.health.worst !== 'bad' && (await notes()).length === n0, 'all well, daily off → nothing is sent', stQ.health.items.map((i) => i.id + ':' + i.state));
+      const env = envOf(makeKv({ ...good, 'console:alerts': JSON.stringify({ daily: true }) })); const st = { uptime: site, at: t };
+      await monitor.morningStep(env, f, st, new Date());
+      const list = await notes();
+      check(list.length === n0 + 1 && list.some((x) => x.title.startsWith('סיכום הבוקר')), 'all well, daily on → the summary reaches the owner', list.map((x) => x.title));
+      await monitor.morningStep(env, f, st, new Date());
+      check((await notes()).length === n0 + 1, '… once a day');
+      check(st.week.length === 1 && st.week[0].states.site === 'ok' && st.morning === ilDay(), 'the morning check is one column of the week', st.week);
+      for (let i = 1; i <= 10; i++) monitor.addMorning(st, { ...st.health, date: ilDay(new Date(now - i * 86400_000)) });
+      check(st.week.length === 8 && st.week[7].date === ilDay() && st.week.every((x, i, a) => !i || x.date > a[i - 1].date), 'the week keeps eight mornings, oldest first');
+      // too many failures, no backup
+      for (let i = 0; i < 25; i++) await seed('api_failures', 'cs-f-' + i, { at: new Date().toISOString(), status: 500 });
+      const bad = envOf(makeKv({ 'console:alerts': JSON.stringify({ daily: true }) })); const stB = { uptime: site, at: t };
+      await monitor.morningStep(bad, f, stB, new Date());
+      const evs = monitor.eventsView(stB);
+      check(evs.some((e) => e.kind === 'failures' && e.he === '25 תקלות שרת ביממה אחת' && e.alerted) && evs.some((e) => e.kind === 'backup' && e.alerted) && evs.length === 2, 'over the threshold and no backup → two events, and the owners were told', evs);
+      for (let i = 0; i < 25; i++) await fetch(`${DOCS}/api_failures/cs-f-${i}`, { method: 'DELETE', headers: admin });
+      bad.TOKEN_KV.m.set('console:backup-last', good['console:backup-last']);
+      await monitor.morningStep(bad, f, stB, new Date());
+      check(monitor.eventsView(stB).every((e) => e.until === 'morning' && e.minutes === null), 'fixed by the next morning check → until: morning', monitor.eventsView(stB));
+      const health = { ...stB.health, items: stB.health.items.map((i) => (i.id === 'backup' ? { ...i, state: 'warn' } : i)) }; const stP = {};
+      monitor.morningEvents(stP, health, true);
+      check(!stP.events, 'a paused backup is not told as a failed one');
+      check((await monitor.saveAlertSettings(envOf(makeKv({ 'console:alerts': JSON.stringify({ on: false, push: true }) })), { push: false }, 'x')).daily === false, 'settings saved before daily existed still answer daily: false');
+    }
+
+    // rounds: one KV write a round, and what failed
+    {
+      const prev = { at: at(5), rounds: Array.from({ length: 60 }, (_, i) => ({ at: at(300 - i), ok: true, ms: 1, used: 9 })), week: [{ date: '2026-01-01', states: { site: 'ok' } }], events: [{ at: at(9), kind: 'site', he: 'x', minutes: 1, alerted: false }] };
+      const kv = makeKv({ 'console:cron-last': JSON.stringify(prev), 'console:cron-people': JSON.stringify({ at: at(1), used: 33, jobs: { push: { at: at(1), ms: 9, ok: false, result: { error: 'Firestore RESOURCE_EXHAUSTED: quota' } } } }), 'console:cron-send': JSON.stringify({ at: at(50), used: 40, jobs: { email: { at: at(50), ms: 9, ok: false, result: { error: 'old' } } } }) });
+      await quiet(() => M.worker.scheduled({ cron: '2-59/5 * * * *' }, envOf(kv)));
+      const rec = JSON.parse(kv.m.get('console:cron-last'));
+      const last = rec.rounds[rec.rounds.length - 1];
+      check(rec.rounds.length === 48 && last.ok === false && last.failed === 'התראות לטלפון' && last.why === 'המכסה היומית נגמרה' && last.used === 33, 'the push run of this round failed: the line says which and why; an old failure of another run does not', last);
+      check(kv.puts === 1 && rec.week.length === 1 && rec.events.length === 1, 'an upkeep round writes one KV record, and keeps the week and the events', { puts: kv.puts });
+      const kv2 = makeKv({ 'console:cron-last': JSON.stringify({ at: at(5) }) });
+      await quiet(() => M.worker.scheduled({ cron: '2-59/5 * * * *' }, envOf(kv2)));
+      const r2 = JSON.parse(kv2.m.get('console:cron-last')).rounds[0];
+      check(r2.ok === true && r2.used === kv2.gets + kv2.puts && kv2.puts === 1, 'used counts every KV call of the run', { r2, gets: kv2.gets, puts: kv2.puts });
+      const kv3 = makeKv(); kv3.get = async (k) => { if (k === 'console:cron-last') throw new Error('KV GET failed: 500'); return null; };
+      await quiet(() => M.worker.scheduled({ cron: '2-59/5 * * * *' }, envOf(kv3)));
+      check(kv3.puts === 0, 'a record that cannot be read is never overwritten');
+      const kv4 = makeKv();
+      await quiet(() => M.worker.scheduled({ cron: '1-59/5 * * * *' }, envOf(kv4)));
+      const people = JSON.parse(kv4.m.get('console:cron-people') || 'null');
+      check(people?.used > 1 && kv4.puts === 1, 'the people run keeps what it used in the record it writes anyway', people?.used);
+      await quiet(() => M.worker.scheduled({ cron: '1-59/5 * * * *' }, envOf(kv4)));
+      check(kv4.puts === 1, 'an unchanged second run writes nothing');
+      check(monitor.whyHe('Firestore DEADLINE_EXCEEDED') === 'לא הגיעה תשובה בזמן' && monitor.whyHe('Too many subrequests.') === 'יותר מדי בקשות בסבב אחד' && monitor.whyHe('???') === 'תקלה בשרת', 'why in plain Hebrew');
+    }
+
+    // imports: the last moment, and after it
+    {
+      const u = (iso) => imp.undoUntil(new Date(iso));
+      check(u('2026-11-23T16:36:00Z') === '2026-11-24T21:59:59.000Z' && u('2026-11-23T22:30:00Z') === '2026-11-25T21:59:59.000Z' && u('2026-07-01T10:00:00Z') === '2026-07-02T20:59:59.000Z', 'undo until the end of the next Israel day, winter and summer', u('2026-11-23T16:36:00Z'));
+      const past = { id: 'imp-a', kind: 'tasks', at: at(3000), by: 'x', count: 1, undoUntil: at(10), undone: false, ids: ['a'] };
+      const kv = makeKv({ 'console:imports': JSON.stringify([past]) }); const env = envOf(kv);
+      const err = await imp.undoImport(env, new M.firestore.Firestore(env), await imp.importById(env, 'imp-a')).catch((e) => e);
+      check(err.status === 400 && err.he === 'אפשר לבטל ייבוא רק עד סוף היום שאחריו', 'after the date → 400 with its own Hebrew line', err.he);
+      for (let i = 0; i < 22; i++) await imp.saveImport(env, { kind: 'tasks', ids: ['t' + i] }, 'מני', randomUUID());
+      const all = (await imp.listImports(env)).items;
+      check(all.length === 20 && all.every((b) => !('ids' in b) && !('idem' in b)), 'the newest 20 imports, without their ids in the answer');
+      const keyErr = await imp.saveImport(env, { kind: 'tasks', ids: ['a'] }, 'x', 'not-a-uuid').catch((e) => e);
+      check(keyErr.status === 400, 'a broken Idempotency-Key → 400');
+    }
+
+    // people: Firebase Auth refuses (no permission) or cannot be reached
+    {
+      const refused = http.createServer((req, res) => { res.writeHead(403, { 'content-type': 'application/json' }); res.end('{"error":{"message":"PERMISSION_DENIED"}}'); });
+      await new Promise((r) => refused.listen(0, '127.0.0.1', r));
+      const env = envOf(makeKv(), { FIREBASE_AUTH_EMULATOR_HOST: `127.0.0.1:${refused.address().port}` });
+      const p = await quiet(() => M.people.peopleAccess(env, new M.firestore.Firestore(env)));
+      refused.close();
+      check(p.people[owner]?.at === null && Object.values(p.people).every((x) => x.at === null) && Object.values(p.people).some((x) => x.device === 'phone'), 'no permission in Firebase Auth → what is known (devices), times null, no failure');
+      check(M.people.deviceOf([{ ua: 'other · browser' }]) === null && M.people.deviceOf(undefined) === null && M.people.deviceOf([{ ua: 'Android · Chrome', createdAt: t }]) === 'phone', 'an unknown device stays null');
+    }
+
+    // the broadcast pause: those mails wait, a payment's goes as usual
+    {
+      const sentTo = [];
+      const brevo = http.createServer((req, res) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { sentTo.push(JSON.parse(b).to[0].email); res.writeHead(201, { 'content-type': 'application/json' }); res.end('{"messageId":"<x@mock>"}'); }); });
+      await new Promise((r) => brevo.listen(0, '127.0.0.1', r));
+      for (const s of ['queued', 'sending']) for (const d of await where('email_outbox', 'status', s)) await fetch(`${DOCS}/email_outbox/${d.id}?updateMask.fieldPaths=status`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { status: { stringValue: 'skipped' } } }) });
+      const env = envOf(makeKv(), { EMAIL_ENABLED: 'true', BREVO_API_KEY: 'synthetic', BREVO_SENDER_EMAIL: 'sender@synthetic.test', BREVO_API_URL: `http://127.0.0.1:${brevo.address().port}/x` });
+      await quiet(() => M.email.runEmail(env));
+      const c = new Date().toISOString();
+      await seed('broadcasts', 'cs-bc2', { id: 'cs-bc2', text: 'הודעה', audience: 'registrants', by: { uid: 'x', name: 'x' }, createdAt: c, recipients: ['cs-guest'], recipientCount: 1 });
+      await seed('email_outbox', 'bc_cs-bc2_cs-guest', { kind: 'broadcast', broadcastId: 'cs-bc2', uid: 'cs-guest', status: 'queued', createdBy: { uid: 'x', name: 'x' }, createdAt: c });
+      const paused = await quiet(() => M.email.runEmail(env, Date.now(), false, true));
+      const job = async () => (await where('email_outbox', 'broadcastId', 'cs-bc2'))[0];
+      check(JSON.stringify(paused.broadcasts) === '{"paused":true}' && sentTo.length === 0 && (await job()).status === 'queued', 'broadcastEmailPaused → the mail waits in the queue', paused.broadcasts);
+      const open = await quiet(() => M.email.runEmail(env, Date.now(), false, false));
+      check(open.broadcasts?.sent === 1 && sentTo.join() === 'guest@synthetic.test' && (await job()).status === 'sent', 'the switch off again → it goes out', open.broadcasts);
+      brevo.close();
+    }
+  } catch (e) { failures++; console.error(e); } finally { fs.rmSync(out.replace(/\/worker\.mjs$/, ''), { recursive: true, force: true }); }
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

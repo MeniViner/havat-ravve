@@ -1,21 +1,27 @@
 // כסף ואירועים: what came in over a period (tickets, donations, stall accounts), what still waits, the payments people
 // said they made that an owner has to confirm, money by month, and each event as a funnel (orders → paid → came in).
 import { useState } from 'react';
-import { BarList, Card, ListCard, Row, StatRow, StatTile, Tag } from '../app/v2/kit';
+import { BarList, Button, Card, ListCard, Row, StatRow, StatTile, Tag } from '../app/v2/kit';
 import { ddmm } from '../app/v2/format';
 import { ago, fmt, Section, useLoad } from './shared';
 import { Columns, Funnel } from './charts';
-import { Period, periodText } from './Stats';
-import { source, type Debt } from './source';
+import { Period } from './Stats';
+import { source, type Debt, type Stats } from './source';
+import { useWide } from './desk/route';
+import { inLast } from './desk/farm';
+import { MoneyDesk } from './desk/MoneyDesk';
+import { debtState, ils, KIND, saveDebts } from './payments';
 
-const ils = (n: number) => `${fmt(Math.round(n))} ₪`;
-const KIND: Record<Debt['kind'], string> = { ticket: 'כרטיסים', donation: 'תרומה', tab: 'חשבון דוכן' };
 const MONTHS = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
 const monthName = (ym: string) => MONTHS[Number(ym.slice(5, 7)) - 1] || ym;
 
 export function MoneyScreen() {
   const [days, setDays] = useState(30);
   const st = useLoad(() => source.stats(days), [days]);
+  return useWide() ? <MoneyDesk st={st} days={days} setDays={setDays} /> : <MoneyPhone st={st} days={days} setDays={setDays} />;
+}
+
+function MoneyPhone({ st, days, setDays }: { st: { data: Stats | null; loading: boolean; error: string | null }; days: number; setDays: (d: number) => void }) {
   const m = st.data?.money;
   const claimed = m?.debts.filter((d) => d.claimed) || [];
   const open = m?.debts.filter((d) => !d.claimed) || [];
@@ -32,7 +38,7 @@ export function MoneyScreen() {
       {st.loading && !m && <p className="c-soft">מחשב…</p>}
       {m && st.data && (
         <div className={st.loading ? 'c-stack c-loading' : 'c-stack'}>
-          <Section title={`נכנס ב${periodText(days)} האחרון`}>
+          <Section title={`נכנס ${inLast(days)}`}>
             <Card pad="lg" className="c-money">
               <div className="c-money__hero"><span className="c-money__sum k-num">{ils(m.received.total)}</span><span className="c-soft">{m.received.donors ? `${fmt(m.received.donors)} תורמים` : ''}</span></div>
               <BarList items={[{ label: 'כרטיסים', value: m.received.tickets, display: ils(m.received.tickets) }, { label: 'תרומות', value: m.received.donations, display: ils(m.received.donations) }, { label: 'חשבונות דוכנים', value: m.received.tabs, display: ils(m.received.tabs) }]} />
@@ -55,6 +61,7 @@ export function MoneyScreen() {
               <ListCard>{open.map((d) => <DebtRow key={d.kind + d.id} d={d} />)}</ListCard>
             </Section>
           )}
+          {!!m.debts.length && <div><Button variant="neutral" onClick={() => saveDebts(m.debts)}>התשלומים הפתוחים לאקסל</Button></div>}
 
           <Section title="כמה נכנס בכל חודש">
             <Card pad="lg">
@@ -97,5 +104,5 @@ export function MoneyScreen() {
 }
 
 function DebtRow({ d }: { d: Debt }) {
-  return <Row title={<><b>{d.who || 'בלי שם'}</b> · {d.what}</>} meta={<>{KIND[d.kind]} · {d.claimed ? `אמר ששילם ${ago(d.since)}` : `מאז ${ago(d.since)}`}</>} value={<span className="k-num">{ils(d.amount)}</span>} />;
+  return <Row title={<><b>{d.who || 'בלי שם'}</b> · {d.what}</>} meta={<>{KIND[d.kind]} · {d.claimed ? `${debtState(d)} ${ago(d.since)}` : `מאז ${ago(d.since)}`}</>} value={<span className="k-num">{ils(d.amount)}</span>} />;
 }

@@ -6,18 +6,18 @@ import { ddmm, dayName } from '../app/v2/format';
 import { ago, fmt, Section, useLoad } from './shared';
 import { Columns } from './charts';
 import { source } from './source';
+import { sec } from './desk/statusParts';
+import { JOB, PERIODS, periodText, SpeedDesk, verdict } from './desk/SpeedDesk';
+import { useWide } from './desk/route';
 
-const PERIODS = [1, 7, 30] as const;
-const periodText = (d: number) => (d === 1 ? 'יממה' : d === 7 ? 'שבוע' : 'חודש');
-const JOB: Record<string, string> = { email: 'מיילים על תשלומים', accounts: 'מחיקת חשבונות', push: 'התראות לטלפון', backup: 'גיבוי לילי', cleanup: 'ניקוי רשומות ישנות', monitor: 'ניטור' };
-/** 0.4 שנ׳; under a tenth of a second, said so. */
-export const sec = (ms: number) => (ms < 100 ? 'פחות מ־0.1 שנ׳' : `${(ms / 1000).toFixed(1)} שנ׳`);
-const verdict = (p95: number) => (p95 < 1200 ? { t: 'השרת מהיר', d: 'כמעט כל בקשה נענית תוך פחות משנייה וחצי.' } : p95 < 3000 ? { t: 'השרת בסדר', d: 'רוב הבקשות מהירות, וחלק לוקחות כמה שניות.' } : { t: 'השרת איטי', d: 'יותר מדי בקשות לוקחות יותר מ־3 שניות. כדאי לבדוק מה איטי ברשימה למטה.' });
+export { sec };
 
 export function SpeedScreen() {
+  const wide = useWide();
   const [days, setDays] = useState(7);
   const st = useLoad(() => source.speed(days), [days]);
   const d = st.data;
+  if (wide) return <SpeedDesk st={st} days={days} setDays={setDays} />;
   const step = d ? Math.max(1, Math.ceil(d.perDay.length / 6)) : 1;
   const v = d && verdict(d.total.p95);
   return (
@@ -71,7 +71,7 @@ export function SpeedScreen() {
           </Section>
           {!!d.slowest.length && (
             <Section title="הבקשות האיטיות ביותר">
-              <ListCard>{d.slowest.map((s, i) => <Row key={i} title={s.he || s.op} meta={`${s.key || 'מפתח'} · ${ago(s.at)}${s.status >= 500 ? ' · נכשלה' : ''}`} value={<bdi className="k-num">{sec(s.ms)}</bdi>} />)}</ListCard>
+              <ListCard>{d.slowest.map((s, i) => <Row key={i} title={s.he || s.op} meta={`${s.key || 'מפתח'}${s.at ? ` · ${ago(s.at)}` : ''}${s.status >= 500 ? ' · נכשלה' : ''}`} value={<bdi className="k-num">{sec(s.ms)}</bdi>} />)}</ListCard>
             </Section>
           )}
           <div className="c-two">
