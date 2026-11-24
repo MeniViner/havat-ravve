@@ -4,6 +4,7 @@ import { Button, Card, Dot, ListCard, Row, StatRow, StatTile, Tag } from '../app
 import { ago, fmt, outHref, Section, useLoad } from './shared';
 import { source } from './source';
 import { ON_NOW } from './Switches';
+import { nowMs } from '../app/clock';
 
 const PUSH: Record<string, string> = { webpush: 'פועלות (Web Push)', fcm: 'פועלות (Firebase)', off: 'כבויות' };
 /** The switches that change what people can do: when one is on, the overview says so at the top. */
@@ -14,7 +15,7 @@ export function OverviewScreen() {
   const recent = useLoad(() => source.recent(8));
   const sw = useLoad(() => source.switches());
   const o = ov.data;
-  const cronLate = o?.crons ? Date.now() - Date.parse(o.crons.at) > 15 * 60_000 : true;
+  const cronLate = o?.crons ? nowMs() - Date.parse(o.crons.at) > 15 * 60_000 : true;
   const s = sw.data?.switches;
   const loud = s ? ON_NOW.filter(([k]) => LOUD.has(k) && s[k]).map(([, he]) => he) : [];
   const quiet = s ? ON_NOW.filter(([k]) => !LOUD.has(k) && s[k]).map(([, he]) => he) : [];

@@ -6,6 +6,7 @@ import { ddmm, dayName, hhmm, daysFromToday } from '../app/v2/format';
 import { ago, FieldName, Section, useLoad } from './shared';
 import { collectionName, size, valueText } from './labels';
 import { errorText, source, type Backup, type BackupDoc, type TrashItem } from './source';
+import { nowMs } from '../app/clock';
 
 const dayTitle = (date: string) => { const d = daysFromToday(date); return d === 0 ? 'היום' : d === -1 ? 'אתמול' : `${dayName(date)} ${ddmm(date)}`; };
 const show = valueText;
@@ -17,7 +18,7 @@ export function BackupsScreen({ notify }: { notify: (t: string, tone?: 'info' | 
   const [open, setOpen] = useState<Backup | null>(null);
   const [binItem, setBinItem] = useState<TrashItem | null>(null);
   const last = list.data?.items[0];
-  const stale = !last || Date.now() - Date.parse(last.finishedAt) > 36 * 3600_000;
+  const stale = !last || nowMs() - Date.parse(last.finishedAt) > 36 * 3600_000;
   const runNow = async () => {
     setRunning('מתחיל…');
     try {

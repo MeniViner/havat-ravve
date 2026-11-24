@@ -4,9 +4,12 @@
 // /admin?demo shows the same screens over made-up data, without signing in and without reading or writing anything.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { Avatar, Button, EmptyState, Icon, type IconName, Tabs } from '../app/v2/kit';
+import { Button, EmptyState, Icon, Tabs } from '../app/v2/kit';
 import { readyAuth, signIn, signOutUser, inAppBrowser } from '../app/firebase';
-import { outHref, useLoad, useNotice } from './shared';
+import { useLoad, useNotice } from './shared';
+import { currentTab, useWide } from './desk/route';
+import { Sidebar } from './desk/Sidebar';
+import { failedMails, setFailedMails } from './desk/counts';
 import { ConsoleError, errorText, source, type Me } from './source';
 import { OverviewScreen } from './Overview';
 import { KeysScreen } from './Keys';
@@ -26,25 +29,25 @@ import { RunScreen } from './Run';
 import { ImportScreen } from './Import';
 
 type Tab = 'overview' | 'monitor' | 'stats' | 'traffic' | 'money' | 'data' | 'people' | 'keys' | 'switches' | 'queue' | 'jobs' | 'speed' | 'run' | 'import' | 'security' | 'backups';
-const TABS: { value: Tab; label: string; icon: IconName }[] = [
-  { value: 'overview', label: 'מצב השרת', icon: 'server' },
-  { value: 'monitor', label: 'ניטור', icon: 'chart' },
-  { value: 'stats', label: 'סטטיסטיקות', icon: 'farm' },
-  { value: 'traffic', label: 'ביקורים ושימוש', icon: 'nav' },
-  { value: 'money', label: 'כסף ואירועים', icon: 'ticket' },
-  { value: 'data', label: 'נתונים', icon: 'grid' },
-  { value: 'people', label: 'אנשים', icon: 'people' },
-  { value: 'keys', label: 'מפתחות API', icon: 'key' },
-  { value: 'switches', label: 'מתגים', icon: 'sliders' },
-  { value: 'queue', label: 'תור שליחה', icon: 'message' },
-  { value: 'jobs', label: 'משימות מתוזמנות', icon: 'calendar' },
-  { value: 'speed', label: 'מהירות', icon: 'bolt' },
-  { value: 'run', label: 'הרצת פעולה', icon: 'edit' },
-  { value: 'import', label: 'ייבוא מאקסל', icon: 'file' },
-  { value: 'security', label: 'אבטחה', icon: 'blocked' },
-  { value: 'backups', label: 'גיבויים', icon: 'box' },
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'overview', label: 'מצב השרת' },
+  { value: 'monitor', label: 'ניטור' },
+  { value: 'stats', label: 'סטטיסטיקות' },
+  { value: 'traffic', label: 'ביקורים ושימוש' },
+  { value: 'money', label: 'כסף ואירועים' },
+  { value: 'data', label: 'נתונים' },
+  { value: 'people', label: 'אנשים' },
+  { value: 'keys', label: 'מפתחות API' },
+  { value: 'switches', label: 'מתגים' },
+  { value: 'queue', label: 'תור שליחה' },
+  { value: 'jobs', label: 'משימות מתוזמנות' },
+  { value: 'speed', label: 'מהירות' },
+  { value: 'run', label: 'הרצת פעולה' },
+  { value: 'import', label: 'ייבוא מאקסל' },
+  { value: 'security', label: 'אבטחה' },
+  { value: 'backups', label: 'גיבויים' },
 ];
-const tabOf = (): Tab => { const h = location.hash.replace(/^#\/?/, ''); return (TABS.some((t) => t.value === h) ? h : 'overview') as Tab; };
+const tabOf = (): Tab => { const h = currentTab(); return (TABS.some((t) => t.value === h) ? h : 'overview') as Tab; };
 
 export function Console() {
   const [user, setUser] = useState<User | null | undefined>(source.demo ? null : undefined);
@@ -98,54 +101,57 @@ function SignIn() {
 
 function Shell({ me }: { me: Me }) {
   const [tab, setTab] = useState<Tab>(tabOf);
+  const wide = useWide();
   const notice = useNotice();
   const people = useLoad(() => source.people());
-  useEffect(() => { const on = () => setTab(tabOf()); addEventListener('hashchange', on); return () => removeEventListener('hashchange', on); }, []);
+  const main = useRef<HTMLElement>(null);
+  useEffect(() => { const on = () => { setTab(tabOf()); scrollTo(0, 0); main.current?.scrollTo(0, 0); }; addEventListener('hashchange', on); return () => removeEventListener('hashchange', on); }, []);
   const go = (t: Tab) => { location.hash = '/' + t; setTab(t); scrollTo(0, 0); };
+  // the sidebar's red count; the screens that read the queue set it themselves
+  useEffect(() => {
+    if (!wide || failedMails() !== null || tab === 'overview' || tab === 'queue') return;
+    source.overview().then((o) => { if (failedMails() === null) setFailedMails(o.queues.email.failed); }).catch(() => {});
+    // once per console load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wide]);
+  const screen = (
+    <>
+      {tab === 'overview' && <OverviewScreen />}
+      {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
+      {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
+      {tab === 'backups' && <BackupsScreen notify={notice.show} />}
+      {tab === 'monitor' && <MonitorScreen notify={notice.show} />}
+      {tab === 'security' && <SecurityScreen />}
+      {tab === 'data' && <DataScreen notify={notice.show} />}
+      {tab === 'stats' && <StatsScreen />}
+      {tab === 'traffic' && <TrafficScreen />}
+      {tab === 'money' && <MoneyScreen />}
+      {tab === 'switches' && <SwitchesScreen notify={notice.show} />}
+      {tab === 'queue' && <QueueScreen notify={notice.show} />}
+      {tab === 'jobs' && <JobsScreen notify={notice.show} />}
+      {tab === 'speed' && <SpeedScreen />}
+      {tab === 'run' && <RunScreen notify={notice.show} />}
+      {tab === 'import' && <ImportScreen notify={notice.show} />}
+    </>
+  );
+  if (wide) return (
+    <div className="v2 c-shell d-shell" dir="rtl">
+      {source.demo && <div className="d-demo" role="status"><b>נתוני דמו</b><span>· שום דבר לא נשמר</span></div>}
+      <div className="d-frame">
+        <Sidebar me={me} tab={tab} />
+        <main className="d-main" ref={main}>{screen}</main>
+      </div>
+      {notice.view}
+    </div>
+  );
   return (
     <div className="v2 c-shell" dir="rtl">
       {source.demo && <div className="c-demo" role="status">תצוגה עם נתונים לא אמיתיים. שום דבר לא נשמר.</div>}
-      <aside className="c-side">
-        <div className="c-brand"><Icon name="server" size={24} /><span>חוות רווה · שרת</span></div>
-        <nav className="c-nav" aria-label="קונסולה">
-          {TABS.map((t) => (
-            <button key={t.value} type="button" className="c-nav__item" aria-current={tab === t.value ? 'page' : undefined} onClick={() => go(t.value)}>
-              <Icon name={t.icon} size={20} /><span>{t.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="c-side__links">
-          <a className="c-link" href={outHref('/app')}>לאפליקציה</a>
-          <a className="c-link" href={outHref('/edit')}>לעריכת האתר</a>
-        </div>
-        <div className="c-me">
-          <Avatar name={me.name} size={36} tone="me" />
-          <span className="c-me__name">{me.name}</span>
-          {!source.demo && <Button variant="quiet" icon="exit" onClick={() => signOutUser()}>יציאה</Button>}
-        </div>
-      </aside>
       <div className="c-top">
         <div className="c-brand"><Icon name="server" size={22} /><span>חוות רווה · שרת</span></div>
         <PhoneTabs tab={tab} onChange={go} />
       </div>
-      <main className="c-main">
-        {tab === 'overview' && <OverviewScreen />}
-        {tab === 'people' && <PeopleScreen me={me} people={people.data || []} loading={people.loading} error={people.error} reload={people.reload} notify={notice.show} />}
-        {tab === 'keys' && <KeysScreen people={people.data || []} notify={notice.show} />}
-        {tab === 'backups' && <BackupsScreen notify={notice.show} />}
-        {tab === 'monitor' && <MonitorScreen notify={notice.show} />}
-        {tab === 'security' && <SecurityScreen />}
-        {tab === 'data' && <DataScreen notify={notice.show} />}
-        {tab === 'stats' && <StatsScreen />}
-        {tab === 'traffic' && <TrafficScreen />}
-        {tab === 'money' && <MoneyScreen />}
-        {tab === 'switches' && <SwitchesScreen notify={notice.show} />}
-        {tab === 'queue' && <QueueScreen notify={notice.show} />}
-        {tab === 'jobs' && <JobsScreen notify={notice.show} />}
-        {tab === 'speed' && <SpeedScreen />}
-        {tab === 'run' && <RunScreen notify={notice.show} />}
-        {tab === 'import' && <ImportScreen notify={notice.show} />}
-      </main>
+      <main className="c-main">{screen}</main>
       {notice.view}
     </div>
   );

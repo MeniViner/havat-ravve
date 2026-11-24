@@ -7,6 +7,7 @@ import { ago, fmt, Section, useLoad } from './shared';
 import { size } from './labels';
 import { errorText, source, type HealthState, type Monitor } from './source';
 import { sec } from './Speed';
+import { nowMs } from '../app/clock';
 
 const GRANT = 'gcloud projects add-iam-policy-binding havat-ravve --member=serviceAccount:api-worker@havat-ravve.iam.gserviceaccount.com --role=roles/monitoring.viewer';
 const STATE: Record<HealthState, string> = { ok: 'תקין', warn: 'לשים לב', bad: 'לטפל', unknown: 'לא ידוע' };
@@ -63,7 +64,7 @@ function SiteCard({ m }: { m: Monitor }) {
   const s = m.site;
   const last = s.checks[s.checks.length - 1];
   const down = !!s.downSince;
-  const recent = s.incidents.filter((i) => !i.to || Date.now() - Date.parse(i.to) < 7 * 86400_000).slice(-3).reverse();
+  const recent = s.incidents.filter((i) => !i.to || nowMs() - Date.parse(i.to) < 7 * 86400_000).slice(-3).reverse();
   return (
     <Section title="האתר">
       <Card pad="lg" className="c-site">

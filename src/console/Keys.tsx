@@ -7,13 +7,14 @@ import { ddmm } from '../app/v2/format';
 import { ago, Section, until, useLoad } from './shared';
 import { errorText, source, type KeyView, type Person } from './source';
 import { AREAS, allLevels, isReadOnly, LEVELS, type Level, type Levels, levelsFrom, scopesFrom, scopesText } from './scopes';
+import { nowMs } from '../app/clock';
 
 const STATUS: Record<KeyView['status'], { l: string; tone: 'paid' | 'urgent' | 'neutral' }> = {
   active: { l: 'פעיל', tone: 'paid' }, revoked: { l: 'בוטל', tone: 'urgent' }, expired: { l: 'פג תוקף', tone: 'neutral' },
 };
 type Expiry = 'none' | '30' | '90' | '365';
 const EXPIRY: { value: Expiry; label: string }[] = [{ value: 'none', label: 'בלי תאריך' }, { value: '30', label: '30 יום' }, { value: '90', label: '90 יום' }, { value: '365', label: 'שנה' }];
-const inDays = (d: Expiry) => (d === 'none' ? null : new Date(Date.now() + Number(d) * 86400_000).toISOString());
+const inDays = (d: Expiry) => (d === 'none' ? null : new Date(nowMs() + Number(d) * 86400_000).toISOString());
 /** "בשימוש לפני 3 דקות", "בשימוש ב־21.11", "לא היה בשימוש" */
 const usedText = (at: string | null | undefined) => { if (!at) return 'לא היה בשימוש'; const t = ago(at); return `בשימוש ${/^\d/.test(t) ? 'ב־' + t : t}`; };
 type Grace = '0' | '24' | '72';
@@ -178,7 +179,7 @@ function KeySheet({ k, who, lastUsed, onClose, onChanged, notify }: { k: KeyView
             <DetailRow term="פועל בשם">{who}</DetailRow>
             <DetailRow term="מה מותר לו">{scopesText(k.scopes)}</DetailRow>
             <DetailRow term="שימוש אחרון">{lastUsed ? ago(lastUsed) : 'עוד לא היה בשימוש'}</DetailRow>
-            <DetailRow term="תוקף">{k.expiresAt ? (Date.parse(k.expiresAt) > Date.now() ? `עד ${ddmm(k.expiresAt)}` : `פג ב־${ddmm(k.expiresAt)}`) : 'בלי תאריך'}</DetailRow>
+            <DetailRow term="תוקף">{k.expiresAt ? (Date.parse(k.expiresAt) > nowMs() ? `עד ${ddmm(k.expiresAt)}` : `פג ב־${ddmm(k.expiresAt)}`) : 'בלי תאריך'}</DetailRow>
             <DetailRow term="נוצר">{k.createdAt ? `${ddmm(k.createdAt)}${k.createdBy ? ` · ${k.createdBy}` : ''}` : 'הוגדר בשרת לפני הקונסולה'}</DetailRow>
             <DetailRow term="מזהה"><span className="k-ltr" dir="ltr">{k.id}</span></DetailRow>
           </DetailList>
