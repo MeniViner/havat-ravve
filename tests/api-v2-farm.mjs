@@ -645,6 +645,24 @@ try {
     const dv2 = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { lat: 'north' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a number field refuses text');
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { brandNew: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a field the record does not have → 400');
+    // The browser edits legacy templates that have no updatedAt. The normal API must reject the earlier version twice.
+    const legacyPath = 'task_templates/instinct-audit-legacy';
+    await seed(legacyPath, { title: 'INSTINCT AUDIT template', active: true });
+    const tplBefore = await api('GET', '/v1/console/data/doc?path=' + legacyPath, C(own));
+    const tplEdit = await api('POST', '/v1/console/data/edit', { ...C(own), body: {
+      path: legacyPath, set: { title: 'INSTINCT AUDIT changed in console' }, updateTime: tplBefore.json.data.updateTime,
+    } });
+    const version = (await docOf(legacyPath)).updatedAt;
+    check(tplEdit.status === 200 && typeof version === 'string', 'console edit adds a version to an older template');
+    for (const title of ['INSTINCT AUDIT stale template 1', 'INSTINCT AUDIT stale template 2']) {
+      const stale = await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', title, ifUpdatedAt: '' });
+      check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === version,
+        'templates.update rejects each stale request');
+    }
+    check((await docOf(legacyPath)).title === 'INSTINCT AUDIT changed in console', 'stale attempts leave the template intact');
+    ok(await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', active: false, ifUpdatedAt: version }), 'current version works');
+    await w(MGR, 'templates.delete', { templateId: 'instinct-audit-legacy' });
+    check(!(await docOf(legacyPath)), 'legacy template fixture is gone');
     const uv = await api('GET', '/v1/console/data/doc?path=users/syn-staff2', C(own));
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: 'users/syn-staff2', set: { role: 'owner' }, updateTime: uv.json.data.updateTime } })).status === 403 && (await docOf('users/syn-staff2')).role !== 'owner', 'edit: people cannot be edited here (role stays)');
     check((await api('POST', '/v1/console/data/edit', { ...C(mgr), body: { path: `places/${pDat}`, set: { name: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 403, 'a manager cannot edit records');

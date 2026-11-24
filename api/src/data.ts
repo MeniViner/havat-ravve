@@ -6,6 +6,7 @@
 // text, a number, yes/no or nothing; never the logs, and never people (they have their own screen, where a role change
 // does everything it must). Each edit and delete carries the updateTime the owner saw, so it never overwrites a newer
 // change, and the log keeps what each field was before.
+import { nextUpdatedAt } from './core';
 import { ApiError, invalid } from './http';
 import { type Env, Firestore, FsError, type RawDoc, type V, dec, decFields, enc } from './firestore';
 import { BACKUPS, groupOf, lastBackup, listBackups, pathOf, titleOf } from './backup';
@@ -195,7 +196,13 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
     next[k] = enc(v);
   }
   // the record's own "last changed" moves too, so a client working from an older read sees the change (core.ts fresh)
-  if (fields.updatedAt && typeOf(fields.updatedAt) === 'string' && !('updatedAt' in set)) next.updatedAt = enc(new Date().toISOString());
+  const version = fields.updatedAt ? dec(fields.updatedAt) : undefined;
+  if (['tasks', 'task_templates'].includes(lastCol(path))) {
+    next.updatedAt = enc(nextUpdatedAt(version));
+    if ('updatedAt' in set) before.updatedAt = version;
+  } else if (typeof version === 'string' && !('updatedAt' in set)) {
+    next.updatedAt = enc(nextUpdatedAt(version));
+  }
   try {
     await fs.commit([{ update: { name: d.name, fields: next }, updateMask: { fieldPaths: Object.keys(next) }, currentDocument: { updateTime: d.updateTime } }]);
   } catch (e) {
@@ -203,7 +210,7 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
     throw e;
   }
   const [after] = await fs.rawGet([d.name]);
-  return { path, before, after: Object.fromEntries(Object.keys(next).map((k) => [k, set[k]])), updateTime: after?.updateTime || null };
+  return { path, before, after: Object.fromEntries(Object.keys(set).map((k) => [k, dec(next[k])])), updateTime: after?.updateTime || null };
 }
 
 /** Deletes a document (kept in the recycle bin for 30 days), only if nobody changed it since `updateTime`. */

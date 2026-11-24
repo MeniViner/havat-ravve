@@ -4,7 +4,7 @@ import { ApiError, invalid } from './http';
 import { type Caller, requireScope, seesManagerTasks } from './auth';
 import { operation } from './catalog';
 import { type Doc, Firestore, type Write, enc } from './firestore';
-import { fresh, idempotent, todayIL } from './core';
+import { fresh, idempotent, nextUpdatedAt, todayIL } from './core';
 import { autoId, b64url, canonical, normName, sha256hex, validate } from './util';
 import { photoUrl, publicItem, qtyPart, shopItemWrites, short, storedPhoto, taskToPerson, teamUids } from './v2/taskutil';
 
@@ -312,12 +312,12 @@ export async function assignTask(fs: Firestore, caller: Caller, body: Record<str
     const at = nowIso();
     const writes = assignee
       ? [
-        fs.patch('tasks', t.id, { assignee, takenAt: at, updatedAt: at }, t.updateTime),
+        fs.patch('tasks', t.id, { assignee, takenAt: at, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
         activity(fs, caller, t.id, 'assigned', `${activityText(data)} ← ${assignee.name}`, assignee.uid, kindOf(data)),
         ...taskToPerson(fs, me, assignee, t.id, data.title),
       ]
       : [
-        fs.patch('tasks', t.id, { assignee: null, updatedAt: at }, t.updateTime),
+        fs.patch('tasks', t.id, { assignee: null, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
         activity(fs, caller, t.id, 'released', activityText(data), current?.uid || '', kindOf(data)),
       ];
     return { writes, data: { taskId: t.id, changed: true, expected } };
@@ -344,9 +344,10 @@ async function setTaskDone(fs: Firestore, caller: Caller, op: 'tasks.complete' |
     if (wasDone === done && !withDetails) return { writes: [], data: { taskId: t.id, changed: false, expected: { done } } };
     const now = nowIso();
     const cur = (data.assignee as Person | null) || null;
+    const updatedAt = nextUpdatedAt(t.data.updatedAt);
     const patch: Record<string, unknown> = done
-      ? (wasDone ? { updatedAt: now } : { done: true, doneBy: me, doneAt: now, updatedAt: now })
-      : { done: false, doneBy: null, doneAt: null, updatedAt: now };
+      ? (wasDone ? { updatedAt } : { done: true, doneBy: me, doneAt: now, updatedAt })
+      : { done: false, doneBy: null, doneAt: null, updatedAt };
     if (done && !wasDone && !cur && !data.templateId) patch.assignee = me;
     if (withDetails) { patch.doneNote = input.doneNote || ''; if (photo) patch.donePhoto = photo; }
     const writes = [fs.patch('tasks', t.id, patch, t.updateTime)];

@@ -7,6 +7,11 @@ import { UUID_RE, autoId, canonical, sha256hex } from './util';
 export type Person = { uid: string; name: string };
 export const TEAM_ROLES = new Set(['owner', 'manager', 'staff']);
 export const nowIso = () => new Date().toISOString();
+/** Record versions advance even on the same millisecond or when a client's clock was ahead. */
+export function nextUpdatedAt(previous: unknown) {
+  const at = typeof previous === 'string' ? Date.parse(previous) : NaN;
+  return new Date(Math.max(Date.now(), Number.isFinite(at) ? at + 1 : 0)).toISOString();
+}
 /** Today's date in Asia/Jerusalem, YYYY-MM-DD (the app's todayKey). */
 export const todayIL = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
 export const isManager = (c: Caller) => c.actor.role === 'owner' || c.actor.role === 'manager';

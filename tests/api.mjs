@@ -765,13 +765,16 @@ try {
     // someone edits the same task in the app (title and note)
     const appTime = new Date(Date.now() + 1000).toISOString();
     await fetch(`${DOCS}/tasks/${t.id}?updateMask.fieldPaths=title&updateMask.fieldPaths=note&updateMask.fieldPaths=updatedAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { title: enc('גיזום העצים בכניסה'), note: enc('עם מספריים גדולים'), updatedAt: enc(appTime) } }) });
-    const stale = await w(MGR, 'tasks.edit', { taskId: t.id, title: 'גיזום מהיר', ifUpdatedAt: seen });
-    check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === appTime, 'tasks.edit with a stale ifUpdatedAt → 409 STALE_WRITE, with the current updatedAt', stale.json);
+    for (const title of ['INSTINCT AUDIT stale task 1', 'INSTINCT AUDIT stale task 2']) {
+      const stale = await w(MGR, 'tasks.edit', { taskId: t.id, title, ifUpdatedAt: seen });
+      check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === appTime, 'tasks.edit rejects each stale request with the current updatedAt', stale.json);
+    }
     check((await docOf('tasks/' + t.id)).title === 'גיזום העצים בכניסה', 'the app\'s change is intact');
     check((await w(MGR, 'tasks.complete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && (await w(MGR, 'tasks.assign', { taskId: t.id, assignee: 'syn-ronit', ifUpdatedAt: seen })).status === 409, 'complete and assign honour ifUpdatedAt too');
     check((await w(MGR, 'tasks.delete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && !!(await docOf('tasks/' + t.id)), 'a stale delete is refused and nothing is deleted');
     ok2(await w(MGR, 'tasks.edit', { taskId: t.id, urgent: true, ifUpdatedAt: appTime }), 'with the current updatedAt the edit goes through');
     const after = await docOf('tasks/' + t.id);
+    check(after.updatedAt > appTime, 'the API advances the version even when the client clock was ahead');
     check(after.urgent === true && after.title === 'גיזום העצים בכניסה' && after.note === 'עם מספריים גדולים', 'only the sent field changed; the app\'s title and note are kept');
     // consistency on failure: the action and its activity entry commit together or not at all
     const acts0 = await actCount();

@@ -4,7 +4,7 @@
 import { ApiError, invalid } from '../http';
 import type { Param } from '../catalog';
 import type { Doc, Write } from '../firestore';
-import { IF_UPDATED_AT, activity, forbidden, fresh, isManager, mustGet, notFound, nowIso, project, taskKind } from '../core';
+import { IF_UPDATED_AT, activity, forbidden, fresh, isManager, mustGet, notFound, nextUpdatedAt, nowIso, project, taskKind } from '../core';
 import { type Ctx, bool, def, en, req, str } from '../writes';
 import { RESOURCES } from '../resources';
 import { notifyWrites } from '../notify';
@@ -34,7 +34,7 @@ def('tasks.take', 'tasks:complete', 'לקחת משימה פנויה על עצמ�
   const now = nowIso();
   return {
     writes: [
-      c.fs.patch('tasks', t.id, { assignee: c.me, takenAt: now, updatedAt: now }, t.updateTime),
+      c.fs.patch('tasks', t.id, { assignee: c.me, takenAt: now, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
       activity(c.fs, c.me, taskKind(t.data), t.id, 'assigned', `${short(titleOf(t))} ← ${c.me.name}`, { subjectUid: c.me.uid }),
     ],
     refs: [{ col: 'tasks', id: t.id, expected: { assignee: c.me } }], data: { changed: true },
@@ -49,7 +49,7 @@ def('tasks.release', 'tasks:complete', 'לשחרר משימה שלי (חוזרת
   if (!cur) return { writes: [], refs: [{ col: 'tasks', id: t.id }], data: { changed: false } };
   return {
     writes: [
-      c.fs.patch('tasks', t.id, { assignee: null, updatedAt: nowIso() }, t.updateTime),
+      c.fs.patch('tasks', t.id, { assignee: null, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
       activity(c.fs, c.me, taskKind(t.data), t.id, 'released', short(titleOf(t)), { subjectUid: c.me.uid }),
     ],
     refs: [{ col: 'tasks', id: t.id, expected: { assignee: null } }], data: { changed: true },
@@ -65,7 +65,7 @@ def('tasks.setPhoto', 'tasks:complete', 'תמונה למשימה (מה צריך 
   fresh(t, c.input.ifUpdatedAt);
   const photo = storedPhoto('photo', c.input.photo, true);
   return {
-    writes: [c.fs.patch('tasks', t.id, { photo, updatedAt: nowIso() }, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', short(titleOf(t)))],
+    writes: [c.fs.patch('tasks', t.id, { photo, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', short(titleOf(t)))],
     refs: [{ col: 'tasks', id: t.id, expected: { hasPhoto: !!photo } }],
   };
 }, [PHOTO_NOTE]);
@@ -75,7 +75,7 @@ def('tasks.setDonePhoto', 'tasks:complete', 'תמונת ביצוע למשימה 
   const t = await visibleTask(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
   const donePhoto = storedPhoto('donePhoto', c.input.donePhoto, true);
-  const patch: Record<string, unknown> = { donePhoto, updatedAt: nowIso() };
+  const patch: Record<string, unknown> = { donePhoto, updatedAt: nextUpdatedAt(t.data.updatedAt) };
   if (c.input.note !== null && c.input.note !== undefined) patch.doneNote = String(c.input.note).slice(0, 2000);
   return {
     writes: [c.fs.patch('tasks', t.id, patch, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', `${short(titleOf(t))}${patch.doneNote ? ': ' + patch.doneNote : ''}`)],
@@ -96,7 +96,7 @@ def('tasks.addShopping', 'shopping:write', 'פריט קנייה שנדרש למ�
   const team = c.input.urgent ? await teamUids(c.fs) : [];
   const id = autoId();
   const { doc, writes } = shopItemWrites(c.fs, c.me, id, { ...c.input, photo, taskId: t.id } as Parameters<typeof shopItemWrites>[3], team);
-  writes.push(c.fs.patch('tasks', t.id, { shoppingId: id, updatedAt: nowIso() }, t.updateTime));
+  writes.push(c.fs.patch('tasks', t.id, { shoppingId: id, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime));
   return {
     status: 201, writes,
     refs: [{ col: 'shopping', id, expected: { title: doc.title, taskId: t.id } }, { col: 'tasks', id: t.id, expected: { shoppingId: id } }],

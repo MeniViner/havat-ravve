@@ -6,7 +6,7 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
 } from './core';
 import { autoId } from './util';
 import { notifyWrites } from './notify';
@@ -115,7 +115,7 @@ def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, ת
   if (c.input.clearAssignee) patch.assignee = null;
   needSome(patch);
   const onlyUrgent = Object.keys(patch).length === 1 && 'urgent' in patch;
-  const writes = [c.fs.patch('tasks', t.id, { ...patch, updatedAt: nowIso() }, t.updateTime)];
+  const writes = [c.fs.patch('tasks', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)];
   const kind = taskKind({ managersOnly: patch.managersOnly ?? t.data.managersOnly });
   // the history follows the task's visibility, as editTask() in the app does
   if ('managersOnly' in patch && !!patch.managersOnly !== !!t.data.managersOnly) {
@@ -135,7 +135,7 @@ def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, ת
 def('tasks.setDoneNote', 'tasks:complete', 'הערת ביצוע למשימה (מה נעשה)', { ifUpdatedAt: IF_UPDATED_AT as Param, taskId: req(), note: str(2000, 'ההערה', true) }, async (c) => {
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
-  const writes = [c.fs.patch('tasks', t.id, { doneNote: c.input.note, updatedAt: nowIso() }, t.updateTime),
+  const writes = [c.fs.patch('tasks', t.id, { doneNote: c.input.note, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
     activity(c.fs, c.me, taskKind(t.data), t.id, 'note', `${taskText(t.data as { title: string })}${c.input.note ? ': ' + c.input.note : ''}`)];
   return { writes, refs: [{ col: 'tasks', id: t.id, expected: { doneNote: c.input.note } }] };
 });
@@ -155,7 +155,7 @@ def('tasks.delete', 'tasks:delete', 'מחיקת משימה', { ifUpdatedAt: IF_U
     if (tpl) {
       const today = todayIL();
       const skip = [...new Set([...((tpl.data.skip as string[]) || []).filter((d) => d >= today), String(t.data.dateKey)])].sort().slice(-30);
-      writes.push(c.fs.patch('task_templates', tpl.id, { skip, updatedAt: nowIso() }, tpl.updateTime));
+      writes.push(c.fs.patch('task_templates', tpl.id, { skip, updatedAt: nextUpdatedAt(tpl.data.updatedAt) }, tpl.updateTime));
       refs.push({ col: 'task_templates', id: tpl.id, expected: { skip } });
     }
   }
@@ -200,7 +200,7 @@ def('templates.update', 'templates:write', 'עדכון משימה קבועה', {
   if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); patch.placeId = c.input.placeId; }
   else if (c.input.clearPlace && 'placeId' in t.data) patch.placeId = '';
   needSome(patch);
-  return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nowIso() }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
+  return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
 }, ['Only the fields sent change. A manager-only template has no person (assignee is stored empty).']);
 // deleteTemplate()
 def('templates.delete', 'templates:write', 'מחיקת משימה קבועה', { ifUpdatedAt: IF_UPDATED_AT as Param, templateId: req() }, async (c) => {
