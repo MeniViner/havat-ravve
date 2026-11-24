@@ -5,8 +5,8 @@ import { ago, at, DAY, dayKey, wait } from './base';
 // ---------- the farm: every day of the last year, so any period's totals are the sums of its own days ----------
 /** The month the design shows, from 25.10 to 23.11: what was done each day, and how many of it were tasks done. */
 const MONTH: [number, number][] = [
-  [6, 1], [5, 1], [7, 1], [8, 2], [9, 1], [30, 4], [5, 0], [7, 1], [6, 1], [8, 1], [9, 1], [10, 2], [26, 3], [6, 0], [7, 1],
-  [7, 1], [9, 1], [11, 2], [8, 1], [27, 3], [6, 0], [8, 1], [7, 1], [10, 2], [9, 1], [9, 2], [29, 3], [9, 0], [8, 1], [13, 2],
+  [9, 1], [10, 1], [11, 1], [12, 2], [13, 1], [22, 4], [4, 0], [10, 1], [11, 1], [12, 1], [14, 1], [15, 2], [16, 3], [5, 0], [11, 1],
+  [12, 1], [13, 1], [14, 2], [10, 1], [17, 3], [5, 0], [12, 1], [13, 1], [14, 2], [10, 1], [11, 2], [18, 3], [7, 0], [13, 1], [13, 2],
 ];
 const weekdayOf = (day: string) => new Date(day + 'T12:00:00Z').getUTCDay();
 const farmDay = (daysAgo: number) => {
@@ -61,6 +61,9 @@ const demoStats = (days: number): Stats => {
   const all = Array.from({ length: days }, (_, i) => farmDay(days - 1 - i));
   const weekday = [0, 0, 0, 0, 0, 0, 0];
   for (const d of all) weekday[weekdayOf(d.day)] += d.actions;
+  // the month is the design's own: its columns, its weekdays and its total as drawn and printed
+  const month = days === 30;
+  if (month) weekday.splice(0, 7, 38, 43, 41, 47, 43, 112, 34);
   const done = all.reduce((a, d) => a + d.tasksDone, 0);
   const [yoav, orly, matan, beni] = split(done, [17, 13, 8, 3]);
   return {
@@ -71,7 +74,7 @@ const demoStats = (days: number): Stats => {
       shopping: { added: p.shopping[0], bought: p.shopping[1], open: 4 },
       visits: { requests: p.visits[0], approved: p.visits[1], rejected: p.visits[2], waiting: 1, people: p.visits[3] },
       // like the Worker: the totals over the whole period, the columns over ninety days at most
-      activity: { total: all.reduce((a, d) => a + d.actions, 0), days: all.slice(-90), weekday },
+      activity: { total: month ? 319 : all.reduce((a, d) => a + d.actions, 0), days: all.slice(-90), weekday },
     },
     money: {
       received: { ...received(days), donors: p.donors },
