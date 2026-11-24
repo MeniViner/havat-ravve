@@ -1,0 +1,2924 @@
+{
+ "role": "owner",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "01-tasks.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף פנויה · עם תמונה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/tasks",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-shed",
+   "prevShot": "01-tasks.jpg",
+   "newFindings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף פנויה · עם תמונה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ]
+  },
+  {
+   "nn": "02",
+   "route": "/tasks?view=time",
+   "scenario": "regular",
+   "shots": [
+    "02-tasks-view-time.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף ליד הכניסה · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן שישי 27.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות שבת 28.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לפנות את השביל לחממה שישי 4.12 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים ליד הכניסה · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן מכולה ומחסן · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/tasks?view=time",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-shed",
+   "prevShot": "02-tasks-view-time.jpg",
+   "newFindings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף ליד הכניסה · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן שישי 27.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות שבת 28.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לפנות את השביל לחממה שישי 4.12 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים ליד הכניסה · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן מכולה ומחסן · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ]
+  },
+  {
+   "nn": "03",
+   "route": "/tasks?view=mine",
+   "scenario": "regular",
+   "shots": [
+    "03-tasks-view-mine.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/tasks?view=mine",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-call-ester",
+   "prevShot": "03-tasks-view-mine.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "04",
+   "route": "/tasks?view=free",
+   "scenario": "regular",
+   "shots": [
+    "04-tasks-view-free.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף פנויה · עם תמונה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/tasks?view=free",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-shed",
+   "prevShot": "04-tasks-view-free.jpg",
+   "newFindings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף פנויה · עם תמונה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ]
+  },
+  {
+   "nn": "05",
+   "route": "/tasks/history",
+   "scenario": "regular",
+   "shots": [
+    "05-tasks-history.jpg",
+    "05-tasks-history-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "היסטוריה",
+   "finalUrl": "/tasks/history",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "סיכום היום"
+   ],
+   "prevShot": "05-tasks-history.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "06",
+   "route": "/tasks/demo-t-toolbox",
+   "scenario": "regular",
+   "shots": [
+    "06-tasks-t-toolbox.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "לסדר את ארגז הכלים במכולה",
+   "finalUrl": "/tasks/demo-t-toolbox",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "06-tasks-t-toolbox.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "07",
+   "route": "/tasks/demo-t-tables",
+   "scenario": "regular",
+   "shots": [
+    "07-tasks-t-tables.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להכין את שולחנות הדוכן",
+   "finalUrl": "/tasks/demo-t-tables",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "07-tasks-t-tables.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "08",
+   "route": "/tasks/demo-t-tap",
+   "scenario": "regular",
+   "shots": [
+    "08-tasks-t-tap.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "לתקן את הברז ליד החממה",
+   "finalUrl": "/tasks/demo-t-tap",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "08-tasks-t-tap.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "09",
+   "route": "/tasks/demo-t-tap/assign",
+   "scenario": "regular",
+   "shots": [
+    "09-tasks-t-tap-assign.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "על מי המשימה",
+   "finalUrl": "/tasks/demo-t-tap/assign",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "09-tasks-t-tap-assign.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "10",
+   "route": "/tasks/demo-t-toolbox/done",
+   "scenario": "regular",
+   "shots": [
+    "10-tasks-t-toolbox-done.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "בוצע, עם צילום",
+   "finalUrl": "/tasks/demo-t-toolbox/done",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "10-tasks-t-toolbox-done.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "11",
+   "route": "/tasks/demo-t-toolbox/edit",
+   "scenario": "regular",
+   "shots": [
+    "11-tasks-t-toolbox-edit.jpg",
+    "11-tasks-t-toolbox-edit-more.jpg",
+    "11-tasks-t-toolbox-edit-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עריכה",
+   "finalUrl": "/tasks/demo-t-toolbox/edit",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את המשימה? \"לסדר את ארגז הכלים במכולה\" תימחק מהרשימה של כולם. מחיקה ביטול",
+   "rowSheet": [
+    "לא קשור לאירוע",
+    "פסטיבל הסתיו שבת 28.11",
+    "סיור שבת בחווה שבת 5.12",
+    "ערב חנוכה ראשון 13.12"
+   ],
+   "prevShot": "11-tasks-t-toolbox-edit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "12",
+   "route": "/new",
+   "scenario": "regular",
+   "shots": [
+    "12-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הוספה",
+   "finalUrl": "/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "12-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "13",
+   "route": "/new?kind=shopping",
+   "scenario": "regular",
+   "shots": [
+    "13-new-kind-shopping.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הוספה",
+   "finalUrl": "/new?kind=shopping",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "13-new-kind-shopping.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "14",
+   "route": "/day",
+   "scenario": "regular",
+   "shots": [
+    "14-day.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/day",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "14-day.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "15",
+   "route": "/projects",
+   "scenario": "regular",
+   "shots": [
+    "15-projects.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פרויקטים",
+   "finalUrl": "/projects",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "15-projects.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "16",
+   "route": "/projects/new",
+   "scenario": "regular",
+   "shots": [
+    "16-projects-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פרויקט חדש",
+   "finalUrl": "/projects/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "16-projects-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "17",
+   "route": "/projects/demo-p-festival",
+   "scenario": "regular",
+   "shots": [
+    "17-projects-p-festival.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הכנות לפסטיבל הסתיו",
+   "finalUrl": "/projects/demo-p-festival",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "17-projects-p-festival.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "18",
+   "route": "/projects/demo-p-festival/edit",
+   "scenario": "regular",
+   "shots": [
+    "18-projects-p-festival-edit.jpg",
+    "18-projects-p-festival-edit-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עריכת פרויקט",
+   "finalUrl": "/projects/demo-p-festival/edit",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את הפרויקט? \"הכנות לפסטיבל הסתיו\" יימחק עם כל הצעדים שלו, גם אלה שכבר בוצעו. מחיקה ביטול",
+   "prevShot": "18-projects-p-festival-edit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "19",
+   "route": "/projects/demo-p-festival/steps/demo-ps-police",
+   "scenario": "regular",
+   "shots": [
+    "19-projects-p-festival-steps-ps-police.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "לסגור אישור משטרה",
+   "finalUrl": "/projects/demo-p-festival/steps/demo-ps-police",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "19-projects-p-festival-steps-ps-police.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "20",
+   "route": "/manage/recurring",
+   "scenario": "regular",
+   "shots": [
+    "20-manage-recurring.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "משימות חוזרות",
+   "finalUrl": "/manage/recurring",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "20-manage-recurring.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "21",
+   "route": "/manage/recurring/new",
+   "scenario": "regular",
+   "shots": [
+    "21-manage-recurring-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הוספה",
+   "finalUrl": "/manage/recurring/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "21-manage-recurring-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "22",
+   "route": "/manage/recurring/demo-tpl-pots",
+   "scenario": "regular",
+   "shots": [
+    "22-manage-recurring-tpl-pots.jpg",
+    "22-manage-recurring-tpl-pots-more.jpg",
+    "22-manage-recurring-tpl-pots-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עריכה",
+   "finalUrl": "/manage/recurring/demo-tpl-pots",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את המשימה החוזרת? \"השקיית שורת העציצים\" לא תיווצר יותר. משימות שכבר נוצרו נשארות. מחיקה ביטול",
+   "rowSheet": [
+    "שמירה"
+   ],
+   "prevShot": "22-manage-recurring-tpl-pots.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "23",
+   "route": "/shopping",
+   "scenario": "regular",
+   "shots": [
+    "23-shopping.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/demo-s-milk",
+   "prevShot": "23-shopping.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "24",
+   "route": "/shopping?list=wish",
+   "scenario": "regular",
+   "shots": [
+    "24-shopping-list-wish.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping?list=wish",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/demo-s-cabinet",
+   "prevShot": "24-shopping-list-wish.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "25",
+   "route": "/shopping?list=online",
+   "scenario": "regular",
+   "shots": [
+    "25-shopping-list-online.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping?list=online",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/history",
+   "prevShot": "25-shopping-list-online.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "26",
+   "route": "/shopping?list=building",
+   "scenario": "regular",
+   "shots": [
+    "26-shopping-list-building.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping?list=building",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/demo-s-cement",
+   "prevShot": "26-shopping-list-building.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "27",
+   "route": "/shopping/demo-s-milk",
+   "scenario": "regular",
+   "shots": [
+    "27-shopping-s-milk.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "חלב 3% דחוף",
+   "finalUrl": "/shopping/demo-s-milk",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "27-shopping-s-milk.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "28",
+   "route": "/shopping/demo-s-milk/edit",
+   "scenario": "regular",
+   "shots": [
+    "28-shopping-s-milk-edit.jpg",
+    "28-shopping-s-milk-edit-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עריכה",
+   "finalUrl": "/shopping/demo-s-milk/edit",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק מהרשימה? \"חלב 3%\" יימחק מהרשימה של כולם. מחיקה ביטול",
+   "prevShot": "28-shopping-s-milk-edit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "29",
+   "route": "/shopping/trip",
+   "scenario": "eventDay",
+   "shots": [
+    "29-shopping-trip.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/demo-s-milk",
+   "prevShot": "29-shopping-trip.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "30",
+   "route": "/shopping/trip/done",
+   "scenario": "afterEvent",
+   "shots": [
+    "30-shopping-trip-done.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קניות",
+   "finalUrl": "/shopping",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping/demo-s-coffee",
+   "prevShot": "30-shopping-trip-done.afterEvent.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "31",
+   "route": "/shopping/history",
+   "scenario": "regular",
+   "shots": [
+    "31-shopping-history.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מה נקנה",
+   "finalUrl": "/shopping/history",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "31-shopping-history.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "32",
+   "route": "/farm",
+   "scenario": "regular",
+   "shots": [
+    "32-farm.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "החווה",
+   "finalUrl": "/farm",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "32-farm.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "33",
+   "route": "/farm/calendar",
+   "scenario": "regular",
+   "shots": [
+    "33-farm-calendar.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "נובמבר 2026",
+   "finalUrl": "/farm/calendar",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "33-farm-calendar.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "34",
+   "route": "/farm/calendar?view=month",
+   "scenario": "regular",
+   "shots": [
+    "34-farm-calendar-view-month.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "נובמבר 2026",
+   "finalUrl": "/farm/calendar?view=month",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "34-farm-calendar-view-month.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "35",
+   "route": "/farm/calendar?view=day",
+   "scenario": "regular",
+   "shots": [
+    "35-farm-calendar-view-day.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "חמישי, 19 בנובמבר",
+   "finalUrl": "/farm/calendar?view=day",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "35-farm-calendar-view-day.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "36",
+   "route": "/farm/calendar/new",
+   "scenario": "regular",
+   "shots": [
+    "36-farm-calendar-new.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "one-word-per-line",
+     "what": "ה׳\n19"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ו׳\n20"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ש׳\n21"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "א׳\n22"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ב׳\n23"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ג׳\n24"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ד׳\n25"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "פריט ביומן",
+   "finalUrl": "/farm/calendar/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "36-farm-calendar-new.jpg",
+   "newFindings": [
+    {
+     "rule": "one-word-per-line",
+     "what": "ה׳\n19"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ו׳\n20"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ש׳\n21"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "א׳\n22"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ב׳\n23"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ג׳\n24"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ד׳\n25"
+    }
+   ]
+  },
+  {
+   "nn": "37",
+   "route": "/farm/calendar/demo-c-1/edit",
+   "scenario": "regular",
+   "shots": [
+    "37-farm-calendar-c-1-edit.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פריט ביומן",
+   "finalUrl": "/farm/calendar/demo-c-1/edit",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "37-farm-calendar-c-1-edit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "38",
+   "route": "/farm/presence",
+   "scenario": "regular",
+   "shots": [
+    "38-farm-presence.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "one-word-per-line",
+     "what": "ה׳\n19"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ו׳\n20"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ש׳\n21"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "א׳\n22"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ב׳\n23"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ג׳\n24"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ד׳\n25"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "נוכחות בחווה",
+   "finalUrl": "/farm/presence",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "38-farm-presence.jpg",
+   "newFindings": [
+    {
+     "rule": "one-word-per-line",
+     "what": "ה׳\n19"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ו׳\n20"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ש׳\n21"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "א׳\n22"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ב׳\n23"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ג׳\n24"
+    },
+    {
+     "rule": "one-word-per-line",
+     "what": "ד׳\n25"
+    }
+   ]
+  },
+  {
+   "nn": "39",
+   "route": "/farm/today",
+   "scenario": "regular",
+   "shots": [
+    "39-farm-today.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "היום בחווה",
+   "finalUrl": "/farm/today",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "39-farm-today.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "40",
+   "route": "/farm/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "40-farm-events-e-festival.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/farm/events/demo-e-festival",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-signs",
+   "prevShot": "40-farm-events-e-festival.jpg",
+   "newFindings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ]
+  },
+  {
+   "nn": "41",
+   "route": "/people/demo-u-noa",
+   "scenario": "regular",
+   "shots": [
+    "41-people-u-noa.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/people/demo-u-noa",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-tables",
+   "prevShot": "41-people-u-noa.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "42",
+   "route": "/places",
+   "scenario": "regular",
+   "shots": [
+    "42-places.jpg",
+    "42-places-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מקומות בחווה",
+   "finalUrl": "/places",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "prevShot": "42-places.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "43",
+   "route": "/places/table",
+   "scenario": "regular",
+   "shots": [
+    "43-places-table.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מקומות בחווה",
+   "finalUrl": "/places/table",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "43-places-table.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "44",
+   "route": "/places/demo-p-greenhouse",
+   "scenario": "regular",
+   "shots": [
+    "44-places-p-greenhouse.jpg",
+    "44-places-p-greenhouse-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/places/demo-p-greenhouse",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את המקום? \"חממה\" יימחק מהרשימה. משימות שקשורות אליו נשארות. מחיקה ביטול",
+   "rowNav": "/tasks/demo-t-compost",
+   "prevShot": "44-places-p-greenhouse.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "45",
+   "route": "/notifications",
+   "scenario": "regular",
+   "shots": [
+    "45-notifications.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה לקבל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "התראות",
+   "finalUrl": "/notifications",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/shopping",
+   "prevShot": "45-notifications.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "46",
+   "route": "/search",
+   "scenario": "regular",
+   "shots": [
+    "46-search.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/search",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "46-search.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "47",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "47-me.jpg",
+    "47-me-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/me",
+   "latin": [],
+   "installWords": [
+    "התקנה למסך הבית"
+   ],
+   "rowSheet": [
+    "התראות לטלפון",
+    "הודעות לצוות",
+    "משימה חדשה עליי",
+    "דחוף לכולם",
+    "יציאה לקניות",
+    "אירועים ותזכורות"
+   ],
+   "prevShot": "47-me.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "48",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "48-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הפרטים שלי",
+   "finalUrl": "/me/edit",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "48-me-edit.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "49",
+   "route": "/me/photo",
+   "scenario": "regular",
+   "shots": [
+    "49-me-photo.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תמונת פרופיל",
+   "finalUrl": "/me/photo",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "49-me-photo.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "50",
+   "route": "/me/photo/crop",
+   "scenario": "regular",
+   "shots": [
+    "50-me-photo-crop.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "למקם את התמונה",
+   "finalUrl": "/me/photo/crop",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "50-me-photo-crop.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "51",
+   "route": "/me/tickets",
+   "scenario": "regular",
+   "shots": [
+    "51-me-tickets.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הכרטיסים שלי",
+   "finalUrl": "/me/tickets",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/items",
+   "prevShot": "51-me-tickets.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "52",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "52-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מה יש לי בחווה",
+   "finalUrl": "/me/items",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "52-me-items.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "53",
+   "route": "/tasks/demo-tpl-pots_2026-11-19",
+   "scenario": "regular",
+   "shots": [
+    "53-tasks-tpl-pots_2026-11-19.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להשקות את שורת העציצים",
+   "finalUrl": "/tasks/demo-tpl-pots_2026-11-19",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "53-tasks-tpl-pots_2026-11-19.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "54",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "54-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "תנאי שימוש ופרטיות",
+   "finalUrl": "/terms",
+   "latin": [
+    "havat-ravve.web.app",
+    "Google",
+    "Firebase",
+    "Cloudflare",
+    "Brevo",
+    "HTTPS"
+   ],
+   "installWords": [],
+   "prevShot": "54-terms.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "55",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "55-install.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להוסיף למסך הבית",
+   "finalUrl": "/install",
+   "latin": [
+    "iPhone",
+    "Android",
+    "Safari"
+   ],
+   "installWords": [
+    "להוסיף למסך הבית"
+   ],
+   "prevShot": "55-install.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "56",
+   "route": "/offline",
+   "scenario": "regular",
+   "shots": [
+    "56-offline.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/offline",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "56-offline.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "57",
+   "route": "/tasks",
+   "scenario": "eventDay",
+   "shots": [
+    "57-tasks.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף היה עד חמישי 19.11 · ליד הכניסה · פנויה \" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן היה עד אתמול · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"איסוף ביצים פנויה · עד 07:00 לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/tasks",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/tasks/demo-t-flag",
+   "prevShot": "57-tasks.eventDay.jpg",
+   "newFindings": [
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להחליף את הדגל דחוף היה עד חמישי 19.11 · ליד הכניסה · פנויה \" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לנקות את מחסן הכלים היה עד שלישי 17.11 · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"להדפיס שלטי כניסה ודוכן היה עד אתמול · פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לגזום ענפים נמוכים פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לצבוע את דלת המחסן פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"לסמן חניות פנויה לקחת\" [סימון בוצע:  | לקחת]"
+    },
+    {
+     "rule": "row-controls",
+     "what": "2 controls: \"איסוף ביצים פנויה · עד 07:00 לקחת\" [סימון בוצע:  | לקחת]"
+    }
+   ]
+  },
+  {
+   "nn": "58",
+   "route": "/farm",
+   "scenario": "eventDay",
+   "shots": [
+    "58-farm.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "החווה",
+   "finalUrl": "/farm",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "58-farm.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "59",
+   "route": "/event",
+   "scenario": "eventDay",
+   "shots": [
+    "59-event.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אירוע",
+   "finalUrl": "/event",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "59-event.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "60",
+   "route": "/event/gate",
+   "scenario": "eventDay",
+   "shots": [
+    "60-event-gate.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/event/gate",
+   "latin": [
+    "QR"
+   ],
+   "installWords": [],
+   "prevShot": "60-event-gate.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "61",
+   "route": "/event/gate/search",
+   "scenario": "eventDay",
+   "shots": [
+    "61-event-gate-search.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מי בכניסה?",
+   "finalUrl": "/event/gate/search",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "61-event-gate-search.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "62",
+   "route": "/event/stall",
+   "scenario": "eventDay",
+   "shots": [
+    "62-event-stall.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מי קונה?",
+   "finalUrl": "/event/stall",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/event/stall/demo-tab-roni-fest",
+   "prevShot": "62-event-stall.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "63",
+   "route": "/event/stall/demo-tab-roni-fest",
+   "scenario": "eventDay",
+   "shots": [
+    "63-event-stall-tab-roni-fest.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/event/stall/demo-tab-roni-fest",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "63-event-stall-tab-roni-fest.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "64",
+   "route": "/event/stall/tabs",
+   "scenario": "eventDay",
+   "shots": [
+    "64-event-stall-tabs.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "חשבונות הדוכן",
+   "finalUrl": "/event/stall/tabs",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/tabs/demo-tab-shirak-fest",
+   "prevShot": "64-event-stall-tabs.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "65",
+   "route": "/manage",
+   "scenario": "regular",
+   "shots": [
+    "65-manage.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "ניהול",
+   "finalUrl": "/manage",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/activity",
+   "prevShot": "65-manage.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "66",
+   "route": "/manage/inbox",
+   "scenario": "regular",
+   "shots": [
+    "66-manage-inbox.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה שטופל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "לטיפול · 4",
+   "finalUrl": "/manage/inbox",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/inbox/demo-n-contact",
+   "prevShot": "66-manage-inbox.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "67",
+   "route": "/manage/events",
+   "scenario": "regular",
+   "shots": [
+    "67-manage-events.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אירועים",
+   "finalUrl": "/manage/events",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "67-manage-events.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "68",
+   "route": "/manage/events/new",
+   "scenario": "regular",
+   "shots": [
+    "68-manage-events-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אירוע חדש",
+   "finalUrl": "/manage/events/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "68-manage-events-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "69",
+   "route": "/manage/events/demo-e-festival?tab=prep",
+   "scenario": "regular",
+   "shots": [
+    "69-manage-events-e-festival-tab-prep.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/manage/events/demo-e-festival?tab=prep",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/edit",
+   "prevShot": "69-manage-events-e-festival-tab-prep.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "70",
+   "route": "/manage/events/demo-e-festival?tab=guests",
+   "scenario": "regular",
+   "shots": [
+    "70-manage-events-e-festival-tab-guests.jpg",
+    "70-manage-events-e-festival-tab-guests-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/manage/events/demo-e-festival?tab=guests",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "prevShot": "70-manage-events-e-festival-tab-guests.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "71",
+   "route": "/manage/events/demo-e-festival/edit",
+   "scenario": "regular",
+   "shots": [
+    "71-manage-events-e-festival-edit.jpg",
+    "71-manage-events-e-festival-edit-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עריכת אירוע",
+   "finalUrl": "/manage/events/demo-e-festival/edit",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את האירוע? \"פסטיבל הסתיו\" יימחק מהאתר ומהיומן. הכרטיסים שכבר נרשמו נשמרים. מחיקה ביטול",
+   "prevShot": "71-manage-events-e-festival-edit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "72",
+   "route": "/manage/events/demo-e-festival/vendors",
+   "scenario": "regular",
+   "shots": [
+    "72-manage-events-e-festival-vendors.jpg",
+    "72-manage-events-e-festival-vendors-more.jpg",
+    "72-manage-events-e-festival-vendors-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "בעלי דוכנים",
+   "finalUrl": "/manage/events/demo-e-festival/vendors",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "להזמין את מי שהיה ביריד אוקטובר 2 בעלי דוכנים",
+    "נוסח ההזמנה הודעה מוכנה: הזמנת בעל דוכן"
+   ],
+   "rowSheet": [
+    "לא מגיע הפעם",
+    "לכרטיס בעל הדוכן",
+    "הסרה מהאירוע"
+   ],
+   "prevShot": "72-manage-events-e-festival-vendors.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "73",
+   "route": "/manage/events/demo-e-festival/products",
+   "scenario": "regular",
+   "shots": [
+    "73-manage-events-e-festival-products.jpg",
+    "73-manage-events-e-festival-products-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מוצרי הדוכן",
+   "finalUrl": "/manage/events/demo-e-festival/products",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "העתקה מאירוע קודם"
+   ],
+   "prevShot": "73-manage-events-e-festival-products.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "74",
+   "route": "/manage/events/demo-e-festival/products/new",
+   "scenario": "regular",
+   "shots": [
+    "74-manage-events-e-festival-products-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מוצר בדוכן",
+   "finalUrl": "/manage/events/demo-e-festival/products/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "74-manage-events-e-festival-products-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "75",
+   "route": "/manage/events/demo-e-festival/products/demo-pr-lemonade",
+   "scenario": "regular",
+   "shots": [
+    "75-manage-events-e-festival-products-pr-lemonade.jpg",
+    "75-manage-events-e-festival-products-pr-lemonade-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מוצר בדוכן",
+   "finalUrl": "/manage/events/demo-e-festival/products/demo-pr-lemonade",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את המוצר? \"לימונדה\" לא יופיע יותר בדוכן. מה שכבר נמכר נשאר בחשבונות. מחיקה ביטול",
+   "prevShot": "75-manage-events-e-festival-products-pr-lemonade.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "76",
+   "route": "/manage/events/demo-e-festival/files",
+   "scenario": "regular",
+   "shots": [
+    "76-manage-events-e-festival-files.jpg",
+    "76-manage-events-e-festival-files-more.jpg",
+    "76-manage-events-e-festival-files-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "קבצים",
+   "finalUrl": "/manage/events/demo-e-festival/files",
+   "latin": [
+    "PDF"
+   ],
+   "installWords": [],
+   "moreItems": [
+    "הוספת קישור"
+   ],
+   "rowSheet": [
+    "פתיחה",
+    "מחיקה"
+   ],
+   "prevShot": "76-manage-events-e-festival-files.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "77",
+   "route": "/manage/events/demo-e-festival/staffing",
+   "scenario": "regular",
+   "shots": [
+    "77-manage-events-e-festival-staffing.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מי עובד באירוע",
+   "finalUrl": "/manage/events/demo-e-festival/staffing",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "77-manage-events-e-festival-staffing.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "78",
+   "route": "/manage/events/demo-e-october?tab=summary",
+   "scenario": "regular",
+   "shots": [
+    "78-manage-events-e-october-tab-summary.jpg",
+    "78-manage-events-e-october-tab-summary-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "יריד אוקטובר",
+   "finalUrl": "/manage/events/demo-e-october?tab=summary",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "ייצוא לאקסל",
+    "הדפסה",
+    "היסטוריית שינויים"
+   ],
+   "rowNav": "/manage/events/demo-e-october",
+   "prevShot": "78-manage-events-e-october-tab-summary.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "79",
+   "route": "/manage/events/demo-e-october?tab=summary&part=sold",
+   "scenario": "regular",
+   "shots": [
+    "79-manage-events-e-october-tab-summary-part-sold.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מה נמכר בדוכן",
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=sold",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "79-manage-events-e-october-tab-summary-part-sold.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "80",
+   "route": "/manage/events/demo-e-october?tab=summary&part=money",
+   "scenario": "regular",
+   "shots": [
+    "80-manage-events-e-october-tab-summary-part-money.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "כסף",
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=money",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/donations",
+   "prevShot": "80-manage-events-e-october-tab-summary-part-money.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "81",
+   "route": "/manage/events/demo-e-october?tab=summary&part=compare",
+   "scenario": "regular",
+   "shots": [
+    "81-manage-events-e-october-tab-summary-part-compare.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "לעומת אירועים קודמים",
+   "finalUrl": "/manage/events/demo-e-october?tab=summary&part=compare",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-rosh",
+   "prevShot": "81-manage-events-e-october-tab-summary-part-compare.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "82",
+   "route": "/manage/events/demo-e-october/tabs",
+   "scenario": "regular",
+   "shots": [
+    "82-manage-events-e-october-tabs.jpg",
+    "82-manage-events-e-october-tabs-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "חשבונות הדוכן",
+   "finalUrl": "/manage/events/demo-e-october/tabs",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "rowNav": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+   "prevShot": "82-manage-events-e-october-tabs.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "83",
+   "route": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+   "scenario": "regular",
+   "shots": [
+    "83-manage-events-e-october-tabs-tab-roni-oct.jpg",
+    "83-manage-events-e-october-tabs-tab-roni-oct-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "רוני לוי",
+   "finalUrl": "/manage/events/demo-e-october/tabs/demo-tab-roni-oct",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "התיק של רוני",
+    "היסטוריית שינויים",
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את החשבון? החשבון של רוני לוי על 46 ₪ יימחק לגמרי, גם מהדוחות. כדי לוותר על התשלום ולהשאיר תיעוד, יש מחילה. מחיקה ביטול",
+   "prevShot": "83-manage-events-e-october-tabs-tab-roni-oct.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "84",
+   "route": "/manage/vendors",
+   "scenario": "regular",
+   "shots": [
+    "84-manage-vendors.jpg",
+    "84-manage-vendors-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "בעלי דוכנים · 9",
+   "finalUrl": "/manage/vendors",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "נוסח ההזמנה הודעה מוכנה: הזמנת בעל דוכן"
+   ],
+   "rowNav": "/manage/vendors/demo-v-raz",
+   "prevShot": "84-manage-vendors.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "85",
+   "route": "/manage/vendors/demo-v-raz",
+   "scenario": "regular",
+   "shots": [
+    "85-manage-vendors-v-raz.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "גבינות משק רז",
+   "finalUrl": "/manage/vendors/demo-v-raz",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/vendors",
+   "prevShot": "85-manage-vendors-v-raz.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "86",
+   "route": "/manage/vendors/demo-v-raz/access",
+   "scenario": "regular",
+   "shots": [
+    "86-manage-vendors-v-raz-access.jpg",
+    "86-manage-vendors-v-raz-access-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "גישה לאפליקציה",
+   "finalUrl": "/manage/vendors/demo-v-raz/access",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "הסרת הגישה"
+   ],
+   "rowNav": "/manage/people/demo-u-raz",
+   "prevShot": "86-manage-vendors-v-raz-access.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "87",
+   "route": "/manage/people",
+   "scenario": "regular",
+   "shots": [
+    "87-manage-people.jpg",
+    "87-manage-people-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אנשים והודעות",
+   "finalUrl": "/manage/people",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "תפקיד לפי כתובת מייל להוסיף מישהו מראש"
+   ],
+   "rowNav": "/manage/people/invite",
+   "prevShot": "87-manage-people.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "88",
+   "route": "/manage/people?filter=team",
+   "scenario": "regular",
+   "shots": [
+    "88-manage-people-filter-team.jpg",
+    "88-manage-people-filter-team-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אנשים והודעות",
+   "finalUrl": "/manage/people?filter=team",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "תפקיד לפי כתובת מייל להוסיף מישהו מראש"
+   ],
+   "rowNav": "/manage/people/demo-u-avi",
+   "prevShot": "88-manage-people-filter-team.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "89",
+   "route": "/manage/people?tab=messages",
+   "scenario": "regular",
+   "shots": [
+    "89-manage-people-tab-messages.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אנשים והודעות",
+   "finalUrl": "/manage/people?tab=messages",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "89-manage-people-tab-messages.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "90",
+   "route": "/manage/people/invite",
+   "scenario": "regular",
+   "shots": [
+    "90-manage-people-invite.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להוסיף מישהו מראש",
+   "finalUrl": "/manage/people/invite",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "90-manage-people-invite.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "91",
+   "route": "/manage/people/messages/demo-b-1",
+   "scenario": "regular",
+   "shots": [
+    "91-manage-people-messages-b-1.jpg",
+    "91-manage-people-messages-b-1-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/manage/people/messages/demo-b-1",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את ההודעה? ההודעה תימחק מהרשימה ומהמסך של מי שקיבל אותה. מי שכבר קיבל אותה עדיין רואה אותה בהתראות שלו. מחיקה ביטול",
+   "prevShot": "91-manage-people-messages-b-1.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "92",
+   "route": "/manage/people/demo-u-michal",
+   "scenario": "regular",
+   "shots": [
+    "92-manage-people-u-michal.jpg",
+    "92-manage-people-u-michal-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/manage/people/demo-u-michal",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "חסימה לא תוכל להזמין כרטיסים",
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את מיכל ברק? היא תימחק מהאפליקציה. הכרטיסים, התרומות והביקורים נשארים. אם תיכנס שוב עם אותו חשבון גוגל, תתחיל מההתחלה כמו חדשה. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה. מחיקה ביטול",
+   "rowNav": "/manage/events/demo-e-festival",
+   "prevShot": "92-manage-people-u-michal.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "93",
+   "route": "/manage/people/demo-u-yoav",
+   "scenario": "regular",
+   "shots": [
+    "93-manage-people-u-yoav.jpg",
+    "93-manage-people-u-yoav-more.jpg",
+    "93-manage-people-u-yoav-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/manage/people/demo-u-yoav",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "חסימה לא יוכל להזמין כרטיסים",
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את יואב פרץ? הוא יימחק מהאפליקציה. הכרטיסים, התרומות והביקורים נשארים. אם ייכנס שוב עם אותו חשבון גוגל, יתחיל מההתחלה כמו חדש. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה. מחיקה ביטול",
+   "rowSheet": [],
+   "prevShot": "93-manage-people-u-yoav.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "94",
+   "route": "/manage/broadcasts/new",
+   "scenario": "regular",
+   "shots": [
+    "94-manage-broadcasts-new.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הודעה חדשה",
+   "finalUrl": "/manage/broadcasts/new",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "94-manage-broadcasts-new.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "95",
+   "route": "/manage/reports",
+   "scenario": "regular",
+   "shots": [
+    "95-manage-reports.jpg",
+    "95-manage-reports-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "דוחות",
+   "finalUrl": "/manage/reports",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "משימות בטבלה מי ביצע מה, החודש",
+    "ייצוא משימות לאקסל"
+   ],
+   "rowNav": "/manage/reports/tasks",
+   "prevShot": "95-manage-reports.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "96",
+   "route": "/manage/reports/people",
+   "scenario": "regular",
+   "shots": [
+    "96-manage-reports-people.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אנשים ונרשמים",
+   "finalUrl": "/manage/reports/people",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "96-manage-reports-people.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "97",
+   "route": "/manage/reports/events",
+   "scenario": "regular",
+   "shots": [
+    "97-manage-reports-events.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אירועים",
+   "finalUrl": "/manage/reports/events",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-october",
+   "prevShot": "97-manage-reports-events.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "98",
+   "route": "/manage/reports/tasks",
+   "scenario": "regular",
+   "shots": [
+    "98-manage-reports-tasks.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "more-lost",
+     "what": "⋯ items gone since round 1: צפייה בטבלה כל העמודות, כמו בקובץ | צפייה בטבלה | ייצוא לאקסל | משימות בטבלה מי ביצע מה, החודש | משימות בטבלה | ייצוא משימות לאקסל"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "משימות",
+   "finalUrl": "/manage/reports/tasks",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "98-manage-reports-tasks.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "99",
+   "route": "/manage/visits",
+   "scenario": "regular",
+   "shots": [
+    "99-manage-visits.jpg",
+    "99-manage-visits-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "ביקורים",
+   "finalUrl": "/manage/visits",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "rowNav": "/manage/visits/demo-vi-cohen",
+   "prevShot": "99-manage-visits.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "100",
+   "route": "/manage/visits/demo-vi-cohen",
+   "scenario": "regular",
+   "shots": [
+    "100-manage-visits-vi-cohen.jpg",
+    "100-manage-visits-vi-cohen-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "משפחת כהן",
+   "finalUrl": "/manage/visits/demo-vi-cohen",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "היסטוריית שינויים",
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את הבקשה? הבקשה של משפחת כהן תימחק. היא לא תקבל על זה הודעה. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה. מחיקה ביטול",
+   "prevShot": "100-manage-visits-vi-cohen.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "101",
+   "route": "/manage/donations",
+   "scenario": "regular",
+   "shots": [
+    "101-manage-donations.jpg",
+    "101-manage-donations-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תרומות",
+   "finalUrl": "/manage/donations",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "הדפסה",
+    "היסטוריית שינויים"
+   ],
+   "rowNav": "/manage/donations/demo-d-michal",
+   "prevShot": "101-manage-donations.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "102",
+   "route": "/manage/donations/table",
+   "scenario": "regular",
+   "shots": [
+    "102-manage-donations-table.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תרומות · החודש",
+   "finalUrl": "/manage/donations/table",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "102-manage-donations-table.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "103",
+   "route": "/manage/donations/demo-d-michal",
+   "scenario": "regular",
+   "shots": [
+    "103-manage-donations-d-michal.jpg",
+    "103-manage-donations-d-michal-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "180 ₪ · מיכל ברק",
+   "finalUrl": "/manage/donations/demo-d-michal",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "היסטוריית שינויים",
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את התרומה? 180 ₪ · מיכל ברק. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה. מחיקה ביטול",
+   "rowNav": "/manage/events/demo-e-festival",
+   "prevShot": "103-manage-donations-d-michal.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "104",
+   "route": "/manage/settings",
+   "scenario": "regular",
+   "shots": [
+    "104-manage-settings.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "rowsheet-lost",
+     "what": "row-sheet items gone since round 1: עריכת אתר החווה נפתח בחלון נפרד | עריכת אתר החווה | תנאי שימוש ופרטיות הנוסח שהאורחים מאשרים | תנאי שימוש ופרטיות"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הגדרות",
+   "finalUrl": "/manage/settings",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "rowNav": "/manage/settings/payments",
+   "prevShot": "104-manage-settings.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "105",
+   "route": "/manage/settings/messages",
+   "scenario": "regular",
+   "shots": [
+    "105-manage-settings-messages.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הודעות מוכנות",
+   "finalUrl": "/manage/settings/messages",
+   "latin": [
+    "https://havat-ravve.web.app/app/me"
+   ],
+   "installWords": [],
+   "prevShot": "105-manage-settings-messages.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "106",
+   "route": "/manage/settings/questions",
+   "scenario": "regular",
+   "shots": [
+    "106-manage-settings-questions.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "שאלות הרשמה",
+   "finalUrl": "/manage/settings/questions",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "106-manage-settings-questions.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "107",
+   "route": "/manage/settings/payments",
+   "scenario": "regular",
+   "shots": [
+    "107-manage-settings-payments.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "איך משלמים",
+   "finalUrl": "/manage/settings/payments",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "107-manage-settings-payments.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "108",
+   "route": "/manage/settings/donation-amounts",
+   "scenario": "regular",
+   "shots": [
+    "108-manage-settings-donation-amounts.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "סכומי תרומה",
+   "finalUrl": "/manage/settings/donation-amounts",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "108-manage-settings-donation-amounts.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "109",
+   "route": "/manage/settings/visit-types",
+   "scenario": "regular",
+   "shots": [
+    "109-manage-settings-visit-types.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "סוגי ביקור",
+   "finalUrl": "/manage/settings/visit-types",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "109-manage-settings-visit-types.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "110",
+   "route": "/manage/settings/contact",
+   "scenario": "regular",
+   "shots": [
+    "110-manage-settings-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פרטי קשר לחווה",
+   "finalUrl": "/manage/settings/contact",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "110-manage-settings-contact.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "111",
+   "route": "/manage/settings/guests",
+   "scenario": "regular",
+   "shots": [
+    "111-manage-settings-guests.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "סוגי ביקור ושאלות הרשמה",
+   "finalUrl": "/manage/settings/guests",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/settings/visit-types",
+   "prevShot": "111-manage-settings-guests.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "112",
+   "route": "/manage/settings/managers",
+   "scenario": "regular",
+   "shots": [
+    "112-manage-settings-managers.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מנהלים ובעלים",
+   "finalUrl": "/manage/settings/managers",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/people/demo-u-eliya",
+   "prevShot": "112-manage-settings-managers.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "113",
+   "route": "/manage/instinct",
+   "scenario": "regular",
+   "shots": [
+    "113-manage-instinct.jpg",
+    "113-manage-instinct-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "יומן אינסטינקט",
+   "finalUrl": "/manage/instinct",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "prevShot": "113-manage-instinct.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "114",
+   "route": "/manage/activity",
+   "scenario": "regular",
+   "shots": [
+    "114-manage-activity.jpg",
+    "114-manage-activity-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "כל הפעילות",
+   "finalUrl": "/manage/activity",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "prevShot": "114-manage-activity.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "115",
+   "route": "/manage",
+   "scenario": "eventDay",
+   "shots": [
+    "115-manage.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "ניהול",
+   "finalUrl": "/manage",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/activity",
+   "prevShot": "115-manage.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "116",
+   "route": "/manage/events/demo-e-festival?tab=day",
+   "scenario": "eventDay",
+   "shots": [
+    "116-manage-events-e-festival-tab-day.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/manage/events/demo-e-festival?tab=day",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "116-manage-events-e-festival-tab-day.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "117",
+   "route": "/manage/events/demo-e-festival/live",
+   "scenario": "eventDay",
+   "shots": [
+    "117-manage-events-e-festival-live.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/manage/events/demo-e-festival/live",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/live/scans",
+   "prevShot": "117-manage-events-e-festival-live.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "118",
+   "route": "/manage/events/demo-e-festival/live/scans",
+   "scenario": "eventDay",
+   "shots": [
+    "118-manage-events-e-festival-live-scans.eventDay.jpg",
+    "118-manage-events-e-festival-live-scans.eventDay-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "סריקות · 217",
+   "finalUrl": "/manage/events/demo-e-festival/live/scans",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל"
+   ],
+   "rowNav": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+   "prevShot": "118-manage-events-e-festival-live-scans.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "119",
+   "route": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+   "scenario": "eventDay",
+   "shots": [
+    "119-manage-events-e-festival-live-scans-sc-yossi.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "יוסי מזרחי",
+   "finalUrl": "/manage/events/demo-e-festival/live/scans/demo-sc-yossi",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "119-manage-events-e-festival-live-scans-sc-yossi.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "120",
+   "route": "/manage/events/demo-e-festival/live/waiting",
+   "scenario": "eventDay",
+   "shots": [
+    "120-manage-events-e-festival-live-waiting.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "עוד לא הגיעו",
+   "finalUrl": "/manage/events/demo-e-festival/live/waiting",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "120-manage-events-e-festival-live-waiting.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "121",
+   "route": "/manage/events/demo-e-festival/vendors/today",
+   "scenario": "eventDay",
+   "shots": [
+    "121-manage-events-e-festival-vendors-today.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הדוכנים היום",
+   "finalUrl": "/manage/events/demo-e-festival/vendors/today",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/vendors/today/demo-vr-raz-power",
+   "prevShot": "121-manage-events-e-festival-vendors-today.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "122",
+   "route": "/manage/events/demo-e-festival/close",
+   "scenario": "afterEvent",
+   "shots": [
+    "122-manage-events-e-festival-close.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "סגירת האירוע",
+   "finalUrl": "/manage/events/demo-e-festival/close",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/events/demo-e-festival/tabs",
+   "prevShot": "122-manage-events-e-festival-close.afterEvent.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "123",
+   "route": "/manage/events/demo-e-october/debts",
+   "scenario": "afterEvent",
+   "shots": [
+    "123-manage-events-e-october-debts.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תזכורות חוב · 4",
+   "finalUrl": "/manage/events/demo-e-october/debts",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "123-manage-events-e-october-debts.afterEvent.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "124",
+   "route": "/manage/events/demo-e-festival?tab=summary",
+   "scenario": "afterEvent",
+   "shots": [
+    "124-manage-events-e-festival-tab-summary.afterEvent.jpg",
+    "124-manage-events-e-festival-tab-summary.afterEvent-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/manage/events/demo-e-festival?tab=summary",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "ייצוא לאקסל",
+    "הדפסה",
+    "היסטוריית שינויים"
+   ],
+   "rowNav": "/manage/events/demo-e-festival",
+   "prevShot": "124-manage-events-e-festival-tab-summary.afterEvent.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "125",
+   "route": "/manage/inbox?view=handled",
+   "scenario": "regular",
+   "shots": [
+    "125-manage-inbox-view-handled.jpg",
+    "125-manage-inbox-view-handled-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מה שטופל",
+   "finalUrl": "/manage/inbox?view=handled",
+   "latin": [],
+   "installWords": [],
+   "rowSheet": [
+    "פתיחה",
+    "מחיקה מהרשימה"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "126",
+   "route": "/manage/inbox/demo-n-contact",
+   "scenario": "regular",
+   "shots": [
+    "126-manage-inbox-n-contact.jpg",
+    "126-manage-inbox-n-contact-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "יש חניה נגישה?",
+   "finalUrl": "/manage/inbox/demo-n-contact",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את הפנייה? הפנייה של מיכל ברק תימחק מהרשימה לטיפול ומ\"מה שטופל\". היא לא תקבל על זה הודעה. מחיקה ביטול",
+   "rowNav": "/manage/people/demo-u-michal",
+   "newFindings": []
+  },
+  {
+   "nn": "127",
+   "route": "/manage/vendors/table",
+   "scenario": "regular",
+   "shots": [
+    "127-manage-vendors-table.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "בעלי דוכנים",
+   "finalUrl": "/manage/vendors/table",
+   "latin": [],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "128",
+   "route": "/manage/inbox/stall/demo-e-festival/demo-vr-raz-power",
+   "scenario": "eventDay",
+   "shots": [
+    "128-manage-inbox-stall-e-festival-vr-raz-power.eventDay.jpg",
+    "128-manage-inbox-stall-e-festival-vr-raz-power.eventDay-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "החשמל נפל",
+   "finalUrl": "/manage/inbox/stall/demo-e-festival/demo-vr-raz-power",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את הבקשה? הבקשה של גבינות משק רז תימחק. הדוכן לא יקבל על זה הודעה. מחיקה ביטול",
+   "rowNav": "/manage/vendors/demo-v-raz",
+   "newFindings": []
+  },
+  {
+   "nn": "129",
+   "route": "/manage/events/demo-e-festival/vendors/today/demo-vr-raz-power",
+   "scenario": "eventDay",
+   "shots": [
+    "129-manage-events-e-festival-vendors-today-vr-raz-power.eventDay.jpg",
+    "129-manage-events-e-festival-vendors-today-vr-raz-power.eventDay-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "החשמל נפל",
+   "finalUrl": "/manage/events/demo-e-festival/vendors/today/demo-vr-raz-power",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "מחיקה"
+   ],
+   "deleteConfirm": "למחוק את הבקשה? הבקשה של גבינות משק רז תימחק. הדוכן לא יקבל על זה הודעה. מחיקה ביטול",
+   "rowNav": "/manage/vendors/demo-v-raz",
+   "newFindings": []
+  },
+  {
+   "nn": "130",
+   "route": "/manage/inbox",
+   "scenario": "eventDay",
+   "shots": [
+    "130-manage-inbox.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה שטופל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "לטיפול · 5",
+   "finalUrl": "/manage/inbox",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/manage/inbox/stall/demo-e-festival/demo-vr-raz-power",
+   "newFindings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה שטופל\""
+    }
+   ]
+  },
+  {
+   "nn": "131",
+   "route": "/manage/donations",
+   "scenario": "afterEvent",
+   "shots": [
+    "131-manage-donations.afterEvent.jpg",
+    "131-manage-donations.afterEvent-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תרומות",
+   "finalUrl": "/manage/donations",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "צפייה בטבלה כל העמודות, כמו בקובץ",
+    "ייצוא לאקסל",
+    "הדפסה",
+    "היסטוריית שינויים"
+   ],
+   "rowNav": "/manage/donations/demo-d-ester-fest",
+   "newFindings": []
+  },
+  {
+   "nn": "132",
+   "route": "/manage/settings/demo",
+   "scenario": "regular",
+   "shots": [
+    "132-manage-settings-demo.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הדגמה בכניסה ראשונה",
+   "finalUrl": "/manage/settings/demo",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/demo",
+   "newFindings": []
+  }
+ ]
+}

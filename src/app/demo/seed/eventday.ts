@@ -66,6 +66,14 @@ export function fillerPlan(after: boolean) {
   });
 }
 
+/** Y2 "יצאו וחזרו" (needs-design decision 7): three early filler tickets went out to the parking lot and came back in. Their
+ *  second scan sits before 16:50 so the top of the scan log stays as designed; all by Gil, so Yoav keeps his 42 scans (E1). Shared with the live slice for the scan log. */
+export const RETURNED: { ticketId: string; at: string; by: Actor }[] = [
+  { ticketId: 'demo-o-f11-1', at: T('16:36'), by: A.gil },
+  { ticketId: 'demo-o-f12-2', at: T('16:41'), by: A.gil },
+  { ticketId: 'demo-o-f14-1', at: T('16:44'), by: A.gil },
+];
+
 const person = (uid: string) => { const p = profiles.find((x) => x.uid === uid)!; return { uid, name: p.displayName, phone: p.phone }; };
 const sold = (productId: string, name: string, price: number, qty: number, at: string, by: Actor): TabItem => ({ productId, name, price, qty, at, by });
 const L = (qty: number, at: string, by: Actor = A.noa) => sold('demo-pr-lemonade', 'לימונדה', 12, qty, at, by);
@@ -114,6 +122,10 @@ const slice: Slice = (seed, scenario) => {
 
   // ---- filler tickets ----
   put(seed, 'tickets', fillerPlan(after).flatMap(({ o, ins }) => ticketsOf(o.orderId, o.owner, o.count, o.pending ? 'pending' : 'paid', o.createdAt, ins)));
+  for (const r of RETURNED) {
+    const t = seed.collections.tickets?.find((x) => x.id === r.ticketId) as (Row & { scans: Entry[] }) | undefined;
+    if (t) patch(seed, 'tickets', r.ticketId, { entries: 2, scans: [...t.scans, { at: r.at, by: r.by }], updatedAt: r.at });
+  }
 
   // ---- stall products: the designed grid order (honey before oil), bread not sold today ----
   patch(seed, `events/${E.fall}/products`, 'demo-pr-honey', { sort: 6 } as Partial<Product> as Row);

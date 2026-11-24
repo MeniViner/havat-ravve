@@ -1,0 +1,671 @@
+{
+ "role": "guest",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/",
+   "scenario": "regular",
+   "shots": [
+    "01-home.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/events/demo-e-festival",
+   "prevShot": "01-home.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "02",
+   "route": "/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "02-events-e-festival.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls: להוסיף ליומן | שיתוף"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/events/demo-e-festival",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "02-events-e-festival.jpg",
+   "newFindings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls: להוסיף ליומן | שיתוף"
+    }
+   ]
+  },
+  {
+   "nn": "03",
+   "route": "/events/demo-e-festival/order",
+   "scenario": "regular",
+   "shots": [
+    "03-events-e-festival-order.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הזמנת כרטיסים",
+   "finalUrl": "/events/demo-e-festival/order",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "03-events-e-festival-order.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "04",
+   "route": "/visit",
+   "scenario": "regular",
+   "shots": [
+    "04-visit.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תיאום ביקור",
+   "finalUrl": "/visit",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "04-visit.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "05",
+   "route": "/donate",
+   "scenario": "regular",
+   "shots": [
+    "05-donate.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תרומה לחווה",
+   "finalUrl": "/donate",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "05-donate.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "06",
+   "route": "/contact",
+   "scenario": "regular",
+   "shots": [
+    "06-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פנייה לחווה",
+   "finalUrl": "/contact",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "06-contact.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "07",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "07-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "תנאי שימוש ופרטיות",
+   "finalUrl": "/terms",
+   "latin": [
+    "havat-ravve.web.app",
+    "Google",
+    "Firebase",
+    "Cloudflare",
+    "Brevo",
+    "HTTPS"
+   ],
+   "installWords": [],
+   "prevShot": "07-terms.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "08",
+   "route": "/privacy",
+   "scenario": "regular",
+   "shots": [
+    "08-privacy.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "תנאי שימוש ופרטיות",
+   "finalUrl": "/privacy",
+   "latin": [
+    "havat-ravve.web.app",
+    "Google",
+    "Firebase",
+    "Cloudflare",
+    "Brevo",
+    "HTTPS"
+   ],
+   "installWords": [],
+   "prevShot": "08-privacy.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "09",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "09-install.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להוסיף למסך הבית",
+   "finalUrl": "/install",
+   "latin": [
+    "iPhone",
+    "Android",
+    "Safari"
+   ],
+   "installWords": [
+    "להוסיף למסך הבית"
+   ],
+   "prevShot": "09-install.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "10",
+   "route": "/calendar",
+   "scenario": "regular",
+   "shots": [
+    "10-calendar.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/calendar",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "10-calendar.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "11",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "11-me.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "more-lost",
+     "what": "⋯ items gone since round 1: שיתוף כרטיס 1 | להוסיף ליומן | לדף האירוע"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הכרטיסים שלי",
+   "finalUrl": "/me",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/orders/demo-o-19",
+   "prevShot": "11-me.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "12",
+   "route": "/me/orders/demo-o-19",
+   "scenario": "regular",
+   "shots": [
+    "12-me-orders-o-19.jpg",
+    "12-me-orders-o-19-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/me/orders/demo-o-19",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "שיתוף כרטיס 1",
+    "להוסיף ליומן",
+    "לדף האירוע"
+   ],
+   "prevShot": "12-me-orders-o-19.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "13",
+   "route": "/me/orders/demo-o-19/pay",
+   "scenario": "regular",
+   "shots": [
+    "13-me-orders-o-19-pay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הכרטיסים שמורים לך",
+   "finalUrl": "/me/orders/demo-o-19/pay",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "13-me-orders-o-19-pay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "14",
+   "route": "/me/past",
+   "scenario": "regular",
+   "shots": [
+    "14-me-past.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "אירועים שהיו",
+   "finalUrl": "/me/past",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/orders/demo-o-15",
+   "prevShot": "14-me-past.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "15",
+   "route": "/me/items",
+   "scenario": "regular",
+   "shots": [
+    "15-me-items.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "מה יש לי בחווה",
+   "finalUrl": "/me/items",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/orders/demo-o-2",
+   "prevShot": "15-me-items.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "16",
+   "route": "/me/visits/demo-vi-michal",
+   "scenario": "regular",
+   "shots": [
+    "16-me-visits-vi-michal.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "שישי, 27 בנובמבר",
+   "finalUrl": "/me/visits/demo-vi-michal",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "16-me-visits-vi-michal.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "17",
+   "route": "/me/donations/demo-d-michal",
+   "scenario": "regular",
+   "shots": [
+    "17-me-donations-d-michal.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "180 ₪ · עשר פעמים חי",
+   "finalUrl": "/me/donations/demo-d-michal",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "17-me-donations-d-michal.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "18",
+   "route": "/me/stall/demo-tab-michal-unpaid-summer",
+   "scenario": "regular",
+   "shots": [
+    "18-me-stall-tab-michal-unpaid-summer.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "החשבון שלי בדוכן",
+   "finalUrl": "/me/stall/demo-tab-michal-unpaid-summer",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "18-me-stall-tab-michal-unpaid-summer.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "19",
+   "route": "/me/account",
+   "scenario": "regular",
+   "shots": [
+    "19-me-account.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/me/account",
+   "latin": [],
+   "installWords": [
+    "התקנה"
+   ],
+   "rowNav": "/me/orders/demo-o-2",
+   "prevShot": "19-me-account.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "20",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "20-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "עריכת פרטים",
+   "finalUrl": "/me/edit",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "20-me-edit.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "21",
+   "route": "/me/messages",
+   "scenario": "regular",
+   "shots": [
+    "21-me-messages.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הודעות מהחווה",
+   "finalUrl": "/me/messages",
+   "latin": [],
+   "installWords": [],
+   "prevShot": "21-me-messages.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "22",
+   "route": "/delete-account",
+   "scenario": "regular",
+   "shots": [
+    "22-delete-account.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "מחיקת החשבון",
+   "finalUrl": "/delete-account",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "prevShot": "22-delete-account.jpg",
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "23",
+   "route": "/login",
+   "scenario": "regular",
+   "shots": [
+    "23-login.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "more-lost",
+     "what": "⋯ items gone since round 1: שיתוף כרטיס 1 | להוסיף ליומן | לדף האירוע"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הכרטיסים שלי",
+   "finalUrl": "/me",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/orders/demo-o-19",
+   "prevShot": "23-login.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "24",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "24-tasks.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/tasks",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/events/demo-e-festival",
+   "prevShot": "24-tasks.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "25",
+   "route": "/",
+   "scenario": "eventDay",
+   "shots": [
+    "25-home.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/events/demo-e-festival",
+   "prevShot": "25-home.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "26",
+   "route": "/me",
+   "scenario": "eventDay",
+   "shots": [
+    "26-me.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "more-lost",
+     "what": "⋯ items gone since round 1: שיתוף כרטיס 1 | להוסיף ליומן | לדף האירוע"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הכרטיסים שלי",
+   "finalUrl": "/me",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/me/orders/demo-o-19",
+   "prevShot": "26-me.eventDay.jpg",
+   "newFindings": []
+  },
+  {
+   "nn": "27",
+   "route": "/events/demo-e-festival",
+   "scenario": "eventDay",
+   "shots": [
+    "27-events-e-festival.eventDay.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls: להוסיף ליומן | שיתוף"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/events/demo-e-festival",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "prevShot": "27-events-e-festival.eventDay.jpg",
+   "newFindings": [
+    {
+     "rule": "topbar-controls",
+     "what": "2 controls: להוסיף ליומן | שיתוף"
+    }
+   ]
+  },
+  {
+   "nn": "28",
+   "route": "/me/visits/demo-vi-michal",
+   "scenario": "eventDay",
+   "shots": [
+    "28-me-visits-vi-michal.eventDay.jpg",
+    "28-me-visits-vi-michal.eventDay-more.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "שישי, 4 בדצמבר",
+   "finalUrl": "/me/visits/demo-vi-michal",
+   "latin": [],
+   "installWords": [],
+   "moreItems": [
+    "ביטול הבקשה"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "29",
+   "route": "/me/donations/demo-d-michal",
+   "scenario": "eventDay",
+   "shots": [
+    "29-me-donations-d-michal.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "180 ₪ · עשר פעמים חי",
+   "finalUrl": "/me/donations/demo-d-michal",
+   "latin": [
+    "PayBox"
+   ],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "30",
+   "route": "/me/account",
+   "scenario": "eventDay",
+   "shots": [
+    "30-me-account.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/me/account",
+   "latin": [],
+   "installWords": [
+    "התקנה"
+   ],
+   "rowNav": "/me/orders/demo-o-2",
+   "newFindings": []
+  },
+  {
+   "nn": "31",
+   "route": "/install?first=1",
+   "scenario": "regular",
+   "shots": [
+    "31-install-first-1.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להוסיף למסך הבית",
+   "finalUrl": "/install?first=1",
+   "latin": [
+    "iPhone",
+    "Android",
+    "Safari"
+   ],
+   "installWords": [
+    "להוסיף למסך הבית"
+   ],
+   "newFindings": []
+  }
+ ]
+}

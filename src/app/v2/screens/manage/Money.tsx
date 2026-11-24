@@ -1,4 +1,4 @@
-// Q14 reports (+ drill-ins /manage/reports/people, /manage/reports/events), Q4 donations, Q6 one donation.
+// Q14 reports (+ drill-ins /manage/reports/tasks, /manage/reports/people, /manage/reports/events), Q4 donations, Q6 one donation.
 // Rule 10: the reports root shows the headline numbers, who did what, and rows that open the detail. Rule 4: a donation row
 // carries no buttons; every donation action lives on its screen (Q6), and its secondary actions behind ⋯ (rule 5).
 import { useMemo, useState } from 'react';
@@ -67,7 +67,8 @@ export function ReportsScreen({ ctx, params }: ScreenProps) {
   });
   const section = params.section || '';
   // Two tables (Q14 ⋯): the report at /manage/reports/table and the tasks at /manage/reports/tasks/table.
-  if (table.active) return section === 'tasks' ? tasksTable.screen : table.screen;  const back = { label: 'דוחות', ...lnk(`/manage/reports${period === 'month' ? '' : `?period=${period}`}`) };
+  if (table.active) return section === 'tasks' ? tasksTable.screen : table.screen;
+  const back = { label: 'דוחות', ...lnk(`/manage/reports${period === 'month' ? '' : `?period=${period}`}`) };
   const chips = (
     <ChipRow label="תקופה">
       {PERIODS.map((p) => <Chip key={p} selected={period === p} onClick={() => setPeriod(p)}>{PERIOD_LABEL[p]}</Chip>)}
@@ -88,6 +89,22 @@ export function ReportsScreen({ ctx, params }: ScreenProps) {
       <Card as="section" className="manage-bars">
         <SectionHeader title="איך שמעו עלינו" />
         {heard.length ? <BarList items={heard.slice(0, 8)} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px 14px' }}>עוד אין תשובות לשאלה הזאת.</p>}
+      </Card>
+    </AppScreen>
+  );
+  // drill-in: tasks (needs-design decision 6): the recurring-in-time and overdue figures, and who did what in full
+  if (section === 'tasks') return (
+    <AppScreen variant="detail" gap={10}>
+      <TopBar back={back} />
+      <PageTitle>משימות</PageTitle>
+      {chips}
+      <StatRow>
+        <StatTile value={rec.pct !== null ? `${rec.pct}%` : '—'} label="חוזרות בזמן" />
+        <StatTile value={num(overdue)} label="פתוחות באיחור" />
+      </StatRow>
+      <Card as="section" className="manage-bars">
+        <SectionHeader title="מי ביצע" />
+        {r.byPerson.length ? <BarList items={r.byPerson} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px' }}>עוד לא בוצעו משימות בתקופה הזאת.</p>}
       </Card>
     </AppScreen>
   );
@@ -118,16 +135,14 @@ export function ReportsScreen({ ctx, params }: ScreenProps) {
         <StatTile value={money(r.donations)} label="תרומות" />
         <StatTile value={money(r.tickets)} label="כרטיסים" />
       </StatRow>
-      {/* Not on Q14; stays until it has a design (tidy-plan row 89). */}
-      <StatRow>
-        {rec.pct !== null && <StatTile value={`${rec.pct}%`} label="חוזרות בזמן" />}
-        <StatTile value={num(overdue)} label="פתוחות באיחור" />
-      </StatRow>
       <Card as="section" className="manage-bars">
         <SectionHeader title="מי ביצע" />
-        {r.byPerson.length ? <BarList items={r.byPerson} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px' }}>עוד לא בוצעו משימות בתקופה הזאת.</p>}
+        {/* Q14 pictures the top three; the whole list is on the "משימות" drill-in. */}
+        {r.byPerson.length ? <BarList items={r.byPerson.slice(0, 3)} /> : <p className="manage-hint" style={{ margin: 0, padding: '0 14px' }}>עוד לא בוצעו משימות בתקופה הזאת.</p>}
       </Card>
       <ListCard aria-label="עוד בדוחות">
+        <Row minHeight={58} {...lnk(`/manage/reports/tasks${period === 'month' ? '' : `?period=${period}`}`)} title="משימות"
+          meta={[rec.pct !== null && `${rec.pct}% מהחוזרות בוצעו בזמן`, overdue === 1 ? 'אחת פתוחה באיחור' : `${num(overdue)} פתוחות באיחור`].filter(Boolean).join(' · ')} />
         <Row minHeight={58} {...lnk('/manage/people?filter=debt')} title="חובות פתוחים" tags={r.debts.total > 0 ? <Tag tone="waiting">{money(r.debts.total)}</Tag> : undefined}
           meta={r.debts.people ? `${r.debts.people} אנשים · בכל האירועים` : 'אין חובות פתוחים'} />
         <Row minHeight={58} {...lnk(`/manage/reports/people${period === 'month' ? '' : `?period=${period}`}`)} title="אנשים ונרשמים"
@@ -179,6 +194,13 @@ export function DonationsScreen({ ctx }: ScreenProps) {
   if (table.active) return table.screen;
   if (loading && !items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;
   const count = (f: DFilter) => (f === 'approve' ? approve.length : f === 'receipt' ? receipt.length : 0);
+  // "לאישור · 180 ₪" for one waiting, "לאישור · 2 · 360 ₪" for more: the count and the waiting sum in one chip.
+  const chipText = (f: (typeof D_FILTERS)[number]) => {
+    const n = count(f.v);
+    if (!n) return f.l;
+    if (f.v !== 'approve') return `${f.l} · ${n}`;
+    return n === 1 ? `${f.l} · ${money(t.pending)}` : `${f.l} · ${n} · ${money(t.pending)}`;
+  };
   return (
     <AppScreen variant="detail">
       <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="תרומות" items={[
@@ -188,15 +210,14 @@ export function DonationsScreen({ ctx }: ScreenProps) {
         { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => go('/manage/activity?filter=money') },
       ]} />} />
       <PageTitle>תרומות</PageTitle>
-      {/* Q4 shows three stats; "ממתין" stays until it has a design (tidy-plan row 79). */}
-      <StatRow grid>
+      {/* Q4: three stats. The waiting sum ("ממתין") lives in the "לאישור" chip (needs-design decision 5). */}
+      <StatRow>
         <StatTile value={money(t.month)} label="החודש" />
         <StatTile value={money(t.year)} label="השנה" />
         <StatTile value={num(t.needReceipt)} label="מחכות לקבלה" />
-        <StatTile value={money(t.pending)} label="ממתין" />
       </StatRow>
       <ChipRow label="סינון">
-        {D_FILTERS.map((f) => <Chip key={f.v} selected={filter === f.v} onClick={() => setFilter(f.v)}>{count(f.v) ? `${f.l} · ${count(f.v)}` : f.l}</Chip>)}
+        {D_FILTERS.map((f) => <Chip key={f.v} selected={filter === f.v} onClick={() => setFilter(f.v)}>{chipText(f)}</Chip>)}
       </ChipRow>
       {list.length ? (
         <ListCard aria-label="תרומות">

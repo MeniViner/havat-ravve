@@ -67,7 +67,7 @@ const slice: Slice = (seed, scenario) => {
     patch(seed, `events/${E.fall}/vendors`, V.farm, { arrivedAt: at(FEST, '13:30'), arrivedBy: U.noa });
     patch(seed, `events/${E.fall}/vendors`, V.jewel, { arrivedAt: at(FEST, '14:40') });
     // raz has not pressed "הגעתי" yet (D5); D6 is reached by pressing it.
-    const r: Row = { id: 'demo-vr-raz-power', eventId: E.fall, vendorId: V.raz, vendorName: 'גבינות משק רז', kind: 'power', text: 'החשמל נפל', by: A.raz, createdAt: at(FEST, '17:12'), takenBy: A.noa, closedAt: null, closedBy: null };
+    const r: Row = { id: 'demo-vr-raz-power', eventId: E.fall, vendorId: V.raz, vendorName: 'גבינות משק רז', kind: 'power', text: 'החשמל נפל', by: A.raz, createdAt: at(FEST, '17:12'), takenBy: A.noa, takenAt: at(FEST, '17:14'), closedAt: null, closedBy: null }; // W2: Noa took it at 17:14
     put(seed, `events/${E.fall}/vendor_requests`, [scenario === 'afterEvent' ? { ...r, closedAt: at(FEST, '17:31'), closedBy: A.noa } : r]);
     if (!has(seed, `events/${E.fall}/counters`, 'live')) put(seed, `events/${E.fall}/counters`, [{ id: 'live', entered: scenario === 'eventDay' ? 212 : 487 }]);
   }

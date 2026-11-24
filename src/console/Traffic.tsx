@@ -5,30 +5,30 @@ import { BarList, Card, Chip, ChipRow, EmptyState, StatRow, StatTile, Strip } fr
 import { ddmm, dayName } from '../app/v2/format';
 import { fmt, Section, useLoad } from './shared';
 import { Columns } from './charts';
-import { periodText } from './Stats';
-import { source, type Ranked } from './source';
+import { source, type Ranked, type Traffic } from './source';
+import { useWide } from './desk/route';
+import { inLast, periodText } from './desk/farm';
+import { dayBars, TrafficDesk } from './desk/TrafficDesk';
+import { CLICK, DEPTH, DEVICE, pct, ROLE, SCREEN, SECTION, SOURCE, TIME, trafficPeriods } from './trafficNames';
 
-const PERIODS = [7, 30, 90] as const;
-const SOURCE: Record<string, string> = { direct: 'ישירות (קישור שמור או הקלדה)', whatsapp: 'וואטסאפ', google: 'גוגל', search: 'מנוע חיפוש אחר', facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק', qr: 'שלט עם QR', other: 'אתר אחר' };
-const SECTION: Record<string, string> = { home: 'פתיחה', story: 'הסיפור שלנו', heritage: 'שורשים ומורשת', experiences: 'מה חווים כאן', events: 'אירועים', visit: 'איך מגיעים', contact: 'תיאום ביקור' };
-const CLICK: Record<string, string> = { app: 'כניסה לאפליקציה', whatsapp: 'וואטסאפ', waze: 'ניווט בווייז', phone: 'התקשרות', email: 'מייל', calendar: 'הוספת אירוע ליומן', archive: 'ארכיון האירועים', share: 'שיתוף האתר', social: 'רשת חברתית', external: 'קישור לאתר אחר', install: 'התקנת האפליקציה', notify: 'התראות על אירועים' };
-const DEVICE: Record<string, string> = { mobile: 'טלפון', desktop: 'מחשב', installed: 'מותקנת' };
-const DEPTH: Record<string, string> = { d25: 'רק ההתחלה', d50: 'עד האמצע', d75: 'רוב הדף', d100: 'עד הסוף' };
-const TIME: Record<string, string> = { t10: 'פחות מ־10 שניות', t60: 'עד דקה', t180: 'דקה עד 3', tlong: 'יותר מ־3 דקות' };
-const SCREEN: Record<string, string> = { home: 'בית', day: 'היום', tasks: 'משימות', shopping: 'קניות', farm: 'החווה', manage: 'ניהול', event: 'אירוע (צוות)', events: 'אירועים', people: 'אנשים', places: 'מקומות', projects: 'פרויקטים', notifications: 'התראות', me: 'הכרטיסים והחשבון', new: 'הוספה', search: 'חיפוש', vendor: 'דוכנים', welcome: 'ברוכים הבאים', install: 'התקנה', visit: 'בקשת ביקור', donate: 'תרומה', contact: 'יצירת קשר', login: 'כניסה', calendar: 'יומן', more: 'עוד', terms: 'תנאים', offline: 'בלי חיבור', other: 'אחר' };
-const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'מתנדבים', vendor: 'דוכנים', guest: 'אורחים', signedout: 'בלי חשבון' };
-
-const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 /** A ranked list as bars: the count, and its share of `whole` (visits or opens). */
 const bars = (r: Ranked, names: Record<string, string>, whole?: number) =>
   r.map((x) => ({ label: names[x.key] || x.key, value: x.count, display: whole ? <><b className="k-num">{fmt(x.count)}</b> <span className="c-soft">· {pct(x.count, whole)}%</span></> : <b className="k-num">{fmt(x.count)}</b> }));
 const hourAxis = (h: number) => (h % 3 === 0 ? String(h) : '');
 
+const monthly = (bars: ReturnType<typeof dayBars>['bars']) => bars.map((b, i) => ({ key: b.key, value: b.value, tip: b.tip, axis: (bars.length - 1 - i) % 2 === 0 ? b.label : '' }));
+
 export function TrafficScreen() {
   const [days, setDays] = useState(30);
   const st = useLoad(() => source.traffic(days), [days]);
+  return useWide() ? <TrafficDesk st={st} days={days} setDays={setDays} /> : <TrafficPhone st={st} days={days} setDays={setDays} />;
+}
+
+function TrafficPhone({ st, days, setDays }: { st: { data: Traffic | null; loading: boolean; error: string | null }; days: number; setDays: (d: number) => void }) {
   const d = st.data;
   const step = d ? Math.max(1, Math.ceil(d.perDay.length / 6)) : 1;
+  // a year of days is too many columns for a phone: a column per month
+  const year = !!d && d.perDay.length > 180;
   const empty = d && d.totals.views === 0 && d.totals.opens === 0;
   const mobile = d ? (d.site.devices.find((x) => x.key === 'mobile')?.count || 0) + (d.site.devices.find((x) => x.key === 'installed')?.count || 0) : 0;
   const installed = d ? d.app.devices.find((x) => x.key === 'installed')?.count || 0 : 0;
@@ -38,10 +38,10 @@ export function TrafficScreen() {
       <div className="c-title">
         <div>
           <h1 className="c-h1">ביקורים ושימוש</h1>
-          <p className="c-sub">כמה נכנסו לאתר ולאפליקציה ב{periodText(days)} האחרון, מאיפה הגיעו ומה עשו. נספר אצלנו, בלי שירות חיצוני ובלי פרטים אישיים.</p>
+          <p className="c-sub">כמה נכנסו לאתר ולאפליקציה {inLast(days)}, מאיפה הגיעו ומה עשו. נספר אצלנו, בלי שירות חיצוני ובלי פרטים אישיים.</p>
         </div>
       </div>
-      <ChipRow label="תקופה">{PERIODS.map((p) => <Chip key={p} selected={days === p} onClick={() => setDays(p)}>{periodText(p)}</Chip>)}</ChipRow>
+      <ChipRow label="תקופה">{trafficPeriods(d).map((p) => <Chip key={p} selected={days === p} onClick={() => setDays(p)}>{periodText(p)}</Chip>)}</ChipRow>
       {st.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא. {st.error}</Card>}
       {st.loading && !d && <p className="c-soft">טוען…</p>}
       {d && empty && <EmptyState variant="card" icon="chart" title="עוד לא נספרו ביקורים" text="הספירה התחילה עם העדכון האחרון. המספרים יופיעו כאן אחרי הביקורים הראשונים." />}
@@ -65,9 +65,9 @@ export function TrafficScreen() {
               <StatTile value={`${pct(mobile, d.totals.views)}%`} label="מהטלפון" />
             </StatRow>
             <Card pad="lg">
-              <p className="c-card-title">מבקרים בכל יום</p>
+              <p className="c-card-title">{year ? 'מבקרים בכל חודש' : 'מבקרים בכל יום'}</p>
               <Columns label={`מבקרים באתר ביום, ${d.perDay.length} ימים`}
-                data={d.perDay.map((x, i) => ({ key: x.day, value: x.visitors, tip: `${dayName(x.day)} ${ddmm(x.day)}: ${x.visitors} מבקרים, ${x.views} כניסות`, axis: i % step === 0 ? ddmm(x.day) : '' }))} />
+                data={year ? monthly(dayBars(d.perDay, (x) => x.visitors, (x) => `${fmt(x.visitors)} מבקרים, ${fmt(x.views)} כניסות`).bars) : d.perDay.map((x, i) => ({ key: x.day, value: x.visitors, tip: `${dayName(x.day)} ${ddmm(x.day)}: ${x.visitors} מבקרים, ${x.views} כניסות`, axis: i % step === 0 ? ddmm(x.day) : '' }))} />
             </Card>
             <div className="c-two">
               <Card pad="lg" className="c-flat">
@@ -106,9 +106,9 @@ export function TrafficScreen() {
               <StatTile value={d.totals.users ? (d.totals.opens / d.totals.users).toFixed(1) : '0'} label="פתיחות לאדם ביום" />
             </StatRow>
             <Card pad="lg">
-              <p className="c-card-title">אנשים בכל יום</p>
+              <p className="c-card-title">{year ? 'אנשים בכל חודש' : 'אנשים בכל יום'}</p>
               <Columns label={`אנשים שנכנסו לאפליקציה ביום, ${d.perDay.length} ימים`}
-                data={d.perDay.map((x, i) => ({ key: x.day, value: x.users, tip: `${dayName(x.day)} ${ddmm(x.day)}: ${x.users} אנשים, ${x.opens} פתיחות`, axis: i % step === 0 ? ddmm(x.day) : '' }))} />
+                data={year ? monthly(dayBars(d.perDay, (x) => x.users, (x) => `${fmt(x.users)} אנשים, ${fmt(x.opens)} פתיחות`).bars) : d.perDay.map((x, i) => ({ key: x.day, value: x.users, tip: `${dayName(x.day)} ${ddmm(x.day)}: ${x.users} אנשים, ${x.opens} פתיחות`, axis: i % step === 0 ? ddmm(x.day) : '' }))} />
             </Card>
             <div className="c-two">
               <Card pad="lg" className="c-flat">

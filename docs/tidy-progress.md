@@ -190,14 +190,44 @@ edit details; blocked page; demo: U12 quiet link and /demo).
   page or /demo. Alternative: a fifth quiet link "הדגמה" in the U7 footer.
 - Web Push or FCM: still waiting for Meni's test on an installed iPhone app.
 
+## Round 2: the "needs a design" items (branch `tidy/needs-design`)
+
+Task: `havat-raveh-fill/PROMPT.md` (Meni, 2026-11-23): one decision per item that was listed here, six new screens
+(W1-W4, U15, U16). Built by one builder per area on its own branch, merged into `tidy/needs-design`, then checked by a
+separate verifier (full walk and smoke cycle). Not merged to `main`, nothing deployed.
+
+| # | Decision | Where |
+|---|---|---|
+| 1 | No install strip on any screen; C10 offered once, as its own step right after C9 ("אחר כך" goes on into the app), remembered per device (`farm-install-offered`), skipped in demo and when installed; afterwards only from "התקנה" in the profile | `v2/App.tsx`, `guest/index.tsx`, `system/misc.tsx`, `system/index.tsx`, `data/system.ts`; `InstallBanner.tsx` removed |
+| 2 | W1: a contact message opens `/manage/inbox/:id` (message, sender row, WhatsApp, call, "טופל", delete in ⋯); the card has no X and no inline link | `manage/InboxItem.tsx`, `manage/Root.tsx` |
+| 3 | W2: a stall request opens `/manage/inbox/stall/:eid/:rid` (also from V7); "אני על זה" saves `takenBy`/`takenAt`, D6 shows "<name> בדרך אליך"; rules: a team member takes an open request only as themselves | `InboxItem.tsx`, `vendor/manager.tsx`, `data/vendor.ts`, `firestore.rules` |
+| 4 | Projects block on Tasks stays as P1/P6 (managers, above the view switch). No change | `tasks/Root.tsx` |
+| 5 | Q4: no "ממתין" tile; the chip reads "לאישור · 180 ₪" / "לאישור · 2 · 360 ₪" | `manage/Money.tsx` |
+| 6 | Q14: first row "משימות" with live meta, opens `/manage/reports/tasks` (the two figures and the full "מי ביצע"); no extra tiles | `manage/Money.tsx` |
+| 7 | "יצאו וחזרו" left the event summary and is a chip on Y2 (filters the log) | `eventday/live.tsx`, `events/event.tsx` |
+| 8 | W3: ⋯ in the top bar (table view, Excel, "נוסח ההזמנה"); "בעל דוכן חדש" dashed row under the search | `vendor/manager.tsx` |
+| 9 | W4 `/manage/settings/demo`, owners only, row in "מנהלים ומערכת"; `settings.demoIntro` (default guests, volunteers, managers on, vendors off; owners follow managers, helpers follow vendors); rules: owners only | `manage/DemoFirstVisit.tsx`, `demo/intro.ts`, `DemoIntro.tsx`, `firestore.rules` |
+| 10 | U15 (visit request) and U16 (donation) opened from "מה יש לי בחווה"; reuse the existing cancel and "I paid" writes | `guest/account.tsx`, `guest/data.ts` |
+| 11 | The row on the team member's tickets page stays. No change | `guest/tickets.tsx` |
+| 12 | G5 lists a pending phone link: the number, "מנהל · לפי טלפון · הקישור נשלח <מתי>", quiet "ביטול" with undo. Owner links by phone are listed the same way in the owners card (an addition; drop it if not wanted) | `manage/Settings.tsx` |
+
+Notes from the builders:
+- Q14's "מי ביצע" card shows the top three, as Q14 pictures; the full list is on the new tasks report screen (no PNG for
+  that screen; built from the kit's detail pattern like the other report screens).
+- The U15/U16 pending and unpaid demo rows sit on the event-day scenario, so the regular-day U7 and the managers' counts
+  stay as designed; on the regular day the same rows open the approved and paid versions.
+- The guest tag for a new visit request now reads "מחכה לתשובה" everywhere (U15's copy).
+
 ## Needs a design (left as they are)
-- The install banner and its X on every team screen, roots included (rule 2); Q18 has the "התקנה" row.
-- Contact messages and stall requests in the inbox: no detail screen for the card's dismiss and the sender link.
-- The managers' projects block on the Tasks root (older than the parity round; not on Q2).
-- Extra stat tiles not on the Q screens: donations "ממתין" (Q4 has three), reports "חוזרות בזמן" / "פתוחות באיחור" (Q14 has
-  four), event summary "יצאו וחזרו" (Q15).
-- Vendor pool export and table view: the V1 top bar already holds "חדש" (rule 5 allows one control).
-- From the first-visit demo session: a role-level demo switch in Settings.
-- From the guest builder: the team-only "מה יש לי בחווה" row on the team tickets page; the visit and donation detail pages
-  reached from U7's list.
-- G5 "מנהלים ובעלים" lists pending e-mail invites only; a pending manager link sent by phone is not shown there.
+- U16 shows a ⋯ button without its items, and a guest has no secondary action on a donation today; left out.
+
+## Round 2 verification (done)
+- Walk on cc81e6d: 405 screens in demo (owner 132, manager 132, volunteer 60, vendor 20, helper 14, guest 31,
+  signed-out 16), 503 shots, 0 console errors. No install strip anywhere; all 29 ⋯ → מחיקה open Q8; the root screens are
+  pixel-identical to round 1; everything that moved is still reachable. No fixes. `docs/tidy-check/round2/README.md`.
+- Smoke cycle on the emulators, extended with W1, W2 + D6 (from the inbox and from V7), W4 on new accounts, U15/U16 with
+  the manager seeing the reported payment, G5 phone link, the Q4 chip, and item 14 (no strip on 45 screens, six roles):
+  393/393 twice in a row on 65a807a, no app fixes (two test-only fixes: D6 by time of day, item 11's card match).
+  `docs/smoke/needs-design/README.md`.
+- To confirm with Meni: the inbox contact card keeps its inline reply buttons and quiet "טופל" (the decision removed
+  the X and the sender link only).

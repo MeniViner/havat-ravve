@@ -144,15 +144,21 @@ await step('owner', async () => {
   log(s.path() === '/manage/people' && s.page.url().includes('tab=messages'), 'broadcast: back on the messages list');
   await s.go('/manage/people/messages/demo-b-1'); log(await s.has('ההודעה לא נמצאה'), 'broadcast: gone after a reload');
 
+  // contact message: its card opens W1, the delete is in W1's ⋯ (needs-design round, decision 2)
+  await s.go('/manage/inbox/demo-n-contact');
+  await s.more('מחיקה', 'למחוק את הפנייה?', 'מחיקה', { label: 'contact message (W1)' });
+  log(s.path() === '/manage/inbox', 'contact message: back on the inbox');
+  await s.go('/manage/inbox/demo-n-contact'); log(await s.has('הפנייה לא נמצאה'), 'contact message: gone after a reload');
+
   // inbox item: the card's head opens its row sheet, "מחיקה מהרשימה" is in it (tidy round: no X on the card)
   await s.go('/manage/inbox');
-  const cards = s.page.locator('.manage-item__hit');
+  const cards = s.page.locator('.manage-item__hit[aria-haspopup="dialog"]');
   const before = await cards.count();
   log(before > 0 && !(await s.page.getByRole('button', { name: /^מחיקה/ }).count()), 'inbox: every card opens its sheet, no delete button on the cards');
   if (before) {
     await cards.first().click(); await s.page.waitForTimeout(250);
     await s.confirm('', 'למחוק מהרשימה?', 'מחיקה', { locator: s.dialog().getByRole('button', { name: 'מחיקה מהרשימה', exact: true }), label: 'inbox' });
-    await s.reload(); log((await s.page.locator('.manage-item__hit').count()) === before - 1, 'inbox: one card less after a reload');
+    await s.reload(); log((await s.page.locator('.manage-item__hit[aria-haspopup="dialog"]').count()) === before - 1, 'inbox: one card less after a reload');
   }
 
   // stall tab: N12 top-bar ⋯ (rule 6)

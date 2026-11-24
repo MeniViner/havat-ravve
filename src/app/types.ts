@@ -293,7 +293,7 @@ export type EventVendorV2 = EventVendor & {
 };
 /** events/{id}/vendor_requests/{rid} (D6, V7, M2). */
 export type VendorRequestKind = 'power' | 'water' | 'help' | 'supply' | 'other';
-export type VendorRequest = { id: string; eventId: string; vendorId: string; vendorName: string; kind: VendorRequestKind; text: string; by: Actor; createdAt: string; takenBy: Actor | null; closedAt: string | null; closedBy?: Actor | null };
+export type VendorRequest = { id: string; eventId: string; vendorId: string; vendorName: string; kind: VendorRequestKind; text: string; by: Actor; createdAt: string; takenBy: Actor | null; /** W2 "אני על זה": when takenBy took it. */ takenAt?: string | null; closedAt: string | null; closedBy?: Actor | null };
 
 /** Vendor pool (vendors/{id}), extended. */
 export type VendorV2 = Vendor & {

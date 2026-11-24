@@ -2,7 +2,7 @@
 // Counters carry the designed figures (Y1: 212 inside, 217 scans, 34 paid at the gate, 3 later for 150 ₪, 2 rejected).
 import { A, E } from '../data';
 import { put, type Row, type Slice } from './types';
-import { fillerPlan } from './eventday';
+import { fillerPlan, RETURNED } from './eventday';
 
 const T = (hhmm: string, day = '2026-11-28') => new Date(`${day}T${hhmm}:00+02:00`).toISOString();
 const SCANS = `events/${E.fall}/scans`;
@@ -33,6 +33,11 @@ const slice: Slice = (seed, scenario) => {
       const tid = `${o.orderId}-${i + 1}`;
       fillers.push({ id: `${tid}-1`, eventId: E.fall, ticketId: tid, orderId: o.orderId, name: o.owner.name, phone: o.owner.phone, meta: o.count === 1 ? 'כרטיס אחד' : `כרטיס ${i + 1} מתוך ${o.count}`, result: 'ok', by: e.by, at: e.at, reopenedBy: null, reopenedAt: null, count: 1 });
     });
+  }
+  // Y2 "יצאו וחזרו": the second scan of the tickets that went out and came back in
+  for (const r of RETURNED) {
+    const first = fillers.find((f) => f.ticketId === r.ticketId);
+    if (first) fillers.push({ ...first, id: `${r.ticketId}-2`, by: r.by, at: r.at });
   }
   put(seed, SCANS, [...named, ...fillers]);
 

@@ -121,29 +121,36 @@ function hitCors(req: Request): Record<string, string> {
 // ---------- the console's view ----------
 
 type Counts = Record<string, number>;
-const sub = (d: Record<string, unknown>, k: string): Counts => {
-  const v = d[k];
-  if (!v || typeof v !== 'object') return {};
-  return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, n]) => typeof n === 'number')) as Counts;
-};
-const sum = (into: Counts, from: Counts) => { for (const [k, n] of Object.entries(from)) into[k] = (into[k] || 0) + n; return into; };
-const n = (v: unknown) => (typeof v === 'number' ? v : 0);
+/** A day's document as Firestore sends it: nested maps of {integerValue: "n"}. */
+type Raw = { integerValue?: string; doubleValue?: number; mapValue?: { fields?: Record<string, Raw> } };
+type RawMap = Record<string, Raw>;
+const fieldsOf = (v: Raw | undefined): RawMap => v?.mapValue?.fields || {};
+const n = (v: Raw | undefined) => Number(v?.integerValue ?? v?.doubleValue ?? 0) || 0;
+const sum = (into: Counts, from: RawMap) => { for (const k in from) into[k] = (into[k] || 0) + n(from[k]); };
 const ranked = (c: Counts, order: string[]) => order.map((key) => ({ key, count: c[key] || 0 })).filter((x) => x.count > 0).sort((a, b) => b.count - a.count);
 
-/** GET /v1/console/traffic?days=30: the site and the app over a period, day by day and in total. One read per day. */
+/** How far back the console may ask. */
+export const MAX_DAYS = 365;
+
+/**
+ * GET /v1/console/traffic?days=30: the site and the app over a period, day by day and in total. One request and one read per
+ * day, also for a day without a document (365 at most). A year of busy days is about 1.2 MB: the counters are added up straight from
+ * Firestore's answer, without decoding each document first, and the answer comes without white space. That is about 5 ms
+ * of processor for a full year (decoding first took four times that), so a year keeps every number a week has.
+ */
 export async function trafficStats(fs: Firestore, daysIn: number) {
-  if (![7, 30, 90].includes(daysIn)) throw invalid('days', '7, 30 or 90');
+  if (![7, 30, 90, MAX_DAYS].includes(daysIn)) throw invalid('days', '7, 30, 90 or 365');
   const now = new Date();
   const ids = lastIlDays(daysIn, now);
-  const docs = new Map((await fs.getMany('site_stats', ids)).map((d) => [d.id, d.data]));
+  const docs = new Map((await fs.rawGet(ids.map((id) => fs.name('site_stats', id)), undefined, true)).map((d) => [d.name.slice(-10), (d.fields || {}) as RawMap]));
   const site = { page: {} as Counts, section: {} as Counts, click: {} as Counts, source: {} as Counts, device: {} as Counts, depth: {} as Counts, time: {} as Counts, hour: {} as Counts };
   const app = { screen: {} as Counts, device: {} as Counts, role: {} as Counts, hour: {} as Counts };
   const tot = { views: 0, visitors: 0, returning: 0, opens: 0, users: 0, appReturning: 0, hits: 0 };
   const days = ids.map((day) => {
-    const d = docs.get(day) || {};
-    const s = (d.site || {}) as Record<string, unknown>, a = (d.app || {}) as Record<string, unknown>;
-    for (const k of Object.keys(site) as (keyof typeof site)[]) sum(site[k], sub(s, k));
-    for (const k of Object.keys(app) as (keyof typeof app)[]) sum(app[k], sub(a, k));
+    const d: RawMap = docs.get(day) || {};
+    const s = fieldsOf(d.site), a = fieldsOf(d.app);
+    for (const k of Object.keys(site) as (keyof typeof site)[]) sum(site[k], fieldsOf(s[k]));
+    for (const k of Object.keys(app) as (keyof typeof app)[]) sum(app[k], fieldsOf(a[k]));
     const row = { day, views: n(s.views), visitors: n(s.visitors), opens: n(a.opens), users: n(a.visitors) };
     tot.views += row.views; tot.visitors += row.visitors; tot.returning += n(s.returning);
     tot.opens += row.opens; tot.users += row.users; tot.appReturning += n(a.returning); tot.hits += n(d.hits);
@@ -153,8 +160,9 @@ export async function trafficStats(fs: Firestore, daysIn: number) {
   const today = days[days.length - 1];
   return {
     days: daysIn,
+    maxDays: MAX_DAYS,
     from: ids[0],
-    today: { ...today, capped: n((docs.get(today.day) || {}).hits) >= DAILY_CAP },
+    today: { ...today, capped: n(docs.get(today.day)?.hits) >= DAILY_CAP },
     cap: DAILY_CAP,
     totals: tot,
     perDay: days,

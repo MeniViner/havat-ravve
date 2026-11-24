@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Toast } from '../app/v2/kit';
 import { ddmm, hhmm, daysFromToday } from '../app/v2/format';
+import { nowMs } from '../app/clock';
 import { errorText, source } from './source';
 import { fieldLabel } from './labels';
 
@@ -42,7 +43,7 @@ export function useNotice() {
 /** "לפני 3 דקות", "לפני שעתיים", "אתמול 14:05", "12.11" */
 export function ago(iso: string | null | undefined): string {
   if (!iso) return '';
-  const ms = Date.now() - Date.parse(iso);
+  const ms = nowMs() - Date.parse(iso);
   if (ms < 0) return until(iso);
   const min = Math.round(ms / 60_000);
   if (min < 1) return 'עכשיו';
@@ -59,7 +60,7 @@ export function ago(iso: string | null | undefined): string {
 }
 /** "עוד 18 שעות", "עד 12.2" */
 export function until(iso: string): string {
-  const ms = Date.parse(iso) - Date.now();
+  const ms = Date.parse(iso) - nowMs();
   if (ms <= 0) return ago(iso);
   const h = Math.round(ms / 3600_000);
   if (h < 1) return 'עוד פחות משעה';

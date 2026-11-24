@@ -76,8 +76,9 @@ export async function idempotencyKey(jobId: string) {
 
 type Stats = { enqueued: number; sent: number; failed: number; skipped: number; cancelled: number; retried: number; waiting: number; viaResend: number };
 
-/** paused (the console's switch): payments are still queued, nothing is sent until the switch is off again. */
-export async function runEmail(env: Env, nowMs = Date.now(), paused = false): Promise<Record<string, unknown>> {
+/** paused (the console's switch): payments are still queued, nothing is sent until the switch is off again.
+ *  broadcastPaused (its own switch): only the messages to registrants wait, payment confirmations go as usual. */
+export async function runEmail(env: Env, nowMs = Date.now(), paused = false, broadcastPaused = false): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { cron: 'email' };
   if (env.EMAIL_SELF_TEST === 'once') out.selfTest = await selfTest(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
   if (env.EMAIL_SELF_TEST === 'resend-once') out.selfTest = await selfTestResend(env).catch((e) => 'error: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120));
@@ -90,7 +91,8 @@ export async function runEmail(env: Env, nowMs = Date.now(), paused = false): Pr
   const due = await sendDue(fs, env, nowMs, stats);
   // 4. broadcast lane, only on a run that had no payment confirmation to send: confirmations always go first and keep
   //    this run's subrequests; a failure here never touches them. The console's pause stops this lane too (above).
-  if (!due) out.broadcasts = await sendBroadcastMail(fs, env, nowMs).catch((e) => ({ error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
+  if (broadcastPaused) out.broadcasts = { paused: true };
+  else if (!due) out.broadcasts = await sendBroadcastMail(fs, env, nowMs).catch((e) => ({ error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   return { ...out, ...stats };
 }
 
@@ -169,24 +171,75 @@ async function scan(fs: Firestore, nowMs: number, stats: Stats): Promise<string>
 // ---------- 2. send due jobs ----------
 type Settlement = { status: 'send'; amount: number; purpose: string; event: string; name: string } | { status: 'manual' | 'not_paid' | 'wait' };
 
+const orderTickets = async (fs: Firestore, orderId: unknown) => (await whereEq(fs, 'tickets', { orderId }, 50)).filter((t) => t.data.status === 'valid' && Number(t.data.price) > 0);
+type Facts = { amount: number; purpose: string; event: string; name: string };
+const orderFacts = (tickets: Doc[]): Facts => ({ amount: tickets.reduce((s, x) => s + Number(x.data.price), 0), purpose: `כרטיסים לאירוע ${tickets[0].data.eventTitle}`, event: String(tickets[0].data.eventTitle || ''), name: String(tickets[0].data.ownerName || '') });
+const docFacts = (kind: unknown, d: Doc): Facts => (kind === 'donation'
+  ? { amount: Number(d.data.amount), purpose: 'תרומה לחווה', event: '', name: String(d.data.name || '') }
+  : { amount: Number(d.data.total), purpose: `חשבון הדוכן באירוע ${d.data.eventTitle}`, event: String(d.data.eventTitle || ''), name: String(d.data.guestName || '') });
+
 async function settlement(fs: Firestore, job: Doc, nowMs: number): Promise<Settlement> {
   const j = job.data;
   if (j.kind === 'order') {
-    const tickets = (await whereEq(fs, 'tickets', { orderId: j.refId }, 50)).filter((t) => t.data.status === 'valid' && Number(t.data.price) > 0);
+    const tickets = await orderTickets(fs, j.refId);
     if (tickets.some((t) => t.data.paymentConfirmation)) return { status: 'manual' };
     const paid = tickets.filter((t) => PAID.has(String(t.data.paymentStatus)));
     if (!paid.length) return { status: 'not_paid' };
     if (paid.length < tickets.length && nowMs - ms(j.createdAt) < ORDER_WAIT_MS) return { status: 'wait' };
-    const t = paid[0].data;
-    return { status: 'send', amount: paid.reduce((s, x) => s + Number(x.data.price), 0), purpose: `כרטיסים לאירוע ${t.eventTitle}`, event: String(t.eventTitle || ''), name: String(t.ownerName || '') };
+    return { status: 'send', ...orderFacts(paid) };
   }
   const d = await fs.get(SOURCE[j.kind as JobKind], String(j.refId));
   if (!d) return { status: 'not_paid' };
   if (d.data.paymentConfirmation) return { status: 'manual' };
-  if (j.kind === 'donation') return d.data.paymentStatus === 'paid' ? { status: 'send', amount: Number(d.data.amount), purpose: 'תרומה לחווה', event: '', name: String(d.data.name || '') } : { status: 'not_paid' };
-  return d.data.status === 'paid' && Number(d.data.total) > 0
-    ? { status: 'send', amount: Number(d.data.total), purpose: `חשבון הדוכן באירוע ${d.data.eventTitle}`, event: String(d.data.eventTitle || ''), name: String(d.data.guestName || '') }
-    : { status: 'not_paid' };
+  const paid = j.kind === 'donation' ? d.data.paymentStatus === 'paid' : d.data.status === 'paid' && Number(d.data.total) > 0;
+  return paid ? { status: 'send', ...docFacts(j.kind, d) } : { status: 'not_paid' };
+}
+
+const templateOf = (settings: Record<string, unknown> | undefined) => String((settings?.templates as Record<string, unknown> | undefined)?.paymentConfirmation || '').trim() || DEFAULT_TEMPLATE;
+// no event (a donation): [אירוע] reads as the purpose, as in the app's preview, so "על [אירוע]" never reads "על ."
+const paymentText = (template: string, name: string, f: Facts) => fill(template, { 'שם': name, 'סכום': money(f.amount), 'עבור': f.purpose, 'אירוע': f.event || f.purpose });
+
+/** Provider errors can carry markup or line breaks: one plain line. */
+const plain = (v: unknown) => String(v ?? '').replace(/<[^>@]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+const PROVIDER: Record<string, string> = { brevo: 'Brevo', resend: 'Resend' };
+
+/**
+ * One email of the outbox for the console: to whom, and the very text the sender builds (the same template, facts and
+ * render). At most 4 reads besides the job: settings, the person, and the payment or the broadcast (an order: its tickets).
+ */
+export async function emailView(fs: Firestore, id: string) {
+  const job = id === STATE ? null : await fs.get(OUTBOX, id);
+  if (!job) return null;
+  const j = job.data;
+  const uid = String(j.uid || '');
+  const profileP = uid ? fs.getMany('users', [uid], ['displayName', 'email', 'status']).then((r) => r[0] || null) : Promise.resolve(null);
+  let subject = SUBJECT, text = '', by = 'השרת', amount: number | null = typeof j.amount === 'number' ? j.amount : null;
+  let profile: Doc | null;
+  if (j.kind === 'broadcast') {
+    const [p, b] = await Promise.all([profileP, j.broadcastId ? fs.get('broadcasts', String(j.broadcastId)) : null]);
+    profile = p;
+    subject = BROADCAST_SUBJECT;
+    text = b ? broadcastText(b.data) : '';
+    by = String((j.createdBy as { name?: string } | undefined)?.name || (b?.data.by as { name?: string } | undefined)?.name || '');
+  } else {
+    const [p, settings, facts] = await Promise.all([profileP, fs.getMany('settings', ['app'], ['templates']).then((r) => r[0]?.data), j.kind === 'order'
+      ? orderTickets(fs, j.refId).then((t) => { const paid = t.filter((x) => PAID.has(String(x.data.paymentStatus))); return paid.length ? orderFacts(paid) : t.length ? orderFacts(t) : null; })
+      : SOURCE[j.kind as JobKind] ? fs.get(SOURCE[j.kind as JobKind], String(j.refId)).then((d) => (d ? docFacts(j.kind, d) : null)) : null]);
+    profile = p;
+    if (facts) {
+      if (amount === null && Number.isFinite(facts.amount)) amount = facts.amount;
+      text = paymentText(templateOf(settings), String(profile?.data.displayName || facts.name), amount === null ? facts : { ...facts, amount });
+    }
+  }
+  const attempts = Number(j.attempts || 0);
+  const s = (v: unknown) => (typeof v === 'string' ? v : '');
+  const provider = PROVIDER[s(j.provider)] || '';
+  const said = plain(j.error) || (s(j.messageId) ? `התקבל (${plain(String(j.messageId).replace(/[<>]/g, ''))})` : '');
+  return {
+    id, to: s(j.to) || s(profile?.data.email), subject, text, uid: profile ? uid : '', amount, by, createdAt: s(j.createdAt),
+    lastAttemptAt: s(j.sentAt) || (attempts > 0 ? s(j.claimedAt) || s(j.updatedAt) || s(j.firstAttemptAt) : '') || null,
+    providerSaid: said && provider ? `${provider}: ${said}` : said,
+  };
 }
 
 /** Sends the due payment confirmations; returns how many were due (the broadcast lane waits for a run with none). */
@@ -203,7 +256,7 @@ async function sendDue(fs: Firestore, env: Env, nowMs: number, stats: Stats): Pr
   });
   if (!due.length) return 0;
   const settings = (await fs.get('settings', 'app'))?.data;
-  const template = String((settings?.templates as Record<string, unknown> | undefined)?.paymentConfirmation || '').trim() || DEFAULT_TEMPLATE;
+  const template = templateOf(settings);
   for (const job of due) {
     const attempts = Number(job.data.attempts || 0) + 1;
     const claimedAt = Date.now();
@@ -230,8 +283,7 @@ async function sendDue(fs: Firestore, env: Env, nowMs: number, stats: Stats): Pr
       if (pref !== 'email') { await finish({ status: 'skipped', reason: pref === 'whatsapp' ? 'whatsapp' : 'no_preference', nextAt: null }); stats.skipped++; continue; }
       if (!EMAIL_RE.test(to)) { await finish({ status: 'skipped', reason: 'no_address', nextAt: null }); stats.skipped++; continue; }
       const name = String(profile?.displayName || s.name);
-      // no event (a donation): [אירוע] reads as the purpose, as in the app's preview, so "על [אירוע]" never reads "על ."
-      const text = fill(template, { 'שם': name, 'סכום': money(s.amount), 'עבור': s.purpose, 'אירוע': s.event || s.purpose });
+      const text = paymentText(template, name, s);
       const r = await deliver(env, job, attempts >= MAX_ATTEMPTS, { to, name, subject: SUBJECT, text, key: await idempotencyKey(job.id) });
       const via = { provider: r.provider, ...(r.failover ? { failover: r.failover } : {}) };
       if (r.ok) { await finish({ status: 'sent', to, messageId: r.messageId, amount: s.amount, sentAt: iso(Date.now()), nextAt: null, reason: r.duplicate ? 'duplicate_key' : null, ...via }); stats.sent++; if (r.provider === 'resend') stats.viaResend++; continue; }
@@ -357,7 +409,8 @@ type Delivered = SendResult & { provider: 'brevo' | 'resend'; failover?: string 
 // ---------- which provider sends ----------
 const dayKey = () => 'email-brevo-count:' + new Date().toISOString().slice(0, 10);
 const brevoLimit = (env: Env) => Number(env.BREVO_DAILY_LIMIT) > 0 ? Number(env.BREVO_DAILY_LIMIT) : BREVO_DAILY_DEFAULT;
-async function brevoUsed(env: Env): Promise<number> {
+/** Brevo sends counted today (UTC, when Brevo's own day turns). */
+export async function brevoUsed(env: Env): Promise<number> {
   try { return env.TOKEN_KV ? Number(await env.TOKEN_KV.get(dayKey())) || 0 : 0; } catch { return 0; }
 }
 async function countBrevo(env: Env) {
@@ -387,7 +440,7 @@ async function deliver(env: Env, job: Doc, last: boolean, m: Mail): Promise<Deli
 async function brevoSend(env: Env, m: Mail): Promise<SendResult> {
   let res: Response;
   try {
-    res = await fetch(brevoUrl(env), {
+    res = await (env.FETCH || fetch)(brevoUrl(env), {
       method: 'POST',
       headers: { 'api-key': env.BREVO_API_KEY!, 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
@@ -418,7 +471,7 @@ async function brevoSend(env: Env, m: Mail): Promise<SendResult> {
 async function resendSend(env: Env, m: Mail): Promise<SendResult> {
   let res: Response;
   try {
-    res = await fetch(resendUrl(env), {
+    res = await (env.FETCH || fetch)(resendUrl(env), {
       method: 'POST',
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json', 'idempotency-key': m.key },
       body: JSON.stringify({

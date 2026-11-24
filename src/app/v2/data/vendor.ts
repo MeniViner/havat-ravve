@@ -230,6 +230,15 @@ export async function closeRequest(ctx: V2Ctx, eid: string, rid: string, notifyU
   });
   if (notifyUid && notifyUid !== ctx.actor.uid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
 }
+/** W2 "אני על זה": the team member who handles the request (takenBy + takenAt). The vendor reads it on D6 ("נועה בדרך אליך").
+ *  A closed request is not taken; taking it from someone else is allowed (the latest one is the one on the way). */
+export async function takeRequest(ctx: V2Ctx, eid: string, rid: string) {
+  await transact(async (tx) => {
+    const r = await tx.get<VendorRequestDoc>(`events/${eid}/vendor_requests`, rid);
+    if (!r || r.closedAt) throw new ConflictError('לא נשמר. הבקשה כבר נסגרה.');
+    tx.update(`events/${eid}/vendor_requests`, rid, { takenBy: ctx.actor, takenAt: nowIso() });
+  });
+}
 
 /** D9 "שליחה לחווה". */
 export async function saveFeedback(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: EventVendorDoc | null, info: VendorInfo | null, f: { rating: number; text: string; inviteNext: boolean }) {

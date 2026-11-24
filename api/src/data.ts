@@ -46,6 +46,32 @@ export async function collections(env: Env, fs: Firestore) {
   return { items, backupDate };
 }
 
+// never in the table's columns: what opens a door (a ticket's secret, a token, a push address), and pictures kept as text
+const HIDDEN_FIELD = /secret|token|password|passcode|sha256|apikey|private_?key|endpoint|p256dh|idempotencykey/i;
+const MAX_FIELDS = 40;
+/** A record's simple fields for the table: text (up to 200 characters), numbers, yes/no, empty, times, and a person ({uid, name}) as the name. */
+export function simpleFields(fields: Record<string, V>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(fields)) {
+    if (HIDDEN_FIELD.test(k)) continue;
+    if (n >= MAX_FIELDS) break;
+    const t = typeOf(v);
+    if (t === 'map') {
+      const p = ((v.mapValue as V).fields || {}) as Record<string, V>;
+      if (typeof p.uid?.stringValue !== 'string' || typeof p.name?.stringValue !== 'string') continue;
+      out[k] = p.name.stringValue.slice(0, 200);
+    } else if (t === 'string') {
+      const s = String(v.stringValue);
+      if (s.startsWith('data:')) continue;
+      out[k] = s.length > 200 ? s.slice(0, 199) + '…' : s;
+    } else if (['integer', 'double', 'boolean', 'null', 'timestamp'].includes(t)) out[k] = dec(v);
+    else continue;
+    n++;
+  }
+  return out;
+}
+
 /** A page of documents of a collection, by id; `after` is the path of the last one of the previous page. */
 export async function docsPage(fs: Firestore, group: string, after?: string | null, parent?: string | null) {
   checkGroup(group);
@@ -60,7 +86,7 @@ export async function docsPage(fs: Firestore, group: string, after?: string | nu
     ...(after ? { startAt: { values: [{ referenceValue: `${fs.root}/${after}` }], before: false } } : {}),
     limit: PAGE,
   }, parent || '');
-  const items = docs.filter((d) => groupOf(pathOf(d.name)) === group).map((d) => ({ path: pathOf(d.name), id: d.name.split('/').pop()!, title: titleOf(d), updateTime: d.updateTime || null }));
+  const items = docs.filter((d) => groupOf(pathOf(d.name)) === group).map((d) => ({ path: pathOf(d.name), id: d.name.split('/').pop()!, title: titleOf(d), updateTime: d.updateTime || null, fields: simpleFields(d.fields || {}) }));
   return { items, next: docs.length === PAGE ? pathOf(docs[docs.length - 1].name) : null };
 }
 
@@ -89,7 +115,8 @@ export async function history(env: Env, fs: Firestore, path: string, days = 7) {
   const b = env.FILE_BUCKET;
   const seen: { date: string; doc: RawDoc | null }[] = [];
   let truncated = false;
-  if (b) {
+  // days 0: the activity lines only, no backup is read
+  if (b && days > 0) {
     // finished backups only (a half-done one would say the record was gone), and at most 40 R2 reads: the free plan
     // allows 50 subrequests per request, so a long range stops early and says so
     const finished = (await listBackups(env)).items;

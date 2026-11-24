@@ -78,9 +78,12 @@ export const TEAM_ROUTES: Route[] = [
   // Manage tab
   R('/manage', manage.ManageRoot, 'manage', 'tab', { manager: true }),
   R('/manage/inbox', manage.InboxScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/inbox/stall/:eid/:rid', manage.StallRequestScreen, 'manage', 'page', { manager: true }), // W2 from M2
+  R('/manage/inbox/:id', manage.InboxMessageScreen, 'manage', 'page', { manager: true }), // W1
   R('/manage/events', events.EventsList, 'manage', 'tab', { manager: true }),
   R('/manage/events/new', events.EventForm, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/edit', events.EventForm, 'manage', 'page', { manager: true }),
+  R('/manage/events/:eid/vendors/today/:rid', manage.StallRequestFromDay, 'manage', 'page', { manager: true }), // W2 from V7
   R('/manage/events/:id/vendors/today', vendor.VendorsToday, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/vendors', vendor.EventVendors, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/products/new', events.ProductForm, 'manage', 'page', { manager: true }),
@@ -114,6 +117,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/settings/messages', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/questions', manage.SettingsPage, 'manage', 'tab', { manager: true }),
   R('/manage/settings/managers', manage.SettingsPage, 'manage', 'tab', { manager: true, owner: true }),
+  R('/manage/settings/demo', manage.DemoFirstVisitScreen, 'manage', 'tab', { manager: true, owner: true }),
   R('/manage/settings/payments', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/donation-amounts', manage.SettingsPage, 'manage', 'page', { manager: true }),
   R('/manage/settings/:page', manage.SettingsPage, 'manage', 'page', { manager: true }),
