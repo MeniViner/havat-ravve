@@ -206,7 +206,7 @@ export async function reopenStep(ctx: Who, pid: string, sid: string) {
     activityOp(ctx.actor, 'project', pid, 'undone', 'צעד בפרויקט'),
   ]);
 }
-/** P4 "שליחה": a short update in the step's thread; the project's other managers get an in-app notification (no push). */
+/** P4 "שליחה": a short update in the step's thread; the project's selected members get an in-app notification (no push). */
 export async function postUpdate(ctx: Who, project: ProjectDoc, step: StepDoc, text: string) {
   const t = text.trim().slice(0, 500); if (!t) return;
   const at = nowIso();

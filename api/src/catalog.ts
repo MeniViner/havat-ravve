@@ -114,7 +114,7 @@ export const OPERATIONS: Operation[] = [
     requiredScope: 'tasks:create',
     notes: [
       'The response is a read-back of the stored task ("verified": true when it matches what was sent).',
-      'Put on someone else, that person is notified (in the app and by push), as in the app.',
+      'An assignment creates an in-app notification and queues phone push for the assignee, including a self-assignment.',
       '"readBack": "unavailable" (with "task": null, "verified": false) means the task was stored but could not be read back. Do not create it again with a new Idempotency-Key; read it later with tasks.get.',
     ],
   },
@@ -133,7 +133,7 @@ export const OPERATIONS: Operation[] = [
     },
     requiredScope: 'tasks:assign',
     notes: [
-      'Send either assignee or release=true. As the app: stamps takenAt, logs "assigned" (or "released") and notifies the new person (in the app and by push) unless it is you.',
+      'Send either assignee or release=true. As the app: stamps takenAt, logs "assigned" (or "released") and creates an in-app notification and queues a push for the new assignee, including a self-assignment. An unchanged assignment sends nothing.',
       'A done task cannot be reassigned (409 STALE_WRITE).',
       'The response is a read-back of the stored task.',
       '"readBack": "unavailable" (with "task": null, "verified": false) means the change was stored but could not be read back. Do not send it again with a new key.',
