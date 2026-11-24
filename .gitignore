@@ -33,3 +33,4 @@ docs/visual-check/final/*.actual.png
 
 # The tidy-round design package (Meni, 2026-11-23); kept outside git like havat-raveh-redesign/
 havat-raveh-tidy/
+havat-raveh-fill/

@@ -106,7 +106,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | C1-Notifs | staff | regular | /notifications |  |
 | C2-Search | owner | regular | /search | fill:חיפוש בכל האפליקציה=כהן |
 | C9-Welcome | new | regular | /welcome |  |
-| C10-Install | staff | regular | /install |  |
+| C10-Install | staff | regular | /install?first=1 |  |
 | X2-Suspended | blocked | regular | / |  |
 | D1-Invite | vendor | regular | /vendor/invite/demo-e-festival |  |
 | D2-Confirm | vendor | regular | /vendor/events/demo-e-festival/needs |  |
@@ -177,3 +177,14 @@ Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheet
 | U11-GuestContact | guest | regular | /contact | fill:נושא=חניה נגישה בפסטיבל; fill:מה רצית לשאול=יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. |
 | U12-GuestSignIn | anon | regular | /login |  |
 | U13-GuestRegister | new | regular | /welcome |  |
+| W1-InboxMessage | manager | regular | /manage/inbox/demo-n-contact |  |
+| W2-InboxStallRequest | manager | eventDay | /manage/inbox/stall/demo-e-festival/demo-vr-raz-power |  |
+| Q4-DonationsTwo | manager | afterEvent | /manage/donations |  |
+| Q14-ReportsTasks | manager | regular | /manage/reports/tasks |  |
+| Y2-ScansReturned | manager | eventDay | /manage/events/demo-e-festival/live/scans | click:יצאו וחזרו |
+| W3-VendorPool | manager | regular | /manage/vendors |  |
+| W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
+| W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
+| W4-DemoFirstVisit | owner | regular | /manage/settings/demo |  |
+| U15-GuestVisitStatus | guest | eventDay | /me/visits/demo-vi-michal |  |
+| U16-GuestDonation | guest | eventDay | /me/donations/demo-d-michal |  |

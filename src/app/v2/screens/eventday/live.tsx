@@ -151,7 +151,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   );
 }
 
-type ScanFilter = 'all' | 'gate' | 'later' | 'rejected';
+type ScanFilter = 'all' | 'gate' | 'later' | 'returned' | 'rejected';
 const SCAN_WORD: Record<ScanV2['result'], string> = { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' };
 /** Y2: every scan, newest first. */
 export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
@@ -171,7 +171,11 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
   if (table.active) return table.screen;
   const c = countersOr(counters.item, counters.loading || tickets.loading, tickets.items);
-  const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all' || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : true));
+  // "יצאו וחזרו" (needs-design decision 7, moved here from the event summary): valid tickets scanned in more than once,
+  // as logic.exitedReturned counts them. The chip filters the log to those tickets' scans.
+  const returnedIds = new Set(tickets.items.filter((t) => t.status === 'valid' && (t.entries || 0) > 1).map((t) => t.id));
+  const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all'
+    || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : filter === 'returned' ? s.result !== 'rejected' && returnedIds.has(s.ticketId) : true));
   const text = query.trim().toLowerCase(), d = digits(query);
   const shown = text ? base.filter((s) => s.name.toLowerCase().includes(text) || (d.length >= 4 && digits(s.phone || '').includes(d))) : base;
   return (
@@ -184,6 +188,7 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
         <Chip selected={filter === 'gate'} onClick={() => setFilter('gate')}>בשער · {c?.paidAtGate ?? 0}</Chip>
         <Chip selected={filter === 'later'} onClick={() => setFilter('later')}>אחר כך · {c?.payLater ?? 0}</Chip>
         <Chip selected={filter === 'rejected'} onClick={() => setFilter('rejected')}>נדחו · {rejected.items.length}</Chip>
+        <Chip selected={filter === 'returned'} onClick={() => setFilter('returned')}>יצאו וחזרו · {returnedIds.size}</Chip>
       </ChipRow>
       {shown.length ? (
         <ListCard>

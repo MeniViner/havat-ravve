@@ -1,0 +1,306 @@
+{
+ "role": "helper",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/vendor",
+   "scenario": "regular",
+   "shots": [
+    "01-vendor.jpg",
+    "01-vendor-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "האירועים",
+   "finalUrl": "/vendor",
+   "latin": [],
+   "installWords": [],
+   "rowSheet": [
+    "סגירה"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "02",
+   "route": "/vendor/stall",
+   "scenario": "regular",
+   "shots": [
+    "02-vendor-stall.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הדוכן שלי",
+   "finalUrl": "/vendor/stall",
+   "latin": [],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "03",
+   "route": "/vendor/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "03-vendor-events-e-festival.jpg",
+    "03-vendor-events-e-festival-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פסטיבל הסתיו",
+   "finalUrl": "/vendor/events/demo-e-festival",
+   "latin": [],
+   "installWords": [],
+   "rowSheet": [
+    "וואטסאפ",
+    "התקשרות 052-000-0007"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "04",
+   "route": "/notifications",
+   "scenario": "regular",
+   "shots": [
+    "04-notifications.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה לקבל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "התראות",
+   "finalUrl": "/notifications",
+   "latin": [],
+   "installWords": [],
+   "newFindings": [
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה לקבל\""
+    }
+   ]
+  },
+  {
+   "nn": "05",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "05-me.jpg",
+    "05-me-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "",
+   "finalUrl": "/me",
+   "latin": [],
+   "installWords": [
+    "התקנה למסך הבית"
+   ],
+   "rowSheet": [
+    "להפעיל",
+    "הודעות לצוות",
+    "משימה חדשה עליי",
+    "דחוף לכולם",
+    "יציאה לקניות",
+    "אירועים ותזכורות"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "06",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "06-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "הפרטים שלי",
+   "finalUrl": "/me/edit",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת החשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "07",
+   "route": "/me/photo",
+   "scenario": "regular",
+   "shots": [
+    "07-me-photo.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "תמונת פרופיל",
+   "finalUrl": "/me/photo",
+   "latin": [
+    "Google"
+   ],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "08",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "08-install.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "להוסיף למסך הבית",
+   "finalUrl": "/install",
+   "latin": [
+    "iPhone",
+    "Android",
+    "Safari"
+   ],
+   "installWords": [
+    "להוסיף למסך הבית"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "09",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "09-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "title": "תנאי שימוש ופרטיות",
+   "finalUrl": "/terms",
+   "latin": [
+    "havat-ravve.web.app",
+    "Google",
+    "Firebase",
+    "Cloudflare",
+    "Brevo",
+    "HTTPS"
+   ],
+   "installWords": [],
+   "newFindings": [
+    {
+     "rule": "delete-outside",
+     "what": "delete control outside ⋯: \"מחיקת חשבון\""
+    }
+   ]
+  },
+  {
+   "nn": "10",
+   "route": "/contact",
+   "scenario": "regular",
+   "shots": [
+    "10-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "פנייה לחווה",
+   "finalUrl": "/contact",
+   "latin": [],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "11",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "11-tasks.jpg",
+    "11-tasks-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "האירועים",
+   "finalUrl": "/vendor",
+   "latin": [],
+   "installWords": [],
+   "rowSheet": [
+    "סגירה"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "12",
+   "route": "/vendor",
+   "scenario": "eventDay",
+   "shots": [
+    "12-vendor.eventDay.jpg",
+    "12-vendor.eventDay-row.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "היום האירוע",
+   "finalUrl": "/vendor",
+   "latin": [],
+   "installWords": [],
+   "rowSheet": [
+    "וואטסאפ",
+    "התקשרות 052-000-0007"
+   ],
+   "newFindings": []
+  },
+  {
+   "nn": "13",
+   "route": "/vendor/stall",
+   "scenario": "eventDay",
+   "shots": [
+    "13-vendor-stall.eventDay.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "הדוכן שלי",
+   "finalUrl": "/vendor/stall",
+   "latin": [],
+   "installWords": [],
+   "newFindings": []
+  },
+  {
+   "nn": "14",
+   "route": "/vendor",
+   "scenario": "afterEvent",
+   "shots": [
+    "14-vendor.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "title": "האירועים",
+   "finalUrl": "/vendor",
+   "latin": [],
+   "installWords": [],
+   "rowNav": "/vendor/events/demo-e-festival/summary",
+   "newFindings": []
+  }
+ ]
+}
