@@ -1,5 +1,6 @@
 // מתגים on a computer (K13): three cards side by side, every change asks first and may say why, and the last changes.
 // The questions and the list of changes are shared with the phone screen (Switches.tsx).
+import { sendingSwitches } from '../delivery';
 import { useEffect, useState, type ReactNode } from 'react';
 import { daysFromToday, dayTime, ddmm, hhmm, relDay } from '../../app/v2/format';
 import { ago, useLoad } from '../shared';
@@ -90,8 +91,7 @@ export function SwitchesDesk({ v, error, retry, busy, ask, saveText, onNow }: {
   const s = v?.switches;
   const [text, setText] = useState('');
   useEffect(() => setText(s?.maintenanceText || ''), [s?.maintenanceText]);
-  const emailServer = !!v?.server.email.on;
-  const pushServer = !!v && !!v.server.push.mode && v.server.push.mode !== 'unset' && v.server.push.mode !== 'off';
+  const delivery = v && sendingSwitches(v);
   const last = changes.list?.[0];
   const columns: Column<Change>[] = [
     { key: 'at', head: 'מתי', width: 174, soft: true, cell: changeWhen },
@@ -117,7 +117,7 @@ export function SwitchesDesk({ v, error, retry, busy, ask, saveText, onNow }: {
       {onNow.length > 0 && <div className="dn-fixed"><Notice tone="red" icon="bolt"><b>דלוק עכשיו:</b> {onNow.join(' · ')}. כל בוקר תגיע תזכורת עד שזה יכובה.</Notice></div>}
       {error && <div className="dn-fixed"><DCard><Failed text={`לא הצלחנו לקרוא את המתגים. ${error}`} retry={retry} /></DCard></div>}
       {!v && !error && <Cols className="d-cols--top d-cols--even dn-cards">{['מה אנשים רואים באפליקציה', 'שליחה', 'מפתחות API'].map((t) => <DCard key={t} title={t}><Skeleton lines={8} height={18} /></DCard>)}</Cols>}
-      {s && (
+      {s && delivery && (
         <>
           <Cols className="d-cols--top d-cols--even dn-cards">
             <DCard title="מה אנשים רואים באפליקציה" aside={<DTag tone="amber">מתגי חירום</DTag>}>
@@ -131,17 +131,17 @@ export function SwitchesDesk({ v, error, retry, busy, ask, saveText, onNow }: {
                   )}
                 </Item>
                 <Item title="הרשמה פתוחה" text="כשכבוי, מי שאין לו חשבון לא יכול להירשם. מי שרשום ממשיך כרגיל." {...off('registrationClosed')} />
-                <Item title="קריאה בלבד" text="אף אחד חוץ מהבעלים לא משנה כלום. לחירום, כשמשהו כותב נתונים שגויים." {...on('readOnly')} />
+                <Item title="קריאה בלבד" text="בגרסה העדכנית של האפליקציה רק הבעלים יכולים לשנות. מפתחות יכולים רק לקרוא." {...on('readOnly')} />
               </div>
             </DCard>
             <DCard title="שליחה">
               <div className="dn-sws">
-                <Item title="מיילים על תשלומים" text={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחים בכלל.' : s.emailPaused ? 'בהשהיה: תשלומים נכנסים לתור ונשלחים כשמדליקים.' : 'נשלחים לאורח כמה דקות אחרי שהתשלום סומן.'}
-                  {...off('emailPaused')} on={emailServer && !s.emailPaused} disabled={busy || !emailServer} />
-                <Item title="התראות לטלפון" text={!pushServer ? 'לא מוגדרות בשרת.' : s.pushPaused ? 'בהשהיה: ההתראה באפליקציה מגיעה. לטלפון לא יישלח מה שחיכה יותר מ־6 שעות.' : 'כל התראה באפליקציה מגיעה גם לטלפון, למי שהפעיל.'}
-                  {...off('pushPaused')} on={pushServer && !s.pushPaused} disabled={busy || !pushServer} />
-                {s.broadcastEmailPaused !== undefined && <Item title="הודעות במייל לנרשמים" text={!emailServer ? 'כבוי בהגדרות השרת, לא נשלחות בכלל.' : s.broadcastEmailPaused ? 'בהשהיה: ההודעות מחכות בתור ונשלחות כשמדליקים, אם לא עברו 12 שעות.' : '"לשלוח גם במייל" בהודעות לנרשמים ולכל המשתמשים.'}
-                  {...off('broadcastEmailPaused')} on={emailServer && !s.broadcastEmailPaused} disabled={busy || !emailServer} />}
+                <Item title="מיילים על תשלומים" text={delivery.email.text}
+                  {...off('emailPaused')} on={delivery.email.on} disabled={busy || delivery.email.blocked} />
+                <Item title="התראות לטלפון" text={delivery.push.text}
+                  {...off('pushPaused')} on={delivery.push.on} disabled={busy || delivery.push.blocked} />
+                {s.broadcastEmailPaused !== undefined && <Item title="הודעות במייל לנרשמים" text={delivery.broadcast.text}
+                  {...off('broadcastEmailPaused')} on={delivery.broadcast.on} disabled={busy || delivery.broadcast.blocked} />}
               </div>
             </DCard>
             <DCard title="מפתחות API">

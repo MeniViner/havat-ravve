@@ -1,7 +1,8 @@
 // ניטור on a computer: the morning check as a week (check × day), what went wrong lately, the owners' alerts, the quota.
+import { monitorAlertControls } from '../delivery';
 import { dayTime } from '../../app/v2/format';
 import { ago, type useLoad } from '../shared';
-import { type AlertSettings, type Health, type HealthState, type Monitor, type MonitorEvent } from '../source';
+import { type Health, type HealthState, type Monitor, type MonitorEvent } from '../source';
 import { Act, Btn, Col, Cols, DCard, DDot, Fact, Facts, Failed, Page, Skeleton, Switch, Table, type Column } from './desk';
 import { useRest } from './route';
 import { checkDetail, checkName, DOT, eventLong, eventsOf, eventWhen, QuotaBody, QuotaSkeleton, STATE, weekDay, type Notify } from './statusParts';
@@ -28,7 +29,7 @@ export function MonitorDesk({ mon, busy, checkNow, alerts, notify }: { mon: MonL
           </Col>
           <Col width={360}>
             {item && m && <CheckCard m={m} i={item} onClose={() => setPick(null)} />}
-            <AlertsCard a={m?.alerts || null} act={alerts} />
+            <AlertsCard m={m} act={alerts} />
             <DCard title="המכסה החינמית" aside={m?.quota && !m.quota.error ? <span title="מתחדשת כל יום ב־10:00 (חצות בקליפורניה)">נמדד {ago(m.quota.at)}</span> : undefined}>
               {m ? <QuotaBody m={m} notify={notify} /> : <QuotaSkeleton />}
               {m?.quota && !!m.quota.error && <p className="ds-text">המכסה של מסד הנתונים מתחדשת כל יום ב־10:00 (חצות בקליפורניה).</p>}
@@ -91,18 +92,20 @@ function Events({ m }: { m: Monitor }) {
   return <div className="ds-events"><Table label="מה קרה לאחרונה" columns={columns} rows={items} rowKey={(e) => e.at + e.kind} empty={told ? 'לא קרה דבר חריג לאחרונה.' : 'האתר לא נפל לאחרונה.'} /></div>;
 }
 
-function AlertsCard({ a, act }: { a: AlertSettings | null; act: AlertActions }) {
+function AlertsCard({ m, act }: { m: Monitor | null; act: AlertActions }) {
+  const a = m?.alerts;
+  const c = m && monitorAlertControls(m);
   const row = (title: string, text: string, on: boolean, change: (v: boolean) => void, off?: boolean) => (
     <div className="ds-alert"><span><b>{title}</b><span>{text}</span></span><Switch on={on} onChange={change} label={title} disabled={act.busy || off} /></div>
   );
   return (
     <DCard title="התראות לבעלים">
-      {!a ? <Skeleton lines={6} height={18} /> : (
+      {!a || !c ? <Skeleton lines={6} height={18} /> : (
         <>
           <div className="ds-alerts">
-            {row('להתריע כשמשהו לא בסדר', 'בתיבת ההתראות באפליקציה, לכל הבעלים', a.on, (on) => act.set({ on }))}
-            {row('גם לטלפון', 'חוץ מבין 23:00 ל־07:00', a.push && a.on, (push) => act.set({ push }), !a.on)}
-            {a.daily !== undefined && row('סיכום בוקר יומי', 'גם כשהכול תקין', a.daily && a.on, (daily) => act.set({ daily }), !a.on)}
+            {row('להתריע כשמשהו לא בסדר', c.app.text, c.app.on, (on) => act.set({ on }), c.app.blocked)}
+            {row('גם לטלפון', c.phone.text, c.phone.on, (push) => act.set({ push }), c.phone.blocked)}
+            {a.daily !== undefined && row('סיכום בוקר יומי', c.daily.text, c.daily.on, (daily) => act.set({ daily }), c.daily.blocked)}
           </div>
           <p className="ds-text">התראה נשלחת כשהאתר לא עונה חצי שעה, כשבדיקת הבוקר מוצאת בעיה, או כשהמכסה עוברת 80%. אותה התראה לא חוזרת לפני 12 שעות.{a.updatedBy && ` שונה לאחרונה על ידי ${a.updatedBy}, ${ago(a.updatedAt)}.`}</p>
           <Btn icon="bell" onClick={act.test} disabled={act.busy}>לשלוח התראת בדיקה אליי</Btn>

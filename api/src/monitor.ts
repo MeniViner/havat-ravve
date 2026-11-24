@@ -13,7 +13,8 @@
 // All of it lives in the one KV record the cron already writes every run (console:cron-last), so watching adds no KV
 // writes; the alert settings are their own record, written only when an owner changes them.
 import { type Env, Firestore, monitoringToken } from './firestore';
-import { notifyWrites } from './notify';
+import { notifyWrites, planNotification } from './notify';
+import { pushQueueState } from './push';
 import { lastBackup, ilDate } from './backup';
 import { listKeys } from './keys';
 import { emailEnabled } from './email';
@@ -368,9 +369,10 @@ async function sendAlert(env: Env, fs: Firestore, st: MonitorState, a: Alert): P
 /** A test alert to the owner who asked, now (quiet hours do not apply to a test). */
 export async function testAlert(env: Env, fs: Firestore, uid: string) {
   const set = await alertSettings(env);
-  const writes = notifyWrites(fs, [uid], { kind: 'system', title: 'בדיקת התראות מהשרת', sub: 'ככה תיראה התראה כשמשהו לא בסדר. אפשר לכבות מהקונסולה.', link: '/admin', by: SERVER, push: set.push, tag: 'server-test' });
+  const { writes, receipt } = planNotification(fs, [uid], { kind: 'system', title: 'בדיקת התראות מהשרת', sub: 'ככה תיראה התראה כשמשהו לא בסדר. אפשר לכבות מהקונסולה.', link: '/admin', by: SERVER, push: set.push, tag: 'server-test' });
+  const pushState = receipt.queued ? pushQueueState(env, (await readSwitches(env, true)).pushPaused) : undefined;
   await fs.commit(writes);
-  return { sent: true, push: set.push };
+  return { ...receipt, sent: true, push: !!receipt.queued, ...(pushState ? { pushState } : {}) };
 }
 
 const hm = (iso: string) => new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));

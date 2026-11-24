@@ -617,8 +617,13 @@ try {
     const ta = await api('POST', '/v1/console/monitor/test-alert', C(own));
     const inbox = await fetch(`${DOCS}/users/${own.localId}/notifications?pageSize=50`, { headers: admin }).then((x) => x.json());
     const note = (inbox.documents || []).map((d) => d.fields).find((f) => f.title?.stringValue === 'בדיקת התראות מהשרת');
-    check(ta.status === 200 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
+    check(ta.status === 200 && ta.json.data.accepted && ta.json.data.created === 1 && ta.json.data.queued === 0 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
     await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: true } });
+    const queuedTest = await api('POST', '/v1/console/monitor/test-alert', C(own));
+    check(queuedTest.status === 200 && queuedTest.json.data.accepted && queuedTest.json.data.created === 1
+      && queuedTest.json.data.queued === 1 && queuedTest.json.data.pushState === 'off' && !('delivered' in queuedTest.json.data),
+    'the test alert reports its job and the server’s actual off state');
+    check(mon0.json.data.pushState === 'off' && mon0.json.data.alertsAvailable === true, 'monitor includes the actual server push state');
     const sec = await api('GET', '/v1/console/security?days=7', C(own));
     const secItems = sec.json?.data?.items || [];
     check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
@@ -863,8 +868,8 @@ try {
         && (await docOf(`users/syn-mgr/notifications/b_${bid}`))?.readAt === null
         && !(await docOf(`broadcasts/${bid}/reads/syn-mgr`))
         && (await pushJobs()).some((job) => job.refId === bid && job.to.includes('syn-mgr')), 'a selected sender reaches their bell and push queue without a read receipt');
-      const replay = await w(lk, 'broadcasts.send', body, sameKey);
-      check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'idempotent broadcast replay keeps one sent activity row');
+      const replay = await w(lk, 'broadcasts.send', { ...body, includeSelf: false }, sameKey);
+      check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'changing the ignored legacy flag still replays the same send and activity row');
       ok(await w(lk, 'broadcasts.resend', { broadcastId: bid }), 'resends a normal team broadcast');
       ok(await w(OWNER, 'broadcasts.delete', { broadcastId: bid }), 'owner deletes the broadcast');
       const feed = await r(STAFF, '/v1/activity?kind=message&refId=' + bid);

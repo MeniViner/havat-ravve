@@ -1,5 +1,6 @@
 // תור שליחה on a computer (K11): one table for mail and push, and beside it the chosen one: why it failed, the message
 // itself, send again / do not send. The words and the message's details are shared with the phone screen (Queue.tsx).
+import { EMAIL_OFF, PHONE_OFF, phoneConfigured } from '../delivery';
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { daysFromToday, dayTime, hhmm } from '../../app/v2/format';
 import { ago, fmt } from '../shared';
@@ -51,7 +52,7 @@ export function queueLines(d: Queue, amounts: Record<string, number | null> = {}
 export const lineWhen = (l: QLine) => (l.state === 'sent' ? dayTime(l.at) : ago(l.at));
 export const lineTitle = (l: QLine) => (l.type === 'push' ? l.what : `${l.what.split(' · ')[0]}${l.e?.who || l.s?.who ? ` ל${l.e?.who || l.s?.who}` : ''}`);
 export function lineSub(l: QLine) {
-  if (l.type === 'push') return l.state === 'sent' ? `התראה · נשלחה ${dayTime(l.at)}` : `התראה · ${l.p!.stale ? 'ישנה מדי לטלפון' : l.p!.done ? `נשלחה ל־${fmt(l.p!.done)} מתוך ${fmt(l.p!.to)}` : 'תישלח בסבב הבא'}`;
+  if (l.type === 'push') return l.state === 'sent' ? `התראה · הטיפול בתור הסתיים ${dayTime(l.at)}` : `התראה · ${l.p!.stale ? 'ישנה מדי לטלפון' : l.p!.done ? `נבדקו ${fmt(l.p!.done)} מתוך ${fmt(l.p!.to)} נמענים` : 'ממתינה בתור'}`;
   if (l.state === 'failed') return l.tries ? `מייל · נכשל ${times(l.tries)}` : 'מייל · נכשל';
   if (l.state === 'sent') return `מייל · נשלח ${dayTime(l.at)}`;
   return `מייל · ${l.e!.status === 'sending' ? 'בשליחה עכשיו' : 'יישלח בסבב הבא'}`;
@@ -109,7 +110,7 @@ export function LineDetail({ l, mail }: { l: QLine; mail: MailState }) {
       {p.stale && <Notice icon="bell"><b>ישנה מדי לטלפון.</b> ההתראה חיכתה יותר מ־6 שעות, ולכן לא תישלח. באפליקציה היא נמצאת.</Notice>}
       <Facts style={p.stale ? { marginTop: 6 } : undefined}>
         <Fact label="אל">{pushWho(p)}</Fact>
-        {p.done > 0 && <Fact label="כבר נשלחה">{p.done === 1 ? 'לאדם אחד' : `ל־${fmt(p.done)} אנשים`}</Fact>}
+        {p.done > 0 && <Fact label="נמענים שנבדקו">{p.done === 1 ? 'לאדם אחד' : `ל־${fmt(p.done)} אנשים`}</Fact>}
         <Fact label="סוג">{PUSH_KIND[p.kind] || 'התראה'}</Fact>
         {p.by && <Fact label="מאת">{p.by}</Fact>}
         <Fact label="נוצרה">{dayTime(p.createdAt)}</Fact>
@@ -122,7 +123,7 @@ export function LineDetail({ l, mail }: { l: QLine; mail: MailState }) {
       <Facts>
         <Fact label="אל">{s.who ? `${s.who}${s.to > 1 ? `, ${fmt(s.to)} אנשים` : ''}` : pushWho(s)}</Fact>
         <Fact label="סוג">{PUSH_KIND[s.kind] || 'התראה'}</Fact>
-        <Fact label="נשלחה">{dayTime(s.at)}</Fact>
+        <Fact label={s.type === 'push' ? 'סיום הטיפול בתור' : 'נשלחה'}>{dayTime(s.at)}</Fact>
       </Facts>
       <div className="dn-mail"><b>{s.what || 'התראה'}</b></div>
     </>
@@ -181,7 +182,7 @@ export function QueueDesk({ d, error, loading, reload, busy, retry, drop, previe
     { value: 'all', label: 'הכל' },
     { value: 'failed', label: d ? `נכשלו · ${fmt(count('failed'))}` : 'נכשלו' },
     { value: 'waiting', label: d ? `מחכים · ${fmt(count('waiting'))}` : 'מחכים' },
-    ...(d?.sent ? [{ value: 'sent' as const, label: `נשלחו היום · ${fmt((!type ? d.sentToday : undefined) ?? all!.filter((x) => x.state === 'sent' && x.today && (!type || x.type === type)).length)}` }] : []),
+    ...(d?.sent ? [{ value: 'sent' as const, label: `הטיפול הסתיים היום · ${fmt((!type ? d.sentToday : undefined) ?? all!.filter((x) => x.state === 'sent' && x.today && (!type || x.type === type)).length)}` }] : []),
   ];
   const columns: Column<QLine>[] = [
     { key: 'type', head: 'סוג', width: 114, soft: true, cell: (x) => (x.type === 'email' ? 'מייל' : 'התראה') },
@@ -192,7 +193,7 @@ export function QueueDesk({ d, error, loading, reload, busy, retry, drop, previe
     { key: 'when', head: 'מתי', width: 144, soft: true, cell: lineWhen },
   ];
   return (
-    <Page group="שליחה ותזמון" title="תור שליחה" sub={d && !d.sent ? 'מיילים והתראות לטלפון שמחכים או שנכשלו' : 'מיילים והתראות לטלפון שמחכים, שנכשלו ושנשלחו'}
+    <Page group="שליחה ותזמון" title="תור שליחה" sub={d && !d.sent ? 'מיילים והתראות לטלפון שמחכים או שנכשלו' : 'מיילים והתראות לטלפון, לפי מצב הטיפול בתור'}
       actions={<><Btn icon="refresh" onClick={reload} disabled={loading}>רענון</Btn><Btn onClick={preview}>הצגת תבנית המייל</Btn></>}>
       <Toolbar end={d?.daily && <span className="dn-daily">המכסה היומית של המייל: {fmt(d.daily.used)} מתוך {fmt(d.daily.limit)}</span>}>
         <Chips label="מצב" options={states} value={state === 'all' && type ? ONE_KIND : state} onChange={(v) => { if (v === ONE_KIND) return; setState(v); if (v === 'all') setType(''); }} />
@@ -200,13 +201,14 @@ export function QueueDesk({ d, error, loading, reload, busy, retry, drop, previe
       </Toolbar>
       {d?.switches.emailPaused && <div className="dn-fixed"><Notice icon="mail"><span>המיילים בהשהיה. תשלומים נכנסים לתור ונשלחים כשמדליקים. <Act href={toTab('switches')}>למתגים</Act></span></Notice></div>}
       {d?.switches.pushPaused && <div className="dn-fixed"><Notice icon="bell"><span>ההתראות לטלפון בהשהיה. <Act href={toTab('switches')}>למתגים</Act></span></Notice></div>}
-      {d && !d.email.on && <div className="dn-fixed"><Notice icon="mail">המיילים כבויים בהגדרות השרת, אז כלום לא נשלח מכאן.</Notice></div>}
+      {d && !d.email.on && <div className="dn-fixed"><Notice icon="mail">שליחת מיילים {EMAIL_OFF}</Notice></div>}
+      {d && !phoneConfigured(d.push.mode) && <div className="dn-fixed"><Notice icon="bell">ההתראות יכולות להיכנס לתור. השליחה לטלפון {PHONE_OFF}</Notice></div>}
       <Cols>
         <div className="dn-queue"><TableCard style={{ containerType: 'inline-size' }}>
           <Table label="תור שליחה" columns={columns} rows={rows} rowKey={(x) => x.key} selected={sel} onSelect={select} loading={loading}
             onEnter={(x) => { if (busy === x.key || x.state === 'sent') return; if (x.state === 'failed' && x.e) retry(x.e); else if (canDrop(x)) drop(x); }}
             error={error && `לא הצלחנו לקרוא את התור. ${error}`} retry={reload} empty={type ? 'אין כאן כלום מהסוג הזה.' : NONE[state]} />
-          {hidden > 0 && <p className="dn-more"><Act onClick={() => setState('sent')}>{hidden === 1 ? 'ועוד התראה אחת לאדם אחד שנשלחה' : `ועוד ${fmt(hidden)} התראות לאדם אחד שנשלחו`}</Act></p>}
+          {hidden > 0 && <p className="dn-more"><Act onClick={() => setState('sent')}>{hidden === 1 ? 'ועוד התראה אחת שהטיפול בה הסתיים' : `ועוד ${fmt(hidden)} התראות שהטיפול בהן הסתיים`}</Act></p>}
         </TableCard></div>
         {!d && !error ? <LoadingPanel /> : !l ? <EmptyPanel>{rows?.length ? 'בחרו שורה כדי לראות את ההודעה.' : 'כאן תופיע ההודעה שתבחרו.'}</EmptyPanel> : (
           <Panel label="ההודעה שנבחרה" title={lineTitle(l)} sub={lineSub(l)}

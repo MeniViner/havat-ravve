@@ -1,6 +1,7 @@
 // משימות מתוזמנות on a computer (K12): the jobs as a table, the last four hours of rounds, cleanup and archive; and
 // "להריץ סבב מלא עכשיו", which the phone screen (Jobs.tsx) has too: the browser runs the jobs one after the other, each its
 // own request, the way the server's round does.
+import { jobBlockedText } from '../delivery';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sheet } from '../../app/v2/kit';
 import { hhmm, keyOf } from '../../app/v2/format';
@@ -24,7 +25,8 @@ const told = (parts: [number, string, string][]) => parts.filter(([k]) => k).map
 /** The payment mails, and the messages to registrants that went with them. */
 const mails = (r: Record<string, unknown>) => n(r.sent) + n((r.broadcasts as { sent?: unknown } | undefined)?.sent);
 /** What a job's last turn did, in words. */
-export function lastText(j: Pick<Job, 'id' | 'last'>): string {
+export function lastText(j: Pick<Job, 'id' | 'last' | 'blocked'>): string {
+  if (j.blocked) return jobBlockedText[j.blocked];
   const l = j.last;
   if (!l) return 'עוד לא רצה מאז העדכון';
   const r = l.result;
@@ -33,7 +35,7 @@ export function lastText(j: Pick<Job, 'id' | 'last'>): string {
   if (r.nothing) return 'לא היה מה לעשות';
   switch (j.id) {
     case 'email': return r.enabled === false ? 'כבויה בהגדרות השרת' : r.paused ? (n(r.enqueued) ? `בהשהיה. ${many(n(r.enqueued), 'מייל אחד נכנס לתור', 'נכנסו לתור')}` : 'בהשהיה') : told([[mails(r), 'נשלח מייל אחד', 'נשלחו'], [n(r.failed), 'אחד נכשל', 'נכשלו'], [n(r.enqueued), 'אחד נכנס לתור', 'נכנסו לתור']]);
-    case 'push': return r.paused ? 'בהשהיה' : r.mode === 'unset' ? 'לא מוגדרת בשרת' : r.mode === 'off' ? 'כבויה בהגדרות השרת' : told([[n(r.delivered), 'נשלחה התראה אחת', 'נשלחו'], [n(r.failed), 'אחת נכשלה', 'נכשלו']]);
+    case 'push': return r.paused ? 'בהשהיה' : r.mode === 'unset' || r.mode === 'off' ? jobBlockedText.phone : told([[n(r.delivered), 'שירות ההתראות קיבל התראה אחת', 'התקבלו אצל שירות ההתראות'], [n(r.failed), 'אחת נכשלה', 'נכשלו']]);
     case 'monitor': return r.health ? `בדיקה כללית: ${r.health === 'ok' ? 'הכל תקין' : 'יש מה לבדוק'}` : 'האתר נבדק';
     case 'backup': return r.done ? `הגיבוי הושלם${n(r.docs) ? `: ${fmt(n(r.docs))} רשומות` : ''}` : `בגיבוי: ${fmt(n(r.docs))} רשומות עד עכשיו`;
     case 'cleanup': return r.done ? `הסתיים: ${fmt(n(r.deleted))} רשומות עברו לארכיון ונמחקו` : `${fmt(n(r.deleted))} רשומות עד עכשיו`;
@@ -42,7 +44,8 @@ export function lastText(j: Pick<Job, 'id' | 'last'>): string {
   }
 }
 /** The same, short enough for a table cell. */
-function shortText(j: Pick<Job, 'id' | 'last'>): string {
+function shortText(j: Pick<Job, 'id' | 'last' | 'blocked'>): string {
+  if (j.blocked) return jobBlockedText[j.blocked];
   const l = j.last;
   if (!l) return 'עוד לא רצה';
   if (!l.ok || l.result.nothing) return lastText(j);
@@ -60,7 +63,7 @@ type Rounds = NonNullable<Jobs['rounds']>;
 const CELLS = 48;
 /** The last full round: the server's own, or one run from this screen since (the server's clock does not count that one). */
 export function lastRound(d: Jobs): { at: string; ms: number | null; by: string } | null {
-  const due = d.jobs.filter((j) => ['email', 'push', 'monitor'].includes(j.id) && j.canRun && !j.paused);
+  const due = d.jobs.filter((j) => ['email', 'push', 'monitor'].includes(j.id) && j.canRun && !j.paused && !j.blocked);
   const here = due.length > 1 && due.every((j) => j.last?.by && (!d.cronAt || j.last.at > d.cronAt));
   if (here) return { at: due.map((j) => j.last!.at).sort().at(-1)!, ms: due.reduce((s, j) => s + j.last!.ms, 0), by: due[0].last!.by! };
   return d.cronAt ? { at: d.cronAt, ms: d.cronMs, by: '' } : null;
@@ -104,7 +107,7 @@ export function roundPlan(jobs: Job[]): Step[] {
   const backup = of('backup');
   const backupLeft = !!backup && (backup.paused || ilHour() < 3) && !doneToday(backup);
   return ['email', 'push', 'monitor', 'backup', 'cleanup'].map(of).filter((j): j is Job => !!j && j.canRun).map((j) => {
-    const skip = j.paused ? 'בהשהיה, לא תרוץ'
+    const skip = j.blocked ? jobBlockedText[j.blocked] : j.paused ? 'בהשהיה, לא תרוץ'
       : NIGHT.has(j.id) && doneToday(j) ? 'כבר הסתיימה היום'
       : NIGHT.has(j.id) && ilHour() < 3 ? 'רצה רק אחרי 03:00'
       : j.id === 'cleanup' && backupLeft ? 'רצה רק אחרי הגיבוי' : '';
@@ -189,8 +192,8 @@ export function JobsDesk({ d, error, retry, busy, askRun, askPause, askRound, ro
     { key: 'do', head: <span className="k-sr">פעולות</span>, width: 194, align: 'end', cell: (j) => (
       <span className="dn-do">
         {!j.canRun && !j.canPause && <span className="dn-none" title={KEEP_ACCOUNTS}>לא נעצרת מכאן</span>}
-        {j.canRun && <Act disabled={busy !== null || (j.paused && j.id === 'push')} onClick={() => askRun(j)}>{busy === j.id ? 'רצה…' : 'להריץ עכשיו'}</Act>}
-        {j.canPause && <Switch on={!j.paused} onChange={(on) => askPause(j, !on)} label={j.he} disabled={busy !== null} />}
+        {j.canRun && <Act disabled={busy !== null || !!j.blocked || (j.paused && j.id === 'push')} onClick={() => askRun(j)}>{busy === j.id ? 'רצה…' : 'להריץ עכשיו'}</Act>}
+        {j.canPause && <Switch on={!j.paused && !j.blocked} onChange={(on) => askPause(j, !on)} label={j.he} disabled={busy !== null || !!j.blocked} />}
       </span>
     ) },
   ];

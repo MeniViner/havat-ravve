@@ -122,7 +122,7 @@ export async function moreWalk(x) {
     await sw(on).click(); check(await until(async () => (await al()).on === true), 'alerts on again'); await s.idle();
     check(/אליה/.test((await al()).updatedBy || ''), 'the server knows who changed it', await al());
     if ((await al()).push !== true) { await sw('גם לטלפון').click(); await s.idle(); }
-    await R('לשלוח התראת בדיקה אליי').click(); check(await s.toast('נשלחה. היא תופיע בהתראות באפליקציה ובטלפון'), 'test alert: says so');
+    await R('לשלוח התראת בדיקה אליי').click(); check(await s.toast('התראת הבדיקה נשמרה באפליקציה. היא נוספה לתור השליחה לטלפון.'), 'test alert: says so');
     const inbox = (await E.list(`users/${uids.owner}/notifications`)).filter((q) => /בדיקת התראות/.test(q.title || '')); check(inbox.length === 1, 'Firestore: one line in my inbox', inbox.length);
     check((await E.list(`users/${uids.owner2}/notifications`)).every((q) => !/בדיקת התראות/.test(q.title || '')), 'and not in the other owner\'s');
     const pj = (await E.list('push_jobs')).filter((q) => /בדיקת התראות/.test(q.title || '')); check(pj.length === 1 && JSON.stringify(pj[0].to) === JSON.stringify([uids.owner]), 'Firestore: one phone push, to me', pj.map((q) => q.to));

@@ -3,6 +3,7 @@
 import { ddmm } from '../../app/v2/format';
 import { nowMs } from '../../app/clock';
 import { fieldLabel, valueText } from '../labels';
+import { fmt } from '../shared';
 import type { CatalogOp, CatalogParam } from '../source';
 
 const LATIN = /[A-Za-z]/;
@@ -247,6 +248,18 @@ export type Shaped = { rows: Row[]; list: { columns: { key: string; head: string
 /** An answer as a person reads it: label and value rows, or a table. Everything else is in the full answer. */
 export function shape(op: CatalogOp, json: unknown, names: Names): Shaped {
   const data = isRec(json) && isRec(json.data) ? json.data : {};
+  if (data.accepted === true && typeof data.created === 'number' && typeof data.queued === 'number') {
+    const rows = [
+      { key: 'accepted', label: 'הפעולה התקבלה', value: 'כן' },
+      { key: 'created', label: 'התראות שנשמרו באפליקציה', value: fmt(data.created) },
+      { key: 'queued', label: 'משימות שנוספו לתור הטלפון', value: fmt(data.queued) },
+    ];
+    const phone = data.queued ? (data.pushState === 'off' ? 'נוסף לתור, אבל השליחה לטלפון כבויה בשרת.'
+      : data.pushState === 'paused' ? 'נוסף לתור, והשליחה לטלפון בהשהיה.'
+        : 'נוסף לתור השליחה לטלפון. עדיין לא ידוע אם ההתראה הופיעה במכשיר.') : '';
+    const note = [data.replayed ? 'מוצגת תוצאת הפעולה הקודמת.' : '', phone].filter(Boolean).join(' ');
+    return { rows, list: null, note };
+  }
   const note = data.replayed ? 'הפעולה כבר בוצעה קודם, ולא בוצעה פעם נוספת.' : data.changed === false ? 'לא היה מה לשנות: זה כבר היה כך.' : data.verified === false && op.kind === 'write' ? 'הפעולה נשמרה, אבל השרת לא הצליח לקרוא אותה חזרה. לא להריץ שוב.' : '';
   const items = [data.items, data.candidates, data.records, data.questions].find(Array.isArray) as Rec[] | undefined;
   if (items) {
