@@ -228,7 +228,7 @@ export async function closeRequest(ctx: V2Ctx, eid: string, rid: string, notifyU
     const log = activityOp(ctx.actor, 'event', rid, 'closed', 'בקשה מדוכן', { eventId: eid });
     tx.set(log.col, log.id, log.data);
   });
-  if (notifyUid && notifyUid !== ctx.actor.uid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
+  if (notifyUid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
 }
 /** W2 "אני על זה": the team member who handles the request (takenBy + takenAt). The vendor reads it on D6 ("נועה בדרך אליך").
  *  A closed request is not taken; taking it from someone else is allowed (the latest one is the one on the way). */

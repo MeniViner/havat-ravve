@@ -10,6 +10,9 @@ export function messageActivityText(audience: BroadcastAudience, recipientCount:
   return [AUDIENCE_LABELS[audience], `${recipientCount} נמענים`, urgent ? 'דחופה' : 'רגילה', preview].filter(Boolean).join(' · ');
 }
 
-export function notificationTargets(uids: string[], sender: string | undefined, includeSelf?: boolean) {
-  return [...new Set(uids.filter(Boolean))].filter((uid) => includeSelf || uid !== sender);
+/** De-duplicate recipients. A sender who is in the audience is treated like every other recipient. */
+export function notificationTargets(uids: string[]) {
+  return [...new Set(uids.filter(Boolean))];
 }
+
+export type SendReceipt = { accepted: boolean; created: number; queued: number };

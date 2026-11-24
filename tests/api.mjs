@@ -1285,11 +1285,14 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     check(hits.length === before, 'two more runs → nothing sent again (idempotent)', { extra: hits.length - before });
 
     await seed('users', 'pu-mgr', person('pu-mgr', 'manager', { enabled: true, devices: [sub('ok-self')] }));
-    await job('pj-self-default', 'broadcast', 'pu-mgr', ['pu-mgr'], { tag: 'b_self_default' });
+    for (const kind of ['broadcast', 'system', 'task', 'urgent', 'trip', 'event', 'vendor']) {
+      await job('pj-self-' + kind, kind, 'pu-mgr', ['pu-mgr'], { tag: 'self_' + kind });
+    }
     await job('pj-self-optin', 'broadcast', 'pu-mgr', ['pu-mgr'], { tag: 'b_self_optin', includeSelf: true });
-    await run(p2);
+    await run(p2); await run(p2);
     const self = hits.filter((h) => h.name === 'ok-self');
-    check(self.length === 1 && self[0].payload.tag === 'b_self_optin', 'push sends to the author only for an explicit includeSelf job');
+    check(self.length === 8 && new Set(self.map((h) => h.payload.tag)).size === 8,
+      'push sends every authorized kind to a selected author once, including a legacy includeSelf job', self.map((h) => h.payload.tag));
 
     // a job bigger than one run's budget: continues from its cursor, every device exactly once
     const many = Array.from({ length: 40 }, (_, i) => 'pu-bulk-' + String(i).padStart(2, '0'));

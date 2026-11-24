@@ -179,7 +179,7 @@ try {
     check(again.json.data.replayed === true && (await notesOf('syn-noa')).filter((n) => n.refId === id).length === 1 && (await pushesFor(id)).length === 1, 'replay: same task, no second notification');
     check(sameKeys(await docOf('tasks/' + id), TASK_KEYS), 'the stored task has exactly the app\'s fields');
     const self = await create(RONIT, { title: 'עליי', assignee: 'syn-ronit' });
-    check((await notesOf('syn-ronit')).every((n) => n.refId !== self) && !(await pushesFor(self)).length, 'putting it on yourself notifies nobody');
+    check((await notesOf('syn-ronit')).filter((n) => n.refId === self).length === 1 && (await pushesFor(self)).length === 1, 'putting it on yourself writes one copy and job');
     const mn = await create(MGR, { title: 'למנהל', assignee: 'syn-ronit' });
     check((await notesOf('syn-ronit')).find((n) => n.refId === mn)?.sub === 'דני העביר אליך', 'the verb follows the sender (דני העביר)');
   }
@@ -289,7 +289,7 @@ try {
     check((await w(MGR, 'tasks.assign', { taskId: id, assignee: 'syn-ronit' })).status === 409, 'a done task cannot be reassigned');
     const mine = await create(MGR, { title: 'למנהל עצמו' });
     await w(MGR, 'tasks.assign', { taskId: mine, assignee: 'syn-mgr' });
-    check(!(await pushesFor(mine)).length, 'assigning to yourself notifies nobody');
+    check((await pushesFor(mine)).length === 1, 'assigning to yourself queues one job');
   }
 
   section('tasks.delete: a recurring day');
@@ -401,10 +401,10 @@ try {
     check(u.status === 201 && u.json.data.item.taskId === tid && u.json.data.item.link === 'https://example.com/milk' && u.json.data.item.urgent, 'shopping.add with taskId and link', u.json);
     const uid = u.json.data.itemId;
     const pj = await pushesFor(uid);
-    check(pj.length === 1 && pj[0].kind === 'urgent' && pj[0].title === 'דחוף לכולם' && pj[0].body === 'חלב · 3' && [...pj[0].to].sort().join() === TEAM.filter((x) => x !== 'syn-ronit').sort().join(), 'urgent: one push to the whole active team except the sender (no guest, no blocked)', pj);
+    check(pj.length === 1 && pj[0].kind === 'urgent' && pj[0].title === 'דחוף לכולם' && pj[0].body === 'חלב · 3' && [...pj[0].to].sort().join() === [...TEAM].sort().join(), 'urgent: one push to the whole active team including the sender (no guest, no blocked)', pj);
     const nn = (await notesOf('syn-noa')).filter((n) => n.refId === uid);
     check(nn.length === 1 && nn[0].kind === 'urgent' && nn[0].link === `/shopping/${uid}` && sameKeys(nn[0], NOTE_KEYS), 'and an in-app notification each', nn);
-    check(!(await notesOf('syn-ronit')).some((n) => n.refId === uid) && !(await notesOf('syn-guest')).some((n) => n.refId === uid), 'not to the sender, not to a guest');
+    check((await notesOf('syn-ronit')).filter((n) => n.refId === uid).length === 1 && !(await notesOf('syn-guest')).some((n) => n.refId === uid), 'one for the sender, none for guests');
     check((await w(RONIT, 'shopping.add', { title: 'x', photo: 'data:image/jpeg;base64,AA' })).status === 400, 'shopping.add: base64 photo refused');
     check((await w(RONIT, 'shopping.add', { title: 'x', taskId: 'no-such-task' })).status === 400, 'shopping.add: unknown task → 400');
     const plain = await w(RONIT, 'shopping.add', { title: 'סוכר' });
@@ -567,7 +567,7 @@ try {
     const sl = await docOf(`projects/${projectId}/steps/${last}`);
     check(pu.status === 200 && sl.updates.length === 1 && sl.updates[0].by.uid === 'syn-mgr' && sl.updates[0].text === 'דיברתי עם המשטרה' && sameKeys(sl.updates[0], ['by', 'at', 'text']), 'the update is appended', sl.updates);
     const on = (await notesOf('synthetic-owner')).filter((x) => x.refId === last);
-    check(on.length === 1 && on[0].title === 'עדכון בהכנות לפסטיבל' && on[0].sub === 'לפרסם: דיברתי עם המשטרה' && !(await pushesFor(last)).length && !(await notesOf('syn-mgr')).some((x) => x.refId === last && x.title.startsWith('עדכון')), 'members told in the app (not the poster, no push)', on);
+    check(on.length === 1 && on[0].title === 'עדכון בהכנות לפסטיבל' && on[0].sub === 'לפרסם: דיברתי עם המשטרה' && !(await pushesFor(last)).length && (await notesOf('syn-mgr')).filter((x) => x.refId === last && x.title.startsWith('עדכון')).length === 1, 'members including the poster told in the app (no push)', on);
     // split / edit / add
     const sp = await w(MGR, 'projects.splitStep', { projectId, stepId: first, titles: ['לסגור חשמלאי', 'לסגור במה'] });
     check(sp.status === 201 && sp.json.data.stepIds.length === 2, 'split', sp.json);

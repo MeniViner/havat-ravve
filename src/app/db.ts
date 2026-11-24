@@ -128,14 +128,14 @@ const setSync = (next: Partial<SyncState>) => { sync = { ...sync, ...next }; syn
 export const useSync = () => useSyncExternalStore((l) => { syncListeners.add(l); return () => syncListeners.delete(l); }, () => sync);
 export const syncState = () => sync;
 let failureId = 0;
-function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<void> {
+function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<boolean> {
   setSync({ pending: sync.pending + 1 });
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     let answered = false;
     // `wait`: maintenance work that must know the server stored it; it resolves only on the server's answer
-    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(); }, navigator.onLine ? 1500 : 0);
+    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(false); }, navigator.onLine ? 1500 : 0);
     p.then(
-      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(); },
+      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(true); },
       (e) => {
         clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) });
         const err = new Error(readError(e));
@@ -201,12 +201,12 @@ export const write = {
   async remove(col: string, id: string, o: WriteOpts = {}) { if (demoOnly()) return demoDelete(col, id); await settle(deleteDoc(real(col, id)), o.quiet); },
   /** Several sets/updates that should land together. */
   async batch(ops: { op: 'set' | 'update' | 'remove'; col: string; id: string; data?: Record<string, unknown> }[], o: WriteOpts = {}) {
-    if (!ops.length) return;
-    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return; }
+    if (!ops.length) return true;
+    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return true; }
     const refs = ops.map((x) => real(x.col, x.id)); // throws before anything is queued if one of them is a demo id
     const b = writeBatch(db);
     ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], x.data!) : x.op === 'update' ? b.update(refs[i], toFirestore(x.data!)) : b.delete(refs[i]); });
-    await settle(b.commit(), o.quiet, o.wait);
+    return settle(b.commit(), o.quiet, o.wait);
   },
 };
 

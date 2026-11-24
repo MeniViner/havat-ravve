@@ -565,31 +565,34 @@ export async function releaseTask(actor: Actor, t: Task, manager: boolean) {
 }
 /** C4: who the task is on. Refused when someone else changed the assignee since the screen opened. Notifies the new person. */
 export async function assignTask(actor: Actor, t: Task, to: Actor | null, seenUid: string | null) {
-  await transact(async (tx) => {
+  const changed = await transact(async (tx) => {
     const cur = await tx.get<Task>('tasks', t.id);
     if (!cur) throw new ConflictError('לא נשמר. המשימה כבר לא קיימת');
     if (cur.done) throw new ConflictError('לא נשמר. המשימה כבר בוצעה');
     const now = (cur.assignee?.uid || null);
-    if (now !== seenUid && now !== (to?.uid || null)) throw new ConflictError(cur.assignee ? `לא נשמר. המשימה כבר על ${firstName(cur.assignee.name)}` : 'לא נשמר. מישהו שינה את המשימה לפני רגע');
+    if (now === (to?.uid || null)) return false;
+    if (now !== seenUid) throw new ConflictError(cur.assignee ? `לא נשמר. המשימה כבר על ${firstName(cur.assignee.name)}` : 'לא נשמר. מישהו שינה את המשימה לפני רגע');
     const at = nowIso();
     tx.update('tasks', t.id, to ? { assignee: to, takenAt: at, updatedAt: at } : { assignee: null, updatedAt: at });
+    return true;
   });
+  if (!changed) return;
   if (to) {
     logActivity(actor, taskKind(t), t.id, 'assigned', `${short(t.title)} ← ${to.name}`, { subjectUid: to.uid });
-    if (to.uid !== actor.uid) await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+    await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
   } else logActivity(actor, taskKind(t), t.id, 'released', short(t.title), { subjectUid: t.assignee?.uid || '' });
 }
 
 export type TaskInput = NewTask;
-/** T5 add: the existing store action (activity log included), plus a notification when it is put on someone else. */
+/** T5 add: the existing store action (activity log included), plus a notification when a person is assigned. */
 export async function createTask(actor: Actor, data: TaskInput) {
   const id = await addTask(actor, data);
-  if (data.assignee && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
+  if (data.assignee) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
   return id;
 }
 export async function updateTask(actor: Actor, t: Task, data: Partial<TaskInput>) {
   await editTask(actor, t, data);
-  if (data.assignee && data.assignee.uid !== t.assignee?.uid && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+  if (data.assignee && data.assignee.uid !== t.assignee?.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
 }
 
 /** Who may delete a task: a manager, or the person who created it (rules: tasks delete). A recurring day's instance

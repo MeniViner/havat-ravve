@@ -217,19 +217,19 @@ try {
     const jobs0 = (await pushJobs()).length;
     const key = randomUUID();
     const s = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
-    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 4, 'broadcasts.send → 201, 5 recipients, 4 notified (not the sender)', s.json);
+    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 5 && s.json.data.accepted && s.json.data.created === 5 && s.json.data.queued === 1 && s.json.data.pushState === 'off', 'broadcasts.send → 201, five copies and one queued job while push is off', s.json);
     bAll = s.json.data.broadcastId;
     const b = await docOf('broadcasts/' + bAll);
     check(sameKeys(b, ['id', 'text', 'audience', 'urgent', 'by', 'createdAt', 'recipients', 'recipientCount', 'resentAt']) && b.id === bAll && b.urgent === true && b.by.uid === 'syn-mgr' && b.resentAt === null && b.recipientCount === b.recipients.length,
       'stored exactly as sendBroadcast() writes it', b);
     const own = await docOf(`broadcasts/${bAll}/reads/syn-mgr`);
-    check(own && own.at === b.createdAt && own.seenAt === b.createdAt && own.uid === 'syn-mgr', 'the sender\'s own read receipt');
+    check(!own, 'the sender has no automatic read receipt');
     const n = await docOf(`users/syn-staff/notifications/b_${bAll}`);
     check(n && sameKeys(n, ['id', 'kind', 'title', 'sub', 'link', 'refId', 'by', 'createdAt', 'readAt']) && n.kind === 'broadcast' && n.title === 'הודעה ממנהלת' && n.sub === 'מחר מתחילים ב־7' && n.link === '/tasks' && n.refId === bAll && n.readAt === null, 'each recipient: notification b_<id> as notify() writes it', n);
-    check(!(await docOf(`users/syn-mgr/notifications/b_${bAll}`)), 'the sender is not notified');
+    check((await docOf(`users/syn-mgr/notifications/b_${bAll}`))?.readAt === null, 'sender starts unread');
     const jobs = (await pushJobs()).filter((j) => j.refId === bAll);
-    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
-      'one push job for the phones (urgent, tagged b_<id>, sender excluded)', jobs[0]);
+    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
+      'one push job for the phones (urgent, tagged b_<id>, sender included)', jobs[0]);
     const again = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
     check(again.json.data.replayed === true && again.json.data.broadcastId === bAll && (await listCol('broadcasts')).length === 1 && (await pushJobs()).length === jobs0 + 1, 'replay: same broadcast, no second send');
     const v = await w(MGR, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
@@ -246,16 +246,16 @@ try {
     await seed(`broadcasts/${bAll}/reads/syn-staff`, { id: 'syn-staff', uid: 'syn-staff', name: 'רונית לוי', at: now, seenAt: now });
     await seed(`broadcasts/${bAll}/reads/syn-staff2`, { id: 'syn-staff2', uid: 'syn-staff2', name: 'יואב כהן', seenAt: now });
     const rd = await r(MGR, `/v1/broadcasts/${bAll}/reads`);
-    check(rd.status === 200 && rd.json.data.items.length === 3 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
+    check(rd.status === 200 && rd.json.data.items.length === 2 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
     check((await r(STAFF, `/v1/broadcasts/${bAll}/reads`)).status === 403, 'staff cannot list read receipts');
 
     // resend: only the people without a read receipt; their notification comes back as new
     await fetch(`${DOCS}/users/syn-staff2/notifications/b_${bAll}?updateMask.fieldPaths=readAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { readAt: enc(now) } }) });
     const jobs1 = (await pushJobs()).length;
     const rs = await w(MGR, 'broadcasts.resend', { broadcastId: bAll });
-    check(rs.status === 200 && rs.json.data.notified === 3 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 3 unread people notified', rs.json);
+    check(rs.status === 200 && rs.json.data.notified === 4 && rs.json.data.created === 4 && rs.json.data.queued === 1 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 4 unread people notified', rs.json);
     const newJob = (await pushJobs()).filter((j) => j.refId === bAll).find((j) => !j.to.includes('syn-staff'));
-    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
+    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
     check((await docOf(`users/syn-staff2/notifications/b_${bAll}`)).readAt === null, 'their notification is new again (same id)');
     check((await w(STAFF, 'broadcasts.resend', { broadcastId: bAll })).status === 403, 'staff cannot resend');
     check((await w(MGR, 'broadcasts.delete', { broadcastId: bTeam })).status === 403, 'a manager cannot delete a broadcast (owner only)');
@@ -280,10 +280,10 @@ try {
     check((await w(MGR, 'notifications.send', { uids: ['syn-staff2'], title: 'x', link: 'https://evil.example' })).status === 400, 'a link outside the app → 400');
     check((await w(MGR, 'notifications.send', { uids: ['syn-blocked'], title: 'x', link: '/tasks' })).status === 400, 'a blocked person → 400');
     const jobs0 = (await pushJobs()).length;
-    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
+    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
     const nid = ns.json.data?.notificationId;
     const nd = await docOf(`users/syn-staff/notifications/${nid}`);
-    check(ns.status === 201 && ns.json.data.notified === 2 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && !(await docOf(`users/syn-mgr/notifications/${nid}`)) && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, never to the sender', ns.json);
+    check(ns.status === 201 && ns.json.data.notified === 3 && ns.json.data.accepted && ns.json.data.created === 3 && ns.json.data.queued === 1 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && (await docOf(`users/syn-mgr/notifications/${nid}`))?.readAt === null && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, includes the selected sender', ns.json);
   }
 
   section('people');
@@ -817,13 +817,18 @@ try {
       check(outsideNotice.status === 403 && outsideNotice.json.error.details.requiredScope === 'notify:all', 'team-only scope denies personal notifications to external recipients');
 
       const toSelf = { title: 'private-acceptance-title', sub: 'private-acceptance-body', link: '/farm', uids: ['syn-mgr'] };
-      check((await w(lk, 'notifications.send', toSelf)).status === 400, 'by default a self-only personal notification is rejected');
-      const delivered = await w(lk, 'notifications.send', { ...toSelf, includeSelf: true });
-      const mineId = delivered.json.data.notificationId;
+      const sentToMe = await w(lk, 'notifications.send', toSelf);
+      const mineId = sentToMe.json.data.notificationId;
+      const others = await w(lk, 'notifications.send', { ...toSelf, uids: ['syn-staff'], includeSelf: true, push: false });
+      check(others.json.data.created === 1 && others.json.data.queued === 0 &&
+        !(await docOf(`users/syn-mgr/notifications/${others.json.data.notificationId}`)), 'a legacy flag adds no recipient');
+      const legacy = await w(lk, 'notifications.send', { ...toSelf, includeSelf: false, push: false });
+      check(legacy.json.data.created === 1 && legacy.json.data.queued === 0 &&
+        !!(await docOf(`users/syn-mgr/notifications/${legacy.json.data.notificationId}`)), 'a legacy false flag does not exclude the sender');
       const mine = await docOf(`users/syn-mgr/notifications/${mineId}`);
-      check(delivered.status === 201 && delivered.json.data.notified === 1 && mine?.readAt === null
-        && (await pushJobs()).some((job) => job.includeSelf === true && job.to.join() === 'syn-mgr'), 'an explicit self notification is unread and queued for push');
-      const privateLog = await logOf(delivered.json.meta.requestId);
+      check(sentToMe.status === 201 && sentToMe.json.data.notified === 1 && mine?.readAt === null
+        && (await pushJobs()).some((job) => job.to.join() === 'syn-mgr'), 'a self-only notification is unread and queued for push');
+      const privateLog = await logOf(sentToMe.json.meta.requestId);
       check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
       check(!(await listCol('activity')).some((row) => JSON.stringify(row).includes('private-acceptance-')), 'personal notification data is absent from team activity');
 
@@ -834,7 +839,7 @@ try {
       check(sent.status === 201 && sent.json.data.notified === sent.json.data.recipientCount
         && (await docOf(`users/syn-mgr/notifications/b_${bid}`))?.readAt === null
         && !(await docOf(`broadcasts/${bid}/reads/syn-mgr`))
-        && (await pushJobs()).some((job) => job.refId === bid && job.includeSelf && job.to.includes('syn-mgr')), 'includeSelf reaches the sender’s bell and push queue without a read receipt');
+        && (await pushJobs()).some((job) => job.refId === bid && job.to.includes('syn-mgr')), 'a selected sender reaches their bell and push queue without a read receipt');
       const replay = await w(lk, 'broadcasts.send', body, sameKey);
       check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'idempotent broadcast replay keeps one sent activity row');
       ok(await w(lk, 'broadcasts.resend', { broadcastId: bid }), 'resends a normal team broadcast');

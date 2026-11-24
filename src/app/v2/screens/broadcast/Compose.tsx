@@ -8,7 +8,8 @@ import { back } from '../../../router';
 import type { ScreenProps } from '../../ctx';
 import { OUTSIDE_AUDIENCES, type BroadcastAudience } from '../../../types';
 import { ddmm } from '../../format';
-import { AUDIENCES, EMAIL_CAP, TEAM_AUDIENCES, TEXT_MAX, audienceLabel, emailTargets, isOutside, pushTitle, sendBroadcast, useAudiences } from '../../data/broadcast';
+import { AUDIENCES, EMAIL_CAP, TEAM_AUDIENCES, TEXT_MAX, audienceLabel, broadcastReceiptText, emailTargets, isOutside, pushTitle, sendBroadcast, useAudiences } from '../../data/broadcast';
+import { usePushConfig } from '../../data/push';
 
 /** Where the messages list lives now (Q25, inside People). */
 export const MESSAGES_PATH = '/manage/people?tab=messages';
@@ -17,20 +18,19 @@ const sendLabel = (n: number, registrants: boolean) =>
   n === 0 ? 'שליחה' : registrants ? (n === 1 ? 'שליחה להזמנה אחת' : `שליחה ל־${n} הזמנות`) : n === 1 ? 'שליחה לאדם אחד' : `שליחה ל־${n} אנשים`;
 
 export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
+  const push = usePushConfig();
   const toast = useToast();
   const wanted = (AUDIENCES as string[]).includes(params.audience) ? (params.audience as BroadcastAudience) : 'all';
   const [text, setText] = useState((params.text || '').slice(0, TEXT_MAX));
   const [audience, setAudience] = useState<BroadcastAudience>(wanted);
   const [eventId, setEventId] = useState(params.event || '');
   const [urgent, setUrgent] = useState(params.urgent === '1');
-  const [includeSelf, setIncludeSelf] = useState(false);
   const [mail, setMail] = useState(false);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const { members, event, candidates } = useAudiences(ctx, eventId || undefined);
   const to = members[audience];
   const n = to.length;
-  const inAudience = to.some((p) => p.uid === ctx.user.uid);
   const targets = emailTargets(to, ctx.user.uid);
   const canSend = !busy && text.trim().length > 0 && n > 0;
 
@@ -45,9 +45,9 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
     setBusy(true);
     try {
       const withEvent = (audience === 'crew' || audience === 'vendors' || audience === 'registrants') && event;
-      await sendBroadcast(ctx.actor, { text, audience, urgent, includeSelf: inAudience && includeSelf, ...(withEvent ? { eventId: event.id } : {}) }, to.map((p) => p.uid),
+      const { receipt } = await sendBroadcast(ctx.actor, { text, audience, urgent, ...(withEvent ? { eventId: event.id } : {}) }, to.map((p) => p.uid),
         { email: mail ? targets.send.map((p) => p.uid) : [] });
-      toast.show({ text: n === 1 ? 'נשלח לאדם אחד' : `נשלח ל־${n} אנשים` });
+      toast.show({ text: broadcastReceiptText(receipt, push.mode !== 'off') });
       go(MESSAGES_PATH, true);
     } catch (e) {
       toast.refused(`לא נשמר. ${(e as Error).message}`);
@@ -56,8 +56,8 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
   }
 
   const option = (a: BroadcastAudience) => ({ value: a, label: `${audienceLabel(a, event?.title)} · ${members[a].length}` });
-  const mailMeta = !targets.withoutPush ? 'כולם מקבלים התראות בטלפון'
-    : targets.mailable > EMAIL_CAP ? `${targets.withoutPush} מהם לא מקבלים התראות בטלפון. המייל יגיע ל־${EMAIL_CAP} מהם`
+  const mailMeta = !targets.withoutPush ? 'לכל הנמענים מופעלות התראות לטלפון'
+    : targets.mailable > EMAIL_CAP ? `${targets.withoutPush} מהם לא מקבלים התראות בטלפון. המייל ייכנס לתור עבור עד ${EMAIL_CAP} מהם`
     : `${targets.withoutPush} מהם לא מקבלים התראות בטלפון`;
   return (
     <AppScreen variant="form" bar={
@@ -78,8 +78,6 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
       <ChoiceGroup<'normal' | 'urgent'> label="איך" value={urgent ? 'urgent' : 'normal'} onChange={(v) => setUrgent(v === 'urgent')}
         options={[{ value: 'normal', label: 'רגילה' }, { value: 'urgent', label: 'דחופה, נשארת בראש עד שרואים' }]} />
       <ListCard>
-        {inAudience && <Row className="broadcast-mailrow" title="גם אלי"
-          actions={<Toggle checked={includeSelf} onChange={setIncludeSelf} label="גם אלי" />} />}
         <Row className="broadcast-mailrow" title="לשלוח גם במייל" meta={mailMeta}
           actions={<Toggle checked={mail && targets.mailable > 0} onChange={(v) => setMail(v && targets.mailable > 0)} label="לשלוח גם במייל" />} />
       </ListCard>
@@ -87,7 +85,7 @@ export function BroadcastCompose({ ctx, params }: ScreenProps): ReactNode {
         <span className="broadcast-note">אורחים רואים את ההודעה באפליקציה, ליד הכרטיסים שלהם.</span>
       ) : (
         <div className="broadcast-preview">
-          <span className="k-group__label">כך זה יקפוץ בטלפון</span>
+          <span className="k-group__label">תצוגה מקדימה של התראה בטלפון</span>
           <div className="broadcast-phone">
             <span className="broadcast-phone__icon" aria-hidden="true"><Icon name="farm" size={20} /></span>
             <div className="broadcast-phone__body">

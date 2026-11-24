@@ -5,7 +5,7 @@ import { requireScope, TEAM_ROLES } from '../auth';
 import { ApiError, invalid } from '../http';
 import type { Firestore, Write } from '../firestore';
 import { type Person, activity, forbidden, isOwner, mustGet, nowIso, project, todayIL } from '../core';
-import { notifyWrites, appLink } from '../notify';
+import { planNotification, appLink } from '../notify';
 import { autoId } from '../util';
 import { bool, def, type Ctx, en, farmTime, opt, req, str } from '../writes';
 
@@ -73,36 +73,33 @@ const notice = (b: { id: string; text: string; audience: string; urgent: boolean
 });
 
 // sendBroadcast()
-def('broadcasts.send', 'broadcasts:write', 'שליחת הודעה לצוות (מגיעה כהתראה באפליקציה ובטלפון)', {
+def('broadcasts.send', 'broadcasts:write', 'שליחת הודעה לצוות (התראה באפליקציה ותור שליחה לטלפון)', {
   text: str(200, 'ההודעה', true, 1), audience: en([...AUDIENCES], AUDIENCE_HE, true), urgent: bool('דחוף: נשארת בראש המסך עד שקוראים', false),
   eventId: opt('לצוות האירוע / בעלי הדוכנים: איזה אירוע (ברירת מחדל: של היום או הבא)'),
-  includeSelf: { type: 'bool', default: false, omitWhenFalse: true, he: 'גם לשולח, אם הוא בקהל' },
+  includeSelf: { type: 'bool', omitWhenFalse: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
   preview: bool('true: רק מחזיר למי זה יגיע, בלי לשלוח', false),
 }, async (c) => {
   const i = c.input;
   requireBroadcastScopes(c, i.audience, !!i.urgent);
   if ((i.audience === 'crew' || i.audience === 'vendors') === false && i.eventId) throw invalid('eventId', 'eventId is only for the crew and vendors audiences');
   const { members, event } = await resolveAudience(c.fs, i.audience, i.eventId);
-  const to = [...new Set(members.map((m) => m.uid))];
+  const to = notificationTargets(members.map((m) => m.uid));
   if (i.preview) return { writes: [], refs: [], data: { preview: true, recipientCount: to.length, recipients: members, event } };
   if (!to.length) throw invalid('audience', 'nobody is in this audience right now (אין למי לשלוח)');
   if (to.length > 500) throw invalid('audience', `this audience has ${to.length} people; a broadcast reaches at most 500`);
   const id = autoId();
   const createdAt = nowIso();
   const b = { id, text: i.text, audience: i.audience, urgent: !!i.urgent, by: c.me, createdAt, recipients: to, recipientCount: to.length, resentAt: null, ...(event ? { eventId: event.id } : {}) };
-  const writes: Write[] = [c.fs.create('broadcasts', id, b)];
-  // the sender wrote it, so it is read for them (and no card shows on their own phone)
-  if (!i.includeSelf && to.includes(c.me.uid)) writes.push(c.fs.set(`broadcasts/${id}/reads`, c.me.uid, { id: c.me.uid, uid: c.me.uid, name: c.me.name, at: createdAt, seenAt: createdAt }));
-  const notified = notificationTargets(to, c.me.uid, i.includeSelf);
-  writes.push(
+  const send = planNotification(c.fs, to, notice(b, c.me));
+  const writes: Write[] = [c.fs.create('broadcasts', id, b),
     activity(c.fs, c.me, 'message', id, 'message_sent', messageActivityText(b.audience, b.recipientCount, b.urgent, b.text), { eventId: event?.id }),
-    ...notifyWrites(c.fs, notified, { ...notice(b, c.me), includeSelf: i.includeSelf }),
-  );
-  return { status: 201, writes, refs: [{ col: 'broadcasts', id, expected: { text: b.text, recipientCount: b.recipientCount } }], data: { broadcastId: id, recipientCount: to.length, notified: notified.length, event } };
+    ...send.writes,
+  ];
+  return { status: 201, writes, refs: [{ col: 'broadcasts', id, expected: { text: b.text, recipientCount: b.recipientCount } }], data: { broadcastId: id, recipientCount: to.length, notified: send.receipt.created, ...send.receipt, event } };
 }, [
   'Confirm the text and the audience with the user first; preview=true shows who it reaches without sending (then send with a new Idempotency-Key).',
   'Urgent messages require broadcasts:urgent. Broadcasts outside the team require notify:all.',
-  'Each recipient gets an in-app notification and a phone push (urgent: high priority, stays on screen). The sender is counted when in the audience. By default their copy starts read and they receive no notification. Set includeSelf=true for an unread copy, an in-app notification and a push.',
+  'When the sender is in the audience, their in-app copy starts unread. The response reports accepted, created (number of in-app records written) and queued (number of push jobs written). When queued is positive, pushState reports enabled, paused, or off on the server. Phone delivery is unknown.',
 ]);
 
 // resendBroadcast()
@@ -113,14 +110,15 @@ def('broadcasts.resend', 'broadcasts:write', 'שליחה חוזרת של הוד�
   requireBroadcastScopes(c, audience, urgent);
   const reads = await c.fs.query({ from: [{ collectionId: 'reads' }], limit: 1000 }, `broadcasts/${b.id}`);
   const read = new Set(reads.filter((r) => !!r.data.at).map((r) => String(r.data.uid || r.id)));
-  const to = ((b.data.recipients as string[]) || []).filter((u) => !read.has(u) && u !== c.me.uid);
-  if (!to.length) return { writes: [], refs: [{ col: 'broadcasts', id: b.id }], data: { notified: 0, changed: false } };
+  const unread = ((b.data.recipients as string[]) || []).filter((u) => !read.has(u));
+  if (!unread.length) return { writes: [], refs: [{ col: 'broadcasts', id: b.id }], data: { accepted: true, created: 0, queued: 0, notified: 0, changed: false } };
+  const send = planNotification(c.fs, unread, notice({ id: b.id, text: String(b.data.text), audience, urgent, by: b.data.by as Person }, c.me));
   const now = nowIso();
   const writes: Write[] = [c.fs.patch('broadcasts', b.id, { resentAt: now }, b.updateTime),
-    activity(c.fs, c.me, 'message', b.id, 'message_resent', messageActivityText(audience, to.length, urgent), { eventId: String(b.data.eventId || '') }),
-    ...notifyWrites(c.fs, to, notice({ id: b.id, text: String(b.data.text), audience, urgent, by: b.data.by as Person }, c.me))];
-  return { writes, refs: [{ col: 'broadcasts', id: b.id, expected: { resentAt: now } }], data: { notified: to.length, changed: true } };
-}, ['Their notification comes back as new (same notification, not a second one). Nobody unread: "changed": false and nothing is sent.']);
+    activity(c.fs, c.me, 'message', b.id, 'message_resent', messageActivityText(audience, send.receipt.created, urgent), { eventId: String(b.data.eventId || '') }),
+    ...send.writes];
+  return { writes, refs: [{ col: 'broadcasts', id: b.id, expected: { resentAt: now } }], data: { notified: send.receipt.created, ...send.receipt, changed: true } };
+}, ['Each unread recipient gets their existing notification back as new, including the sender when unread. When everyone has read, created and queued are zero. When queued is positive, pushState reports enabled, paused, or off on the server. Phone delivery is unknown.']);
 
 // deleteBroadcast()
 def('broadcasts.delete', 'broadcasts:write', 'מחיקת הודעה לצוות (בעלים בלבד)', { broadcastId: req() }, async (c) => {
@@ -148,10 +146,10 @@ def('me.notifications.markRead', 'me:write', 'סימון ההתראות האיש
 }, ['Already-read notifications are left as they are ("marked" counts the ones changed).']);
 
 // notify(): a direct message to chosen people, for the assistant (kind "system", in the app's bell and as a phone push)
-def('notifications.send', 'notify:team', 'שליחת התראה אישית לאנשים מסוימים (בפעמון באפליקציה ובטלפון)', {
+def('notifications.send', 'notify:team', 'שליחת התראה אישית (התראה באפליקציה ואפשרות לשליחה לטלפון)', {
   uids: { type: 'stringList', maxItems: 200, maxLength: 128, required: true, he: 'uid של הנמענים (people.search / profiles.list)' },
   title: str(120, 'כותרת', true, 1), sub: str(240, 'טקסט'), link: str(200, 'נתיב באפליקציה שמתחיל ב־/ (לא קישור https), למשל /tasks/abc או /farm', true, 1),
-  includeSelf: { type: 'bool', default: false, omitWhenFalse: true, he: 'גם לשולח, אם הוא ברשימת הנמענים' },
+  includeSelf: { type: 'bool', omitWhenFalse: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
   push: bool('גם התראה בטלפון', true), urgent: bool('דחוף (בטלפון: נשאר על המסך)', false),
 }, async (c) => {
   const i = c.input;
@@ -163,9 +161,16 @@ def('notifications.send', 'notify:team', 'שליחת התראה אישית לא�
   const inactive = people.filter((p) => p.data.status !== 'active').map((p) => p.id);
   if (inactive.length) throw invalid('uids', `not active: ${inactive.join(', ')}`);
   if (people.some((p) => !TEAM_ROLES.has(String(p.data.role)))) requireScope(c.caller, 'notify:all');
-  const to = notificationTargets(uids, c.me.uid, i.includeSelf);
-  if (!to.length) throw invalid('uids', 'nobody to notify (you do not notify yourself)');
+  if (!uids.length) throw invalid('uids', 'choose at least one recipient');
+  const to = notificationTargets(uids);
   const id = autoId();
-  const writes = notifyWrites(c.fs, to, { id, kind: 'system', title: i.title, sub: i.sub || '', link: appLink(i.link), by: c.me, push: i.push, urgent: i.urgent, includeSelf: i.includeSelf });
-  return { status: 201, writes, refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { title: i.title.slice(0, 120) } })), data: { notificationId: id, notified: to.length } };
-}, ['Confirm the text and the people with the user first. The person sees it in the app\'s notifications (and on the phone when push is on and they allow it).', 'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.', 'notify:team limits recipients to active team members. notify:all also allows other active profiles. includeSelf=true includes the sender when listed.'], ['notify:all']);
+  const kind = 'system';
+  const send = planNotification(c.fs, to, { id, kind, title: i.title, sub: i.sub || '', link: appLink(i.link), by: c.me, push: i.push, urgent: i.urgent });
+  const { receipt } = send;
+  return { status: 201, writes: send.writes, refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { title: i.title } })), data: { notificationId: id, notified: receipt.created, ...receipt } };
+}, [
+  'Confirm the text and recipients with the user first. The sender gets a copy when listed. push=false writes only the in-app copies.',
+  'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.',
+  'notify:team limits chosen recipients to active team members. notify:all also allows other active profiles.',
+  'accepted confirms the request was processed, created counts in-app records written and queued counts push jobs written. When queued is positive, pushState reports enabled, paused, or off on the server. Phone delivery is unknown.',
+], ['notify:all']);

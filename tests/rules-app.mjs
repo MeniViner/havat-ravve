@@ -851,7 +851,17 @@ try{
  await v2no(setDoc(doc(vol,'push_jobs','j2'),job('j2','vol',{kind:'broadcast'})),'broadcast 21 staff broadcast push');
  await v2no(setDoc(doc(vol,'push_jobs','j3'),job('j3','noa')),'broadcast 21 createdBy someone else');
  await v2no(setDoc(doc(vol,'push_jobs','j4'),job('j4','vol',{to:Array.from({length:201},(_,i)=>'u'+i)})),'broadcast 21 to 201');
- await v2no(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'broadcast 21 to self');
+ await v2ok(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'staff queues a task including self');
+ for(const [who, db_, kind] of [['owner',owner,'system'],['mgr',mgr,'broadcast'],['vol',vol,'task'],['raz',raz,'vendor']]){
+  const id = 'self-'+who;
+  const batch = writeBatch(db_);
+  batch.set(doc(db_,'users',who,'notifications',id),note(id,who,{kind}));
+  batch.set(doc(db_,'push_jobs',id),job(id,who,{kind,to:[who]}));
+  await v2ok(batch.commit(), `${who}: self notification and push commit together`);
+ }
+ await v2ok(setDoc(doc(mgr,'push_jobs','old-self'),job('old-self','mgr',{kind:'broadcast',to:['mgr'],includeSelf:true})),'a cached manager client can still write includeSelf');
+ await v2no(setDoc(doc(vol,'push_jobs','denied-self'),job('denied-self','vol',{kind:'system',to:['vol']})),'staff cannot send a system push to self');
+ await v2no(setDoc(doc(raz,'push_jobs','denied-vendor-self'),job('denied-vendor-self','raz',{kind:'task',to:['raz']})),'vendor cannot send a task push to self');
  await v2no(setDoc(doc(vol,'push_jobs','j6'),job('j6','vol',{sentAt:now})),'push created sent');
  await v2ok(setDoc(doc(mgr,'push_jobs','j7'),job('j7','mgr',{kind:'broadcast'})),'manager broadcast push');
  await v2ok(setDoc(doc(raz,'push_jobs','j8'),job('j8','raz',{kind:'vendor'})),'vendor queues a vendor push');

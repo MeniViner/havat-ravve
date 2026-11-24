@@ -100,7 +100,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const demo = useDemo();
   const { items } = useItems(ctx);
   const messages = useMyBroadcasts(p.uid, 30);
-  const msgs = messages.items.filter((b) => b.by?.uid !== p.uid);
+  const msgs = messages.items;
   const [sheet, setSheet] = useState<'notify' | 'receipt' | null>(null);
   const toast = useToast();
   const questions = registrationQuestions(ctx.settings.registrationFields);
@@ -255,7 +255,7 @@ export function MessagesPage({ ctx }: { ctx: GuestCtx }) {
   const events = useEvents();
   const messages = useMyBroadcasts(p?.uid || '', 30);
   if (!p) return <SignInPage ctx={ctx} next="/me/messages" />;
-  const list = messages.items.filter((b) => b.by?.uid !== p.uid);
+  const list = messages.items;
   const flip = (on: boolean) => setUpdatesOptIn(p.uid, on).then(() => toast.show({ text: on ? 'עדכונים על אירועים חדשים: פעיל' : 'לא תקבלו עדכונים על אירועים חדשים', check: true, actions: [{ label: 'ביטול', onClick: () => void setUpdatesOptIn(p.uid, !on) }] }), (e) => toast.refused(`לא נשמר. ${authErrorMessage(e)}`));
   return (
     <AppScreen variant="detail" gap={12}>

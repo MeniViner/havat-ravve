@@ -269,7 +269,9 @@ Keys with no `scopes` continue to follow their actor’s current role. Explicit 
 
 ### Messages and activity
 
-`broadcasts.send` and `notifications.send` accept `includeSelf: true`. The sender must already be in the audience or recipient list. Their notification starts unread, and push follows their normal device and preference settings. The app offers **גם אלי** when the writer belongs to the selected audience.
+`broadcasts.send`, `broadcasts.resend` and `notifications.send` include the sender when they match the selected audience or recipient list. The copy starts unread, and phone push follows the person's preferences and registered devices. Existing API clients can still pass `includeSelf` with either value. It has no effect.
+
+Send responses distinguish `accepted` (the operation was processed), `created` (in-app notification records written, including refreshed copies on resend), and `queued` (push jobs written). When jobs are queued, `pushState` indicates whether the Worker is enabled, paused, or off for phone push. An acknowledged job does not establish that a phone displayed an alert.
 
 | App write area | Activity record |
 | --- | --- |

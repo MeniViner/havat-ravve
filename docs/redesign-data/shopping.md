@@ -55,7 +55,7 @@ Existing actions: added, edited, bought, found, unbought, deleted. New: `unavail
 - trip start: kind 'trip', "יואב יוצא לסופר עכשיו", push on, action {label 'הוספה', kind 'addToTrip'}, link `/shopping?list=super`.
 - trip close: kind 'trip', "הקנייה בסופר נסגרה", sub "5 נקנו · קפה שחור לא היה", push off, link `/shopping/trip/done?id=`.
 - urgent add (`addShopItem` with urgent): kind 'urgent', "דחוף לכולם".
-Recipients: active staff, managers and owners; notify() leaves out the sender.
+Recipients include all active staff, managers and owners, including the shopper when on the team.
 
 ## Rules needed (`firestore.rules`)
 

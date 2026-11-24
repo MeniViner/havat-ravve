@@ -112,11 +112,11 @@ export function deskLevels(scopes: string[] | null): Levels {
 /** The scopes after a change of levels: only the areas that changed are rewritten, so a key that holds part of an area keeps exactly that part. */
 export function deskScopes(before: string[] | null, levels: Levels): string[] {
   const old = deskLevels(before);
-  const known = new Set(DESK_AREAS.flatMap((a) => [...a.read, ...a.write]));
+  const known = new Set<string>(DESK_AREAS.flatMap((a) => [...a.read, ...a.write]));
   const keep = (before || []).filter((s) => !known.has(s)); // a scope this list does not know yet stays as it is
   for (const a of DESK_AREAS) {
     const l = levels[a.id] || 'none';
-    if (before && l === old[a.id]) keep.push(...before.filter((s) => a.read.includes(s) || a.write.includes(s)));
+    if (before && l === old[a.id]) keep.push(...before.filter((s) => [...a.read, ...a.write].some((scope) => scope === s)));
     else if (l !== 'none') keep.push(...a.read, ...(l === 'write' ? a.write : []));
   }
   return [...new Set(keep)].sort();

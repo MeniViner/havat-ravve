@@ -4,7 +4,7 @@
 import type { Firestore, Write } from './firestore';
 import type { Person } from './core';
 import { nowIso } from './core';
-import { notificationTargets } from '../../shared/message-activity';
+import { notificationTargets, type SendReceipt } from '../../shared/message-activity';
 import { autoId } from './util';
 
 export type NotifyKind = 'task' | 'urgent' | 'trip' | 'broadcast' | 'event' | 'system' | 'vendor' | 'visit' | 'donation' | 'payment';
@@ -13,7 +13,6 @@ export type NotifySpec = {
   action?: string; by: Person;
   /** Also queue a phone push (default true). */
   push?: boolean;
-  includeSelf?: boolean;
   /** A stable notification id (same for every recipient), e.g. `b_<broadcastId>`; writing it again brings it back as new. */
   id?: string;
   urgent?: boolean;
@@ -24,10 +23,9 @@ export type NotifySpec = {
 export const appLink = (link: string) => (/^\/(?!\/)/.test(link) ? link : '/' + link.replace(/^[a-z]+:\/\/[^/]*\/?/i, '').replace(/^\/+/, ''));
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
-/** The writes that notify `uids` (duplicates removed, sender included only on request). Empty when nobody is left. */
-export function notifyWrites(fs: Firestore, uids: string[], n: NotifySpec): Write[] {
-  const to = notificationTargets(uids, n.by.uid, n.includeSelf);
-  if (!to.length) return [];
+/** The in-app records and push jobs to commit together with the action. */
+export function planNotification(fs: Firestore, uids: string[], n: NotifySpec): { writes: Write[]; receipt: SendReceipt } {
+  const to = notificationTargets(uids);
   const createdAt = nowIso();
   const link = appLink(n.link);
   const out: Write[] = [];
@@ -38,16 +36,16 @@ export function notifyWrites(fs: Firestore, uids: string[], n: NotifySpec): Writ
       ...(n.action ? { action: n.action } : {}), by: n.by, createdAt, readAt: null,
     }));
   }
-  if (n.push !== false) {
-    for (let i = 0; i < to.length; i += 200) {
-      const id = autoId();
-      const targets = to.slice(i, i + 200);
-      out.push(fs.set('push_jobs', id, {
-        id, kind: n.kind, title: clip(n.title, 80), body: clip(n.sub || '', 180), link, to: targets,
-        ...(n.includeSelf && targets.includes(n.by.uid) ? { includeSelf: true } : {}),
-        createdBy: n.by, createdAt, sentAt: null, urgent: !!n.urgent, tag: n.tag || id, refId: n.refId || '',
-      }));
-    }
+  let queued = 0;
+  for (let i = 0; n.push !== false && i < to.length; i += 200) {
+    const id = autoId();
+    out.push(fs.set('push_jobs', id, {
+      id, kind: n.kind, title: clip(n.title, 80), body: clip(n.sub || '', 180), link, to: to.slice(i, i + 200),
+      createdBy: n.by, createdAt, sentAt: null, urgent: !!n.urgent, tag: n.tag || id, refId: n.refId || '',
+    }));
+    queued++;
   }
-  return out;
+  return { writes: out, receipt: { accepted: true, created: to.length, queued } };
 }
+
+export const notifyWrites = (fs: Firestore, uids: string[], n: NotifySpec) => planNotification(fs, uids, n).writes;

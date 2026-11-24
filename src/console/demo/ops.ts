@@ -132,11 +132,11 @@ presence.remove|הסרת רישום נוכחות מהיומן|presence:write|||i
 calendar.create|הוספת פריט ליומן החווה (פגישה, הכנות לפסטיבל, פריט אחר)|calendar:write|||title*:s200,date*:d,from:T,to:T,time:T,audience:eall/managers=all,participants:L30,reminder:b=true,kind:emanual/meeting/planning=manual
 calendar.update|עדכון פריט ביומן (שינוי תאריך או שעה קובע מחדש את התזכורת)|calendar:write|||itemId*:i,title:s200,date:d,from:T,to:T,time:T,allDay:b,audience:eall/managers,participants:L30,reminder:b,kind:emanual/meeting/planning
 calendar.delete|מחיקת פריט מהיומן|calendar:write|||itemId*:i
-broadcasts.send|שליחת הודעה לצוות (מגיעה כהתראה באפליקציה ובטלפון)|broadcasts:write|||text*:s200,audience*:eall/farmToday/managers/crew/vendors,urgent:b=false,eventId:i,preview:b=false
+broadcasts.send|שליחת הודעה לצוות (התראה באפליקציה ותור שליחה לטלפון)|broadcasts:write|||text*:s200,audience*:eall/farmToday/managers/crew/vendors,urgent:b=false,eventId:i,preview:b=false
 broadcasts.resend|שליחה חוזרת של הודעה לצוות, רק למי שעוד לא קרא|broadcasts:write|||broadcastId*:i
 broadcasts.delete|מחיקת הודעה לצוות (בעלים בלבד)|broadcasts:write|||broadcastId*:i
 me.notifications.markRead|סימון ההתראות האישיות שלי כנקראו|me:write|||ids:L100,all:b=false
-notifications.send|שליחת התראה אישית לאנשים מסוימים (בפעמון באפליקציה ובטלפון)|notify:write|||uids*:L200,title*:s120,sub:s240,link*:s200,push:b=true,urgent:b=false
+notifications.send|שליחת התראה אישית (התראה באפליקציה ואפשרות לשליחה לטלפון)|notify:team|||uids*:L200,title*:s120,sub:s240,link*:s200,push:b=true,urgent:b=false
 people.delete|מחיקת אדם מהאפליקציה (בעלים בלבד)|people:write|||^,uid*:i
 visits.delete|מחיקת בקשת ביקור (עם הפריט ביומן והפריטים בתור ההתראות)|visits:write|||^,visitId*:i
 donations.paymentNotArrived|תרומה: "עוד לא הגיע" (חזרה להמתנה לתשלום)|donations:write|||^,donationId*:i

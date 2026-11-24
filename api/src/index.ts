@@ -13,7 +13,7 @@ import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
 import { runAccountDeletions } from './accounts';
 import { runEmail } from './email';
-import { runPush } from './push';
+import { pushQueueState, runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
 import { consoleCaller, consoleCors, consoleOpAt, consoleRoute, isConsolePath } from './console';
@@ -129,7 +129,8 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
       }
       log.replayed = r.replayed;
       audit.replayed = r.replayed; audit.result = r.data;
-      return { status: r.status, data: { ...r.data, replayed: r.replayed } };
+      const push = Number(r.data.queued) > 0 ? { pushState: pushQueueState(env, (await readSwitches(env)).pushPaused) } : {};
+      return { status: r.status, data: { ...r.data, ...push, replayed: r.replayed } };
     }
     throw new ApiError('NOT_FOUND', `no route for ${m} ${path}`);
   } finally {

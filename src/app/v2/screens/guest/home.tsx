@@ -62,7 +62,7 @@ function MessageCard({ profile, b, onDone }: { profile: Profile; b: Broadcast; o
 /** The newest message to me that I have not read ("ראיתי" writes my receipt). Nothing when all are read. */
 function Messages({ profile }: { profile: Profile }) {
   const mine = useMyBroadcasts(profile.uid, 10);
-  const recent = mine.items.filter((b) => b.by?.uid !== profile.uid && daysFromToday(b.createdAt) >= -MESSAGE_DAYS);
+  const recent = mine.items.filter((b) => daysFromToday(b.createdAt) >= -MESSAGE_DAYS);
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const [gone, setGone] = useState<string[]>([]);
   const onVerdict = (id: string, v: Verdict) => setVerdicts((s) => (s[id] === v ? s : { ...s, [id]: v }));

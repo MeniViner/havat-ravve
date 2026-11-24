@@ -202,7 +202,7 @@ export const useTrip = (id: string) => useDoc<ShoppingTrip>('shopping_trips/' + 
 
 // ---------- writes ----------
 const qtyPart = (q: string) => (q ? ' · ' + q : '');
-/** Team members to tell (C1 + push): active staff, managers and owners. notify() leaves out the sender. */
+/** Team members to tell (C1 + push): active staff, managers and owners. */
 export const teamUids = (team: Profile[]) => team.filter((p) => p.status === 'active' && ['staff', 'manager', 'owner'].includes(p.role)).map((p) => p.uid);
 
 export type NewShopItem = { title: string; qty?: string; note?: string; link?: string; category: ShoppingCategory; urgent?: boolean; photo?: string; taskId?: string };
