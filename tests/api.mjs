@@ -1602,6 +1602,16 @@ const ilDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: '
     const line = (sec.data?.items || []).find((x) => x.what === 'שינוי מתג' && x.detail.includes('בדיקה של הנוסח'));
     check(line?.ok === true && line.detail.includes('השהיית מיילים לנרשמים: דלוק') && line.detail.includes('השהיית הניקוי: דלוק') && !line.detail.includes('השהיית מיילים על תשלומים'), 'the security log names the switches and their new state', line);
 
+    await seed('users', 'cs-log-who', { uid: 'cs-log-who', email: 'w@synthetic.test', displayName: 'רות לוג', phone: '', role: 'guest', status: 'active', createdAt: t, updatedAt: t });
+    const conLine = (id, op, opHe, b) => seed('api_log', id, { id, at: new Date().toISOString(), credential: 'console', kind: 'write', op, opHe, ok: true, status: 200, ms: 5, keyLabel: 'קונסולה owner', body: JSON.stringify(b), result: '{}' });
+    await conLine('cs-det-role', 'people.setRole', 'שינוי תפקיד של אדם', { uid: 'cs-log-who', role: 'manager' });
+    await conLine('cs-det-block', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-log-who', status: 'blocked' });
+    await conLine('cs-det-job', 'console.jobs.run', 'הרצת משימה מתוזמנת', { id: 'cleanup' });
+    await conLine('cs-det-gone', 'people.setStatus', 'חסימה או שחרור של אדם', { uid: 'cs-no-such', status: 'active' });
+    await conLine('cs-det-null', 'people.setRole', 'שינוי תפקיד של אדם', null);
+    const det = (await get('/security?days=1')).data?.items?.map((x) => x.what + '|' + x.detail) || [];
+    check(['שינוי תפקיד של אדם|רות לוג · מנהל/ת', 'חסימה או שחרור של אדם|רות לוג · חסימה', 'הרצת משימה מתוזמנת|ניקוי רשומות ישנות', 'חסימה או שחרור של אדם|שחרור', 'שינוי תפקיד של אדם|'].every((x) => det.includes(x)), 'the security log says who and which way, and which job', det.slice(0, 8));
+
     // the send queue
     const q0 = new Date().toISOString();
     await seed('settings', 'app', { templates: { paymentConfirmation: 'שלום [שם], קיבלנו [סכום] עבור [עבור].' } });
