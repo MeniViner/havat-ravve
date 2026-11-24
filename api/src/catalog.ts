@@ -245,7 +245,7 @@ export const CATALOG = {
     envelope: 'Success: { ok: true, data, meta }. Failure: { ok: false, error: { code, message, he, details }, meta }.',
     unknownParams: 'Unknown query or body fields are rejected with 400.',
     files: 'Photos and files cannot be uploaded through the API: where a record holds a photo or a file, the API only accepts an https link (one the app already stored), and reads return photo flags (hasPhoto) instead of image data.',
-    notifications: 'Notifications the API creates (broadcasts.send/resend, notifications.send, people.setRole and every action that notifies in the app) reach people exactly like the app\'s: in the app\'s bell (users/<uid>/notifications) and, unless the operation says otherwise, as a phone push through the same outbox, for people who turned push on. The caller is never notified about their own action.',
+    notifications: 'Notifications are written to each selected recipient’s in-app bell (users/<uid>/notifications). The sender is included when selected. A queued job can exist while phone push is disabled. Sending also requires an eligible device and recipient preferences. Phone delivery remains unknown.',
     userAgent: 'Send a User-Agent header that names your client, e.g. "Instinct-HavatRavve/1.0". Cloudflare blocks Python urllib\'s default User-Agent before the request reaches this API: a plain-text 403 "error code: 1010" means it never arrived and nothing was written.',
   },
   errors: {
