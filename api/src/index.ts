@@ -17,7 +17,8 @@ import { runPush } from './push';
 import { handleFiles, isFilesPath } from './files';
 import { type Audit, auditDoc, keyLabel, writeAudit } from './audit';
 import { consoleCaller, consoleCors, consoleRoute, isConsolePath } from './console';
-import { CRON_GROUPS, type CronGroup, type JobRun, monitorStep, readMonitor, recordCron, saveGroup } from './monitor';
+import { CRON_GROUPS, type CronGroup, type JobRun, type MonitorState, addRound, backupTurn, cronGap, monitorStep, readGroups, readMonitorStrict, recordCron, roundOf, saveGroup } from './monitor';
+import { meter } from './meter';
 import { guardKeys, readSwitches, runCleanup } from './control';
 import { storedKeys } from './keys';
 import { runBackup, trashFor } from './backup';
@@ -224,8 +225,10 @@ export default {
    *   people (minute 1, 6, ...)  phone push, and account deletion after the grace period
    *   upkeep (minute 2, 7, ...)  the nightly backup, the night cleanup, watching (site, quota, the morning check)
    */
-  async scheduled(event: { cron?: string; scheduledTime?: number } | undefined, env: Env) {
+  async scheduled(event: { cron?: string; scheduledTime?: number } | undefined, bindings: Env) {
     const started = Date.now();
+    // what this run spends of the free plan's 50 subrequests, for the rounds strip on the jobs screen
+    const { env, used } = meter(bindings);
     const group = cronGroup(event);
     console.log(JSON.stringify({ cron: 'run', group, trigger: event?.cron || null }));
     // the owners' switches (control.ts): a paused job skips its turn
@@ -246,8 +249,8 @@ export default {
     };
     if (group === 'send') {
       // payment emails (email.ts): paused still queues payments, it only holds the sending
-      await step('email', () => runEmail(env, Date.now(), sw.emailPaused));
-      await saveGroup(env, 'send', ran, started).catch(() => {});
+      await step('email', () => runEmail(env, Date.now(), sw.emailPaused, sw.broadcastEmailPaused));
+      await saveGroup(env, 'send', ran, started, used).catch(() => {});
       return;
     }
     if (group === 'people') {
@@ -255,15 +258,17 @@ export default {
       await step('push', async () => (sw.pushPaused ? { cron: 'push', paused: true } : runPush(env)));
       // account deletion after the grace period: uids are never logged, only counts
       await step('accounts', () => runAccountDeletions(env));
-      await saveGroup(env, 'people', ran, started).catch(() => {});
+      await saveGroup(env, 'people', ran, started, used).catch(() => {});
       return;
     }
-    const prev = await readMonitor(env);
+    // a record that cannot be read is left alone: this run watches nothing and writes nothing over it
+    const prev: MonitorState | null = await readMonitorStrict(env).catch(() => null);
     // the nightly backup to R2 (backup.ts): nothing before 03:00 Israel time or once today's is done; one page per run
     await step('backup', async () => (sw.backupPaused ? null : runBackup(env)));
     // cleanup (control.ts): after tonight's backup, old logs and finished jobs go to the R2 archive, a page per run
     await step('cleanup', async () => (sw.cleanupPaused ? null : runCleanup(env)));
     // watching (monitor.ts): the site every 15 minutes, the free quota every hour, the morning check, alerts to owners
+    if (!prev) return;
     let mon = prev;
     if (!sw.monitorPaused) {
       const t = Date.now();
@@ -279,7 +284,11 @@ export default {
         ran.monitor = { at: new Date().toISOString(), ms: Date.now() - t, ok: false, result: { error: internal.slice(0, 120) } };
       }
     }
+    cronGap(mon, prev.at, started);
+    backupTurn(mon, ran.backup);
+    // this round's line, with what the send and people runs left (two KV reads); it goes into the same one KV write
+    const round = roundOf(ran, await readGroups(env), started, used() + 1);
     // the console's "last cron run": when it ran, how long it took, what it watched, each upkeep job's last result (one KV write)
-    await recordCron(env, { ...mon, jobs: { ...(prev.jobs || {}), ...ran }, wallMs: Date.now() - started }).catch(() => {});
+    await recordCron(env, { ...mon, rounds: addRound(mon.rounds, round), jobs: { ...(prev.jobs || {}), ...ran }, wallMs: Date.now() - started }).catch(() => {});
   },
 };

@@ -11,7 +11,7 @@
 
 export type WebPushSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
 export type Vapid = { publicKey: string; privateKey: string; subject: string };
-export type WebPushOptions = { ttl?: number; urgency?: 'very-low' | 'low' | 'normal' | 'high'; topic?: string };
+export type WebPushOptions = { ttl?: number; urgency?: 'very-low' | 'low' | 'normal' | 'high'; topic?: string; fetch?: typeof fetch };
 export type WebPushResult = { status: number; ok: boolean; gone: boolean; retry: boolean };
 
 const te = new TextEncoder();
@@ -124,7 +124,7 @@ export async function sendWebPush(sub: WebPushSubscription, payload: unknown, v:
   const topic = o.topic ? topicOf(o.topic) : '';
   if (topic) headers.topic = topic;
   let res: Response;
-  try { res = await fetch(sub.endpoint, { method: 'POST', headers, body, signal: AbortSignal.timeout(8000) }); }
+  try { res = await (o.fetch || fetch)(sub.endpoint, { method: 'POST', headers, body, signal: AbortSignal.timeout(8000) }); }
   catch { return { status: 0, ok: false, gone: false, retry: true }; }
   // the answer body is never read into a log: some services echo the endpoint
   await res.body?.cancel().catch(() => {});

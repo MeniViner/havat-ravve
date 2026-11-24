@@ -15,6 +15,8 @@ export type FcmEnv = {
   /** Test mode only (emulator + TEST_FAULTS): mock token and FCM endpoints. */
   GOOGLE_TOKEN_URL?: string;
   FCM_API_URL?: string;
+  /** meter.ts */
+  FETCH?: typeof fetch;
 };
 export type FcmResult = { status: number; ok: boolean; gone: boolean; retry: boolean };
 
@@ -63,7 +65,7 @@ export async function fcmToken(env: FcmEnv, tokenUrl = TOKEN_URL): Promise<strin
   const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await rsaKey(sa.private_key), new TextEncoder().encode(unsigned)));
   let res: Response;
   try {
-    res = await fetch(tokenUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + unsigned + '.' + b64url(sig), signal: AbortSignal.timeout(8000) });
+    res = await (env.FETCH || fetch)(tokenUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + unsigned + '.' + b64url(sig), signal: AbortSignal.timeout(8000) });
   } catch { throw new Error('Google token endpoint unreachable'); }
   // never log the body: it holds a token
   if (!res.ok) throw new Error(`Google token exchange failed (${res.status})`);
@@ -89,7 +91,7 @@ export async function sendFcm(env: FcmEnv, token: string, m: FcmMessage, urls: {
   };
   let res: Response;
   try {
-    res = await fetch(`${urls.api || FCM_URL}/v1/projects/${encodeURIComponent(fcmProject(env))}/messages:send`, { method: 'POST', headers: { authorization: 'Bearer ' + bearer, 'content-type': 'application/json' }, body: JSON.stringify({ message }), signal: AbortSignal.timeout(8000) });
+    res = await (env.FETCH || fetch)(`${urls.api || FCM_URL}/v1/projects/${encodeURIComponent(fcmProject(env))}/messages:send`, { method: 'POST', headers: { authorization: 'Bearer ' + bearer, 'content-type': 'application/json' }, body: JSON.stringify({ message }), signal: AbortSignal.timeout(8000) });
   } catch { return { status: 0, ok: false, gone: false, retry: true }; }
   const s = res.status;
   let code = '';
