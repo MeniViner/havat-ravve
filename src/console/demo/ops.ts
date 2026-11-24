@@ -152,7 +152,7 @@ tasks.setPhoto|תמונה למשימה (מה צריך לעשות)|tasks:complete
 tasks.setDonePhoto|תמונת ביצוע למשימה (אחרי שבוצעה), ואופציונלי הערת ביצוע|tasks:complete|||^,taskId*:i,donePhoto*:s300,note:s2000
 tasks.addShopping|פריט קנייה שנדרש למשימה (מקושר משני הצדדים)|shopping:write|||taskId*:i,title*:s200,qty:s40,note:s1000,link:s2000,category:esuper/building/online/giveaway=super,urgent:b=false,photo:s300
 shopping.setMissing|סימון פריט "אין" (לא היה בחנות בקנייה הזו), או ביטול הסימון|shopping:write|||^,itemId*:i,tripId:i,missing:b=true
-shopping.startTrip|יוצא/ת לקנות עכשיו: פתיחת קנייה לרשימה (הצוות מקבל התראה)|shopping:write|||list*:esuper/building/online/giveaway
+shopping.startTrip|המשך קנייה פתוחה או התחלת קנייה חדשה|shopping:write|||list*:esuper/building/online/giveaway
 shopping.closeTrip|סיימתי לקנות: סגירת הקנייה (מה נקנה ומה לא היה)|shopping:write|||tripId*:i
 shopping.deleteTrip|מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם|shopping:write|||tripId*:i
 shopping.reopenTrip|פתיחה מחדש של קנייה שנסגרה בטעות|shopping:write|||tripId*:i

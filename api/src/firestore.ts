@@ -378,8 +378,8 @@ export class Firestore {
   }
 
   /** Runs a query. `parent` is a document path ("events/abc") for a subcollection query. */
-  async query(structuredQuery: Record<string, unknown>, parent = ''): Promise<Doc[]> {
-    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery });
+  async query(structuredQuery: Record<string, unknown>, parent = '', transaction?: string): Promise<Doc[]> {
+    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery, ...(transaction ? { transaction } : {}) });
     return rows.filter((r) => r.document).map((r) => toDoc(r.document!));
   }
 

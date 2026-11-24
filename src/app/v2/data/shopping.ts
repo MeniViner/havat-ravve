@@ -83,11 +83,9 @@ export function suggestions(history: ShoppingItem[], open: ShoppingItem[], c: Sh
 }
 
 // ---------- trips ----------
-/** A trip left open longer than this is over (someone forgot to press "סיימתי"). */
-export const TRIP_MAX_HOURS = 8;
-export const isTripOpen = (t: ShoppingTrip, now = nowMs()) => !t.closedAt && now - new Date(t.startedAt).getTime() < TRIP_MAX_HOURS * 3600_000;
-export const activeTripOf = (trips: ShoppingTrip[], uid: string, now = nowMs()) =>
-  trips.filter((t) => t.by?.uid === uid && isTripOpen(t, now)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
+export const isTripOpen = (t: ShoppingTrip) => !t.closedAt;
+export const activeTripOf = (trips: ShoppingTrip[], uid: string) =>
+  trips.filter((t) => t.by?.uid === uid && isTripOpen(t)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
 export const lastClosedTripOf = (trips: ShoppingTrip[], uid: string) =>
   trips.filter((t) => t.by?.uid === uid && !!t.closedAt).sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || ''))[0] || null;
 /** Added by someone else after the trip started (S6 "נוסף עכשיו", S7 "דנה הוסיפה בזמן הקנייה"). */
@@ -196,8 +194,8 @@ export function useUrgentOpenCount(enabled = true) {
 }
 export const useShopItem = (id: string) => useDoc<ShoppingItem>('shopping/' + (id || '_'), !!id);
 export const useItemActivity = (id: string) => useActivityFor('shopping', id);
-/** The latest trips (a handful a week): enough to find mine and the one just closed. */
-export const useTrips = (enabled = true) => useList<ShoppingTrip>('shopping_trips', { orderBy: [['startedAt', 'desc']], limit: 20 }, enabled);
+/** Include older trips so an unclosed one is available to resume. */
+export const useMyTrips = (uid: string) => useList<ShoppingTrip>('shopping_trips', { where: [['by.uid', '==', uid]] }, !!uid);
 export const useTrip = (id: string) => useDoc<ShoppingTrip>('shopping_trips/' + (id || '_'), !!id);
 
 // ---------- writes ----------
@@ -266,18 +264,15 @@ export async function startTrip(actor: Actor, list: ShoppingCategory, trips: Sho
   if (mine) return mine.id;
   const now = nowIso();
   const id = newId('shopping_trips');
-  const ops: Parameters<typeof write.batch>[0] = trips.filter((t) => t.by?.uid === actor.uid && !t.closedAt).map((t) => ({ op: 'update' as const, col: 'shopping_trips', id: t.id, data: { closedAt: now } }));
   const trip: ShoppingTrip = { id, by: actor, list, startedAt: now, closedAt: null, bought: [], missing: [] };
-  ops.push(
-    { op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> },
-    activityOp(actor, 'shopping', id, 'opened', 'קנייה'),
-  );
-  await write.batch(ops);
   const name = first(actor.name);
-  void notify(teamUids(team), {
+  await notify(teamUids(team), {
     kind: 'trip', title: `${name} ${g(actor.name, 'יוצא', 'יוצאת')} ל${listLabel(list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' }, by: actor,
-  });
+  }, [
+    { op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> },
+    activityOp(actor, 'shopping', id, 'opened', 'קנייה'),
+  ]);
   return id;
 }
 /** "סיימתי לקנות": closes the trip with what was bought and what was missing, and tells the team (C1, no push). */

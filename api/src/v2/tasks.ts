@@ -122,36 +122,27 @@ def('shopping.setMissing', 'shopping:write', 'סימון פריט "אין" (לא
   return { writes, refs: [{ col: 'shopping', id: it.id, expected: { notAvailable: missing } }] };
 }, ['It stays on the open list ("לא היה, נשאר ברשימה").', 'Marking it missing needs tripId of a shopping trip (shoppingTrips.list); without one it is 400.']);
 
-/** A trip left open longer than this is over (TRIP_MAX_HOURS in data/shopping.ts). */
-const TRIP_MAX_MS = 8 * 3600_000;
-const isTripOpen = (t: Record<string, unknown>) => !t.closedAt && Date.now() - Date.parse(String(t.startedAt)) < TRIP_MAX_MS;
 /** firestore.rules shopping_trips update: only the shopper writes the trip. */
 function myTrip(c: Ctx, t: Doc) { if ((t.data.by as Person | null)?.uid !== c.me.uid) throw forbidden('only the person on this shopping trip can change it'); }
 
-// startTrip(): resumes my open trip, or opens one (closing my older unclosed ones) and tells the team
-def('shopping.startTrip', 'shopping:write', 'יוצא/ת לקנות עכשיו: פתיחת קנייה לרשימה (הצוות מקבל התראה)', { list: en([...SHOP_CATEGORIES], CAT_HE, true) }, async (c) => {
+// Resume the newest unclosed trip for this shopper, whatever list was requested.
+def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או התחלת קנייה חדשה', { list: en([...SHOP_CATEGORIES], CAT_HE, true) }, async (c) => {
   const mine = await c.fs.query({
     from: [{ collectionId: 'shopping_trips' }],
-    // equality filters only: no composite index
-    where: { compositeFilter: { op: 'AND', filters: [
-      { fieldFilter: { field: { fieldPath: 'by.uid' }, op: 'EQUAL', value: { stringValue: c.me.uid } } },
-      { unaryFilter: { field: { fieldPath: 'closedAt' }, op: 'IS_NULL' } },
-    ] } },
-    limit: 50,
-  });
-  const open = mine.filter((t) => isTripOpen(t.data)).sort((a, b) => String(b.data.startedAt).localeCompare(String(a.data.startedAt)))[0];
-  if (open) return { writes: [], refs: [{ col: 'shopping_trips', id: open.id }], data: { tripId: open.id, resumed: true } };
+    where: { fieldFilter: { field: { fieldPath: 'by.uid' }, op: 'EQUAL', value: { stringValue: c.me.uid } } },
+  }, '', c.tx);
+  const open = mine.filter((t) => !t.data.closedAt).sort((a, b) => String(b.data.startedAt).localeCompare(String(a.data.startedAt)))[0];
+  if (open) return { writes: [], refs: [{ col: 'shopping_trips', id: open.id }], data: { tripId: open.id, list: open.data.list, resumed: true } };
   const now = nowIso();
   const id = autoId();
-  const writes: Write[] = mine.map((t) => c.fs.patch('shopping_trips', t.id, { closedAt: now }, t.updateTime));
   const trip = { id, by: c.me, list: c.input.list, startedAt: now, closedAt: null, bought: [], missing: [] };
-  writes.push(c.fs.create('shopping_trips', id, trip));
+  const writes = [c.fs.create('shopping_trips', id, trip)];
   writes.push(...notifyWrites(c.fs, await teamUids(c.fs), {
     kind: 'trip', title: `${firstName(c.me.name)} ${gw(c.me.name, 'יוצא', 'יוצאת')} ל${listLabel(c.input.list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(c.input.list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' } as unknown as string, by: c.me,
   }));
-  return { status: 201, writes, refs: [{ col: 'shopping_trips', id, expected: { list: c.input.list, closedAt: null } }], data: { tripId: id, resumed: false } };
-}, ['Tells the whole team (in the app and by push) that you are going shopping: ask first. If you already have an open trip it is resumed, nothing is sent.']);
+  return { status: 201, writes, refs: [{ col: 'shopping_trips', id, expected: { list: c.input.list, closedAt: null } }], data: { tripId: id, list: trip.list, resumed: false } };
+}, ['Resumes the shopper's newest unclosed trip at any age and returns its actual list. Other trips are untouched. Only opening a new trip writes a team notification and queues a push.']);
 
 /** tripSummary() in data/shopping.ts: "5 נקנו · קפה שחור לא היה". */
 function tripSummary(bought: number, missing: string[]): string {

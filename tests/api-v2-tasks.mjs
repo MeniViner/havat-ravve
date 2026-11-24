@@ -415,16 +415,26 @@ try {
 
   section('shopping trips');
   {
-    // an old trip of mine left open (> 8 h): closed when a new one starts
     const old = new Date(Date.now() - 10 * 3600_000).toISOString();
+    const older = new Date(Date.now() - 20 * 3600_000).toISOString();
     await seed('shopping_trips/trip-old', { id: 'trip-old', by: ME.ronit, list: 'super', startedAt: old, closedAt: null, bought: [], missing: [] });
+    await seed('shopping_trips/trip-older', { id: 'trip-older', by: ME.ronit, list: 'online', startedAt: older, bought: [], missing: [] });
+    const resumed = await w(RONIT, 'shopping.startTrip', { list: 'building' });
+    check(resumed.status === 200 && resumed.json.data.resumed && resumed.json.data.tripId === 'trip-old' && resumed.json.data.list === 'super'
+      && (await docOf('shopping_trips/trip-old')).closedAt === null && !(await docOf('shopping_trips/trip-older')).closedAt
+      && !(await pushesFor('trip-old')).length && !(await acts('trip-old')).length
+      && !(await notesOf('syn-ronit')).some((n) => n.refId === 'trip-old'),
+    'resume the newest unclosed trip even after 8 hours, preserving its list and leaving both trips untouched', resumed.json);
+    for (const id of ['trip-old', 'trip-older']) {
+      await w(MGR, 'shopping.deleteTrip', { tripId: id });
+      check(!(await docOf('shopping_trips/' + id)), 'cleanup: ' + id + ' gone');
+    }
     const key = randomUUID();
     const s = await w(RONIT, 'shopping.startTrip', { list: 'super' }, key);
     check(s.status === 201 && s.json.data.resumed === false && s.json.data.verified, 'start a trip', s.json);
     const tripId = s.json.data.tripId;
     const trip = await docOf('shopping_trips/' + tripId);
     check(sameKeys(trip, TRIP_KEYS) && trip.id === tripId && trip.by.uid === 'syn-ronit' && trip.list === 'super' && trip.closedAt === null && !trip.bought.length && !trip.missing.length, 'trip document as startTrip writes it', trip);
-    check(!!(await docOf('shopping_trips/trip-old')).closedAt, 'my older unclosed trip is closed');
     const tn = (await notesOf('syn-noa')).filter((n) => n.refId === tripId);
     check(tn.length === 1 && tn[0].kind === 'trip' && tn[0].title === 'רונית יוצאת לסופר עכשיו' && tn[0].sub === 'צריך משהו? עוד אפשר להוסיף' && tn[0].link === '/shopping?list=super' && tn[0].action?.kind === 'addToTrip' && tn[0].action?.label === 'הוספה' && sameKeys(tn[0], [...NOTE_KEYS, 'action']), 'the team is told, with the "הוספה" action', tn);
     check((await pushesFor(tripId)).length === 1, 'with a push');
@@ -462,7 +472,7 @@ try {
     ok(await w(RONIT, 'shopping.reopenTrip', { tripId }), 'reopen');
     check((await docOf('shopping_trips/' + tripId)).closedAt === null, 'closedAt null again');
     const list = (await r(NOA, '/v1/shopping-trips')).json.data.items;
-    check(list[0].id === tripId && list.some((t) => t.id === 'trip-old'), 'shoppingTrips.list, latest first', list.map((t) => t.id));
+    check(list[0].id === tripId && !list.some((t) => t.id === 'trip-old'), 'shoppingTrips.list, latest first', list.map((t) => t.id));
     check((await r(NOA, '/v1/shopping-trips/' + tripId)).json.data.record.by.uid === 'syn-ronit', 'shoppingTrips.get');
     check((await w(RONIT, 'shopping.deleteTrip', { tripId })).status === 403, 'staff cannot delete a trip');
     const del = await w(MGR, 'shopping.deleteTrip', { tripId });

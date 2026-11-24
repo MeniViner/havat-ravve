@@ -6,7 +6,7 @@ import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem, ShoppingTrip } from '../../../types';
 import {
   activeTripOf, addedLive, byListOrder, closeTrip, deleteTrip, first, g, keyOfCat, lastClosedTripOf, listLabel, mergeItems, reopenTrip, setItemBought,
-  setItemMissing, tripView, useShopping, useTrip, useTrips,
+  setItemMissing, tripView, useShopping, useTrip, useMyTrips,
 } from '../../data/shopping';
 
 const useFail = () => {
@@ -16,7 +16,7 @@ const useFail = () => {
 
 // ---------- S6 ----------
 export function TripScreen({ ctx }: ScreenProps) {
-  const trips = useTrips();
+  const trips = useMyTrips(ctx.user.uid);
   const { open, history, loading } = useShopping();
   const trip = activeTripOf(trips.items, ctx.user.uid);
   // nobody opens this screen without a trip: "אני בסופר, מתחילים" starts one
@@ -91,7 +91,7 @@ function TripRow({ item, state, meta, live, onCheck, onMissing }: { item: Shoppi
 
 // ---------- S7 ----------
 export function TripDoneScreen({ ctx, params }: ScreenProps) {
-  const trips = useTrips();
+  const trips = useMyTrips(ctx.user.uid);
   const byId = useTrip(params.id || '');
   const trip = (params.id ? byId.item : null) || lastClosedTripOf(trips.items, ctx.user.uid);
   const waiting = params.id ? byId.loading : trips.loading;
