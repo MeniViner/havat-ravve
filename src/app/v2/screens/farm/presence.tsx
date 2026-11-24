@@ -69,7 +69,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
   async function save() {
     if (!ok) return;
     try {
-      await savePresence(who, days, cal.items, { from: normTime(h.from), to: normTime(h.to) }, note);
+      await savePresence(ctx.actor, who, days, cal.items, { from: normTime(h.from), to: normTime(h.to) }, note);
       toast.show({ text: days.length === 1 ? 'נשמר ביומן' : `נשמר ביומן · ${days.length} ימים` });
       back('/farm');
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
@@ -88,7 +88,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
   const more = editing ? (
     <MoreMenu title="נוכחות" items={[{
       label: 'מחיקה', icon: 'trash', tone: 'danger',
-      confirm: { title: 'להסיר מהיומן?', text: 'היום הזה יוסר מהיומן של הצוות.', confirmLabel: 'הסרה', onConfirm: () => remove(() => removePresence(editing), { text: 'הוסר מהיומן', after: () => back('/farm') }) },
+      confirm: { title: 'להסיר מהיומן?', text: 'היום הזה יוסר מהיומן של הצוות.', confirmLabel: 'הסרה', onConfirm: () => remove(() => removePresence(ctx.actor, editing), { text: 'הוסר מהיומן', after: () => back('/farm') }) },
     }]} />
   ) : null;
   const shown = q.trim() ? people.filter((p) => p.displayName.includes(q.trim())) : people;

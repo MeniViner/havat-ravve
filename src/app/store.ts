@@ -190,7 +190,7 @@ export async function deleteTask(actor: Actor, task: Task) {
   await write.remove('tasks', task.id);
   logActivity(actor, taskKind(task), task.id, 'deleted', taskText(task));
 }
-export const restoreTask = (task: Task) => { const { id, ...rest } = task; return write.set('tasks', id, rest); };
+export const restoreTask = (task: Task) => { const { id, ...rest } = task; return write.set('tasks', id, { ...rest, updatedAt: nowIso() }); };
 
 // ---------- templates (recurring) ----------
 export const useTemplates = (enabled: boolean, manager: boolean) => useList<Template>('task_templates', { where: staffOnly(manager), orderBy: [['createdAt', 'asc']] }, enabled);

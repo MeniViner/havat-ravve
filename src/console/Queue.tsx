@@ -1,6 +1,7 @@
 // תור שליחה: payment emails and phone pushes that wait or failed, with send again / don't send (asks first: it cannot be
 // undone), what went out lately, the message itself, and the payment email as a guest gets it. Addresses never show in
 // the list: only the name on the payment. The computer's page: desk/QueueDesk.tsx.
+import { EMAIL_OFF, PHONE_OFF, phoneConfigured } from './delivery';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, ConfirmSheet, EmptyState, ListCard, Row, Sheet, Strip, Tag } from '../app/v2/kit';
 import { ago, fmt, QRow, Section, useLoad } from './shared';
@@ -49,7 +50,7 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
           <div className="c-title">
             <div>
               <h1 className="c-h1">תור שליחה</h1>
-              <p className="c-sub">{d?.sent ? 'מיילים על תשלומים והתראות לטלפון שמחכים, שנכשלו ושנשלחו.' : 'מיילים על תשלומים והתראות לטלפון שעוד מחכים, או שנכשלו. מה שנשלח בהצלחה לא מופיע כאן.'}</p>
+              <p className="c-sub">{d?.sent ? 'מיילים על תשלומים והתראות לטלפון, לפי מצב הטיפול בתור.' : 'מיילים על תשלומים והתראות לטלפון שעוד מחכים, או שנכשלו. מה שנשלח בהצלחה לא מופיע כאן.'}</p>
             </div>
             <Button variant="neutral" onClick={() => q.reload()} disabled={q.loading}>רענון</Button>
           </div>
@@ -60,7 +61,7 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
               {d.switches.emailPaused && <Strip icon="bolt">המיילים בהשהיה (במסך מתגים). תשלומים נכנסים לתור ונשלחים כשמדליקים.</Strip>}
               {d.switches.pushPaused && <Strip icon="bolt">ההתראות לטלפון בהשהיה (במסך מתגים).</Strip>}
               <Section title={`מיילים על תשלומים · ${d.emails.length}`}>
-                {!d.email.on && <p className="c-note">המיילים כבויים בהגדרות השרת, אז כלום לא נשלח מכאן.</p>}
+                {!d.email.on && <p className="c-note">שליחת מיילים {EMAIL_OFF}</p>}
                 {d.daily && <p className="c-note">המכסה היומית של המייל: {fmt(d.daily.used)} מתוך {fmt(d.daily.limit)}</p>}
                 {d.emails.length ? <ListCard>{d.emails.map((e) => <EmailRow key={e.id} e={e} busy={busy === e.id} open={() => setOpen(lineOf(e.id))}
                   retry={() => retry(e)}
@@ -68,12 +69,13 @@ export function QueueScreen({ notify }: { notify: (t: string, tone?: 'info' | 'a
                   : <EmptyState variant="card" icon="check" title="אין מיילים שמחכים או נכשלו" text="כל מייל על תשלום יוצא תוך כמה דקות." />}
               </Section>
               <Section title={`התראות לטלפון · ${d.pushes.length}`}>
+                {!phoneConfigured(d.push.mode) && <p className="c-note">ההתראות יכולות להיכנס לתור. השליחה לטלפון {PHONE_OFF}</p>}
                 {d.pushes.length ? <ListCard>{d.pushes.map((p) => <PushRow key={p.id} p={p} busy={busy === p.id}
                   cancel={() => setDrop({ kind: 'push', p })} />)}</ListCard>
                   : <EmptyState variant="card" icon="check" title="אין התראות שמחכות" text="התראות לטלפון יוצאות בסבב של כל 5 דקות." />}
               </Section>
               {d.sent && (
-                <Section title={`נשלחו לאחרונה${d.sentToday !== undefined ? ` · ${fmt(d.sentToday)} היום` : ''}`}>
+                <Section title={`הטיפול הסתיים${d.sentToday !== undefined ? ` · ${fmt(d.sentToday)} היום` : ''}`}>
                   {d.sent.length ? <ListCard>{lines.filter((l) => l.state === 'sent').map((l) => <Row key={l.key} className="dn-prow" title={l.what} meta={`${l.type === 'email' ? 'מייל' : 'התראה'} · ${l.who} · ${lineWhen(l)}`} onClick={() => setOpen(l)} />)}</ListCard>
                     : <p className="c-note">עוד לא נשלח כלום.</p>}
                 </Section>
@@ -125,7 +127,7 @@ function EmailRow({ e, busy, retry, cancel, open }: { e: QueueEmail; busy: boole
 function PushRow({ p, busy, cancel }: { p: QueuePush; busy: boolean; cancel: () => void }) {
   return (
     <QRow title={<><b>{p.title || 'התראה'}</b>{p.body ? ` · ${p.body}` : ''}</>}
-      meta={<>{PUSH_KIND[p.kind] || 'התראה'} · {p.to === 1 ? 'לאדם אחד' : `ל־${p.to} אנשים`}{p.done ? `, נשלחה ל־${p.done}` : ''}{p.by ? ` · מאת ${p.by}` : ''} · {ago(p.createdAt)}</>}
+      meta={<>{PUSH_KIND[p.kind] || 'התראה'} · {p.to === 1 ? 'לאדם אחד' : `ל־${p.to} אנשים`}{p.done ? `, נבדקו ${p.done} נמענים` : ''}{p.by ? ` · מאת ${p.by}` : ''} · {ago(p.createdAt)}</>}
       tag={p.stale ? <Tag tone="outline">ישנה מדי לטלפון</Tag> : <Tag tone="neutral">מחכה</Tag>}>
       <Button variant="quiet" disabled={busy} onClick={cancel}>לא לשלוח</Button>
     </QRow>

@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import net from 'node:net';
 import fs from 'node:fs';
+import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -216,19 +217,19 @@ try {
     const jobs0 = (await pushJobs()).length;
     const key = randomUUID();
     const s = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
-    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 4, 'broadcasts.send → 201, 5 recipients, 4 notified (not the sender)', s.json);
+    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 5 && s.json.data.accepted && s.json.data.created === 5 && s.json.data.queued === 1 && s.json.data.pushState === 'off', 'broadcasts.send → 201, five copies and one queued job while push is off', s.json);
     bAll = s.json.data.broadcastId;
     const b = await docOf('broadcasts/' + bAll);
     check(sameKeys(b, ['id', 'text', 'audience', 'urgent', 'by', 'createdAt', 'recipients', 'recipientCount', 'resentAt']) && b.id === bAll && b.urgent === true && b.by.uid === 'syn-mgr' && b.resentAt === null && b.recipientCount === b.recipients.length,
       'stored exactly as sendBroadcast() writes it', b);
     const own = await docOf(`broadcasts/${bAll}/reads/syn-mgr`);
-    check(own && own.at === b.createdAt && own.seenAt === b.createdAt && own.uid === 'syn-mgr', 'the sender\'s own read receipt');
+    check(!own, 'the sender has no automatic read receipt');
     const n = await docOf(`users/syn-staff/notifications/b_${bAll}`);
     check(n && sameKeys(n, ['id', 'kind', 'title', 'sub', 'link', 'refId', 'by', 'createdAt', 'readAt']) && n.kind === 'broadcast' && n.title === 'הודעה ממנהלת' && n.sub === 'מחר מתחילים ב־7' && n.link === '/tasks' && n.refId === bAll && n.readAt === null, 'each recipient: notification b_<id> as notify() writes it', n);
-    check(!(await docOf(`users/syn-mgr/notifications/b_${bAll}`)), 'the sender is not notified');
+    check((await docOf(`users/syn-mgr/notifications/b_${bAll}`))?.readAt === null, 'sender starts unread');
     const jobs = (await pushJobs()).filter((j) => j.refId === bAll);
-    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
-      'one push job for the phones (urgent, tagged b_<id>, sender excluded)', jobs[0]);
+    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
+      'one push job for the phones (urgent, tagged b_<id>, sender included)', jobs[0]);
     const again = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
     check(again.json.data.replayed === true && again.json.data.broadcastId === bAll && (await listCol('broadcasts')).length === 1 && (await pushJobs()).length === jobs0 + 1, 'replay: same broadcast, no second send');
     const v = await w(MGR, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
@@ -245,16 +246,16 @@ try {
     await seed(`broadcasts/${bAll}/reads/syn-staff`, { id: 'syn-staff', uid: 'syn-staff', name: 'רונית לוי', at: now, seenAt: now });
     await seed(`broadcasts/${bAll}/reads/syn-staff2`, { id: 'syn-staff2', uid: 'syn-staff2', name: 'יואב כהן', seenAt: now });
     const rd = await r(MGR, `/v1/broadcasts/${bAll}/reads`);
-    check(rd.status === 200 && rd.json.data.items.length === 3 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
+    check(rd.status === 200 && rd.json.data.items.length === 2 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
     check((await r(STAFF, `/v1/broadcasts/${bAll}/reads`)).status === 403, 'staff cannot list read receipts');
 
     // resend: only the people without a read receipt; their notification comes back as new
     await fetch(`${DOCS}/users/syn-staff2/notifications/b_${bAll}?updateMask.fieldPaths=readAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { readAt: enc(now) } }) });
     const jobs1 = (await pushJobs()).length;
     const rs = await w(MGR, 'broadcasts.resend', { broadcastId: bAll });
-    check(rs.status === 200 && rs.json.data.notified === 3 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 3 unread people notified', rs.json);
+    check(rs.status === 200 && rs.json.data.notified === 4 && rs.json.data.created === 4 && rs.json.data.queued === 1 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 4 unread people notified', rs.json);
     const newJob = (await pushJobs()).filter((j) => j.refId === bAll).find((j) => !j.to.includes('syn-staff'));
-    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
+    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
     check((await docOf(`users/syn-staff2/notifications/b_${bAll}`)).readAt === null, 'their notification is new again (same id)');
     check((await w(STAFF, 'broadcasts.resend', { broadcastId: bAll })).status === 403, 'staff cannot resend');
     check((await w(MGR, 'broadcasts.delete', { broadcastId: bTeam })).status === 403, 'a manager cannot delete a broadcast (owner only)');
@@ -279,10 +280,10 @@ try {
     check((await w(MGR, 'notifications.send', { uids: ['syn-staff2'], title: 'x', link: 'https://evil.example' })).status === 400, 'a link outside the app → 400');
     check((await w(MGR, 'notifications.send', { uids: ['syn-blocked'], title: 'x', link: '/tasks' })).status === 400, 'a blocked person → 400');
     const jobs0 = (await pushJobs()).length;
-    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
+    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
     const nid = ns.json.data?.notificationId;
     const nd = await docOf(`users/syn-staff/notifications/${nid}`);
-    check(ns.status === 201 && ns.json.data.notified === 2 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && !(await docOf(`users/syn-mgr/notifications/${nid}`)) && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, never to the sender', ns.json);
+    check(ns.status === 201 && ns.json.data.notified === 3 && ns.json.data.accepted && ns.json.data.created === 3 && ns.json.data.queued === 1 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && (await docOf(`users/syn-mgr/notifications/${nid}`))?.readAt === null && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, includes the selected sender', ns.json);
   }
 
   section('people');
@@ -616,8 +617,13 @@ try {
     const ta = await api('POST', '/v1/console/monitor/test-alert', C(own));
     const inbox = await fetch(`${DOCS}/users/${own.localId}/notifications?pageSize=50`, { headers: admin }).then((x) => x.json());
     const note = (inbox.documents || []).map((d) => d.fields).find((f) => f.title?.stringValue === 'בדיקת התראות מהשרת');
-    check(ta.status === 200 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
+    check(ta.status === 200 && ta.json.data.accepted && ta.json.data.created === 1 && ta.json.data.queued === 0 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
     await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: true } });
+    const queuedTest = await api('POST', '/v1/console/monitor/test-alert', C(own));
+    check(queuedTest.status === 200 && queuedTest.json.data.accepted && queuedTest.json.data.created === 1
+      && queuedTest.json.data.queued === 1 && queuedTest.json.data.pushState === 'off' && !('delivered' in queuedTest.json.data),
+    'the test alert reports its job and the server’s actual off state');
+    check(mon0.json.data.pushState === 'off' && mon0.json.data.alertsAvailable === true, 'monitor includes the actual server push state');
     const sec = await api('GET', '/v1/console/security?days=7', C(own));
     const secItems = sec.json?.data?.items || [];
     check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
@@ -644,6 +650,24 @@ try {
     const dv2 = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { lat: 'north' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a number field refuses text');
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { brandNew: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a field the record does not have → 400');
+    // The browser edits legacy templates that have no updatedAt. The normal API must reject the earlier version twice.
+    const legacyPath = 'task_templates/instinct-audit-legacy';
+    await seed(legacyPath, { title: 'INSTINCT AUDIT template', active: true });
+    const tplBefore = await api('GET', '/v1/console/data/doc?path=' + legacyPath, C(own));
+    const tplEdit = await api('POST', '/v1/console/data/edit', { ...C(own), body: {
+      path: legacyPath, set: { title: 'INSTINCT AUDIT changed in console' }, updateTime: tplBefore.json.data.updateTime,
+    } });
+    const version = (await docOf(legacyPath)).updatedAt;
+    check(tplEdit.status === 200 && typeof version === 'string', 'console edit adds a version to an older template');
+    for (const title of ['INSTINCT AUDIT stale template 1', 'INSTINCT AUDIT stale template 2']) {
+      const stale = await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', title, ifUpdatedAt: '' });
+      check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === version,
+        'templates.update rejects each stale request');
+    }
+    check((await docOf(legacyPath)).title === 'INSTINCT AUDIT changed in console', 'stale attempts leave the template intact');
+    ok(await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', active: false, ifUpdatedAt: version }), 'current version works');
+    await w(MGR, 'templates.delete', { templateId: 'instinct-audit-legacy' });
+    check(!(await docOf(legacyPath)), 'legacy template fixture is gone');
     const uv = await api('GET', '/v1/console/data/doc?path=users/syn-staff2', C(own));
     check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: 'users/syn-staff2', set: { role: 'owner' }, updateTime: uv.json.data.updateTime } })).status === 403 && (await docOf('users/syn-staff2')).role !== 'owner', 'edit: people cannot be edited here (role stays)');
     check((await api('POST', '/v1/console/data/edit', { ...C(mgr), body: { path: `places/${pDat}`, set: { name: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 403, 'a manager cannot edit records');
@@ -780,6 +804,80 @@ try {
     await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: ['tasks:read'] } });
     check((await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'שוב אסור' } })).status === 403 && (await api('POST', `/v1/console/keys/${shId}/scopes`, { ...C(mgr), body: { scopes: null } })).status === 403, 'scopes can be narrowed again; a manager cannot change them');
 
+    {
+      // Use the same preset the console saves, with a real synthetic staff profile.
+      const { outputFiles } = await build({ entryPoints: ['api/src/presets.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+      const { PRESETS } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+      const volunteer = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'אינסטינקט רונית', actor: 'user:syn-staff', scopes: PRESETS.volunteer } });
+      const vk = { key: volunteer.json.data.key };
+      const deniedDonation = await r(vk, '/v1/donations');
+      check(deniedDonation.status === 403 && deniedDonation.json.error.details.requiredScope === 'donations:read'
+        && (await r(OWNER, '/v1/donations')).status === 200, 'volunteer donations forbidden with requiredScope; unrestricted owner can read');
+      const ownTask = await w(vk, 'tasks.create', { title: 'משימת מתנדבת' });
+      ok(ownTask, 'the volunteer can create a task');
+      check((await w(vk, 'tasks.delete', { taskId: ownTask.json.data.taskId })).json.error.details.requiredScope === 'tasks:delete', 'the volunteer cannot delete their own task');
+      const added = await w(vk, 'shopping.add', { title: 'קניות מתנדבת' });
+      ok(added, 'the volunteer can add a shopping item');
+      check((await w(vk, 'shopping.delete', { itemId: added.json.data.itemId })).json.error.details.requiredScope === 'shopping:delete', 'the volunteer cannot delete shopping items');
+      const noticeLog = await logOf(deniedDonation.json.meta.requestId);
+      check(noticeLog?.keyLabel === 'אינסטינקט רונית' && noticeLog.actor.uid === 'syn-staff', 'a refused volunteer request appears under the key label');
+      const badScope = await api('POST', `/v1/console/keys/${volunteer.json.data.id}/scopes`, { ...C(own), body: { scopes: ['invented:scope'] } });
+      check(badScope.status === 400 && badScope.json.error.message.includes('invented:scope'), 'scope validation names the unknown scope');
+
+      const limited = await api('POST', '/v1/console/keys', { ...C(own), body: {
+        label: 'צוות בלבד', actor: 'user:syn-mgr', scopes: ['notify:team', 'broadcasts:write', 'presence:write'],
+      } });
+      const lk = { key: limited.json.data.key };
+      const day = addDays(todayIL, 18);
+      ok(await w(lk, 'presence.save', { dates: [day] }), 'an own-presence scope can save the manager’s own dates');
+      const otherPresence = await w(lk, 'presence.save', { dates: [day], uid: 'syn-staff2' });
+      check(otherPresence.status === 403 && otherPresence.json.error.details.requiredScope === 'presence:write:any', 'a limited manager cannot register another person');
+      const urgent = await w(lk, 'broadcasts.send', { text: 'דחוף', audience: 'all', urgent: true });
+      check(urgent.status === 403 && urgent.json.error.details.requiredScope === 'broadcasts:urgent', 'a normal broadcast grant does not allow urgent broadcasts');
+      const out = await w(lk, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
+      check(out.status === 403 && out.json.error.details.requiredScope === 'notify:all', 'team-only scope denies broadcasts to external audiences');
+      const outsideNotice = await w(lk, 'notifications.send', { title: 'פרטי', link: '/farm', uids: ['syn-guest'] });
+      check(outsideNotice.status === 403 && outsideNotice.json.error.details.requiredScope === 'notify:all', 'team-only scope denies personal notifications to external recipients');
+
+      const toSelf = { title: 'private-acceptance-title', sub: 'private-acceptance-body', link: '/farm', uids: ['syn-mgr'] };
+      const sentToMe = await w(lk, 'notifications.send', toSelf);
+      const mineId = sentToMe.json.data.notificationId;
+      const others = await w(lk, 'notifications.send', { ...toSelf, uids: ['syn-staff'], includeSelf: true, push: false });
+      check(others.json.data.created === 1 && others.json.data.queued === 0 &&
+        !(await docOf(`users/syn-mgr/notifications/${others.json.data.notificationId}`)), 'a legacy flag adds no recipient');
+      const legacy = await w(lk, 'notifications.send', { ...toSelf, includeSelf: false, push: false });
+      check(legacy.json.data.created === 1 && legacy.json.data.queued === 0 &&
+        !!(await docOf(`users/syn-mgr/notifications/${legacy.json.data.notificationId}`)), 'a legacy false flag does not exclude the sender');
+      const mine = await docOf(`users/syn-mgr/notifications/${mineId}`);
+      check(sentToMe.status === 201 && sentToMe.json.data.notified === 1 && mine?.readAt === null
+        && (await pushJobs()).some((job) => job.to.join() === 'syn-mgr'), 'a self-only notification is unread and queued for push');
+      const privateLog = await logOf(sentToMe.json.meta.requestId);
+      check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1, accepted: true, created: 1, queued: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
+      const row = await docOf('notification_activity/' + mineId);
+      check(row?.by.uid === 'syn-mgr' && row.notificationKind === 'system' && row.recipientCount === 1
+        && row.accepted === true && row.created === 1 && row.queued === 1 && Number.isFinite(Date.parse(row.at))
+        && sameKeys(row, ['kind', 'notificationKind', 'refId', 'action', 'by', 'at', 'recipientCount', 'accepted', 'created', 'queued']),
+      'one owner-only journal row contains metadata only', row);
+      check(!(await listCol('activity')).some((row) => JSON.stringify(row).includes('private-acceptance-')), 'personal notification data is absent from team activity');
+
+      const sameKey = randomUUID();
+      const body = { text: 'הודעת קבלה לצוות', audience: 'all', includeSelf: true };
+      const sent = await w(lk, 'broadcasts.send', body, sameKey);
+      const bid = sent.json.data.broadcastId;
+      check(sent.status === 201 && sent.json.data.notified === sent.json.data.recipientCount
+        && (await docOf(`users/syn-mgr/notifications/b_${bid}`))?.readAt === null
+        && !(await docOf(`broadcasts/${bid}/reads/syn-mgr`))
+        && (await pushJobs()).some((job) => job.refId === bid && job.to.includes('syn-mgr')), 'a selected sender reaches their bell and push queue without a read receipt');
+      const replay = await w(lk, 'broadcasts.send', { ...body, includeSelf: false }, sameKey);
+      check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'changing the ignored legacy flag still replays the same send and activity row');
+      ok(await w(lk, 'broadcasts.resend', { broadcastId: bid }), 'resends a normal team broadcast');
+      ok(await w(OWNER, 'broadcasts.delete', { broadcastId: bid }), 'owner deletes the broadcast');
+      const feed = await r(STAFF, '/v1/activity?kind=message&refId=' + bid);
+      const byAction = new Map(feed.json.data.items.map((row) => [row.action, row]));
+      check(byAction.get('message_sent')?.text.includes(body.text) && byAction.has('message_resent')
+        && byAction.get('message_deleted')?.refId === bid, 'send, resend and deletion are visible in volunteer activity, with the deleted id');
+    }
+
     // ---------- speed (speed.ts): from the assistant log's own timings ----------
     const sp = await api('GET', '/v1/console/speed?days=7', C(own));
     const spd = sp.json?.data;
@@ -791,9 +889,9 @@ try {
 
   section('the app\'s Rules accept what the API wrote');
   {
-    const { initializeTestEnvironment, assertSucceeds } = require('@firebase/rules-unit-testing');
+    const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
     require('firebase/compat/firestore');
-    const { doc, setDoc, getDocs, collection } = require('firebase/firestore');
+    const { doc, setDoc, getDoc, getDocs, collection, query, where: filter } = require('firebase/firestore');
     rulesEnv = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') } });
     const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
     const as = (uid) => rulesEnv.authenticatedContext(uid, claims(uid + '@synthetic.invalid')).firestore();
@@ -813,7 +911,20 @@ try {
     const { id: _j, ...jobData } = job;
     await tryIt('push job (manager)', setDoc(doc(mgr, 'push_jobs', 'copyjob'), { ...jobData, id: 'copyjob' }));
     await tryIt('settings/app rewritten unchanged by a manager', setDoc(doc(mgr, 'settings', 'app'), await docOf('settings/app')));
-    check(tries.length === 7 && tries.every(Boolean), `the app's Rules accept every shape (${tries.filter(Boolean).length}/7)`);
+    await tryIt('a manager can queue their own broadcast push', setDoc(doc(mgr, 'push_jobs', 'copyjob-self'), {
+      ...jobData, id: 'copyjob-self', to: ['syn-mgr'], includeSelf: true,
+    }));
+    await assertFails(setDoc(doc(staff, 'push_jobs', 'copyjob-self-staff'), {
+      ...jobData, id: 'copyjob-self-staff', to: ['syn-staff'], includeSelf: true, createdBy: { uid: 'syn-staff', name: 'רונית' },
+    }));
+    const account = doc(staff, 'account_activity', 'copy-private');
+    await tryIt('personal metadata can be written by the profile owner', setDoc(account, { uid: 'syn-staff', action: 'push_changed', at: now }));
+    await assertFails(getDoc(doc(mgr, 'account_activity', 'copy-private')));
+    await assertFails(getDoc(account));
+    await tryIt('owner can read private account activity', getDoc(doc(as('synthetic-owner'), 'account_activity', 'copy-private')));
+    await tryIt('the staff rules allow the team feed', getDocs(query(collection(staff, 'activity'),
+      filter('kind', 'in', ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar']))));
+    check(tries.length === 11 && tries.every(Boolean), `the app's Rules accept the write and visibility shapes (${tries.filter(Boolean).length}/11)`);
   }
 } catch (e) {
   failures++;

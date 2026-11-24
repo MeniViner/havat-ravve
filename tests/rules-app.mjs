@@ -830,6 +830,14 @@ try{
  await v2no(getDocs(collection(vol,'broadcasts/b1/reads')),'broadcast 12 staff lists receipts');
  await v2ok(getDocs(collection(mgr,'broadcasts/b1/reads')),'broadcast 13 manager lists receipts');
  await v2ok(setDoc(doc(raz,'broadcasts/b1/reads','raz'),{id:'raz',uid:'raz',name:'בדיקה',at:now,seenAt:now}),'broadcast vendor recipient reads');
+ const sendLog = 'notification_activity/log1';
+ await env3.withSecurityRulesDisabled(async(c) => setDoc(doc(c.firestore(),sendLog),{kind:'message',by:actor('mgr'),at:now,recipientCount:1,accepted:true,created:1,queued:1}));
+ await v2ok(getDocs(collection(owner,'notification_activity')),'owner reads personal send metadata');
+ for(const [who,db_] of [['manager',mgr],['staff',vol],['vendor',raz],['guest',guest]]){
+  await v2no(getDoc(doc(db_,sendLog)),`${who} cannot get personal send metadata`);
+  await v2no(getDocs(collection(db_,'notification_activity')),`${who} cannot list personal send metadata`);
+ }
+ await v2no(setDoc(doc(owner,sendLog),{kind:'message'}),'personal send journal is Worker-written');
  await v2ok(getDocs(collection(vol,'users/vol/notifications')),'broadcast 14 me reads my notifications');
  await v2ok(updateDoc(doc(vol,'users/vol/notifications','n1'),{readAt:now}),'broadcast 14 me marks read');
  await v2no(updateDoc(doc(vol,'users/vol/notifications','n1'),{title:'x'}),'broadcast 15 me edits title');
@@ -851,7 +859,17 @@ try{
  await v2no(setDoc(doc(vol,'push_jobs','j2'),job('j2','vol',{kind:'broadcast'})),'broadcast 21 staff broadcast push');
  await v2no(setDoc(doc(vol,'push_jobs','j3'),job('j3','noa')),'broadcast 21 createdBy someone else');
  await v2no(setDoc(doc(vol,'push_jobs','j4'),job('j4','vol',{to:Array.from({length:201},(_,i)=>'u'+i)})),'broadcast 21 to 201');
- await v2no(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'broadcast 21 to self');
+ await v2ok(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'staff queues a task including self');
+ for(const [who, db_, kind] of [['owner',owner,'system'],['mgr',mgr,'broadcast'],['vol',vol,'task'],['raz',raz,'vendor']]){
+  const id = 'self-'+who;
+  const batch = writeBatch(db_);
+  batch.set(doc(db_,'users',who,'notifications',id),note(id,who,{kind}));
+  batch.set(doc(db_,'push_jobs',id),job(id,who,{kind,to:[who]}));
+  await v2ok(batch.commit(), `${who}: self notification and push commit together`);
+ }
+ await v2ok(setDoc(doc(mgr,'push_jobs','old-self'),job('old-self','mgr',{kind:'broadcast',to:['mgr'],includeSelf:true})),'a cached manager client can still write includeSelf');
+ await v2no(setDoc(doc(vol,'push_jobs','denied-self'),job('denied-self','vol',{kind:'system',to:['vol']})),'staff cannot send a system push to self');
+ await v2no(setDoc(doc(raz,'push_jobs','denied-vendor-self'),job('denied-vendor-self','raz',{kind:'task',to:['raz']})),'vendor cannot send a task push to self');
  await v2no(setDoc(doc(vol,'push_jobs','j6'),job('j6','vol',{sentAt:now})),'push created sent');
  await v2ok(setDoc(doc(mgr,'push_jobs','j7'),job('j7','mgr',{kind:'broadcast'})),'manager broadcast push');
  await v2ok(setDoc(doc(raz,'push_jobs','j8'),job('j8','raz',{kind:'vendor'})),'vendor queues a vendor push');

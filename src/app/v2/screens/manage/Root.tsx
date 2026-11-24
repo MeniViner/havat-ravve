@@ -203,10 +203,11 @@ function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
 }
 
 function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+  const { actor } = useV2();
   if (p.n.type === 'contact') return <Opens path={`/manage/inbox/${p.n.id}`}><InboxCardBody {...p} /></Opens>; // W1
   return (
     <WithSheet title={p.n.title} sub={agoLong(p.n.createdAt)} open={detailOf(p.n, p.r) || undefined}
-      confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(p.n) }}>
+      confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(actor, p.n) }}>
       <InboxCardBody {...p} />
     </WithSheet>
   );

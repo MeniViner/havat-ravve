@@ -82,7 +82,8 @@ export function instinctLine(e: Pick<ApiLogEntry, 'op' | 'opHe' | 'verb' | 'kind
     const end = e.code === 'OUTCOME_UNKNOWN' ? '' : ', לא נשמר';
     return { title: `ניסה ${TRIED[verb] || 'לבצע'} ${noun}`, meta: reason + end, failed: true };
   }
-  const subject = instinctSubject(e);
+  const notified = json(e.result).notified;
+  const subject = e.op === 'notifications.send' && typeof notified === 'number' ? `${notified} נמענים` : instinctSubject(e);
   return { title: SENTENCE[e.op] || `${verb} ${noun}`, meta: [subject, e.replayed ? 'בקשה חוזרת, לא בוצע פעמיים' : ''].filter(Boolean).join(' · '), failed: false };
 }
 

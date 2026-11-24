@@ -2,6 +2,7 @@
 // round; the last four hours of rounds; and the night cleanup: what is old enough to go, and what already went to the
 // archive in the storage service (R2). Running the cleanup now, a whole round, or pausing the nightly backup or the
 // monitoring, asks first. The computer's page: desk/JobsDesk.tsx.
+import { jobBlockedText } from './delivery';
 import { useState } from 'react';
 import { Button, Card, ConfirmSheet, ListCard, Row, Tag, Toggle } from '../app/v2/kit';
 import { ago, fmt, many, QRow, Section, useLoad } from './shared';
@@ -72,9 +73,9 @@ export function JobsScreen({ notify }: { notify: (t: string, tone?: 'info' | 'al
               <ListCard>
                 {d.jobs.map((j) => (
                   <QRow key={j.id} title={<b>{j.he}</b>} tag={j.paused ? <Tag tone="waiting">בהשהיה</Tag> : null}
-                    meta={<>{j.every}<br />{lastText(j)}{j.last && ` · ${ago(j.last.at)}`}{j.last?.by ? ` · הורצה ידנית על ידי ${j.last.by}` : ''}</>}>
-                    {j.canPause && <span className="c-toggle"><Toggle checked={!j.paused} onChange={(on) => askPause(j, !on)} label={`${j.he} פועלת`} disabled={busy !== null} /><span aria-hidden="true">{j.paused ? 'בהשהיה' : 'פועלת'}</span></span>}
-                    {j.canRun && <Button variant="neutral" disabled={busy !== null || (j.paused && j.id === 'push')} onClick={() => askRun(j)}>להריץ עכשיו</Button>}
+                    meta={<>{j.every}<br />{j.blocked ? jobBlockedText[j.blocked] : lastText(j)}{j.last && ` · ${ago(j.last.at)}`}{j.last?.by ? ` · הורצה ידנית על ידי ${j.last.by}` : ''}</>}>
+                    {j.canPause && <span className="c-toggle"><Toggle checked={!j.paused && !j.blocked} onChange={(on) => askPause(j, !on)} label={`${j.he} פועלת`} disabled={busy !== null || !!j.blocked} /><span aria-hidden="true">{j.blocked ? 'כבויה' : j.paused ? 'בהשהיה' : 'פועלת'}</span></span>}
+                    {j.canRun && <Button variant="neutral" disabled={busy !== null || !!j.blocked || (j.paused && j.id === 'push')} onClick={() => askRun(j)}>להריץ עכשיו</Button>}
                   </QRow>
                 ))}
               </ListCard>

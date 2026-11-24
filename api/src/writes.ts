@@ -6,13 +6,14 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
 } from './core';
 import { autoId } from './util';
 import { notifyWrites } from './notify';
 import { member as teamMember, todayIL } from './core';
 import { storedPhoto, taskToPerson } from './v2/taskutil';
 import { dropPushDevices } from './resources';
+import { addWriteActivity } from './write-activity';
 
 export type Input = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 export type Ctx = { fs: Firestore; caller: Caller; me: Person; input: Input; tx: string };
@@ -20,12 +21,14 @@ export type Out = { writes: Write[]; refs: Ref[]; data?: Record<string, unknown>
 export type WriteDef = { op: Operation; run: (fs: Firestore, caller: Caller, input: Input, key: string | null) => Promise<{ status: number; data: Record<string, unknown>; replayed: boolean }> };
 
 const DEFS: WriteDef[] = [];
-export function def(name: string, scope: Scope, he: string, body: Record<string, Param>, fn: (c: Ctx) => Promise<Out>, notes: string[] = []) {
-  const op: Operation = { name, kind: 'write', idempotency: 'required', he, method: 'POST', path: `/v1/actions/${name}`, body, requiredScope: scope, notes: [...notes, 'Response: "record" (or "records") read back after the write, and "verified".'] };
+export function def(name: string, scope: Scope, he: string, body: Record<string, Param>, fn: (c: Ctx) => Promise<Out>, notes: string[] = [], alternativeScopes?: readonly Scope[]) {
+  const op: Operation = { name, kind: 'write', idempotency: 'required', he, method: 'POST', path: `/v1/actions/${name}`, body, requiredScope: scope, ...(alternativeScopes ? { alternativeScopes } : {}), notes: [...notes, 'Response: "record" (or "records") read back after the write, and "verified".'] };
   DEFS.push({
     op,
     run: (fs, caller, input, key) => idempotent(fs, caller, name, key, input, async (tx) => {
-      const r = await fn({ fs, caller, me: caller.actor.person, input, tx });
+      const me = caller.actor.person;
+      const r = await fn({ fs, caller, me, input, tx });
+      addWriteActivity(fs, me, name, input, r.writes, r.refs);
       return { writes: r.writes, status: r.status, data: { ...(r.data || {}), refs: r.refs } };
     }, async (d) => scrubPush(await readBackRefs(fs)(d))),
   });
@@ -112,7 +115,7 @@ def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, ת
   if (c.input.clearAssignee) patch.assignee = null;
   needSome(patch);
   const onlyUrgent = Object.keys(patch).length === 1 && 'urgent' in patch;
-  const writes = [c.fs.patch('tasks', t.id, { ...patch, updatedAt: nowIso() }, t.updateTime)];
+  const writes = [c.fs.patch('tasks', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)];
   const kind = taskKind({ managersOnly: patch.managersOnly ?? t.data.managersOnly });
   // the history follows the task's visibility, as editTask() in the app does
   if ('managersOnly' in patch && !!patch.managersOnly !== !!t.data.managersOnly) {
@@ -132,13 +135,13 @@ def('tasks.edit', 'tasks:edit', 'עריכת משימה: כותרת, הערה, ת
 def('tasks.setDoneNote', 'tasks:complete', 'הערת ביצוע למשימה (מה נעשה)', { ifUpdatedAt: IF_UPDATED_AT as Param, taskId: req(), note: str(2000, 'ההערה', true) }, async (c) => {
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
-  const writes = [c.fs.patch('tasks', t.id, { doneNote: c.input.note, updatedAt: nowIso() }, t.updateTime),
+  const writes = [c.fs.patch('tasks', t.id, { doneNote: c.input.note, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
     activity(c.fs, c.me, taskKind(t.data), t.id, 'note', `${taskText(t.data as { title: string })}${c.input.note ? ': ' + c.input.note : ''}`)];
   return { writes, refs: [{ col: 'tasks', id: t.id, expected: { doneNote: c.input.note } }] };
 });
 
 // deleteTaskV2() in src/app/v2/data/tasks.ts
-def('tasks.delete', 'tasks:edit', 'מחיקת משימה', { ifUpdatedAt: IF_UPDATED_AT as Param, taskId: req() }, async (c) => {
+def('tasks.delete', 'tasks:delete', 'מחיקת משימה', { ifUpdatedAt: IF_UPDATED_AT as Param, taskId: req() }, async (c) => {
   const t = await taskFor(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
   ownsTask(c, t);
@@ -152,7 +155,7 @@ def('tasks.delete', 'tasks:edit', 'מחיקת משימה', { ifUpdatedAt: IF_UPD
     if (tpl) {
       const today = todayIL();
       const skip = [...new Set([...((tpl.data.skip as string[]) || []).filter((d) => d >= today), String(t.data.dateKey)])].sort().slice(-30);
-      writes.push(c.fs.patch('task_templates', tpl.id, { skip, updatedAt: nowIso() }, tpl.updateTime));
+      writes.push(c.fs.patch('task_templates', tpl.id, { skip, updatedAt: nextUpdatedAt(tpl.data.updatedAt) }, tpl.updateTime));
       refs.push({ col: 'task_templates', id: tpl.id, expected: { skip } });
     }
   }
@@ -197,7 +200,7 @@ def('templates.update', 'templates:write', 'עדכון משימה קבועה', {
   if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); patch.placeId = c.input.placeId; }
   else if (c.input.clearPlace && 'placeId' in t.data) patch.placeId = '';
   needSome(patch);
-  return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nowIso() }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
+  return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
 }, ['Only the fields sent change. A manager-only template has no person (assignee is stored empty).']);
 // deleteTemplate()
 def('templates.delete', 'templates:write', 'מחיקת משימה קבועה', { ifUpdatedAt: IF_UPDATED_AT as Param, templateId: req() }, async (c) => {
@@ -227,7 +230,7 @@ def('shopping.edit', 'shopping:write', 'עריכת פריט ברשימת הקנ�
   return { writes, refs: [{ col: 'shopping', id: it.id, expected: patch }] };
 });
 // deleteShopping()
-def('shopping.delete', 'shopping:write', 'מחיקת פריט מרשימת הקניות', { ifUpdatedAt: IF_UPDATED_AT as Param, itemId: req() }, async (c) => {
+def('shopping.delete', 'shopping:delete', 'מחיקת פריט מרשימת הקניות', { ifUpdatedAt: IF_UPDATED_AT as Param, itemId: req() }, async (c) => {
   const it = await mustGet(c.fs, 'shopping', c.input.itemId, c.tx, 'shopping item');
   fresh(it, c.input.ifUpdatedAt);
   return { writes: [c.fs.remove('shopping', it.id, it.updateTime), activity(c.fs, c.me, 'shopping', it.id, 'deleted', String(it.data.title))], refs: [{ col: 'shopping', id: it.id, gone: true }], data: { deleted: project('shopping', it.id, it.data) } };
@@ -292,7 +295,7 @@ def('people.setRole', 'people:write', 'שינוי תפקיד של אדם (אור
   };
 }, ['The person gets an in-app notification (no phone push) unless the new role is guest. A vendor\'s role can only go back to guest; nobody is made a vendor here (that takes a stall invite).']);
 // setUserRole() (status)
-def('people.setStatus', 'people:write', 'חסימה או שחרור של אדם', { ifUpdatedAt: IF_UPDATED_AT as Param, uid: req(), status: en(['active', 'blocked'], 'active פעיל (שחרור), blocked חסום', true) }, async (c) => {
+def('people.setStatus', 'people:block', 'חסימה או שחרור של אדם', { ifUpdatedAt: IF_UPDATED_AT as Param, uid: req(), status: en(['active', 'blocked'], 'active פעיל (שחרור), blocked חסום', true) }, async (c) => {
   if (c.input.uid === c.me.uid) throw forbidden('you cannot block yourself through the API');
   const p = await mustGet(c.fs, 'users', c.input.uid, c.tx, 'person');
   fresh(p, c.input.ifUpdatedAt);
@@ -420,7 +423,7 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   };
 }, ['Only the fields sent change.', ...EVENT_NOTES]);
 // deleteEvent() + deleteCalendarRef
-def('events.delete', 'events:write', 'מחיקת אירוע', { ifUpdatedAt: IF_UPDATED_AT as Param, eventId: req() }, async (c) => {
+def('events.delete', 'events:delete', 'מחיקת אירוע', { ifUpdatedAt: IF_UPDATED_AT as Param, eventId: req() }, async (c) => {
   const ev = await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event');
   fresh(ev, c.input.ifUpdatedAt);
   return {
@@ -459,7 +462,7 @@ def('events.saveProduct', 'events:write', 'הוספה או עדכון של מו�
     status: 201, writes: [c.fs.create(col, id, data), activity(c.fs, c.me, 'event', ev.id, 'edited', `מוצר חדש: ${data.name} · ${money(data.price)}`, { eventId: ev.id })],
     refs: [{ col, id, expected: data }], data: { productId: id },
   };
-}, ['Only the fields sent change: unit, active and sort stay unless sent. active=false takes it off the stall (no activity, as the toggle in the app).', 'To change the order of several products use events.reorderProducts.']);
+}, ['Only the fields sent change: unit, active and sort stay unless sent. active=false takes it off the stall.', 'To change the order of several products use events.reorderProducts.']);
 // deleteProduct(), with the activity line N10 writes
 def('events.deleteProduct', 'events:write', 'מחיקת מוצר מדוכן האירוע', { eventId: req(), productId: req() }, async (c) => {
   const col = `events/${c.input.eventId}/products`;

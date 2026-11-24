@@ -4,7 +4,7 @@
 import { ApiError, invalid } from '../http';
 import type { Param } from '../catalog';
 import type { Doc, Write } from '../firestore';
-import { IF_UPDATED_AT, activity, forbidden, fresh, isManager, mustGet, notFound, nowIso, project, taskKind } from '../core';
+import { IF_UPDATED_AT, activity, forbidden, fresh, isManager, mustGet, notFound, nextUpdatedAt, nowIso, project, taskKind } from '../core';
 import { type Ctx, bool, def, en, req, str } from '../writes';
 import { RESOURCES } from '../resources';
 import { notifyWrites } from '../notify';
@@ -34,7 +34,7 @@ def('tasks.take', 'tasks:complete', 'לקחת משימה פנויה על עצמ�
   const now = nowIso();
   return {
     writes: [
-      c.fs.patch('tasks', t.id, { assignee: c.me, takenAt: now, updatedAt: now }, t.updateTime),
+      c.fs.patch('tasks', t.id, { assignee: c.me, takenAt: now, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
       activity(c.fs, c.me, taskKind(t.data), t.id, 'assigned', `${short(titleOf(t))} ← ${c.me.name}`, { subjectUid: c.me.uid }),
     ],
     refs: [{ col: 'tasks', id: t.id, expected: { assignee: c.me } }], data: { changed: true },
@@ -49,7 +49,7 @@ def('tasks.release', 'tasks:complete', 'לשחרר משימה שלי (חוזרת
   if (!cur) return { writes: [], refs: [{ col: 'tasks', id: t.id }], data: { changed: false } };
   return {
     writes: [
-      c.fs.patch('tasks', t.id, { assignee: null, updatedAt: nowIso() }, t.updateTime),
+      c.fs.patch('tasks', t.id, { assignee: null, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime),
       activity(c.fs, c.me, taskKind(t.data), t.id, 'released', short(titleOf(t)), { subjectUid: c.me.uid }),
     ],
     refs: [{ col: 'tasks', id: t.id, expected: { assignee: null } }], data: { changed: true },
@@ -65,7 +65,7 @@ def('tasks.setPhoto', 'tasks:complete', 'תמונה למשימה (מה צריך 
   fresh(t, c.input.ifUpdatedAt);
   const photo = storedPhoto('photo', c.input.photo, true);
   return {
-    writes: [c.fs.patch('tasks', t.id, { photo, updatedAt: nowIso() }, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', short(titleOf(t)))],
+    writes: [c.fs.patch('tasks', t.id, { photo, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', short(titleOf(t)))],
     refs: [{ col: 'tasks', id: t.id, expected: { hasPhoto: !!photo } }],
   };
 }, [PHOTO_NOTE]);
@@ -75,7 +75,7 @@ def('tasks.setDonePhoto', 'tasks:complete', 'תמונת ביצוע למשימה 
   const t = await visibleTask(c, c.input.taskId);
   fresh(t, c.input.ifUpdatedAt);
   const donePhoto = storedPhoto('donePhoto', c.input.donePhoto, true);
-  const patch: Record<string, unknown> = { donePhoto, updatedAt: nowIso() };
+  const patch: Record<string, unknown> = { donePhoto, updatedAt: nextUpdatedAt(t.data.updatedAt) };
   if (c.input.note !== null && c.input.note !== undefined) patch.doneNote = String(c.input.note).slice(0, 2000);
   return {
     writes: [c.fs.patch('tasks', t.id, patch, t.updateTime), activity(c.fs, c.me, taskKind(t.data), t.id, 'photo', `${short(titleOf(t))}${patch.doneNote ? ': ' + patch.doneNote : ''}`)],
@@ -96,7 +96,7 @@ def('tasks.addShopping', 'shopping:write', 'פריט קנייה שנדרש למ�
   const team = c.input.urgent ? await teamUids(c.fs) : [];
   const id = autoId();
   const { doc, writes } = shopItemWrites(c.fs, c.me, id, { ...c.input, photo, taskId: t.id } as Parameters<typeof shopItemWrites>[3], team);
-  writes.push(c.fs.patch('tasks', t.id, { shoppingId: id, updatedAt: nowIso() }, t.updateTime));
+  writes.push(c.fs.patch('tasks', t.id, { shoppingId: id, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime));
   return {
     status: 201, writes,
     refs: [{ col: 'shopping', id, expected: { title: doc.title, taskId: t.id } }, { col: 'tasks', id: t.id, expected: { shoppingId: id } }],
@@ -122,36 +122,27 @@ def('shopping.setMissing', 'shopping:write', 'סימון פריט "אין" (לא
   return { writes, refs: [{ col: 'shopping', id: it.id, expected: { notAvailable: missing } }] };
 }, ['It stays on the open list ("לא היה, נשאר ברשימה").', 'Marking it missing needs tripId of a shopping trip (shoppingTrips.list); without one it is 400.']);
 
-/** A trip left open longer than this is over (TRIP_MAX_HOURS in data/shopping.ts). */
-const TRIP_MAX_MS = 8 * 3600_000;
-const isTripOpen = (t: Record<string, unknown>) => !t.closedAt && Date.now() - Date.parse(String(t.startedAt)) < TRIP_MAX_MS;
 /** firestore.rules shopping_trips update: only the shopper writes the trip. */
 function myTrip(c: Ctx, t: Doc) { if ((t.data.by as Person | null)?.uid !== c.me.uid) throw forbidden('only the person on this shopping trip can change it'); }
 
-// startTrip(): resumes my open trip, or opens one (closing my older unclosed ones) and tells the team
-def('shopping.startTrip', 'shopping:write', 'יוצא/ת לקנות עכשיו: פתיחת קנייה לרשימה (הצוות מקבל התראה)', { list: en([...SHOP_CATEGORIES], CAT_HE, true) }, async (c) => {
+// Resume the newest unclosed trip for this shopper, whatever list was requested.
+def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או התחלת קנייה חדשה', { list: en([...SHOP_CATEGORIES], CAT_HE, true) }, async (c) => {
   const mine = await c.fs.query({
     from: [{ collectionId: 'shopping_trips' }],
-    // equality filters only: no composite index
-    where: { compositeFilter: { op: 'AND', filters: [
-      { fieldFilter: { field: { fieldPath: 'by.uid' }, op: 'EQUAL', value: { stringValue: c.me.uid } } },
-      { unaryFilter: { field: { fieldPath: 'closedAt' }, op: 'IS_NULL' } },
-    ] } },
-    limit: 50,
-  });
-  const open = mine.filter((t) => isTripOpen(t.data)).sort((a, b) => String(b.data.startedAt).localeCompare(String(a.data.startedAt)))[0];
-  if (open) return { writes: [], refs: [{ col: 'shopping_trips', id: open.id }], data: { tripId: open.id, resumed: true } };
+    where: { fieldFilter: { field: { fieldPath: 'by.uid' }, op: 'EQUAL', value: { stringValue: c.me.uid } } },
+  }, '', c.tx);
+  const open = mine.filter((t) => !t.data.closedAt).sort((a, b) => String(b.data.startedAt).localeCompare(String(a.data.startedAt)))[0];
+  if (open) return { writes: [], refs: [{ col: 'shopping_trips', id: open.id }], data: { tripId: open.id, list: open.data.list, resumed: true } };
   const now = nowIso();
   const id = autoId();
-  const writes: Write[] = mine.map((t) => c.fs.patch('shopping_trips', t.id, { closedAt: now }, t.updateTime));
   const trip = { id, by: c.me, list: c.input.list, startedAt: now, closedAt: null, bought: [], missing: [] };
-  writes.push(c.fs.create('shopping_trips', id, trip));
+  const writes = [c.fs.create('shopping_trips', id, trip)];
   writes.push(...notifyWrites(c.fs, await teamUids(c.fs), {
     kind: 'trip', title: `${firstName(c.me.name)} ${gw(c.me.name, 'יוצא', 'יוצאת')} ל${listLabel(c.input.list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(c.input.list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' } as unknown as string, by: c.me,
   }));
-  return { status: 201, writes, refs: [{ col: 'shopping_trips', id, expected: { list: c.input.list, closedAt: null } }], data: { tripId: id, resumed: false } };
-}, ['Tells the whole team (in the app and by push) that you are going shopping: ask first. If you already have an open trip it is resumed, nothing is sent.']);
+  return { status: 201, writes, refs: [{ col: 'shopping_trips', id, expected: { list: c.input.list, closedAt: null } }], data: { tripId: id, list: trip.list, resumed: false } };
+}, ["Resumes the shopper's newest unclosed trip at any age and returns its actual list. Other trips are untouched. Only opening a new trip writes a team notification and queues a push."]);
 
 /** tripSummary() in data/shopping.ts: "5 נקנו · קפה שחור לא היה". */
 function tripSummary(bought: number, missing: string[]): string {
@@ -182,7 +173,7 @@ def('shopping.closeTrip', 'shopping:write', 'סיימתי לקנות: סגירת
 }, ['Only the person on the trip can close it. The team gets an in-app notification (no push).']);
 
 // deleteTrip(): a manager deletes a trip; the items keep what happened to them
-def('shopping.deleteTrip', 'shopping:write', 'מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם', { tripId: req() }, async (c) => {
+def('shopping.deleteTrip', 'shopping:delete', 'מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם', { tripId: req() }, async (c) => {
   if (!isManager(c.caller)) throw forbidden('only managers can delete a shopping trip');
   const t = await mustGet(c.fs, 'shopping_trips', c.input.tripId, c.tx, 'shopping trip');
   return { writes: [c.fs.remove('shopping_trips', t.id, t.updateTime)], refs: [{ col: 'shopping_trips', id: t.id, gone: true }], data: { deleted: project('shopping_trips', t.id, t.data) } };

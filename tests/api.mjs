@@ -677,7 +677,7 @@ try {
 
     // activity
     const as = await r(STAFF, '/v1/activity?limit=100');
-    check(as.status === 200 && as.json.data.items.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)), 'staff see only team activity');
+    check(as.status === 200 && as.json.data.items.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar'].includes(a.kind)), 'staff see only team activity');
     check((await r(STAFF, '/v1/activity?kind=donation')).status === 403, 'staff asking for donation activity → 403');
     check((await r(MGR, '/v1/activity?kind=donation')).json.data.items.length === 2, 'managers see it');
     const p1 = await r(MGR, '/v1/activity?limit=3');
@@ -757,7 +757,7 @@ try {
     check((await r(STAFF, '/v1/activity/syn-leak')).json.data.record.text !== 'סוד של המנהלים', 'activity.get: redacted too');
     check((await r(MGR, '/v1/activity?refId=syn-managers-only')).json.data.items.some((a) => a.text === 'סוד של המנהלים'), 'activity: managers see the real text');
     const all = (await r(STAFF, '/v1/activity?limit=100')).json.data.items;
-    check(all.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place'].includes(a.kind)) && !all.some((a) => String(a.text).includes('סוד של המנהלים')), 'activity: no manager-only text anywhere in staff\'s feed');
+    check(all.every((a) => ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar'].includes(a.kind)) && !all.some((a) => String(a.text).includes('סוד של המנהלים')), 'activity: no manager-only text anywhere in staff\'s feed');
 
     // concurrent edits: a change made in the app meanwhile is never overwritten
     const t = (await create(KEYS.users, { title: 'גיזום', urgent: false }, randomUUID(), { 'x-actor-id': 'user:syn-dani-l' })).json.data.task;
@@ -765,13 +765,16 @@ try {
     // someone edits the same task in the app (title and note)
     const appTime = new Date(Date.now() + 1000).toISOString();
     await fetch(`${DOCS}/tasks/${t.id}?updateMask.fieldPaths=title&updateMask.fieldPaths=note&updateMask.fieldPaths=updatedAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { title: enc('גיזום העצים בכניסה'), note: enc('עם מספריים גדולים'), updatedAt: enc(appTime) } }) });
-    const stale = await w(MGR, 'tasks.edit', { taskId: t.id, title: 'גיזום מהיר', ifUpdatedAt: seen });
-    check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === appTime, 'tasks.edit with a stale ifUpdatedAt → 409 STALE_WRITE, with the current updatedAt', stale.json);
+    for (const title of ['INSTINCT AUDIT stale task 1', 'INSTINCT AUDIT stale task 2']) {
+      const stale = await w(MGR, 'tasks.edit', { taskId: t.id, title, ifUpdatedAt: seen });
+      check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === appTime, 'tasks.edit rejects each stale request with the current updatedAt', stale.json);
+    }
     check((await docOf('tasks/' + t.id)).title === 'גיזום העצים בכניסה', 'the app\'s change is intact');
     check((await w(MGR, 'tasks.complete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && (await w(MGR, 'tasks.assign', { taskId: t.id, assignee: 'syn-ronit', ifUpdatedAt: seen })).status === 409, 'complete and assign honour ifUpdatedAt too');
     check((await w(MGR, 'tasks.delete', { taskId: t.id, ifUpdatedAt: seen })).status === 409 && !!(await docOf('tasks/' + t.id)), 'a stale delete is refused and nothing is deleted');
     ok2(await w(MGR, 'tasks.edit', { taskId: t.id, urgent: true, ifUpdatedAt: appTime }), 'with the current updatedAt the edit goes through');
     const after = await docOf('tasks/' + t.id);
+    check(after.updatedAt > appTime, 'the API advances the version even when the client clock was ahead');
     check(after.urgent === true && after.title === 'גיזום העצים בכניסה' && after.note === 'עם מספריים גדולים', 'only the sent field changed; the app\'s title and note are kept');
     // consistency on failure: the action and its activity entry commit together or not at all
     const acts0 = await actCount();
@@ -1283,6 +1286,23 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     const before = hits.length;
     await run(p2); await run(p2);
     check(hits.length === before, 'two more runs → nothing sent again (idempotent)', { extra: hits.length - before });
+
+    await seed('users', 'pu-mgr', person('pu-mgr', 'manager', { enabled: true, devices: [sub('ok-self')] }));
+    for (const kind of ['broadcast', 'system', 'task', 'urgent', 'trip', 'event', 'vendor']) {
+      await job('pj-self-' + kind, kind, 'pu-mgr', ['pu-mgr'], { tag: 'self_' + kind });
+    }
+    await job('pj-self-optin', 'broadcast', 'pu-mgr', ['pu-mgr'], { tag: 'b_self_optin', includeSelf: true });
+    await run(p2); await run(p2);
+    const self = hits.filter((h) => h.name === 'ok-self');
+    check(self.length === 8 && new Set(self.map((h) => h.payload.tag)).size === 8,
+      'push sends every authorized kind to a selected author once, including a legacy includeSelf job', self.map((h) => h.payload.tag));
+
+    await seed('users', 'pu-vendor', person('pu-vendor', 'vendor', { enabled: true, kinds: ['event'], devices: [sub('ok-vendor-self')] }));
+    await seed('users', 'pu-other-vendor', person('pu-other-vendor', 'vendor', { enabled: true, devices: [sub('ok-other-vendor')] }));
+    await job('pj-vendor-self', 'vendor', 'pu-vendor', ['pu-vendor', 'pu-other-vendor']);
+    await run(p2);
+    check(hits.filter((h) => h.name === 'ok-vendor-self').length === 1 && !hits.some((h) => h.name === 'ok-other-vendor'),
+      'a vendor can receive their own selected copy without opening vendor-to-vendor push');
 
     // a job bigger than one run's budget: continues from its cursor, every device exactly once
     const many = Array.from({ length: 40 }, (_, i) => 'pu-bulk-' + String(i).padStart(2, '0'));

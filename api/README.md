@@ -254,6 +254,39 @@ Not exposed:
 - The registry holds hashes only, in `api/.keys.local.json`, which is git-ignored.
 - A revoked or expired key gets 401.
 
+### מפתח אינסטינקט למתנדב
+
+1. בקונסולת הבעלים `/admin`, נכנסים ל**מפתחות API** ובוחרים **מפתח חדש**.
+2. נותנים למפתח שם שאפשר לזהות ביומן, בוחרים את המתנדב בשדה **פועל בשם**, ובוחרים **מתנדב**. המפתח משויך ל־`user:<uid>` של אותו אדם.
+3. מעתיקים את המפתח כשהוא מוצג ושומרים אותו בכספת של אינסטינקט. ביומן אינסטינקט רואים את שם המפתח בבקשות מזוהות, כולל דחיות הרשאה. חריגות מכסה וקצב נרשמות ביומן התקלות בתדירות מוגבלת.
+4. כדי להפסיק את הגישה, פותחים את המפתח ובוחרים **ביטול המפתח**. השינוי נכנס לתוקף בדרך כלל תוך כדקה וחצי בגלל Cloudflare KV והמטמון של השרת.
+
+התבנית מאפשרת למתנדב לקרוא משימות, ליצור ולסמן אותן כבוצעו, להוסיף לרשימת הקניות, לרשום נוכחות לעצמו ולקרוא הודעות צוות. פעילות הדוכן והכרטיסים מוגבלת להרשאות הקריאה של תפקיד המתנדב. הרשאות לפרויקטים ולתור הטיפול של מנהלים בתבנית כפופות לתפקיד, והתראות אישיות של המתנדב נגישות דרך `me:read`.
+
+### Scope compatibility
+
+Keys with no `scopes` continue to follow their actor’s current role. Explicit lists are intersected with that role. When loading a legacy limited key, the Worker expands scopes that formerly included deletion, blocking, urgent broadcasts, notifications, or another person’s presence to the corresponding grants it already had. The console stores new and changed lists as `scopeVersion: 2`. A legacy broadcast grant can still reach outside audiences until the key’s scopes are edited. In the detailed editor, select `notify:all` together with `broadcasts:write` to keep that reach. `notify:team` allows direct notifications only to team members.
+
+### Messages and activity
+
+`broadcasts.send`, `broadcasts.resend` and `notifications.send` include the sender when they match the selected audience or recipient list. The copy starts unread, and phone push follows the person's preferences and registered devices. Existing API clients can still pass `includeSelf` with either value. It has no effect.
+
+Send responses distinguish `accepted` (the operation was processed), `created` (in-app notification records written, including refreshed copies on resend), and `queued` (push jobs written). When jobs are queued, `pushState` indicates whether the Worker is enabled, paused, or off for phone push. An acknowledged job does not establish that a phone displayed an alert.
+
+| App write area | Activity record |
+| --- | --- |
+| Broadcasts | Send, resend and delete under `message`. Send includes audience, recipient count, urgency and up to 80 characters only for the whole-team audience. Deletion includes the broadcast ID. |
+| Tasks and shopping | Changes to tasks, recurring templates, places, shopping items and trips use the task, place and shopping history. Manager-only tasks and template administration use `task_private`. |
+| Projects | Project and step changes use `project`, visible to managers and owners. |
+| Farm calendar | Presence and team calendar changes use `calendar`. Manager-only calendar items use `calendar_private`. |
+| Events and event day | Event, product, file, staffing, scan, ticket, tab and payment changes use the event or record history. Payment confirmation metadata goes to the managers’ inbox history. |
+| Vendors | Vendor profiles, access, responses, arrival, feedback, reminders and requests record the operation and relevant ID. Invite codes and the contents of feedback stay in their source records. |
+| Management and invites | Visits, donations, roles, invitations, settings and inbox actions have records by category. Inbox metadata is visible to managers and owners. |
+| Personal settings | Profile, photo, welcome, update consent and push settings changes emit an event code, account ID and timestamp in `account_activity`, visible only to owners in the console data browser. |
+| Notification delivery and technical writes | The initiating business action supplies the activity for generated notifications, outbox jobs, counters and linked documents. Read/seen receipts, cache synchronisation and automatic photo refresh are delivery or maintenance state. |
+
+API action activity commits with the domain write. Personal `notifications.send` writes an owner-only activity row with the actor, time, kind, recipient count and send status in the same transaction as the notifications. The existing owner-only request log keeps the send counts and request outcome. Both logs exclude title, body, links and recipient identifiers. Console key changes use the owner audit log. The app writes team activity directly to Firestore. The API request log describes requests received by the Worker.
+
 **Limits**
 - Workers Rate Limiting: 240 requests a minute per key, and 30 failed authentications a minute per IP.
 

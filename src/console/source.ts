@@ -50,12 +50,14 @@ export type AlertSettings = { on: boolean; push: boolean; daily?: boolean; updat
 export type Monitor = {
   site: { url: string; checks: SiteCheck[]; downSince: string | null; incidents: { from: string; to: string | null }[]; uptime: number | null };
   quota: Quota | null; limits: { reads: number; writes: number; deletes: number; r2Bytes: number }; health: Health | null;
-  alerts: AlertSettings; cronAt: string | null;
+  alerts: AlertSettings; monitorPaused?: boolean; alertsAvailable?: boolean; pushState?: PushQueueState; cronAt: string | null;
   /** The last morning checks, oldest first: each check's state by its id (a newer Worker). */
   week?: { date: string; states: Record<string, HealthState> }[];
   /** What went wrong lately, newest first: how long it lasted and whether the owners were told (a newer Worker). */
   events?: MonitorEvent[];
 };
+export type PushQueueState = 'enabled' | 'paused' | 'off';
+export type TestAlert = { accepted?: boolean; created?: number; queued?: number; pushState?: PushQueueState; sent?: boolean; push?: boolean };
 export type MonitorEvent = { at: string; kind: 'site' | 'backup' | 'failures' | 'quota' | 'cron' | 'other'; he: string; minutes: number | null; until?: 'morning' | null; alerted: boolean };
 export type SecurityEvent = { at: string; kind: 'refused' | 'limited' | 'console'; who: string; what: string; detail: string; ok: boolean };
 
@@ -88,7 +90,7 @@ export type Queue = { emails: QueueEmail[]; pushes: QueuePush[]; switches: Switc
 export type QueueEmailView = { id: string; to: string; subject: string; text: string; uid: string; amount: number | null; by: string; createdAt: string; lastAttemptAt: string | null; providerSaid: string };
 export type EmailPreview = { subject: string; from: string; template: string; custom: boolean; text: string; html: string };
 export type JobRun = { at: string; ms: number; ok: boolean; result: Record<string, unknown>; by?: string };
-export type Job = { id: string; he: string; every: string; canPause: boolean; paused: boolean; canRun: boolean; last: JobRun | null };
+export type Job = { id: string; he: string; every: string; canPause: boolean; paused: boolean; canRun: boolean; blocked?: 'phone' | 'email' | 'storage' | 'settings' | null; last: JobRun | null };
 export type CleanupItem = { collection: string; he: string; days: number; due: number | null };
 export type Jobs = {
   cronAt: string | null; cronMs: number | null; jobs: Job[];
@@ -174,7 +176,7 @@ export interface Source {
   monitor(): Promise<Monitor>;
   checkNow(): Promise<Monitor>;
   setAlerts(b: { on?: boolean; push?: boolean; daily?: boolean }): Promise<AlertSettings>;
-  testAlert(): Promise<{ sent: boolean; push: boolean }>;
+  testAlert(): Promise<TestAlert>;
   security(days: number): Promise<{ since: string; items: SecurityEvent[] }>;
   dataCollections(): Promise<{ items: DataCollection[]; backupDate: string | null }>;
   dataDocs(group: string, after?: string | null, parent?: string | null): Promise<{ items: DataDocRow[]; next: string | null }>;

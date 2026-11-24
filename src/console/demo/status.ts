@@ -1,7 +1,7 @@
 // The demo's content: מצב: מצב כללי, ניטור, מהירות (K1-K3).
 import type { AlertSettings, Health, HealthState, LogEntry, Monitor, MonitorEvent, Overview, Source, Speed } from '../source';
 import { ago, at, DAY, dayKey, wait } from './base';
-import { demoQueue } from './sending';
+import { demoQueue, demoSwitches } from './sending';
 
 const entry = (min: number, credential: string, keyLabel: string, name: string, op: string, opHe: string, verb: string, body: Record<string, unknown> = {}, ok = true): LogEntry =>
   ({ id: 'l' + min, at: ago(min), credential, keyLabel, actor: { id: 'user:x', role: 'owner', uid: 'x', name }, kind: 'write', op, opHe, verb, ok, code: ok ? '' : 'FORBIDDEN', message: '', status: ok ? 200 : 403, body: JSON.stringify(body) });
@@ -56,7 +56,7 @@ const monitor = (): Monitor => ({
   site: { url: 'havat-ravve.web.app', checks, downSince: null, incidents: [{ from: checks[41].at, to: checks[43].at }], uptime: 97.9 },
   quota: { at: ago(12), since: ago(14 * 60), reads: 8_930, writes: 1_210, deletes: 64 },
   limits: { reads: 50_000, writes: 20_000, deletes: 20_000, r2Bytes: 10 * 1024 ** 3 },
-  health: health(), alerts, cronAt: ago(2), week: week(), events,
+  health: health(), alerts, monitorPaused: demoSwitches.monitorPaused, pushState: demoSwitches.pushPaused ? 'paused' : 'enabled', cronAt: ago(2), week: week(), events,
 });
 
 // ---------- speed, run any operation (round 7) ----------
@@ -100,6 +100,6 @@ export const statusDemo: Pick<Source, 'overview' | 'recent' | 'monitor' | 'check
   monitor: () => wait(monitor()),
   checkNow: () => { checked = { at: ago(0), by: 'מני בעלים' }; return wait(monitor()); },
   setAlerts: (b) => { alerts = { ...alerts, ...b, updatedAt: ago(0), updatedBy: 'מני בעלים' }; return wait(alerts); },
-  testAlert: () => wait({ sent: true, push: alerts.push }),
+  testAlert: () => wait({ accepted: true, created: 1, queued: Number(alerts.push), pushState: demoSwitches.pushPaused ? 'paused' : 'enabled' }),
   speed: (days) => wait(demoSpeed(days)),
 };

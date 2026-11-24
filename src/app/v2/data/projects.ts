@@ -4,6 +4,7 @@
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, push, ConflictError } from '../../db';
 import { nowIso } from '../../clock';
+import { activityOp } from '../../activity';
 import { notify } from './notify';
 import type { Actor } from '../../types';
 import type { TeamCtx } from '../../ctx';
@@ -87,6 +88,7 @@ export async function createProject(ctx: Who, form: { title: string; deadline: s
   const created = plan.create.map((s) => ({ ...s, id: newId(col) }));
   await write.batch([
     { op: 'set', col: PROJECTS, id: pid, data: project as unknown as Record<string, unknown> },
+    activityOp(me, 'project', pid, 'created', 'פרויקט'),
     ...created.map((s) => ({ op: 'set' as const, col, id: s.id, data: newStep(pid, s.id, s.n, s.title, s.assignee, me, at) })),
   ]);
   for (const s of created) if (s.assignee) void notifyAssigned(me, project, s.id, s.title, s.n, created.length, s.assignee.uid);
@@ -107,9 +109,14 @@ export async function saveProject(ctx: Who, project: ProjectDoc, loaded: StepDoc
   const col = stepsPath(project.id);
   const dl = parseDeadline(form.deadline);
   const created = plan.create.map((s) => ({ ...s, id: newId(col) }));
-  const newlyAssigned: { id: string; title: string; n: number; uid: string }[] = [];
-  const joiners: Actor[] = [];
-  await transact(async (tx) => {
+  const newlyAssigned = await transact(async (tx) => {
+    const assigned: { id: string; title: string; n: number; uid: string }[] = [];
+    const joiners: Actor[] = [];
+    for (const id of plan.remove) {
+      const current = await tx.get<StepDoc>(col, id);
+      if (!current || current.done) throw new ConflictError();
+      tx.remove(col, id);
+    }
     for (const u of plan.update) {
       const was = loaded.find((s) => s.id === u.id)!;
       if (u.assignee === undefined || (u.assignee?.uid || '') === (was.assignee?.uid || '')) continue;
@@ -122,13 +129,13 @@ export async function saveProject(ctx: Who, project: ProjectDoc, loaded: StepDoc
       if (u.title !== undefined) patch.title = u.title;
       if (u.assignee !== undefined && (u.assignee?.uid || '') !== (was.assignee?.uid || '')) {
         patch.assignee = u.assignee;
-        if (u.assignee) { newlyAssigned.push({ id: u.id, title: u.title || was.title, n: u.n, uid: u.assignee.uid }); joiners.push(u.assignee); }
+        if (u.assignee) { assigned.push({ id: u.id, title: u.title || was.title, n: u.n, uid: u.assignee.uid }); joiners.push(u.assignee); }
       }
       tx.update(col, u.id, patch);
     }
     for (const s of created) {
       tx.set(col, s.id, newStep(project.id, s.id, s.n, s.title, s.assignee, me, at));
-      if (s.assignee) { newlyAssigned.push({ id: s.id, title: s.title, n: s.n, uid: s.assignee.uid }); joiners.push(s.assignee); }
+      if (s.assignee) { assigned.push({ id: s.id, title: s.title, n: s.n, uid: s.assignee.uid }); joiners.push(s.assignee); }
     }
     const known = new Set(project.memberUids || project.members.map((m) => m.uid));
     const fresh = joiners.filter((a, i) => !known.has(a.uid) && joiners.findIndex((b) => b.uid === a.uid) === i);
@@ -136,16 +143,22 @@ export async function saveProject(ctx: Who, project: ProjectDoc, loaded: StepDoc
       title: form.title.trim(), goal: form.title.trim(), deadline: dl.deadline, deadlineText: dl.deadlineText || '', updatedAt: at,
       ...(fresh.length ? { members: push(...fresh), memberUids: push(...fresh.map((a) => a.uid)) } : {}),
     });
+    const log = activityOp(me, 'project', project.id, 'edited', 'פרויקט');
+    tx.set(log.col, log.id, log.data);
+    return assigned;
   });
-  if (plan.remove.length) await write.batch(plan.remove.map((id) => ({ op: 'remove' as const, col, id })));
   const total = plan.update.length + created.length;
   for (const a of newlyAssigned) void notifyAssigned(me, project, a.id, a.title, a.n, total, a.uid);
 }
 
 /** The owner deletes a whole project: every step (done ones too, which only the owner may delete) and the project, in one batch. */
-export async function deleteProject(project: ProjectDoc, steps: Pick<StepDoc, 'id'>[]) {
+export async function deleteProject(actor: Actor, project: ProjectDoc, steps: Pick<StepDoc, 'id'>[]) {
   const col = stepsPath(project.id);
-  await write.batch([...steps.map((s) => ({ op: 'remove' as const, col, id: s.id })), { op: 'remove' as const, col: PROJECTS, id: project.id }]);
+  await write.batch([
+    ...steps.map((s) => ({ op: 'remove' as const, col, id: s.id })),
+    { op: 'remove', col: PROJECTS, id: project.id },
+    activityOp(actor, 'project', project.id, 'deleted', 'פרויקט'),
+  ]);
 }
 
 /** "לקחת": only if the step is still free and open. */
@@ -156,6 +169,8 @@ export async function takeStep(ctx: Who, pid: string, sid: string) {
     if (!s || s.done || (s.assignee && s.assignee.uid !== me.uid)) throw new ConflictError();
     tx.update(stepsPath(pid), sid, { assignee: me, updatedAt: at });
     tx.update(PROJECTS, pid, { ...memberPatch(me), updatedAt: at });
+    const log = activityOp(me, 'project', pid, 'assigned', 'צעד בפרויקט');
+    tx.set(log.col, log.id, log.data);
   });
 }
 /** "לשחרר": only my own open step. */
@@ -165,6 +180,8 @@ export async function releaseStep(ctx: Who, pid: string, sid: string) {
     const s = await tx.get<StepDoc>(stepsPath(pid), sid);
     if (!s || s.done || s.assignee?.uid !== me.uid) throw new ConflictError();
     tx.update(stepsPath(pid), sid, { assignee: null, updatedAt: at });
+    const log = activityOp(me, 'project', pid, 'released', 'צעד בפרויקט');
+    tx.set(log.col, log.id, log.data);
   });
 }
 /** "בוצע". `steps` is the list on screen: when this was the last open step, the project is marked done too. */
@@ -176,21 +193,27 @@ export async function completeStep(ctx: Who, pid: string, sid: string, steps: Pi
     if (!s || s.done) throw new ConflictError();
     tx.update(stepsPath(pid), sid, { done: true, doneBy: me, doneAt: at, updatedAt: at });
     tx.update(PROJECTS, pid, { ...memberPatch(me), updatedAt: at, ...(last ? { status: 'done', doneAt: at } : {}) });
+    const log = activityOp(me, 'project', pid, 'done', 'צעד בפרויקט');
+    tx.set(log.col, log.id, log.data);
   });
 }
 /** Undo of "בוצע" (toast "ביטול", P4 "להחזיר לרשימה"). Reopens the project if it had been closed by this step. */
-export async function reopenStep(_ctx: Who, pid: string, sid: string) {
+export async function reopenStep(ctx: Who, pid: string, sid: string) {
   const at = nowIso();
   await write.batch([
     { op: 'update', col: stepsPath(pid), id: sid, data: { done: false, doneBy: null, doneAt: null, updatedAt: at } },
     { op: 'update', col: PROJECTS, id: pid, data: { status: 'active', doneAt: null, updatedAt: at } },
+    activityOp(ctx.actor, 'project', pid, 'undone', 'צעד בפרויקט'),
   ]);
 }
-/** P4 "שליחה": a short update in the step's thread; the project's other managers get an in-app notification (no push). */
+/** P4 "שליחה": a short update in the step's thread; the project's selected members get an in-app notification (no push). */
 export async function postUpdate(ctx: Who, project: ProjectDoc, step: StepDoc, text: string) {
   const t = text.trim().slice(0, 500); if (!t) return;
   const at = nowIso();
-  await write.update(stepsPath(project.id), step.id, { updates: push({ by: ctx.actor, at, text: t }), updatedAt: at });
+  await write.batch([
+    { op: 'update', col: stepsPath(project.id), id: step.id, data: { updates: push({ by: ctx.actor, at, text: t }), updatedAt: at } },
+    activityOp(ctx.actor, 'project', project.id, 'edited', 'עדכון לצעד בפרויקט'),
+  ]);
   const to = [...(project.memberUids || project.members.map((m) => m.uid)), step.assignee?.uid || ''];
   void notify(to, { kind: 'task', title: `עדכון ב${shortTitle(project)}`, sub: `${step.title}: ${t}`.slice(0, 140), link: stepLink(project.id, step.id), refId: step.id, by: ctx.actor, push: false }).catch(() => {});
 }
@@ -199,16 +222,28 @@ export async function splitStep(ctx: Who, pid: string, steps: StepDoc[], parent:
   const list = titles.map((t) => t.trim()).filter(Boolean); if (!list.length) return;
   const at = nowIso(); const col = stepsPath(pid);
   const ns = splitNs(steps, parent.id, list.length);
-  await write.batch(list.map((title, i) => { const id = newId(col); return { op: 'set' as const, col, id, data: newStep(pid, id, ns[i], title, parent.assignee, ctx.actor, at, { due: parent.due, parentId: parent.id }) }; }));
-  await write.update(PROJECTS, pid, { updatedAt: at });
+  const created = list.map((title, i) => {
+    const id = newId(col);
+    return { op: 'set' as const, col, id, data: newStep(pid, id, ns[i], title, parent.assignee, ctx.actor, at, { due: parent.due, parentId: parent.id }) };
+  });
+  await write.batch([
+    ...created, { op: 'update', col: PROJECTS, id: pid, data: { updatedAt: at } },
+    activityOp(ctx.actor, 'project', pid, 'edited', 'צעד פוצל לצעדים'),
+  ]);
 }
 /** P4 "עריכה": the step's own text, due date and note. */
-export async function updateStep(_ctx: Who, pid: string, sid: string, patch: { title: string; due: string; note: string }) {
-  await write.update(stepsPath(pid), sid, { title: patch.title.trim(), due: patch.due, note: patch.note.trim().slice(0, 1000), updatedAt: nowIso() });
+export async function updateStep(ctx: Who, pid: string, sid: string, patch: { title: string; due: string; note: string }) {
+  await write.batch([
+    { op: 'update', col: stepsPath(pid), id: sid, data: { title: patch.title.trim(), due: patch.due, note: patch.note.trim().slice(0, 1000), updatedAt: nowIso() } },
+    activityOp(ctx.actor, 'project', pid, 'edited', 'צעד בפרויקט'),
+  ]);
 }
 /** One more step at the end (used by P5 edit through saveProject; exported for the tasks area). */
 export async function addStep(ctx: Who, pid: string, steps: Pick<StepDoc, 'n'>[], title: string, assignee: Actor | null = null) {
   const at = nowIso(); const col = stepsPath(pid); const id = newId(col);
-  await write.set(col, id, newStep(pid, id, nextN(steps), title.trim(), assignee, ctx.actor, at));
+  await write.batch([
+    { op: 'set', col, id, data: newStep(pid, id, nextN(steps), title.trim(), assignee, ctx.actor, at) },
+    activityOp(ctx.actor, 'project', pid, 'created', 'צעד בפרויקט'),
+  ]);
   return id;
 }

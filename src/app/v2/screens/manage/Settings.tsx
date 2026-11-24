@@ -462,7 +462,7 @@ function ManagersPage({ ctx }: ScreenProps) {
     ...links.filter((l) => l.role === role).map((l) => (
       <Row key={'p:' + l.code} minHeight={56} leading={<Avatar initials="?" />} title={<span dir="ltr">{l.phone}</span>}
         meta={`${roleWord(l.role, !!l.fem)} · לפי טלפון · ${linkOpen(l) ? `הקישור נשלח ${agoDays(l.createdAt)}` : 'הקישור פג תוקף'}`}
-        actions={<Button variant="quiet" onClick={() => run(() => cancelTeamLink(l.code), { text: `הקישור בוטל: ${l.name || l.phone}`, undo: () => restoreTeamLink(l) })}>ביטול</Button>} />
+        actions={<Button variant="quiet" onClick={() => run(() => cancelTeamLink(ctx.actor, l.code), { text: `הקישור בוטל: ${l.name || l.phone}`, undo: () => restoreTeamLink(ctx.actor, l) })}>ביטול</Button>} />
     )),
   ];
   const personRow = (p: typeof people[number], owner: boolean) => {

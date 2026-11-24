@@ -122,7 +122,7 @@ export async function moreWalk(x) {
     await sw(on).click(); check(await until(async () => (await al()).on === true), 'alerts on again'); await s.idle();
     check(/אליה/.test((await al()).updatedBy || ''), 'the server knows who changed it', await al());
     if ((await al()).push !== true) { await sw('גם לטלפון').click(); await s.idle(); }
-    await R('לשלוח התראת בדיקה אליי').click(); check(await s.toast('נשלחה. היא תופיע בהתראות באפליקציה ובטלפון'), 'test alert: says so');
+    await R('לשלוח התראת בדיקה אליי').click(); check(await s.toast('התראת הבדיקה נשמרה באפליקציה. היא נוספה לתור השליחה לטלפון.'), 'test alert: says so');
     const inbox = (await E.list(`users/${uids.owner}/notifications`)).filter((q) => /בדיקת התראות/.test(q.title || '')); check(inbox.length === 1, 'Firestore: one line in my inbox', inbox.length);
     check((await E.list(`users/${uids.owner2}/notifications`)).every((q) => !/בדיקת התראות/.test(q.title || '')), 'and not in the other owner\'s');
     const pj = (await E.list('push_jobs')).filter((q) => /בדיקת התראות/.test(q.title || '')); check(pj.length === 1 && JSON.stringify(pj[0].to) === JSON.stringify([uids.owner]), 'Firestore: one phone push, to me', pj.map((q) => q.to));
@@ -271,10 +271,10 @@ export async function moreWalk(x) {
     await E.put('email_outbox/donation_dn-fail', { kind: 'donation', col: 'donations', refId: 'dn-pause', uid: uids.michal, status: 'failed', attempts: 1, reason: 'rejected', error: '400', createdAt: ago(H), updatedAt: ago(H), nextAt: null, firstAttemptAt: ago(H), provider: 'brevo' });
     await s.go('queue'); await R('רענון').click(); await s.idle(); check((await main()).includes('התראה לביטול'), 'refresh brings the new push');
     const n = () => page.locator('table[aria-label="תור שליחה"] tbody tr[data-row]').count(); const seen = {};
-    for (const c of ['נכשלו', 'מחכים', 'נשלחו היום']) { await chip(c).click(); await sleep(250); seen[c] = [await n(), Number((await chip(c).innerText()).replace(/\D/g, ''))]; }
+    for (const c of ['נכשלו', 'מחכים', 'הטיפול הסתיים היום']) { await chip(c).click(); await sleep(250); seen[c] = [await n(), Number((await chip(c).innerText()).replace(/\D/g, ''))]; }
     check(Object.values(seen).every(([a, b]) => a === b), 'each state shows as many rows as it says', seen);
     await chip('הכל').click(); await chip('מיילים').click(); await sleep(250); check(!(await page.locator('table[aria-label="תור שליחה"]').innerText()).includes('התראה לביטול'), 'only mails'); await chip('התראות').click(); await sleep(250); check((await page.locator('table[aria-label="תור שליחה"]').innerText()).includes('התראה לביטול'), 'only pushes'); await chip('הכל').click(); await sleep(250);
-    if (await page.locator('.dn-more').count()) { const b = await n(); await page.locator('.dn-more button').click(); await sleep(250); check(await n() > b || (await chip('נשלחו היום').getAttribute('aria-pressed')) === 'true', 'the hidden lines open'); await chip('הכל').click(); }
+    if (await page.locator('.dn-more').count()) { const b = await n(); await page.locator('.dn-more button').click(); await sleep(250); check(await n() > b || (await chip('הטיפול הסתיים היום').getAttribute('aria-pressed')) === 'true', 'the hidden lines open'); await chip('הכל').click(); }
     await rowKey('pj-drop').click(); await pbtn('לא לשלוח').click(); await sheet('כן, לא לשלוח'); check(await s.toast('ההתראה לא תישלח לטלפון'), 'a push stopped: says so');
     await E.cronAll(w); const pj = await E.get('push_jobs/pj-drop'); check(!pj || pj.cancelled || pj.sentAt, 'Firestore: it waits no more', pj); check(await until(async () => !(await page.locator('table[aria-label="תור שליחה"]').innerText()).includes('התראה לביטול')), 'and it left the table');
     const failed = (await s.call('GET', '/queue')).data.emails.filter((e) => e.status === 'failed').length; check((await page.locator('.d-nav__count').innerText().catch(() => '')).trim() === String(failed), 'the sidebar counts the failed ones', [await page.locator('.d-nav__count').allInnerTexts(), failed]);

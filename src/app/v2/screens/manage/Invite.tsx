@@ -70,8 +70,8 @@ export function InviteScreen({ ctx }: ScreenProps) {
     setPhone(''); setName(''); setError('');
   };
   const cancel = (p: Pending) => p.kind === 'email'
-    ? run(() => cancelInvite(p.invite.id), { text: `בוטל: ${p.invite.email}`, undo: () => inviteRole(ctx.actor, p.invite.email, p.invite.role) })
-    : run(() => cancelTeamLink(p.link.code), { text: `הקישור בוטל: ${p.link.name || p.link.phone}`, undo: () => restoreTeamLink(p.link) });
+    ? run(() => cancelInvite(ctx.actor, p.invite.id), { text: `בוטל: ${p.invite.email}`, undo: () => inviteRole(ctx.actor, p.invite.email, p.invite.role) })
+    : run(() => cancelTeamLink(ctx.actor, p.link.code), { text: `הקישור בוטל: ${p.link.name || p.link.phone}`, undo: () => restoreTeamLink(ctx.actor, p.link) });
 
   const openCard = existing ? 'פתיחת הכרטיס שלו' : '';
   const bar = how === 'phone'

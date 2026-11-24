@@ -28,7 +28,7 @@ function Debts({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const textFor = (d: EventDebt) => fillDebtTemplate(template, { name: d.name, event: e.title, amount: d.amount, bit: ctx.settings.payment.bit });
   const send = async (d: EventDebt) => {
     open(waUrl(d.phone, textFor(d)));
-    await run(() => stampReminder(d.kind, d.ids));
+    await run(() => stampReminder(ctx.actor, e.id, d.kind, d.ids));
   };
   const source = (d: EventDebt) => go(d.kind === 'tab' ? `/manage/events/${e.id}/tabs/${d.refId}` : `/manage/events/${e.id}?tab=guests`);
   const loading = tickets.loading || tabs.loading;

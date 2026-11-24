@@ -7,6 +7,9 @@
 //   push_jobs/{id}               the outbox the Worker drains (notify.ts, api/src/push.ts)
 //   email_outbox/bc_<id>_<uid>   "לשלוח גם במייל" (Q26): one job per person without push, drained by the Worker cron (api/src/email.ts)
 //   users/{uid}.updatesOptIn     "לקבל עדכונים מהחווה": a message to all users reaches only people with true
+import { saveAccountChange } from '../../account-activity';
+import { notificationTargets, messageActivityText, type SendReceipt } from '../../../../shared/message-activity';
+import { activityOp } from '../../activity';
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId } from '../../db';
 import { nowIso, todayKey } from '../../clock';
@@ -150,29 +153,27 @@ export const mailJobId = (broadcastId: string, uid: string) => `bc_${broadcastId
 /** firestore.rules caps a broadcast's recipient list (the document stays small). */
 export const RECIPIENTS_MAX = 2000;
 
-/** Q26 "שליחה": the broadcast, the sender's own receipt, a notification for every recipient, one push job, and with
+/** Q26 "שליחה": the broadcast, one notification per recipient (including the sender), push jobs, and with
  *  "לשלוח גם במייל" one e-mail job per person in `o.email` (people without push; at most EMAIL_CAP). */
-export async function sendBroadcast(actor: Actor, d: Draft, recipients: string[], o: { email?: string[] } = {}): Promise<Broadcast> {
+export async function sendBroadcast(actor: Actor, d: Draft, recipients: string[], o: { email?: string[] } = {}) {
   const text = d.text.trim().slice(0, TEXT_MAX);
   if (!text) throw new Error('צריך לכתוב הודעה');
-  const to = [...new Set(recipients.filter(Boolean))];
+  const to = notificationTargets(recipients);
   if (!to.length) throw new Error('אין למי לשלוח');
   if (to.length > RECIPIENTS_MAX) throw new Error(`אפשר לשלוח עד ${RECIPIENTS_MAX} אנשים בהודעה אחת`);
   const id = newId('broadcasts');
   const createdAt = nowIso();
   const b: Broadcast = { id, text, audience: d.audience, urgent: !!d.urgent, by: actor, createdAt, recipients: to, recipientCount: to.length, resentAt: null, ...(d.eventId ? { eventId: d.eventId } : {}) };
   const ops: Parameters<typeof write.batch>[0] = [{ op: 'set', col: 'broadcasts', id, data: b as unknown as Record<string, unknown> }];
-  // the sender wrote it, so it is read for them (and no card shows on their own phone)
-  if (to.includes(actor.uid)) ops.push({ op: 'set', col: `broadcasts/${id}/reads`, id: actor.uid, data: { id: actor.uid, uid: actor.uid, name: actor.name, at: createdAt, seenAt: createdAt } });
-  await write.batch(ops);
-  await notify(to, notice(b, actor));
+  ops.push(activityOp(actor, 'message', id, 'message_sent', messageActivityText(b.audience, to.length, b.urgent, b.text), { eventId: b.eventId }));
+  const receipt = await notify(to, notice(b, actor), ops);
   const mail = [...new Set((o.email || []).filter((u) => u && u !== actor.uid && to.includes(u)))].slice(0, EMAIL_CAP);
   const jobs = mail.map((uid) => {
     const job: BroadcastMailJob = { kind: 'broadcast', broadcastId: id, uid, status: 'queued', createdBy: actor, createdAt };
     return { op: 'set' as const, col: 'email_outbox', id: mailJobId(id, uid), data: job as unknown as Record<string, unknown> };
   });
   for (let i = 0; i < jobs.length; i += 450) await write.batch(jobs.slice(i, i + 450));
-  return b;
+  return { broadcast: b, receipt };
 }
 /** Where the notification opens: the vendor home, the team's tasks, or the person's own home ("/" lands guests on U1 with the
  *  card, the team on /tasks and vendors on /vendor). */
@@ -182,20 +183,25 @@ const notice = (b: Broadcast, by: Actor) => ({
   refId: b.id, by, urgent: b.urgent, tag: 'b_' + b.id,
 });
 
-/** B3 "לשלוח שוב": notifies again only the people without a read receipt. Returns how many. */
-export async function resendBroadcast(actor: Actor, b: Broadcast, receipts: Receipt[]): Promise<number> {
+/** B3 "לשלוח שוב": notifies unread recipients, including the sender when unread. */
+export async function resendBroadcast(actor: Actor, b: Broadcast, receipts: Receipt[]) {
   const read = new Set(receipts.filter(isRead).map((r) => r.uid));
-  const to = b.recipients.filter((u) => !read.has(u) && u !== actor.uid);
-  if (!to.length) return 0;
-  await write.update('broadcasts', b.id, { resentAt: nowIso() });
-  await notify(to, notice(b, actor));
-  return to.length;
+  const unread = b.recipients.filter((u) => !read.has(u));
+  if (!unread.length) return { accepted: true, created: 0, queued: 0, pending: false };
+  const to = notificationTargets(unread);
+  return notify(to, notice(b, actor), [
+    { op: 'update', col: 'broadcasts', id: b.id, data: { resentAt: nowIso() } },
+    activityOp(actor, 'message', b.id, 'message_resent', messageActivityText(b.audience, to.length, b.urgent), { eventId: b.eventId }),
+  ]);
 }
 
 /** The card appeared on this phone: a receipt without `at` (B3 tells "עוד לא נכנס לאפליקציה" from "ראה ולא קרא"). */
 /** The owner deletes a broadcast. The read receipts under it are left (nobody can list them without the broadcast), and so are
  *  the copies in each person's notifications: those belong to the person. */
-export const deleteBroadcast = (b: Broadcast) => write.remove('broadcasts', b.id);
+export const deleteBroadcast = (actor: Actor, b: Broadcast) => write.batch([
+  { op: 'remove', col: 'broadcasts', id: b.id },
+  activityOp(actor, 'message', b.id, 'message_deleted', b.id, { eventId: b.eventId }),
+]);
 export async function markSeen(actor: Actor, broadcastId: string) {
   // a merge, so a "read" written meanwhile on another phone is never turned back into "seen"
   await write.merge(`broadcasts/${broadcastId}/reads`, actor.uid, { id: actor.uid, uid: actor.uid, name: actor.name, seenAt: nowIso() });
@@ -216,4 +222,13 @@ export const useBroadcastNotification = (uid: string, broadcastId: string, enabl
 
 // ---------- updates consent ----------
 /** "לקבל עדכונים מהחווה" (/me/edit, the guest account page): the person's own choice, written on its own. */
-export const setUpdatesOptIn = (uid: string, on: boolean) => write.update('users', uid, { updatesOptIn: on, updatedAt: nowIso() });
+export const setUpdatesOptIn = (uid: string, on: boolean) => saveAccountChange(uid, 'updates_changed', { updatesOptIn: on, updatedAt: nowIso() });
+
+export function broadcastReceiptText(receipt: SendReceipt & { pending: boolean }, pushOn: boolean, resent = false) {
+  if (receipt.pending) return 'ההודעה ממתינה לשמירה ולשליחה כשהחיבור יחזור.';
+  if (!receipt.created) return 'כל הנמענים כבר קראו את ההודעה';
+  const recipients = receipt.created === 1 ? 'נמען אחד' : `${receipt.created} נמענים`;
+  const saved = `ההודעה נשמרה${resent ? ' שוב' : ''} בהתראות של ${recipients}.`;
+  if (!receipt.queued) return saved;
+  return saved + (pushOn ? ' נוספה לתור השליחה לטלפון.' : ' נוספה לתור, אבל השליחה לטלפון כבויה בשרת.');
+}

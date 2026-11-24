@@ -44,7 +44,7 @@ function TheCard({ ctx, b, onDone }: { ctx: V2Ctx; b: Broadcast; onDone: () => v
 
 export function BroadcastCard({ ctx }: { ctx: V2Ctx }): ReactNode {
   const mine = useMyBroadcasts(ctx.user.uid, 10);
-  const recent = mine.items.filter((b) => b.by?.uid !== ctx.user.uid && daysFromToday(b.createdAt) >= -SEEN_DAYS);
+  const recent = mine.items.filter((b) => daysFromToday(b.createdAt) >= -SEEN_DAYS);
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const [gone, setGone] = useState<string[]>([]);
   const onVerdict = (id: string, v: Verdict) => setVerdicts((s) => (s[id] === v ? s : { ...s, [id]: v }));

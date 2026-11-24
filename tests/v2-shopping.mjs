@@ -22,13 +22,14 @@ const stub = {
             remove: async (col, id) => { calls().push(['remove', col, id]); },
             batch: async (ops) => { calls().push(['batch', ops]); },
           };`,
-        activity: `export const logActivity = (actor, kind, refId, action, text) => { globalThis.__calls.push(['log', kind, refId, action, text]); };
+        activity: `export const activityOp = (_actor, _kind, id, action) => ({ op: 'set', col: 'activity', id: 'act-' + id, data: { action } });
+                   export const logActivity = (actor, kind, refId, action, text) => { globalThis.__calls.push(['log', kind, refId, action, text]); };
                    export const useActivityFor = () => ({ items: [] });`,
         kit: `const hidden = new Map();
               export const deferDelete = (id, run, ms) => { hidden.set(id, setTimeout(() => { hidden.delete(id); run(); }, ms)); return () => { clearTimeout(hidden.get(id)); hidden.delete(id); }; };
               export const isHidden = (id) => hidden.has(id), useHiddenVersion = () => 0;`,
         demo: 'export const useDemo = () => ({ on: false }), useDemoStates = () => [];',
-        notify: 'export const notify = async (uids, n) => { globalThis.__calls.push(["notify", uids, n]); };',
+        notify: 'export const notify = async (uids, n, ops) => { globalThis.__calls.push(["notify", uids, n]); if (ops) globalThis.__calls.push(["batch", ops]); };',
       }[a.path],
       loader: 'js',
     }));
@@ -118,17 +119,15 @@ assert.deepEqual(S.suggestions(hist, [], 'super', S.SUGGESTED).map((s) => s.titl
 assert.deepEqual(S.suggestions(hist, [], 'giveaway', S.SUGGESTED).map((s) => s.title), ['עגלת יד', 'שולחן'], 'the מחפשים list has its usual items too');
 
 // ---- trips
-const H = 3600_000;
 const now = Date.parse('2026-11-28T15:20:00.000Z');
 const trip = { id: 't1', by: yoav, list: 'super', startedAt: '2026-11-28T15:02:00.000Z', closedAt: null, bought: [], missing: [] };
 const stale = { ...trip, id: 't0', startedAt: '2026-11-28T05:00:00.000Z' };
 const closed = { ...trip, id: 'tc', startedAt: '2026-11-27T10:00:00.000Z', closedAt: '2026-11-27T10:40:00.000Z' };
 const others = { ...trip, id: 'td', by: dana };
 assert.equal(S.isTripOpen(trip, now), true);
-assert.equal(S.isTripOpen(stale, now), false, `older than ${S.TRIP_MAX_HOURS} hours is over`);
-assert.equal(S.isTripOpen(trip, Date.parse(trip.startedAt) + 9 * H), false);
+assert.equal(S.isTripOpen(stale), true, 'an old unclosed trip stays open');
 assert.equal(S.activeTripOf([stale, closed, others, trip], yoav.uid, now).id, 't1');
-assert.equal(S.activeTripOf([stale, closed, others], yoav.uid, now), null, 'only my trips, only open ones');
+assert.equal(S.activeTripOf([closed, others], yoav.uid), null, 'only my trips, only open ones');
 assert.equal(S.lastClosedTripOf([stale, closed, trip], yoav.uid).id, 'tc');
 assert.equal(S.lastClosedTripOf([others], yoav.uid), null);
 
@@ -244,29 +243,33 @@ assert.deepEqual([up.notAvailable, up.tripId], [true, 't1']);
 assert.equal(calls.find((c) => c[0] === 'log')[3], 'unavailable');
 
 calls.length = 0;
-assert.equal(await S.startTrip(actor, 'super', [trip], team), 't1', 'my open trip resumes');
+assert.deepEqual(await S.startTrip(actor, 'super', [trip], team), { tripId: 't1', list: 'super', resumed: true });
 assert.equal(calls.length, 0, 'resuming writes nothing and tells nobody');
 
 calls.length = 0;
 const forgotten = { ...trip, id: 'tf', startedAt: '2026-01-01T08:00:00.000Z' };
-const nid = await S.startTrip(actor, 'super', [forgotten, others], team);
+assert.deepEqual(await S.startTrip(actor, 'building', [forgotten, others], team), { tripId: 'tf', list: 'super', resumed: true });
+assert.equal(calls.length, 0, 'an older trip resumes on its own list without writes or notifications');
+const { tripId: nid, list, resumed } = await S.startTrip(actor, 'super', [others], team);
+assert.equal(list, 'super');
+assert.equal(resumed, false);
 const ops = calls.find((c) => c[0] === 'batch')[1];
-assert.deepEqual(ops.map((o) => [o.op, o.id]), [['update', 'tf'], ['set', nid]], 'my forgotten trip is closed, the new one opened; Dana\'s is not touched');
-assert.equal(ops[1].data.closedAt, null);
+assert.deepEqual(ops.map((o) => [o.op, o.id]), [['set', nid], ['set', 'act-' + nid]]);
+assert.equal(ops[0].data.closedAt, null);
 const tn = calls.find((c) => c[0] === 'notify')[2];
 assert.equal(tn.kind, 'trip'); assert.equal(tn.title, 'יואב יוצא לסופר עכשיו'); assert.equal(tn.action.kind, 'addToTrip');
 
 calls.length = 0;
 await S.closeTrip(actor, trip, v, team);
-up = calls.find((c) => c[0] === 'update');
-assert.equal(up[1], 'shopping_trips');
-assert.deepEqual([up[3].bought, up[3].missing], [[eggs.id, bags.id], [coffee.id]]);
+up = calls.find((c) => c[0] === 'batch')[1][0];
+assert.equal(up.col, 'shopping_trips');
+assert.deepEqual([up.data.bought, up.data.missing], [[eggs.id, bags.id], [coffee.id]]);
 const cn = calls.find((c) => c[0] === 'notify')[2];
 assert.equal(cn.title, 'הקנייה בסופר נסגרה'); assert.equal(cn.sub, '2 נקנו · קפה לא היה'); assert.equal(cn.push, false);
 
 calls.length = 0;
-await S.reopenTrip(trip);
-assert.deepEqual(calls[0], ['update', 'shopping_trips', 't1', { closedAt: null }]);
+await S.reopenTrip(actor, trip);
+assert.deepEqual(calls[0][1][0], { op: 'update', col: 'shopping_trips', id: 't1', data: { closedAt: null } });
 
 calls.length = 0;
 await S.againShopItem(actor, bought('לחם', '2026-11-15T09:00:00.000Z', { qty: '2' }));

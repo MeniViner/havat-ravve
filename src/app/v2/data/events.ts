@@ -5,7 +5,7 @@
 import { useMemo } from 'react';
 import { useList, useDoc, write, transact, newId, ConflictError, serverNow } from '../../db';
 import { nowIso } from '../../clock';
-import { logActivity } from '../../activity';
+import { activityOp, logActivity } from '../../activity';
 import {
   setOrderPayment, setTabStatus, handleNotificationsFor, randomSecret, saveEvent, deleteEvent, upsertCalendarRef, deleteCalendarRef, type EventInput,
 } from '../../data';
@@ -105,9 +105,13 @@ export async function addGuestOrder(actor: Actor, e: FarmEvent, g: { name: strin
 
 // ---------- reminders (V5, M5, N12) ----------
 /** Stamps reminderSentAt on the documents behind a reminder (tickets of an order, or a tab). */
-export async function stampReminder(kind: 'tickets' | 'tab', ids: string[]) {
+export async function stampReminder(actor: Actor, eventId: string, kind: 'tickets' | 'tab', ids: string[]) {
   const at = nowIso();
-  await write.batch(ids.map((id) => ({ op: 'update' as const, col: kind === 'tab' ? 'tabs' : 'tickets', id, data: { reminderSentAt: at } })));
+  if (!ids.length) return;
+  await write.batch([
+    ...ids.map((id) => ({ op: 'update' as const, col: kind === 'tab' ? 'tabs' : 'tickets', id, data: { reminderSentAt: at } })),
+    activityOp(actor, kind === 'tab' ? 'tab' : 'ticket', ids[0], 'saved', 'תזכורת תשלום', { eventId }),
+  ]);
 }
 /** Trust-based approval of debts: tickets become paid, tabs paid; open notifications about them are closed. */
 export async function approveDebts(actor: Actor, debts: EventDebt[], tickets: Ticket[], tabs: Tab[], open: AppNotification[]) {
@@ -131,12 +135,15 @@ export async function saveProductV2(eventId: string, data: { name: string; price
   await write.set(`events/${eventId}/products`, id, doc);
   return id;
 }
-export const setProductActive = (eventId: string, p: ProductV2, active: boolean) => write.update(`events/${eventId}/products`, p.id, { active });
+export const setProductActive = (actor: Actor, eventId: string, p: ProductV2, active: boolean) => write.batch([
+  { op: 'update', col: `events/${eventId}/products`, id: p.id, data: { active } },
+  activityOp(actor, 'event', p.id, 'edited', 'זמינות מוצר בדוכן', { eventId }),
+]);
 /** N9 ↑/↓: the new order written as sort 1..n (only the products whose place changed). */
-export async function reorderProducts(eventId: string, ordered: ProductV2[]) {
+export async function reorderProducts(actor: Actor, eventId: string, ordered: ProductV2[]) {
   const ops = ordered.map((p, i) => ({ p, sort: i + 1 })).filter(({ p, sort }) => p.sort !== sort)
     .map(({ p, sort }) => ({ op: 'update' as const, col: `events/${eventId}/products`, id: p.id, data: { sort } }));
-  if (ops.length) await write.batch(ops);
+  if (ops.length) await write.batch([...ops, activityOp(actor, 'event', eventId, 'edited', 'סדר מוצרים בדוכן', { eventId })]);
 }
 
 // ---------- files (V3) ----------

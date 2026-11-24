@@ -1,5 +1,6 @@
 // ניטור: the server watching itself. The site every 15 minutes (a strip of the last 24 hours), the free quota of
 // Firestore and R2, this morning's check, and the alerts the owners get when something is wrong.
+import { monitorAlertControls, testAlertText } from './delivery';
 import { useState } from 'react';
 import { Bar, Button, Card, Dot, ListCard, Row, Toggle } from '../app/v2/kit';
 import { hhmm } from '../app/v2/format';
@@ -159,7 +160,7 @@ function useAlertActions(m: Monitor | null, onChange: (a: Monitor['alerts']) => 
   };
   const test = async () => {
     setBusy(true);
-    try { const r = await source.testAlert(); notify(r.push ? 'נשלחה. היא תופיע בהתראות באפליקציה ובטלפון' : 'נשלחה. היא תופיע בהתראות באפליקציה'); }
+    try { const r = await source.testAlert(); notify(testAlertText(r)); }
     catch (e) { notify(errorText(e), 'alert'); } finally { setBusy(false); }
   };
   return { busy, set, test };
@@ -180,12 +181,13 @@ function EventsSection({ m }: { m: Monitor }) {
 
 function AlertsSection({ m, act: { busy, set, test } }: { m: Monitor; act: AlertActions }) {
   const a = m.alerts;
+  const controls = monitorAlertControls(m);
   return (
     <Section title="התראות לבעלים">
       <ListCard>
-        <Row title="התראה כשמשהו לא בסדר" meta="בהתראות באפליקציה של כל הבעלים" value={<Toggle checked={a.on} onChange={(on) => set({ on })} label="התראה כשמשהו לא בסדר" disabled={busy} />} />
-        <Row title="גם לטלפון" meta="חוץ מבין 23:00 ל־07:00" value={<Toggle checked={a.push && a.on} onChange={(push) => set({ push })} label="גם לטלפון" disabled={busy || !a.on} />} />
-        {a.daily !== undefined && <Row title="סיכום בוקר יומי" meta="גם כשהכול תקין" value={<Toggle checked={a.daily && a.on} onChange={(daily) => set({ daily })} label="סיכום בוקר יומי" disabled={busy || !a.on} />} />}
+        <Row title="התראה כשמשהו לא בסדר" meta={controls.app.text} value={<Toggle checked={controls.app.on} onChange={(on) => set({ on })} label="התראה כשמשהו לא בסדר" disabled={busy || controls.app.blocked} />} />
+        <Row title="גם לטלפון" meta={controls.phone.text} value={<Toggle checked={controls.phone.on} onChange={(push) => set({ push })} label="גם לטלפון" disabled={busy || controls.phone.blocked} />} />
+        {a.daily !== undefined && <Row title="סיכום בוקר יומי" meta={controls.daily.text} value={<Toggle checked={controls.daily.on} onChange={(daily) => set({ daily })} label="סיכום בוקר יומי" disabled={busy || controls.daily.blocked} />} />}
       </ListCard>
       <p className="c-note">מתי נשלחת התראה: האתר לא עונה חצי שעה, בדיקת הבוקר מצאה משהו לטפל בו, או שהמכסה החינמית עברה 80%. אותה התראה לא חוזרת לפני 12 שעות.{a.updatedBy && ` שונה לאחרונה על ידי ${a.updatedBy}, ${ago(a.updatedAt)}.`}</p>
       <Button variant="neutral" onClick={test} disabled={busy}>שליחת התראת בדיקה אליי</Button>

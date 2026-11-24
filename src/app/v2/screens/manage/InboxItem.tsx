@@ -48,7 +48,7 @@ export function InboxMessageScreen({ ctx, params }: ScreenProps) {
     { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
       title: 'למחוק את הפנייה?',
       text: `הפנייה${name ? ` של ${name}` : ''} תימחק מהרשימה לטיפול ומ"מה שטופל". ${name ? gw(name, 'הוא לא יקבל', 'היא לא תקבל') : 'השולח לא יקבל'} על זה הודעה.`,
-      onConfirm: () => remove(() => deleteInboxItem(n), { text: 'הפנייה נמחקה', after: () => go(INBOX.path, true) }),
+      onConfirm: () => remove(() => deleteInboxItem(ctx.actor, n), { text: 'הפנייה נמחקה', after: () => go(INBOX.path, true) }),
     } },
   ];
   const over = `פנייה · ${agoLong(n.createdAt)}${handled && n.handledBy ? ` · טופל · ${firstName(n.handledBy.name)}` : ''}`;
@@ -117,7 +117,7 @@ function StallRequest({ ctx, params, from }: ScreenProps & { from: { label: stri
     { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
       title: 'למחוק את הבקשה?',
       text: `הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`,
-      onConfirm: () => remove(() => deleteVendorRequest(r), { text: 'הבקשה נמחקה', after: () => go(from.path, true) }),
+      onConfirm: () => remove(() => deleteVendorRequest(ctx.actor, r), { text: 'הבקשה נמחקה', after: () => go(from.path, true) }),
     } },
   ];
   const handler = r.takenBy

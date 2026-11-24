@@ -38,7 +38,7 @@ export function RecurringList({ ctx }: ScreenProps) {
                   <span className="tasks-tpl__title">{t.title}</span>
                   <span className="tasks-meta">{templateMeta(t)}</span>
                 </a>
-                <Toggle checked={t.active} onChange={(v) => setTemplateActive(t, v).catch(fail)} label={`פעילה: ${t.title}`} />
+                <Toggle checked={t.active} onChange={(v) => setTemplateActive(ctx.actor, t, v).catch(fail)} label={`פעילה: ${t.title}`} />
               </li>
             ))}
           </ul>

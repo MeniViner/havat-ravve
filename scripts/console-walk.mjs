@@ -2,7 +2,7 @@
 // emulators, against this branch's Worker under `wrangler dev`; then the demo; then the same screens against today's
 // Worker (origin/main's api/). Every action is checked on the screen AND in Firestore or the Worker's own answer.
 //
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH node scripts/console-walk.mjs [--only=owner,actions,demo,today] [--shots]
+//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH node scripts/console-walk.mjs [--only=owner,actions,demo,delivery,today] [--shots]
 //   WALK_SCRATCH=<folder>   logs, the built page and the Workers' state (default: $TMPDIR/console-walk)
 //   WALK_APP=<folder>       a frozen copy of the commit to walk (default: this folder), and WALK_COMMIT=<its name, for the README>
 //   WALK_STEP=<regex>       only the steps whose name matches (while writing a step)
@@ -20,7 +20,7 @@ const net = E.sandboxed();
 const { seed, PEOPLE, IL } = await import('./smoke/console-seed.mjs');
 const only = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 const wants = (x) => !only.length || only.includes(x);
-const OUT = path.join(E.ROOT, 'docs/console-desktop-check/walk');
+const OUT = process.argv.includes('--shots') || !only.length ? path.join(E.ROOT, 'docs/console-desktop-check/walk') : E.SCRATCH;
 fs.mkdirSync(OUT, { recursive: true }); fs.mkdirSync(E.SCRATCH, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, ms = 10_000, every = 200) { const t0 = Date.now(); let v; for (;;) { try { v = await fn(); if (v) return v; } catch { /* again */ } if (Date.now() - t0 > ms) return v; await sleep(every); } }
@@ -36,7 +36,7 @@ function check(ok, what, note) {
 async function step(name, fn, s) {
   if (process.env.WALK_STEP && !new RegExp(process.env.WALK_STEP).test(name)) return;
   stepName = name;
-  try { await fn(); } catch (e) { check(false, 'ran to its end', String(e?.message || e).split('\n').slice(0, 6).join(' | ')); if (s) await s.page.screenshot({ path: path.join(E.SCRATCH, `fail-${part}-${results.length}.png`) }).catch(() => {}); }
+  try { await fn(); } catch (e) { check(false, 'ran to its end', String(e?.message || e).split('\n').slice(0, 6).join(' | ')); if (s && process.argv.includes('--shots')) await s.page.screenshot({ path: path.join(E.SCRATCH, `fail-${part}-${results.length}.png`) }).catch(() => {}); }
   if (s) { const e = s.take(); if (e.length) check(false, 'no console or page errors', e.slice(0, 4).join(' || ')); await s.closeAll(); }
 }
 
@@ -71,7 +71,7 @@ async function session({ site, api, who, url = '/admin', width = 1440 }) {
     async confirm(name) { await page.locator('[role=dialog]').last().getByRole('button', { name, exact: true }).click(); await sleep(350); },
     row: (t) => page.locator('.d-main tr[data-row]', { hasText: t }).first(),
     panel: () => page.locator('.d-panel').last(),
-    async shot(n) { await page.screenshot({ path: path.join(OUT, n + '.jpg'), type: 'jpeg', quality: 55 }); },
+    async shot(n) { if (process.argv.includes('--shots')) await page.screenshot({ path: path.join(OUT, n + '.jpg'), type: 'jpeg', quality: 55 }); },
     token: () => page.evaluate(() => window.__walkToken()),
     async call(method, p, body) { const r = await fetch(api + '/v1/console' + p, { method, headers: { authorization: 'Bearer ' + (await s.token()), ...(method === 'POST' ? { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() } : {}) }, body: method === 'POST' ? JSON.stringify(body || {}) : undefined }); const j = await r.json().catch(() => null); return { status: r.status, data: j?.data, error: j?.error }; },
     async download(run) { const [d] = await Promise.all([page.waitForEvent('download', { timeout: 15_000 }), run()]); const f = path.join(E.SCRATCH, 'dl-' + d.suggestedFilename()); await d.saveAs(f); return { name: d.suggestedFilename(), bytes: fs.readFileSync(f), text: fs.readFileSync(f, 'utf8') }; },
@@ -132,7 +132,7 @@ const site = await E.page();
 let emu, uids;
 const mail = await E.mailMock();
 const ANY = `demo-${Date.now()}`;
-if (wants('owner') || wants('actions') || wants('today')) { emu = await E.emulators(); uids = await seed(); }
+if (wants('owner') || wants('actions') || wants('delivery') || wants('today')) { emu = await E.emulators(); uids = await seed(); }
 const b64 = (b) => Buffer.from(b).toString('base64url');
 const vapid = (await import('node:crypto')).generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ format: 'jwk' });
 const vars = {
@@ -149,6 +149,38 @@ try {
   if (wants('owner')) { const { ownerWalk } = await import('./smoke/console-owner.mjs'); const w = await E.worker({ api: path.join(E.APP, 'api'), port: 18801, name: 'branch', vars }); try { await ownerWalk({ ...ctxs, w, site }); } finally { outbound.branch = w.outbound; await E.stop(w); } }
   if (wants('actions')) { const { moreWalk } = await import('./smoke/console-more.mjs'); const w = await E.worker({ api: path.join(E.APP, 'api'), port: 18801, name: 'actions', vars }); try { await moreWalk({ ...ctxs, w, site }); } finally { outbound.actions = w.outbound; await E.stop(w); } }
   if (wants('demo')) { const { demoWalk } = await import('./smoke/console-demo.mjs'); await demoWalk({ ...ctxs, site }); }
+  if (wants('delivery')) {
+    part = 'delivery';
+    const w = await E.worker({ api: path.join(E.APP, 'api'), port: 18801, name: 'delivery', vars: {} });
+    try {
+      for (const width of [375, 1440]) {
+        const s = await session({ site: site.base, api: w.base, who: 'owner', width });
+        await step(`delivery controls at ${width}px`, async () => {
+          const sw = (name) => s.page.getByRole('switch', { name, exact: true });
+          const isOff = async (name) => (await sw(name).isDisabled()) && (await sw(name).getAttribute('aria-checked')) === 'false';
+          await s.go('switches');
+          for (const name of ['מיילים על תשלומים', 'התראות לטלפון', 'הודעות במייל לנרשמים']) {
+            check(await isOff(name), `${name}: unchecked and disabled when the Worker cannot send`);
+          }
+          check((await s.text()).includes('צריך להפעיל שליחת התראות לטלפון בשרת'), 'the switch explains how to enable phone sending');
+          for (const name of ['מצב תחזוקה', 'הרשמה פתוחה', 'קריאה בלבד', 'כל המפתחות פעילים']) {
+            check(await sw(name).isEnabled(), `${name}: independent of sending configuration`);
+          }
+          check((await trouble(s)).over <= 0, 'switches fit the viewport');
+          await s.go('jobs');
+          const phoneJob = width === 375 ? 'התראות לטלפון פועלת' : 'התראות לטלפון';
+          check(await isOff(phoneJob), 'the phone job switch is unchecked and disabled too');
+          await s.go('monitor');
+          check(await isOff('גם לטלפון'), 'the owner alert’s phone switch follows the actual Worker configuration');
+          const test = s.page.getByRole('button', { name: /שלוח התראת בדיקה אליי|שליחת התראת בדיקה אליי/ });
+          await test.click();
+          check(await s.toast('השליחה לטלפון כבויה בשרת'), 'the test confirms in-app storage and a queued job while phone sending is off');
+          check((await trouble(s)).over <= 0, 'monitor fits the viewport');
+        }, s);
+        await s.ctx.close();
+      }
+    } finally { outbound.delivery = w.outbound; await E.stop(w); }
+  }
   if (wants('today')) {
     const api = process.env.TODAY_API;
     if (!api || !fs.existsSync(path.join(api, 'src/index.ts'))) throw new Error("TODAY_API: origin/main's api folder");

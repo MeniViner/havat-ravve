@@ -3,14 +3,14 @@
 // exactly the shape the rules and the guest app expect. New settings keys are optional and live next to the old ones.
 import { useCallback } from 'react';
 import { useList, isConflict, readOnce, write } from '../../db';
-import { logActivity } from '../../activity';
+import { activityOp, logActivity } from '../../activity';
 import { nowIso } from '../../clock';
 import {
   useNotifications, useHandledNotifications, handleNotification, handleNotificationsFor, decideVisit, setDonation, setTabStatus,
   setOrderPayment, saveSettingsPart, useOpenTickets, useOpenTabs, useDonations, useDonation, useVisits, useVisit, useCalendar,
   useMyTickets, useMyVisits, useMyDonations, useMyTabs, downloadCsv, useTab, fillTemplate, markPaymentConfirmation,
 } from '../../data';
-import { usePeople, usePerson, useRoleInvites, setUserRole, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
+import { usePeople, usePerson, useRoleInvites, setUserRole, setUserNotes, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
 import { useActivityByKind } from '../../activity';
 import type { DemoIntroRoles } from '../../demo/intro';
 import { notify } from './notify';
@@ -124,9 +124,16 @@ export async function changeRole(actor: Actor, p: Profile, role: Role) {
     await notify([p.uid], { kind: 'system', title: `קיבלת תפקיד: ${ROLE_LABELS[role]}`, sub: `${actor.name} עדכן/ה את התפקיד שלך באפליקציה`, link: '/me', by: actor, push: false }).catch(() => {});
   }
 }
+export async function savePersonNotes(actor: Actor, p: Profile, notes: string) {
+  await setUserNotes(p, notes);
+  await logActivity(actor, 'inbox', p.uid, 'edited', 'הערה בתיק אדם');
+}
 export const toggleBlock = (actor: Actor, p: Profile) => setUserRole(actor, p, p.role, p.status === 'blocked' ? 'active' : 'blocked');
 export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role']) => inviteByEmail(actor, email, role);
-export const cancelInvite = (email: string) => removeRoleInvite(email);
+export async function cancelInvite(actor: Actor, email: string) {
+  await removeRoleInvite(email);
+  await logActivity(actor, 'user', actor.uid, 'cancelled', 'הזמנה לצוות');
+}
 // Q27 by phone: a one-time link claimed at Google sign-in (data/invite.ts)
 export { useTeamLinks, createTeamLink, cancelTeamLink, restoreTeamLink, linkOpen, LINK_DAYS, type TeamLink, type TeamRole } from './invite';
 
@@ -153,9 +160,15 @@ export async function deleteDonation(actor: Actor, d: Donation, open: AppNotific
   logActivity(actor, 'donation', d.id, 'deleted', `${d.name} · ${d.amount} ₪`, { subjectUid: d.uid });
 }
 /** One inbox item (M3). What it points at stays. */
-export const deleteInboxItem = (n: AppNotification) => write.remove('notifications', n.id);
+export const deleteInboxItem = (actor: Actor, n: AppNotification) => write.batch([
+  { op: 'remove', col: 'notifications', id: n.id },
+  activityOp(actor, 'inbox', n.id, 'deleted', 'פריט בתור לטיפול'),
+]);
 /** A stall's request on the event day (M2). */
-export const deleteVendorRequest = (r: VendorRequest) => write.remove(`events/${r.eventId}/vendor_requests`, r.id);
+export const deleteVendorRequest = (actor: Actor, r: VendorRequest) => write.batch([
+  { op: 'remove', col: `events/${r.eventId}/vendor_requests`, id: r.id },
+  activityOp(actor, 'event', r.id, 'deleted', 'בקשה מדוכן', { eventId: r.eventId }),
+]);
 /** The owner deletes a person: the profile and a role waiting for their email. Their tickets, donations and visits stay.
  *  The Google account stays too, so signing in again starts over as a new person (first entry). */
 export async function deletePerson(actor: Actor, p: Profile) {

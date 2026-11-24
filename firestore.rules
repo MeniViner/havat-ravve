@@ -99,7 +99,7 @@ service cloud.firestore {
    // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()
    match /notifications/{nid} {
     function noteShape(){return incoming().keys().hasOnly(['id','kind','title','sub','link','refId','action','by','createdAt','readAt']) && incoming().id == nid && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 120) && str(incoming().sub, 240) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().get('refId', ''), 80) && (!('action' in incoming()) || (incoming().action is map && incoming().action.keys().hasOnly(['label','kind']) && str(incoming().action.label, 40) && incoming().action.kind in ['addToTrip','open'])) && isoTime(incoming().createdAt);}
-    function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff']));}
+    function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && (self(id) || get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff'])));}
     allow read: if self(id);
     allow create: if noteShape() && incoming().readAt == null && sender();
     // the owner of the list only marks read; "לשלוח שוב" rewrites b_<id> as new (a manager overwrites a broadcast notification)
@@ -184,11 +184,25 @@ service cloud.firestore {
    allow read: if isOwner();
    allow write: if false;
   }
+  // Personal settings activity. The client can append only a fixed event code for its own account.
+  match /account_activity/{id} {
+   allow read: if isOwner();
+   allow create: if signed() && incoming().keys().hasOnly(['uid','action','at']) && incoming().uid == uid()
+     && incoming().action in ['profile_updated','photo_updated','welcome_completed','updates_changed','push_changed'] && isoTime(incoming().at);
+   allow update, delete: if false;
+  }
+  // Metadata for personal sends is written only by the Worker and read only by owners.
+  match /notification_activity/{id} {
+   allow read: if isOwner();
+   allow write: if false;
+  }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
-   function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}
-   allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && resource.data.kind != 'task_private');
-   allow create: if signed() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place','message','calendar'];}
+   allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && !(resource.data.kind in ['task_private','project','calendar_private','inbox']));
+   function joinedInBatch(){return google() && incoming().kind == 'user' && incoming().action == 'joined'
+     && existsAfter(userPath()) && getAfter(userPath()).data.status == 'active';}
+   allow create: if (signed() || joinedInBatch()) && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings','project','message','calendar','calendar_private','inbox'] && (!(incoming().kind in ['project','message','calendar_private','inbox']) || isManager()) && (incoming().kind != 'calendar' || isStaff()) && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
    // the one change ever allowed: a manager moves a task's history between the open and the managers-only kind when the task changes visibility
    allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
    allow delete: if false;
@@ -454,7 +468,7 @@ service cloud.firestore {
   // the push outbox: the app creates jobs, only the Worker (service account) reads and updates them
   match /push_jobs/{jid} {
    allow read: if false;
-   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && !(uid() in incoming().to) && incoming().urgent is bool
+   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId','includeSelf']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && incoming().get('includeSelf', false) is bool && incoming().urgent is bool
      && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor'));
    allow update, delete: if false;
   }

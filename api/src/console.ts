@@ -51,7 +51,7 @@ import { type Caller, ROLE_SCOPES } from './auth';
 import { CATALOG, CATALOG_VERSION } from './catalog';
 import { emailEnabled } from './email';
 import { changeKey, createKey, listKeys } from './keys';
-import { type PushEnv, pushMode } from './push';
+import { type PushEnv, pushMode, pushQueueState } from './push';
 import { JOB_HE, LIMITS, ROUND_LIMIT, addMorning, alertSettings, backupTurn, eventsView, healthCheck, type JobRun, type MonitorState, readJobs, readMonitor, readQuota, saveAlertSettings, saveMonitor, securityLog, testAlert, uptimePct, weekView } from './monitor';
 import { stats } from './stats';
 import { trafficStats } from './traffic';
@@ -394,21 +394,29 @@ const JOB_LIST = [
 async function jobsView(env: Env, fs: Firestore) {
   const [mon, sw, cleanup, archive] = await Promise.all([readMonitor(env), readSwitches(env, true), cleanupPreview(env, fs), archiveSummary(env)]);
   mon.jobs = await readJobs(env, mon);
+  const blocked = {
+    email: emailEnabled(env) ? null : 'email',
+    push: pushMode(env).mode === 'off' ? 'phone' : null,
+    backup: !env.FILE_BUCKET ? 'storage' : !env.TOKEN_KV ? 'settings' : null,
+    cleanup: !env.FILE_BUCKET ? 'storage' : !env.TOKEN_KV ? 'settings' : null,
+    monitor: !env.TOKEN_KV ? 'settings' : null,
+    accounts: null,
+  } as const;
   return {
     cronAt: mon.at || null, cronMs: mon.wallMs ?? null,
-    jobs: JOB_LIST.map((j) => ({ id: j.id, he: JOB_HE[j.id], every: j.every, canPause: !!j.pause, paused: j.pause ? !!sw[j.pause] : false, canRun: j.run, last: mon.jobs?.[j.id] || null })),
+    jobs: JOB_LIST.map((j) => ({ id: j.id, he: JOB_HE[j.id], every: j.every, canPause: !!j.pause, paused: j.pause ? !!sw[j.pause] : false, canRun: j.run, blocked: blocked[j.id], last: mon.jobs?.[j.id] || null })),
     cleanup, archive,
     rounds: { items: mon.rounds || [], limit: ROUND_LIMIT },
   };
 }
 
 async function monitorView(env: Env) {
-  const st = await readMonitor(env);
+  const [st, sw] = await Promise.all([readMonitor(env), readSwitches(env, true)]);
   const u = st.uptime;
   return {
     site: { url: 'havat-ravve.web.app', checks: u?.checks || [], downSince: u?.downSince || null, incidents: u?.incidents || [], uptime: uptimePct(u) },
     quota: st.quota || null, limits: LIMITS, health: st.health || null,
-    alerts: await alertSettings(env), cronAt: st.at || null,
+    alerts: await alertSettings(env), monitorPaused: sw.monitorPaused, alertsAvailable: !!env.TOKEN_KV, pushState: pushQueueState(env, sw.pushPaused), cronAt: st.at || null,
     week: weekView(st), events: eventsView(st),
   };
 }

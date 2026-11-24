@@ -242,7 +242,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
   const remind = async () => {
     const text = fillDebtTemplate(ctx.settings.templates.debtReminder, { name: o.name, event: e.title, amount: o.owed, bit: ctx.settings.payment.bit });
     open(waUrl(o.phone, text));
-    await run(() => stampReminder('tickets', o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
+    await run(() => stampReminder(ctx.actor, e.id, 'tickets', o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
   };
   const markPaidNow = async () => {
     const before = o.tickets.map((t) => ({ ...t }));
