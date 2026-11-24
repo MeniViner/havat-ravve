@@ -227,7 +227,8 @@ export const setUpdatesOptIn = (uid: string, on: boolean) => saveAccountChange(u
 export function broadcastReceiptText(receipt: SendReceipt & { pending: boolean }, pushOn: boolean, resent = false) {
   if (receipt.pending) return 'ההודעה ממתינה לשמירה ולשליחה כשהחיבור יחזור.';
   if (!receipt.created) return 'כל הנמענים כבר קראו את ההודעה';
-  const saved = `ההודעה נשמרה${resent ? ' שוב' : ''} בהתראות של ${receipt.created} נמענים.`;
+  const recipients = receipt.created === 1 ? 'נמען אחד' : `${receipt.created} נמענים`;
+  const saved = `ההודעה נשמרה${resent ? ' שוב' : ''} בהתראות של ${recipients}.`;
   if (!receipt.queued) return saved;
   return saved + (pushOn ? ' נוספה לתור השליחה לטלפון.' : ' נוספה לתור, אבל השליחה לטלפון כבויה בשרת.');
 }
