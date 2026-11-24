@@ -122,5 +122,5 @@ What to try:
   - links outside the app (they become the app's first screen)
   - endpoints that are not Apple, Google, Mozilla or Microsoft push services (the device is dropped)
 - **Queue status.** A send can write a job while phone notifications are off on the Worker. In-app copies are available independently. The job's existing `delivered` field counts acknowledgements from the push provider. Display on a phone is unknown.
-- **Release order for sender copies.** First release Firestore rules that accept self-addressed jobs from roles already allowed to send each kind. Release the Worker and app after the rules are in service, checking that rules are active before serving the new app. Older app versions can keep writing jobs with or without `includeSelf`. Enabling and verifying phone push is a separate operation.
+- **Release order for sender copies.** First release Firestore rules that accept self-addressed jobs from roles already allowed to send each kind. The current workflow on main deploys Hosting and rules, so make rules active before serving the new app. Release the Worker separately after the rules are active. Older app versions can keep writing jobs with or without `includeSelf`. Enabling and verifying phone push is a separate operation.
 - **What is never stored in the repo:** keys, service-account JSON, and device files.

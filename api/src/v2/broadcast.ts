@@ -76,7 +76,7 @@ const notice = (b: { id: string; text: string; audience: string; urgent: boolean
 def('broadcasts.send', 'broadcasts:write', 'שליחת הודעה לצוות (התראה באפליקציה ותור שליחה לטלפון)', {
   text: str(200, 'ההודעה', true, 1), audience: en([...AUDIENCES], AUDIENCE_HE, true), urgent: bool('דחוף: נשארת בראש המסך עד שקוראים', false),
   eventId: opt('לצוות האירוע / בעלי הדוכנים: איזה אירוע (ברירת מחדל: של היום או הבא)'),
-  includeSelf: { type: 'bool', omitWhenFalse: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
+  includeSelf: { type: 'bool', ignored: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
   preview: bool('true: רק מחזיר למי זה יגיע, בלי לשלוח', false),
 }, async (c) => {
   const i = c.input;
@@ -149,7 +149,7 @@ def('me.notifications.markRead', 'me:write', 'סימון ההתראות האיש
 def('notifications.send', 'notify:team', 'שליחת התראה אישית (התראה באפליקציה ואפשרות לשליחה לטלפון)', {
   uids: { type: 'stringList', maxItems: 200, maxLength: 128, required: true, he: 'uid של הנמענים (people.search / profiles.list)' },
   title: str(120, 'כותרת', true, 1), sub: str(240, 'טקסט'), link: str(200, 'נתיב באפליקציה שמתחיל ב־/ (לא קישור https), למשל /tasks/abc או /farm', true, 1),
-  includeSelf: { type: 'bool', omitWhenFalse: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
+  includeSelf: { type: 'bool', ignored: true, he: 'שדה ישן לתאימות. השולח מקבל עותק אם הוא ברשימת הנמענים' },
   push: bool('גם התראה בטלפון', true), urgent: bool('דחוף (בטלפון: נשאר על המסך)', false),
 }, async (c) => {
   const i = c.input;

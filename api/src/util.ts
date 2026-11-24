@@ -24,7 +24,7 @@ export function validate(spec: Record<string, Param>, raw: Record<string, unknow
     let v = raw[k];
     if (v === undefined || v === null || (fromQuery && v === '')) {
       if ('required' in p && p.required) throw invalid(k, `"${k}" is required`);
-      if (p.type === 'bool' && p.omitWhenFalse) continue;
+      if (p.type === 'bool' && p.ignored) continue;
       out[k] = 'default' in p && p.default !== undefined ? p.default : null;
       continue;
     }
@@ -49,7 +49,7 @@ export function validate(spec: Record<string, Param>, raw: Record<string, unknow
       case 'bool':
         if (fromQuery && typeof v === 'string') { if (v !== 'true' && v !== 'false') throw invalid(k, `"${k}" must be true or false`); v = v === 'true'; }
         if (typeof v !== 'boolean') throw invalid(k, `"${k}" must be a boolean`);
-        if (!p.omitWhenFalse || v) out[k] = v;
+        if (!p.ignored) out[k] = v;
         break;
       case 'enum':
         if (typeof v !== 'string' || !p.values.includes(v)) throw invalid(k, `"${k}" must be one of: ${p.values.join(', ')}`);

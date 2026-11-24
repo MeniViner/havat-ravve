@@ -14,8 +14,8 @@ export type Param =
   | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
   | { type: 'uid' | 'id'; required?: boolean; he?: string }
   | { type: 'date'; format: 'YYYY-MM-DD'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
-  // omitWhenFalse preserves the old idempotency fingerprint when adding a false-by-default flag.
-  | { type: 'bool'; required?: boolean; default?: boolean; omitWhenFalse?: boolean; he?: string }
+  // ignored accepts an obsolete boolean without changing validation of the other fields or the idempotency fingerprint.
+  | { type: 'bool'; required?: boolean; default?: boolean; ignored?: boolean; he?: string }
   | { type: 'int'; min: number; max: number; default?: number; required?: boolean; he?: string }
   | { type: 'enum'; values: readonly string[]; required?: boolean; default?: string; he?: string }
   | { type: 'number'; min: number; max: number; required?: boolean; default?: number; he?: string }
