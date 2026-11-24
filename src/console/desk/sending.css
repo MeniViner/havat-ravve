@@ -56,7 +56,7 @@
 @container (max-width: 640px) {
   .dn-queue :is(th, td) { width: auto !important; padding-inline: 8px; } .dn-queue td:nth-child(2) { max-width: 120px; } .dn-queue :is(th, td):nth-child(3) { width: 100% !important; max-width: 0; }
 }
-@container (max-width: 480px) {
+@container (max-width: 560px) {
   .dn-queue :is(th, td):is(:nth-child(1), :nth-child(3)) { display: none; } .dn-queue :is(th, td):nth-child(2) { width: 100% !important; max-width: 0; } .dn-under { display: block; }
   .dn-queue :is(th, td) { padding-inline: 6px; }
 }

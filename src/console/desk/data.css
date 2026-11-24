@@ -32,7 +32,7 @@ span.dd-soft { font-size: inherit; }
 .dd-person { display: flex; align-items: center; gap: 8px; }
 .dd-person__text { display: flex; flex-direction: column; min-width: 0; } .dd-mail { display: none; font-size: 12px; color: var(--soft); }
 /* a narrow table: the mail goes under the name */
-@container (max-width: 520px) {
+@container (max-width: 560px) {
   .dd-mail { display: block; }
   table[aria-label="אנשים"] :is(th, td):nth-child(2), table[aria-label="אנשים"] .dd-avatar { display: none; }
   table[aria-label="אנשים"] :is(th, td):not(:first-child) { width: auto !important; }

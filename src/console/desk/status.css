@@ -55,6 +55,9 @@
   .v2 .d-hero:has(.ds-hero__strip) { flex-wrap: wrap; gap: 14px 24px; }
   .ds-hero__state { flex: 1; } .ds-hero__strip { order: 3; flex: 0 0 100%; }
 }
+@media (max-width: 1287px) {
+  .ds-log .d-table th { width: auto !important; white-space: normal; padding-inline: 6px; } .ds-log .d-table td { padding-inline: 6px; white-space: normal; }
+}
 /* the main column beside a side column is narrow: one column of checks, and tables fold their cells */
 @media (max-width: 1219px) {
   .ds-mon .d-card__head, .ds-speed .d-card__head { flex-wrap: wrap; gap: 2px 12px; }

@@ -11,24 +11,10 @@ origin/main's Worker, which is what is live until the new Worker goes out).
 
 ## What it found
 
-1. Medium: on Keys, choices not saved are dropped without the question when the owner leaves by the sidebar, if Keys was
-   itself reached from another screen. The listener at `src/console/desk/KeysDesk.tsx:60` is registered as a capture one
-   in order to run before the others, but events sent to `window` reach its listeners in the order they were added
-   (checked in Chromium 159: plain first, then capture). `src/console/Console.tsx:111` was added first, so the screen is
-   already gone. It does ask when the page was loaded at the key's address.
-2. Low: the security log does not say who was deleted. `api/src/monitor.ts` `namesIn` (line 477) looks the names up in
-   `users` when the log is read, and the profile is gone; the earlier lines about that person lose the name as well.
-3. Low: a console action that failed is listed by its address ("POST /v1/console/data/edit") and not by its name.
-   `api/src/index.ts:92` sets the operation only after the route succeeded. A save refused because the record changed
-   meanwhile is enough to see it.
-4. Low: a console action refused for permission is listed twice, the second time as a request of an API key
-   ("קונסולה · אליה ... מפתח API · נדחה"). `api/src/monitor.ts:491` takes every refused line, the console's own too.
-
-Seen and listed under "Seen, not failed" below: log lines that do not say which key, which mail was given a role ahead, or
-which alert setting; and a record being edited in the data browser, left by the sidebar without a question.
-
-Found before and now passing: one Firestore query for the keys' last use; the switch names and direction in the security
-log; who and which way for role and block, and which job was run.
+Nothing in the last run. Earlier runs found, and these are fixed: one Firestore query per key on Keys; unsaved choices on
+Keys and an unsaved record in Data dropped without a question; the security log not naming the switch and its direction,
+who a role or block was about, which job, key, email or alert, who was deleted, or a failed console action; a refused
+console action listed twice.
 
 ## Not covered
 
@@ -62,7 +48,7 @@ Nothing here can reach the live Worker or the production project (`scripts/smoke
 - Only processes the run started are stopped.
 
 <!-- results:start -->
-Run 2026-11-24 10:50 UTC, commit 9973eb0. 669 passed, 4 failed.
+Run 2026-11-24 11:11 UTC, commit caeeddb. 676 passed, 1 failed.
 
 | Part | Step | Passed | Failed |
 | --- | --- | --- | --- |
@@ -96,17 +82,17 @@ Run 2026-11-24 10:50 UTC, commit 9973eb0. 669 passed, 4 failed.
 | actions | switches: registration, keys, payments mail, phone, mail to registrants | 26 | 0 |
 | actions | switches: read-only stops a key from writing | 3 | 0 |
 | actions | jobs: each one once, the cleanup and its archive, a stopped round | 23 | 0 |
-| actions | keys: refused forms, picked areas, name, expiry, an expired one, not saved | 23 | 1 |
+| actions | keys: refused forms, picked areas, name, expiry, an expired one, not saved | 24 | 0 |
 | actions | keys: last use further back than the last hundred requests | 6 | 0 |
 | actions | queue: filters, stop a push, the person's card, the counter | 11 | 0 |
 | actions | data: browsing, filters, more, inside a record, the stored fields, exports | 19 | 0 |
-| actions | data: edit a yes/no and a date, a bad date, not saved, changed meanwhile | 11 | 0 |
+| actions | data: edit a yes/no and a date, a bad date, not saved, changed meanwhile | 12 | 0 |
 | actions | data: versions, thirty days | 5 | 0 |
 | actions | backups: download from the restore window, a record gone since, a bin record made again | 7 | 0 |
 | actions | import: shopping from a file, a mended cell, a repeat, an old undo | 8 | 0 |
 | actions | run: the list, technical details, more fields, a refused run | 8 | 0 |
 | actions | money, speed, traffic, stats: every export and toggle | 6 | 0 |
-| actions | security: filters, search, periods, export, and what the lines say | 24 | 3 |
+| actions | security: filters, search, periods, export, and what the lines say | 29 | 1 |
 | actions | sign out | 2 | 0 |
 | demo | opens ?demo | 1 | 0 |
 | demo | requests ?demo | 2 | 0 |
@@ -122,17 +108,7 @@ Run 2026-11-24 10:50 UTC, commit 9973eb0. 669 passed, 4 failed.
 
 ### Failed checks
 
-- [actions] keys: refused forms, picked areas, name, expiry, an expired one, not saved: screen reached by the sidebar: leaving with a change asks. {"url":"http://localhost:5297/admin?api=http://127.0.0.1:18801#/switches","order":["plain, added first","capture, added second"]}
-- [actions] security: filters, search, periods, export, and what the lines say: deleting a person: who. ["היום 12:43 אליה כהן מחיקת אדם מהאפליקציה (בעלים בלבד) קונסולה "]
-- [actions] security: filters, search, periods, export, and what the lines say: a failed action of the console is named in words, not by its address. ["היום 12:45 אליה כהן POST /v1/console/data/edit · הרשומה השתנתה מאז שנקראה (כנראה באפליקציה). קראו אותה שוב לפני השינוי קונסולה נכשל","היום 12:45 אליה כהן POST /v1/console/data/edit · אין הרשאה לפעולה הזו קונסולה נכשל","היום 12:45 אליה כהן POST /v1/console/data/edit · אין הרשאה לפעולה הזו קונסולה נ
-- [actions] security: filters, search, periods, export, and what the lines say: a refused action of the console is not listed again as an API key's. ["היום 12:45 אליה כהן POST /v1/console/data/edit · אין הרשאה לפעולה הזו קונסולה נכשל","היום 12:45 קונסולה · אליה POST /v1/console/data/edit · אין הרשאה לפעולה הזו מפתח API נדחה","היום 12:45 אליה כהן POST /v1/console/data/edit · אין הרשאה לפעולה הזו קונסולה נכשל","היום 12:45 קונסולה · אליה POST /v1/c
-
-### Seen, not failed
-
-- [actions] data: edit a yes/no and a date, a bad date, not saved, changed meanwhile: a record being edited is left by the sidebar without a question (the keys screen means to ask). "http://localhost:5297/admin?api=http://127.0.0.1:18801#/monitor"
-- [actions] security: filters, search, periods, export, and what the lines say: the line of a role set ahead says neither which mail nor which role. ["היום 12:43 אליה כהן הגדרת תפקיד מראש למייל (יקבל אותו כשיירשם). guest מבטל קונסולה "]
-- [actions] security: filters, search, periods, export, and what the lines say: the lines of the keys (new, name, expiry) do not say which key. ["היום 12:44 אליה כהן יצירת מפתח API קונסולה ","היום 12:44 אליה כהן יצירת מפתח API קונסולה ","היום 12:44 אליה כהן יצירת מפתח API קונסולה ","היום 12:44 אליה כהן תוקף למפתח API קונסולה "]
-- [actions] security: filters, search, periods, export, and what the lines say: the line of the alert settings does not say which one or which way. ["היום 12:43 אליה כהן הגדרות התראות קונסולה ","היום 12:43 אליה כהן הגדרות התראות קונסולה ","היום 12:43 אליה כהן הגדרות התראות קונסולה ","היום 12:43 אליה כהן הגדרות התראות קונסולה "]
+- [actions] security: filters, search, periods, export, and what the lines say: no code names. ["היום 13:03 אליה כהן הגדרת תפקיד מראש למייל · ahead.walk@example.com · מתנדב/ת קונסולה "]
 
 ### Requests to open each screen
 
@@ -151,7 +127,7 @@ Run 2026-11-24 10:50 UTC, commit 9973eb0. 669 passed, 4 failed.
 | queue | 2: `GET /queue` `GET /queue/email/order_or-tk-1` | 0 | 2 | 0 |
 | jobs | 1: `GET /jobs` | 0 | 1 | 0 |
 | switches | 1: `GET /switches` | 0 | 1 | 1 |
-| keys | 2: `GET /keys` `GET /keys/cred-/usage` | 1 | 2 | 1 |
+| keys | 2: `GET /keys` `GET /keys/cred-/usage` | 1 | 2 | 2 |
 | run | 1: `GET /catalog` | 0 | 1 | 0 |
 | security | 1: `GET /security?days=…` | 0 | 1 | 0 |
 

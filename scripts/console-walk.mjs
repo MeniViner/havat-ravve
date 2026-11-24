@@ -61,7 +61,9 @@ async function session({ site, api, who, url = '/admin', width = 1440 }) {
     take: () => errors.splice(0),
     text: () => page.locator('body').innerText(),
     async closeAll() { for (let i = 0; i < 4 && await page.locator('[role=dialog]').count(); i++) { await page.keyboard.press('Escape'); await sleep(250); } },
-    async go(hash) { await page.evaluate((h) => { location.hash = h; }, '#/' + hash); await s.idle(); },
+    async go(hash) { await page.evaluate((h) => { location.hash = h; }, '#/' + hash); await s.idle(); await s.leave(); },
+    /** The question before unsaved work is dropped, answered "leave" when it is on the screen. */
+    async leave() { const b = page.locator('.k-sheet').getByRole('button', { name: /^לצאת/ }); if (await b.count()) { await b.first().click(); await sleep(400); await s.idle(); } },
     /** Until nothing was asked for 500 ms and no skeleton is left. */
     async idle(ms = 12_000) { const t0 = Date.now(); let quiet = 0; let last = -1; while (Date.now() - t0 < ms) { const n = reqs.filter((r) => !/Listen\/channel/.test(r.url)).length + (await page.locator('.d-skel, .is-skeleton').count()) * 1000; if (n === last && n < 1e9) quiet++; else quiet = 0; last = n; if (quiet >= 4 && !(await page.locator('.d-skel').count())) return; await sleep(130); } },
     toast: (t, ms = 8000) => page.getByText(t, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false),

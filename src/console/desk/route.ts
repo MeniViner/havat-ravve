@@ -59,14 +59,25 @@ export function useSelected(tab: string, ids: string[], auto = true, alias?: (wa
 }
 // A window's listeners run in the order they were added, so this one is added once, before any screen's own.
 let guard: { dirty: () => boolean; ask: (go: () => void) => void } | null = null;
-let through: string | null = null;
+// Every entry of the history carries its place in it, so a refused move goes back over the same way and an accepted one
+// goes on over it: the Back button then leads where it did before.
+const placeOf = () => (history.state as { at?: number } | null)?.at;
+const mark = (at: number) => history.replaceState({ ...(history.state as object | null), at }, '');
+let place = placeOf() ?? 0;
+mark(place);
+/** The next change of address is this file's own: 'back' is not told to the screens, 'on' is. */
+let own: 'back' | 'on' | null = null;
 window.addEventListener('hashchange', (e: HashChangeEvent) => {
-  const to = location.hash;
-  if (through === to) { through = null; return; }
-  if (!guard?.dirty()) return;
+  const to = placeOf() ?? place + 1;
+  if (placeOf() === undefined) mark(to);
+  const step = to - place;
+  if (own === 'back') { own = null; place = to; e.stopImmediatePropagation(); return; }
+  if (own === 'on' || !step || !guard?.dirty()) { own = null; place = to; return; }
   e.stopImmediatePropagation();
-  history.pushState(history.state, '', e.oldURL);
-  guard.ask(() => { through = to; location.hash = to; });
+  place = to;
+  own = 'back';
+  history.go(-step);
+  guard.ask(() => { own = 'on'; history.go(step); });
 });
 /**
  * Work that was not saved is not dropped without asking: `dirty` says if there is any. A move to another screen (a link,

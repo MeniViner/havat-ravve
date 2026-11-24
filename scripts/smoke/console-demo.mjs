@@ -7,7 +7,7 @@ export async function demoWalk(x) {
     const s = await session({ site: site.base, url: '/admin' + who });
     await step('opens ' + who, async () => { await s.idle(); check(await s.page.locator('.d-nav__item').count() === 16, 'sixteen screens in the sidebar', await s.page.locator('.d-nav__item').count()); }, s);
     for (const [tab, title] of SCREENS) await step(`demo ${tab}`, async () => {
-      await s.page.locator(`.d-nav__item[href="#/${tab}"]`).click(); await s.idle(); await s.page.locator('.d-head__title', { hasText: title }).waitFor();
+      await s.page.locator(`.d-nav__item[href="#/${tab}"]`).click(); await s.idle(); await s.leave(); await s.page.locator('.d-head__title', { hasText: title }).waitFor();
       const t = await trouble(s); check(!t.m && !t.alerts.length, `${tab}: loaded, no error text`, t);
       if (who === '?demo') { const r = await clickAll(s, { tab, sleep, trouble }); check(!r.dead.length, `${tab}: every control does something (${r.clicked} clicked)`, r.dead); check(!r.bad.length, `${tab}: nothing breaks when clicked`, r.bad); if (r.popups.length) console.log('  popups', tab, r.popups); }
     }, s);
