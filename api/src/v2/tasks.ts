@@ -142,7 +142,7 @@ def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או
     link: `/shopping?list=${keyOfCat(c.input.list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' } as unknown as string, by: c.me,
   }));
   return { status: 201, writes, refs: [{ col: 'shopping_trips', id, expected: { list: c.input.list, closedAt: null } }], data: { tripId: id, list: trip.list, resumed: false } };
-}, ['Resumes the shopper's newest unclosed trip at any age and returns its actual list. Other trips are untouched. Only opening a new trip writes a team notification and queues a push.']);
+}, ["Resumes the shopper's newest unclosed trip at any age and returns its actual list. Other trips are untouched. Only opening a new trip writes a team notification and queues a push."]);
 
 /** tripSummary() in data/shopping.ts: "5 נקנו · קפה שחור לא היה". */
 function tripSummary(bought: number, missing: string[]): string {

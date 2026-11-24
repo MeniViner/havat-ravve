@@ -259,9 +259,9 @@ export const againShopItem = (actor: Actor, item: ShoppingItem) =>
   addShopItem(actor, { title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category });
 
 /** "אני בסופר, מתחילים": resumes my open trip, or opens one and tells the team (C1 "יואב יוצא לסופר עכשיו" + push). */
-export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[]): Promise<string> {
+export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[]) {
   const mine = activeTripOf(trips, actor.uid);
-  if (mine) return mine.id;
+  if (mine) return { tripId: mine.id, list: mine.list, resumed: true };
   const now = nowIso();
   const id = newId('shopping_trips');
   const trip: ShoppingTrip = { id, by: actor, list, startedAt: now, closedAt: null, bought: [], missing: [] };
@@ -273,7 +273,7 @@ export async function startTrip(actor: Actor, list: ShoppingCategory, trips: Sho
     { op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> },
     activityOp(actor, 'shopping', id, 'opened', 'קנייה'),
   ]);
-  return id;
+  return { tripId: id, list, resumed: false };
 }
 /** "סיימתי לקנות": closes the trip with what was bought and what was missing, and tells the team (C1, no push). */
 export async function closeTrip(actor: Actor, trip: ShoppingTrip, view: TripView, team: Profile[]) {

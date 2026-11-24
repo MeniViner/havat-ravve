@@ -243,14 +243,16 @@ assert.deepEqual([up.notAvailable, up.tripId], [true, 't1']);
 assert.equal(calls.find((c) => c[0] === 'log')[3], 'unavailable');
 
 calls.length = 0;
-assert.equal(await S.startTrip(actor, 'super', [trip], team), 't1', 'my open trip resumes');
+assert.deepEqual(await S.startTrip(actor, 'super', [trip], team), { tripId: 't1', list: 'super', resumed: true });
 assert.equal(calls.length, 0, 'resuming writes nothing and tells nobody');
 
 calls.length = 0;
 const forgotten = { ...trip, id: 'tf', startedAt: '2026-01-01T08:00:00.000Z' };
-assert.equal(await S.startTrip(actor, 'building', [forgotten, others], team), 'tf');
+assert.deepEqual(await S.startTrip(actor, 'building', [forgotten, others], team), { tripId: 'tf', list: 'super', resumed: true });
 assert.equal(calls.length, 0, 'an older trip resumes on its own list without writes or notifications');
-const nid = await S.startTrip(actor, 'super', [others], team);
+const { tripId: nid, list, resumed } = await S.startTrip(actor, 'super', [others], team);
+assert.equal(list, 'super');
+assert.equal(resumed, false);
 const ops = calls.find((c) => c[0] === 'batch')[1];
 assert.deepEqual(ops.map((o) => [o.op, o.id]), [['set', nid], ['set', 'act-' + nid]]);
 assert.equal(ops[0].data.closedAt, null);
