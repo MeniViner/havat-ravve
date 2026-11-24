@@ -12,7 +12,7 @@ import type { TagTone } from './desk';
 export type Notify = (t: string, tone?: 'info' | 'alert') => void;
 /** A collection, or one record's own ("events/e1" + vendors). */
 export type Place = { group: string; parent?: string };
-export const SYSTEM = new Set(['api_log', 'api_failures', 'api_idempotency', 'push_jobs', 'email_outbox', 'account_deletions', 'account_activity', 'counters']);
+export const SYSTEM = new Set(['api_log', 'api_failures', 'api_idempotency', 'push_jobs', 'email_outbox', 'account_deletions', 'account_activity', 'notification_activity', 'counters']);
 export const SIMPLE = new Set(['string', 'integer', 'double', 'boolean', 'null']);
 export const groupOf = (path: string) => path.split('/').filter((_, i) => i % 2 === 0).join('/*/');
 export const placeKey = (p: Place) => `${p.group}|${p.parent || ''}`;

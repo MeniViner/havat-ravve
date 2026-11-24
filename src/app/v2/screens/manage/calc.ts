@@ -269,6 +269,7 @@ const VERBS: Record<string, Verb> = {
 };
 /** Same action, other meaning on another kind: a vendor invited to an event, a ticket stopped at the gate. */
 const KIND_VERBS: Record<string, Verb> = {
+  'message:personal_notification_created': { m: 'יצר התראה אישית', f: 'יצרה התראה אישית', join: ':' },
   'message:message_sent': { m: 'שלח הודעה', f: 'שלחה הודעה', join: ':' },
   'message:message_resent': { m: 'שלח שוב הודעה', f: 'שלחה שוב הודעה', join: ':' },
   'message:message_deleted': { m: 'מחק הודעה', f: 'מחקה הודעה', join: ':' },

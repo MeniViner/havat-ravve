@@ -167,7 +167,11 @@ def('notifications.send', 'notify:team', 'שליחת התראה אישית (הת
   const kind = 'system';
   const send = planNotification(c.fs, to, { id, kind, title: i.title, sub: i.sub || '', link: appLink(i.link), by: c.me, push: i.push, urgent: i.urgent });
   const { receipt } = send;
-  return { status: 201, writes: send.writes, refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { title: i.title } })), data: { notificationId: id, notified: receipt.created, ...receipt } };
+  const journal = c.fs.create('notification_activity', id, {
+    kind: 'message', notificationKind: kind, refId: id, action: 'personal_notification_created',
+    by: c.me, at: nowIso(), recipientCount: receipt.created, ...receipt,
+  });
+  return { status: 201, writes: [...send.writes, journal], refs: to.slice(0, 50).map((u) => ({ col: `users/${u}/notifications`, id, expected: { kind } })), data: { notificationId: id, notified: receipt.created, ...receipt } };
 }, [
   'Confirm the text and recipients with the user first. The sender gets a copy when listed. push=false writes only the in-app copies.',
   'link is an in-app path starting with "/" (for example /tasks/<id>); an https link is refused with 400.',

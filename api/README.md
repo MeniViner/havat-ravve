@@ -285,7 +285,7 @@ Send responses distinguish `accepted` (the operation was processed), `created` (
 | Personal settings | Profile, photo, welcome, update consent and push settings changes emit an event code, account ID and timestamp in `account_activity`, visible only to owners in the console data browser. |
 | Notification delivery and technical writes | The initiating business action supplies the activity for generated notifications, outbox jobs, counters and linked documents. Read/seen receipts, cache synchronisation and automatic photo refresh are delivery or maintenance state. |
 
-API action activity commits with the domain write. Personal `notifications.send` records the sender and the number notified in owner-only `api_log`. Its title, body, recipient identifiers and links are excluded. Console key changes use the owner audit log. The app writes team activity directly to Firestore. The API request log describes requests received by the Worker.
+API action activity commits with the domain write. Personal `notifications.send` writes an owner-only activity row with the actor, time, kind, recipient count and send status in the same transaction as the notifications. The existing owner-only request log keeps the send counts and request outcome. Both logs exclude title, body, links and recipient identifiers. Console key changes use the owner audit log. The app writes team activity directly to Firestore. The API request log describes requests received by the Worker.
 
 **Limits**
 - Workers Rate Limiting: 240 requests a minute per key, and 30 failed authentications a minute per IP.

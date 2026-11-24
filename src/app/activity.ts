@@ -30,6 +30,7 @@ export const useActivityForEvent = (eventId: string, enabled: boolean) => useLis
 export const useActivityBy = (uid: string, enabled: boolean, max = 200) => useList<Activity>('activity', { where: [['by.uid', '==', uid]], orderBy: [['at', 'desc']], limit: max }, enabled && !!uid);
 
 export const ACTION_LABELS: Record<string, string> = {
+  personal_notification_created: 'יצר התראה אישית',
   message_sent: 'הודעה נשלחה', message_resent: 'הודעה נשלחה שוב', message_deleted: 'הודעה נמחקה',
   created: 'נוצר', edited: 'נערך', done: 'בוצע', undone: 'הוחזר לביצוע', deleted: 'נמחק', photo: 'תמונה נוספה', note: 'הערה נוספה', assigned: 'הוקצה', urgent: 'סומן דחוף',
   bought: 'נקנה', unbought: 'הוחזר לרשימה', found: 'נמצא', added: 'נוסף',

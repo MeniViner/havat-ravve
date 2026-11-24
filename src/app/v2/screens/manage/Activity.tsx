@@ -32,6 +32,9 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
   const eventId = ctx.manager ? params.event || '' : '';
   const max = Math.max(400, shown + 1);
   const all = useActivityAll(ctx.manager && !eventId, max);
+  const personal = useList<Omit<Activity, 'text'> & { recipientCount: number; queued: number }>(
+    'notification_activity', { orderBy: [['at', 'desc']], limit: max }, ctx.owner && !eventId,
+  );
   const teamActivity = useList<Activity>('activity', { where: [['kind', 'in', [...TEAM_ACTIVITY_KINDS]]], orderBy: [['at', 'desc']], limit: max }, !ctx.manager);
   const publicTasks = useList<Task>('tasks', { where: [['managersOnly', '==', false]] }, !ctx.manager);
   const publicTaskIds = useMemo(() => new Set(publicTasks.items.map((t) => t.id)), [publicTasks.items]);
@@ -40,9 +43,11 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
   const ofEvent = useActivityForEvent(eventId, !!eventId);
   const event = useEvent(eventId).item;
   const { items: sourceItems, loading } = ctx.manager ? (eventId ? ofEvent : all) : teamActivity;
-  const items = useMemo(() => ctx.manager ? sourceItems : sourceItems.map((a) =>
+  const items = useMemo(() => ctx.manager ? [...sourceItems, ...personal.items.map((row) => ({
+    ...row, text: `נשמרו ${row.recipientCount} התראות באפליקציה${row.queued ? ' · נוספו לתור שליחה לטלפון' : ''}`,
+  }))] : sourceItems.map((a) =>
     a.kind === 'task' && !publicTaskIds.has(a.refId) ? { ...a, text: 'משימה שאינה זמינה לך' } : a,
-  ), [ctx.manager, sourceItems, publicTaskIds]);
+  ), [ctx.manager, sourceItems, publicTaskIds, personal.items]);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<ActivityFilter>((filters.some((f) => f.v === params.filter) ? params.filter : 'all') as ActivityFilter);
   const [efilter, setEfilter] = useState<EventActivityFilter>('all');

@@ -191,6 +191,11 @@ service cloud.firestore {
      && incoming().action in ['profile_updated','photo_updated','welcome_completed','updates_changed','push_changed'] && isoTime(incoming().at);
    allow update, delete: if false;
   }
+  // Metadata for personal sends is written only by the Worker and read only by owners.
+  match /notification_activity/{id} {
+   allow read: if isOwner();
+   allow write: if false;
+  }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
    function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place','message','calendar'];}

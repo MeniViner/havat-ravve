@@ -96,7 +96,7 @@ export function auditDoc(env: Env, a: Audit, req: { requestId: string; method: s
   const name = op?.name || a.op || `${req.method} ${req.path}`;
   const ok = req.status < 400;
   const privateNotification = name === 'notifications.send';
-  const notified = (a.result as { notified?: number } | undefined)?.notified;
+  const { notified, accepted, created, queued } = (a.result || {}) as Partial<Record<'notified' | 'accepted' | 'created' | 'queued', unknown>>;
   const items = a.result && typeof a.result === 'object' && Array.isArray((a.result as { items?: unknown }).items) ? (a.result as { items: unknown[] }).items.length : null;
   return {
     id: req.requestId, at: nowIso(),
@@ -106,7 +106,7 @@ export function auditDoc(env: Env, a: Audit, req: { requestId: string; method: s
     method: req.method, path: req.path, query: cap(req.query, 500),
     body: kind === 'write' && !privateNotification ? cap(a.body || {}, 4000) : '',
     // a read keeps only how many records it returned; a write keeps its answer (a delete's answer is what was deleted)
-    result: kind === 'write' && ok ? cap(privateNotification ? { notified } : a.result, 4000) : '', count: items,
+    result: kind === 'write' && ok ? cap(privateNotification ? { notified, accepted, created, queued } : a.result, 4000) : '', count: items,
     refs: kind === 'write' && ok && !privateNotification ? refsOf(a.result) : [],
     status: req.status, ok, code: req.error?.code || '', message: req.error ? `${HE[req.error.code]}: ${privateNotification ? op?.he || 'שליחת התראה אישית' : req.error.message}`.slice(0, 300) : '',
     replayed: !!a.replayed, idempotencyKey: a.idempotencyKey || '', ms: req.ms,

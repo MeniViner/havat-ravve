@@ -829,7 +829,12 @@ try {
       check(sentToMe.status === 201 && sentToMe.json.data.notified === 1 && mine?.readAt === null
         && (await pushJobs()).some((job) => job.to.join() === 'syn-mgr'), 'a self-only notification is unread and queued for push');
       const privateLog = await logOf(sentToMe.json.meta.requestId);
-      check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
+      check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1, accepted: true, created: 1, queued: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
+      const row = await docOf('notification_activity/' + mineId);
+      check(row?.by.uid === 'syn-mgr' && row.notificationKind === 'system' && row.recipientCount === 1
+        && row.accepted === true && row.created === 1 && row.queued === 1 && Number.isFinite(Date.parse(row.at))
+        && sameKeys(row, ['kind', 'notificationKind', 'refId', 'action', 'by', 'at', 'recipientCount', 'accepted', 'created', 'queued']),
+      'one owner-only journal row contains metadata only', row);
       check(!(await listCol('activity')).some((row) => JSON.stringify(row).includes('private-acceptance-')), 'personal notification data is absent from team activity');
 
       const sameKey = randomUUID();
