@@ -17,10 +17,12 @@
 // job's tag (b_<id> for a broadcast), so the phone replaces the copy instead of showing two.
 import { type Doc, type Env, Firestore } from './firestore';
 import { allowedEndpoint, sendWebPush, type Vapid } from './webpush';
-import { type FcmEnv, fcmConfigured, sendFcm } from './fcm';
+import { type FcmEnv, fcmConfigured, fcmToken, sendFcm } from './fcm';
 
 export type PushEnv = Env & FcmEnv & {
   PUSH_MODE?: string;
+  /** Optional native Android delivery alongside the selected browser mode. */
+  PUSH_ANDROID_FCM?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   /** "mailto:someone@…" or an https URL: who the push services contact about this sender. */
@@ -46,6 +48,8 @@ const MANAGERS = new Set(['owner', 'manager']);
 const prefOf = (kind: string) => (kind === 'vendor' ? 'event' : kind === 'system' ? null : kind);
 
 type Mode = 'off' | 'webpush' | 'fcm';
+const androidEnabled = (env: PushEnv, mode: Mode) =>
+  mode !== 'off' && env.PUSH_ANDROID_FCM === 'true' && !!env.FCM_SERVICE_ACCOUNT && fcmConfigured(env);
 type Device = { id?: string; kind?: string; endpoint?: string; keys?: { p256dh?: string; auth?: string }; token?: string };
 type Prefs = { enabled?: boolean; kinds?: string[]; devices?: Device[] } & Record<string, unknown>;
 // `delivered` counts provider acknowledgements, not notifications displayed on a phone.
@@ -76,13 +80,13 @@ export function pushQueueState(env: PushEnv, paused: boolean) {
 let published = '';
 
 async function publish(fs: Firestore, env: PushEnv, mode: Mode, now: string, st: Stats): Promise<string> {
-  const want = { mode, vapidPublicKey: mode === 'webpush' ? env.VAPID_PUBLIC_KEY || '' : '', fcmVapidKey: mode === 'fcm' ? env.FCM_VAPID_KEY || '' : '' };
+  const want = { mode, vapidPublicKey: mode === 'webpush' ? env.VAPID_PUBLIC_KEY || '' : '', fcmVapidKey: mode === 'fcm' ? env.FCM_VAPID_KEY || '' : '', androidFcm: androidEnabled(env, mode) };
   const sig = JSON.stringify(want);
   if (published === sig) return 'same';
   st.calls++;
   const cur = await fs.get('settings', 'push');
   const d = cur?.data || {};
-  if (cur && d.mode === want.mode && (d.vapidPublicKey || '') === want.vapidPublicKey && (d.fcmVapidKey || '') === want.fcmVapidKey) { published = sig; return 'same'; }
+  if (cur && d.mode === want.mode && (d.vapidPublicKey || '') === want.vapidPublicKey && (d.fcmVapidKey || '') === want.fcmVapidKey && d.androidFcm === want.androidFcm) { published = sig; return 'same'; }
   st.calls++;
   await fs.commit([fs.set('settings', 'push', { ...want, updatedAt: now })]);
   published = sig;
@@ -98,6 +102,7 @@ export async function runPush(env: PushEnv, nowMs = Date.now()): Promise<Record<
   const now = iso(nowMs);
   out.mode = mode;
   if (missing) out.missing = missing;
+  if (env.PUSH_ANDROID_FCM === 'true') out.androidFcm = androidEnabled(env, mode);
   out.settings = await publish(fs, env, mode, now, st);
   if (mode === 'off') return { ...out, calls: st.calls };
 
@@ -105,12 +110,14 @@ export async function runPush(env: PushEnv, nowMs = Date.now()): Promise<Record<
   const jobs = (await fs.query({ from: [{ collectionId: JOBS }], where: { unaryFilter: { op: 'IS_NULL', field: { fieldPath: 'sentAt' } } }, limit: QUERY_LIMIT }))
     .sort((a, b) => ms(a.data.createdAt) - ms(b.data.createdAt) || a.id.localeCompare(b.id));
   const sender = makeSender(env, mode);
+  // First FCM send can read/write its KV token cache and fetch an OAuth token.
+  const budget = mode === 'fcm' || androidEnabled(env, mode) ? BUDGET - 3 : BUDGET;
   for (const job of jobs) {
     // a job needs at least: the lease, one read, one send and the progress commit
-    if (BUDGET - st.calls < 4) break;
+    if (budget - st.calls < 4) break;
     if (ms(job.data.leaseUntil) > nowMs) continue; // another run holds it
     st.jobs++;
-    await drainJob(fs, job, sender, nowMs, st);
+    await drainJob(fs, job, sender, nowMs, st, budget);
   }
   return { ...out, ...st };
 }
@@ -121,24 +128,31 @@ type Payload = { title: string; body: string; link: string; tag: string; urgent:
 
 function makeSender(env: PushEnv, mode: Mode): Sender {
   const testHosts = testMode(env) ? (env.PUSH_TEST_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean) : [];
-  if (mode === 'webpush') {
-    const vapid: Vapid = { publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY!, subject: env.VAPID_SUBJECT! };
-    return async (d, p) => {
-      if (d.kind !== 'webpush' || !d.endpoint || !d.keys?.p256dh || !d.keys?.auth) return null;
-      if (!allowedEndpoint(d.endpoint, testHosts)) return { ok: false, gone: true, status: 0 }; // not a push service we know: drop it
+  const vapid = mode === 'webpush'
+    ? { publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY!, subject: env.VAPID_SUBJECT! } satisfies Vapid
+    : null;
+  const android = androidEnabled(env, mode);
+  const urls = testMode(env) ? { api: env.FCM_API_URL, token: env.GOOGLE_TOKEN_URL } : {};
+  let auth: Promise<string> | undefined;
+  return async (d, p) => {
+    if (d.kind === 'webpush' && vapid) {
+      if (!d.endpoint || !d.keys?.p256dh || !d.keys?.auth) return null;
+      if (!allowedEndpoint(d.endpoint, testHosts)) return { ok: false, gone: true, status: 0 };
       try {
         return await sendWebPush({ endpoint: d.endpoint, keys: { p256dh: d.keys.p256dh, auth: d.keys.auth } }, { title: p.title, body: p.body, link: p.link, tag: p.tag, urgent: p.urgent }, vapid, { ttl: p.ttl, urgency: p.urgent ? 'high' : 'normal', topic: p.tag, fetch: env.FETCH });
-      } catch { return { ok: false, gone: true, status: 0 }; } // malformed keys: the subscription can never work
-    };
-  }
-  const urls = testMode(env) ? { api: env.FCM_API_URL, token: env.GOOGLE_TOKEN_URL } : {};
-  return async (d, p) => {
-    if (d.kind !== 'fcm' || !d.token || d.token.length > 4096) return null;
-    return sendFcm(env, d.token, p, urls);
+      } catch { return { ok: false, gone: true, status: 0 }; }
+    }
+    const native = d.kind === 'android-fcm' && android;
+    if ((!native && !(d.kind === 'fcm' && mode === 'fcm')) || !d.token || d.token.length > 4096) return null;
+    try {
+      const bearer = await (auth ??= fcmToken(env, urls.token));
+      return await sendFcm(env, d.token, p, { api: urls.api, android: native, bearer });
+    }
+    catch { return { ok: false, gone: false, status: 0 }; }
   };
 }
 
-async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st: Stats) {
+async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st: Stats, budget: number) {
   const j = job.data;
   const kind = String(j.kind || '');
   const to = (Array.isArray(j.to) ? j.to : []).map(String).slice(0, 500);
@@ -187,18 +201,35 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
   const gone = new Map<string, { doc: Doc; prefs: Prefs; drop: Set<number> }>();
   let next = cursor;
   let delivered = 0, failed = 0;
+  // A guest can receive only a broadcast tied to a real recipient list. For farm
+  // updates, honour the current consent even when it changed after queuing.
+  const refId = String(j.refId || '');
+  const guestPush = slice.some((uid) => {
+    const user = users.get(uid)?.data;
+    return user?.role === 'guest' && user.status === 'active' && (user.push as Prefs | undefined)?.enabled === true;
+  });
+  let guestBroadcast: Doc | null = null;
+  if (kind === 'broadcast' && guestPush && /^[A-Za-z0-9_-]{1,80}$/.test(refId)) {
+    st.calls++;
+    guestBroadcast = await fs.get('broadcasts', refId);
+  }
+  const audience = guestBroadcast?.data.audience;
+  const guestRecipients = new Set((audience === 'registrants' || audience === 'everyone') && Array.isArray(guestBroadcast?.data.recipients)
+    ? guestBroadcast.data.recipients : []);
   for (const uid of slice) {
     const u = users.get(uid);
     const p = (u?.data.push || {}) as Prefs;
     const rrole = String(u?.data.role || '');
-    // who may receive: active people; a vendor receives broadcasts and a copy of their own vendor notification
-    const receives = !!u && u.data.status === 'active' && (TEAM.has(rrole) ? (role !== 'vendor' || MANAGERS.has(rrole)) : rrole === 'vendor' && (kind === 'broadcast' || (kind === 'vendor' && uid === by.uid)))
+    const guestReceives = rrole === 'guest' && guestRecipients.has(uid) && (audience === 'registrants' || u?.data.updatesOptIn === true);
+    const vendorReceives = rrole === 'vendor' && (kind === 'broadcast' || (kind === 'vendor' && uid === by.uid));
+    const teamReceives = TEAM.has(rrole) && (role !== 'vendor' || MANAGERS.has(rrole));
+    const receives = !!u && u.data.status === 'active' && (guestReceives || vendorReceives || teamReceives)
       && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref));
     const devices = receives && Array.isArray(p.devices) ? p.devices.slice(0, MAX_DEVICES) : [];
     // keep one call for the progress commit and one for a possible cleanup
-    if (BUDGET - st.calls - 2 < devices.length) break;
+    if (budget - st.calls - 2 < devices.length) break;
     for (let i = 0; i < devices.length; i++) {
-      const r = await send(devices[i], payload);
+      const r = await send(devices[i], guestReceives ? { ...payload, link: '/me/messages' } : payload);
       if (!r) continue; // a device of the other mode
       st.calls++;
       if (r.ok) delivered++;
@@ -225,7 +256,7 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
 
   // expired subscriptions: removed only if the person's document did not change since it was read
   for (const [uid, g] of gone) {
-    if (BUDGET - st.calls < 1) break;
+    if (budget - st.calls < 1) break;
     st.calls++;
     const devices = (g.prefs.devices || []).filter((_, i) => !g.drop.has(i));
     try { await fs.commit([fs.patch('users', uid, { push: { ...g.prefs, devices } }, g.doc.updateTime)]); st.removed += g.drop.size; }
