@@ -18,7 +18,7 @@
 //    (archive/<collection>/<date>-<n>.ndjson) and then deleted, a page per run, so Firestore stays small and free.
 import { type Env, Firestore, type RawDoc } from './firestore';
 import { ApiError, invalid } from './http';
-import { ilDate, pathOf } from './backup';
+import { ilDate, lastBackup, pathOf } from './backup';
 import { OUTBOX, brevoUsed, emailHtml } from './email';
 import { JOBS } from './push';
 import { todayIL } from './core';
@@ -271,7 +271,7 @@ export async function runCleanup(env: Env, opts: { force?: boolean; by?: string 
     // record's version, so a busy day is safe)
     if (hour < 3 || hour >= 23) return null;
     // the backup first: what is cleaned tonight is also in tonight's backup
-    const last = JSON.parse((await env.TOKEN_KV.get('console:backup-last')) || 'null') as { date?: string } | null;
+    const last = await lastBackup(env);
     if (last?.date !== today) return null;
   }
   if (!st || st.done) st = { date: today, rule: 0, parts: st?.parts || 0, archived: st?.archived || 0, deleted: st?.deleted || 0, done: false, at: '', by: opts.by || 'cron' };
