@@ -40,6 +40,8 @@ export type Env = {
   EMAIL_TEST_FAST?: string;
   /** Tests only: the Firebase Auth emulator (account deletion, and the app's sign-in tokens for /v1/files). */
   FIREBASE_AUTH_EMULATOR_HOST?: string;
+  /** Temporary reader-first release keeps numbered writes; paused leaves reads available during rollback. */
+  BACKUP_WRITE_FORMAT?: 'legacy' | 'paused';
   /** R2 bucket for the app's images and event files (files.ts). */
   FILE_BUCKET?: import('./files').R2;
   /** Optional host for the links /v1/files returns (no trailing slash). Default: the Worker's own origin. */

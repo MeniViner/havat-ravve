@@ -223,11 +223,11 @@ function Versions({ d, notify, onClose, onRestored }: { d: DataDoc; notify: Noti
       {x && !pick && (
         <>
           <Table inset label="גרסאות מהגיבויים" rows={x.versions} rowKey={(v) => v.from + v.to} empty="עוד אין גיבויים שהרשומה מופיעה בהם." columns={[
-            { key: 'span', head: 'מתי', width: 170, strong: true, cell: (v) => `${span(v)}${v === x.versions[0] && !v.gone && x.now?.updateTime === v.updateTime ? ' · כמו היום' : ''}` },
-            { key: 'what', head: 'מה השתנה', wrap: true, soft: true, cell: (v) => (v.gone ? 'לא הייתה קיימת בגיבוי' : v.changed.length ? `השתנו: ${v.changed.map((k) => fieldLabel(k) || k).join(', ')}` : v === x.versions[x.versions.length - 1] ? 'הגרסה הכי ישנה בטווח' : 'בלי שינוי בשדות') },
-            { key: 'go', head: '', width: 100, align: 'end', cell: (v) => (v.gone ? null : <Act onClick={() => setPick(v)}>להשוות</Act>) },
+            { key: 'span', head: 'מתי', width: 170, strong: true, cell: (v) => `${span(v)}${v === x.versions[0] && !v.gone && !v.unavailable && x.now?.updateTime === v.updateTime ? ' · כמו היום' : ''}` },
+            { key: 'what', head: 'מה השתנה', wrap: true, soft: true, cell: (v) => (v.unavailable ? 'הגיבוי לא זמין' : v.gone ? 'לא הייתה קיימת בגיבוי' : v.changed.length ? `השתנו: ${v.changed.map((k) => fieldLabel(k) || k).join(', ')}` : v === x.versions[x.versions.length - 1] ? 'הגרסה הכי ישנה בטווח' : 'בלי שינוי בשדות') },
+            { key: 'go', head: '', width: 100, align: 'end', cell: (v) => (v.gone || v.unavailable ? null : <Act onClick={() => setPick(v)}>להשוות</Act>) },
           ]} />
-          <p className="dd-soft">נבדקו {x.days} גיבויים אחרונים.{days < 30 && <> <Act onClick={() => setDays(30)} disabled={h.loading}>{h.loading ? 'בודק…' : 'לבדוק 30 יום'}</Act></>}</p>
+          <p className="dd-soft">נבדקו {x.days} גיבויים אחרונים.{x.truncated && ' הבדיקה נעצרה במגבלת הקריאה של השרת.'}{days < 30 && <> <Act onClick={() => setDays(30)} disabled={h.loading}>{h.loading ? 'בודק…' : 'לבדוק 30 יום'}</Act></>}</p>
           <div><SubTitle>מה נרשם באפליקציה</SubTitle>
             {!x.activity.length && <Empty>אין שורות ביומן הפעילות על הרשומה הזאת.</Empty>}
             {x.activity.map((a, i) => <Hist key={a.at + i} when={whenFull(a.at)}>{activityText(a, d.title)}{a.via && a.by ? <span className="dd-soft"> · בשם {a.by}</span> : null}</Hist>)}</div>

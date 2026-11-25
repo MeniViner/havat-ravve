@@ -12,10 +12,10 @@ import { authErrorMessage } from '../../../firebase';
 import { useDemo } from '../../../demo/store';
 import { write } from '../../../db';
 import { nowIso } from '../../../clock';
-import { back, navigate, param } from '../../../router';
+import { back, navigate, param, useParam } from '../../../router';
 import { dayName, daysFromToday, ddmm, longDate, money } from '../../format';
 import { isRead, markRead, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
-import { usePush, enablePush, disablePush } from '../../data/push';
+import { DevicePushRow } from '../broadcast/PushSheet';
 import { registrationQuestions, answerOf, answersFor, missingAnswers } from '../../data/system';
 import { RegistrationQuestions } from '../system/fields';
 import { gw } from '../../gender';
@@ -71,7 +71,7 @@ const ABOUT: [RegExp, string][] = [[/\/order/, 'כדי שהכרטיסים יהי
 export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
   const sign = useSignIn();
   useEffect(() => { if (ctx.profile && next) navigate(next, true); }, [!!ctx.profile]);
-  const about = (next && ABOUT.find(([re]) => re.test(next))?.[1]) || 'כדי לראות את הכרטיסים, הביקורים והתרומות שלך';
+  const about = next?.includes('notifications=1') ? 'כדי לקבל התראות מהחווה במכשיר' : (next && ABOUT.find(([re]) => re.test(next))?.[1]) || 'כדי לראות את הכרטיסים, הביקורים והתרומות שלך';
   return (
     <AppScreen variant="plain" bodyClassName="guest-signin">
       {next && <TopBar className="guest-pull" back={{ label: 'חזרה', onClick: () => back('/') }} />}
@@ -93,7 +93,7 @@ const townOf = (p: Profile, ctx: GuestCtx) => p.town || answerOf(p.fields, regis
 const relDayWord = (iso: string) => (daysFromToday(iso) === 0 ? 'היום' : daysFromToday(iso) === -1 ? 'אתמול' : ddmm(iso));
 
 export function AccountPage({ ctx }: { ctx: GuestCtx }) {
-  if (!ctx.profile) return <SignInPage ctx={ctx} />;
+  if (!ctx.profile) return <SignInPage ctx={ctx} next={param('notifications') === '1' ? '/me/account?notifications=1' : undefined} />;
   return <Account ctx={ctx} p={ctx.profile} />;
 }
 function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
@@ -101,7 +101,8 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const { items } = useItems(ctx);
   const messages = useMyBroadcasts(p.uid, 30);
   const msgs = messages.items;
-  const [sheet, setSheet] = useState<'notify' | 'receipt' | null>(null);
+  const [sheet, setSheet] = useState<'receipt' | null>(null);
+  const notifications = useParam('notifications') === '1';
   const toast = useToast();
   const questions = registrationQuestions(ctx.settings.registrationFields);
   const missing = questions.filter((f) => !answerOf(p.fields, f).trim());
@@ -128,7 +129,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       </ListCard>
       <ListCard>
         <Row leading={<IconTile icon="megaphone" />} title="הודעות מהחווה" meta={msgs.length ? `${msgs.length === 1 ? 'הודעה אחת' : `${msgs.length} הודעות`} · האחרונה ${relDayWord(msgs[0].createdAt)}` : 'אין הודעות עדיין'} onClick={() => go('/me/messages')} />
-        <Row leading={<IconTile icon="bell" />} title="התראות ועדכונים" meta={`עדכונים על אירועים חדשים: ${p.updatesOptIn ? 'פעיל' : 'כבוי'}`} onClick={() => setSheet('notify')} />
+        <Row leading={<IconTile icon="bell" />} title="התראות ועדכונים" meta="התראות במכשיר ועדכונים על אירועים" onClick={() => navigate('/me/account?notifications=1', false, true)} />
         <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
         {canChooseReceipt(p) && <Row leading={<IconTile icon="message" />} title="אישור תשלום" meta={method ? `נשלח אליי ב${RECEIPT_WORD[method]}` : 'עוד לא בחרת לאן'} onClick={() => setSheet('receipt')} />}
         <Row leading={<IconTile icon="phone" />} title="פנייה לחווה" onClick={() => go('/contact')} />
@@ -139,7 +140,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
         <Button variant="quiet" href="/">האתר</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאים</Button>
       </div>
-      <NotifySheet open={sheet === 'notify'} onClose={() => setSheet(null)} p={p} />
+      <NotifySheet open={notifications} onClose={() => navigate('/me/account', true, true)} p={p} />
       <PickerSheet open={sheet === 'receipt'} onClose={() => setSheet(null)} title="אישור תשלום" sub="לאן לשלוח לי אישור כשהמנהלים מאשרים תשלום"
         options={receiptMethods(p).map((m) => ({ value: m, label: RECEIPT_WORD[m], meta: <span dir="ltr">{receiptDestination(p, m)}</span> }))} value={method} onChange={(m) => void chooseReceipt(m)} />
     </AppScreen>
@@ -149,25 +150,14 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
 /** "התראות ועדכונים": update messages about new events (Profile.updatesOptIn) and push on this phone. */
 function NotifySheet({ open, onClose, p }: { open: boolean; onClose: () => void; p: Profile }) {
   const toast = useToast();
-  const push = usePush(p);
-  const [busy, setBusy] = useState(false);
   const setOptIn = (on: boolean) => setUpdatesOptIn(p.uid, on).catch((e) => toast.refused(`לא נשמר. ${authErrorMessage(e)}`));
-  const togglePush = async (on: boolean) => {
-    setBusy(true);
-    try { if (on) { const s = await enablePush(p, push.config); if (s === 'denied') toast.show({ text: 'ההתראות חסומות בהגדרות הטלפון', duration: 4000 }); } else await disablePush(p); push.refresh(); }
-    catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); }
-    finally { setBusy(false); }
-  };
-  const pushMeta = push.state === 'needs-install' ? 'קודם מתקינים על מסך הבית' : push.state === 'unsupported' ? 'הדפדפן הזה לא מקבל התראות' : push.state === 'off' ? 'החווה עוד לא הפעילה התראות' : push.state === 'denied' ? 'חסום בהגדרות הטלפון' : push.state === 'on' ? 'פעיל בטלפון הזה' : 'כבוי בטלפון הזה';
   return (
     <Sheet open={open} onClose={onClose} title="התראות ועדכונים">
       <ListCard>
         <Row title="עדכונים על אירועים חדשים" meta="אירועים חדשים, כמה פעמים בשנה" actions={<Toggle checked={!!p.updatesOptIn} onChange={setOptIn} label="עדכונים על אירועים חדשים" />} />
-        <Row title="התראות בטלפון" meta={pushMeta} actions={push.state === 'needs-install'
-          ? <Button variant="outline" onClick={() => { onClose(); go('/install'); }}>התקנה</Button>
-          : <Toggle checked={push.state === 'on'} disabled={busy || !['ask', 'on'].includes(push.state)} onChange={(v) => void togglePush(v)} label="התראות בטלפון" />} />
+        <DevicePushRow profile={p} />
       </ListCard>
-      <Note>הודעות על אירוע שנרשמת אליו (שינוי שעה, ביטול) מגיעות בכל מקרה.</Note>
+      <Note>הודעות על אירוע שנרשמת אליו מופיעות בחשבון. כדי שיופיעו גם במכשיר כשהאתר סגור, מפעילים כאן התראות.</Note>
     </Sheet>
   );
 }
@@ -234,7 +224,7 @@ export function UpdatesSwitch({ checked, onChange }: { checked: boolean; onChang
   return (
     <>
       <ListCard><Row className="guest-togglerow" title="לקבל עדכונים מהחווה" meta="אירועים חדשים, כמה פעמים בשנה" actions={<Toggle checked={checked} onChange={onChange} label="לקבל עדכונים מהחווה" />} /></ListCard>
-      <Note>הודעות על אירוע שנרשמת אליו (שינוי שעה, ביטול) מגיעות בכל מקרה.</Note>
+      <Note>הודעות על אירוע שנרשמת אליו מופיעות בחשבון. כדי שיופיעו גם במכשיר כשהאתר סגור, מפעילים כאן התראות.</Note>
     </>
   );
 }

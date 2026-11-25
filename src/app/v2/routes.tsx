@@ -157,7 +157,7 @@ export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact
 export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['role']): string | null {
   let m: Record<string, string> | null;
   // the guest account page is for guests only: signing in from it (or a bookmark) lands the team and vendors on their profile
-  if (route === '/me/account') return '/me';
+  if (route === '/me/account') return search.get('notifications') === '1' ? '/me?notifications=1' : '/me';
   // vendors: their own world, plus the terms, account deletion and contact pages their profile links to (legacy fallback)
   if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/notifications', '/install', ...VENDOR_LEGACY].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
   if (route === '/') return '/tasks';
