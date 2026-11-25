@@ -11,11 +11,10 @@
 // Demo: nothing real happens (no permission prompt, no subscription); the choice is stored in the demo profile only.
 import { saveAccountChange } from '../../account-activity';
 import { useEffect, useState } from 'react';
-import { useDoc } from '../../db';
+import { newId, transact, useDoc } from '../../db';
 import { nowIso } from '../../clock';
-import { getDemo } from '../../demo/store';
+import { getDemo, getDemoStates } from '../../demo/store';
 import type { Profile } from '../../types';
-import { isNative } from '../../native';
 
 export type PushMode = 'off' | 'webpush' | 'fcm';
 export type PushConfig = { mode: PushMode; vapidPublicKey?: string; fcmVapidKey?: string; updatedAt?: string };
@@ -40,6 +39,8 @@ export const kindsOf = (p: PushPrefs | undefined): PushKind[] => (p?.kinds ? (p.
 
 // ---------- what this phone can do ----------
 export type PushState =
+  | 'checking'      // reading the farm's settings or the device registration
+  | 'unavailable'   // the settings could not be read
   | 'unsupported'   // no service worker / PushManager (old browser, in-app browser)
   | 'needs-install' // iPhone/iPad Safari tab: Web Push needs the app on the home screen (iOS 16.4+)
   | 'off'           // the farm has not turned push on yet (PUSH_MODE off)
@@ -60,10 +61,10 @@ export function deviceId() {
   } catch { return 'nostore'; }
 }
 
-export const usePushConfig = (): PushConfig => {
+export const usePushConfig = (): PushConfig & { loading: boolean; error?: string } => {
   const r = useDoc<PushConfig & Record<string, unknown>>('settings/push');
   const c = r.item;
-  return c && (c.mode === 'webpush' || c.mode === 'fcm') ? { mode: c.mode, vapidPublicKey: c.vapidPublicKey, fcmVapidKey: c.fcmVapidKey, updatedAt: c.updatedAt } : { mode: 'off' };
+  return { ...(c && (c.mode === 'webpush' || c.mode === 'fcm') ? { mode: c.mode, vapidPublicKey: c.vapidPublicKey, fcmVapidKey: c.fcmVapidKey } : { mode: 'off' as const }), loading: r.loading, error: r.error };
 };
 
 /** The phone's state for push, live. In demo it follows the demo profile only. */
@@ -73,22 +74,50 @@ export function usePush(profile: Profile) {
   const demo = getDemo().on;
   const mine = (prefs?.devices || []).find((d) => d.id === deviceId());
   const [perm, setPerm] = useState<NotificationPermission | 'none'>(() => (pushCapable() ? Notification.permission : 'none'));
+  const [endpoint, setEndpoint] = useState<string | null>();
+  const [revision, setRevision] = useState(0);
+  const refresh = () => {
+    setPerm(pushCapable() ? Notification.permission : 'none');
+    setRevision((v) => v + 1);
+  };
   useEffect(() => {
-    if (!pushCapable() || !('permissions' in navigator)) return;
-    let st: PermissionStatus | null = null;
-    navigator.permissions.query({ name: 'notifications' as PermissionName }).then((s) => { st = s; s.onchange = () => setPerm(Notification.permission); }).catch(() => {});
-    return () => { if (st) st.onchange = null; };
-  }, []);
+    if (demo || !pushCapable()) return;
+    let cancelled = false;
+    let permission: PermissionStatus | undefined;
+    const changed = () => { if (document.visibilityState === 'visible') refresh(); };
+    navigator.permissions?.query({ name: 'notifications' }).then((status) => {
+      if (!cancelled) { permission = status; permission.addEventListener('change', changed); }
+    }).catch(() => {});
+    document.addEventListener('visibilitychange', changed);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', changed);
+      permission?.removeEventListener('change', changed);
+    };
+  }, [demo]);
+  const checkWeb = !demo && config.mode === 'webpush' && perm === 'granted' && mine?.kind === 'webpush';
+  useEffect(() => {
+    if (!checkWeb) return;
+    let cancelled = false;
+    navigator.serviceWorker.getRegistration().then(async (reg) => {
+      const sub = await reg?.pushManager.getSubscription();
+      if (!cancelled) setEndpoint(sub && subKeyMatches(sub, config.vapidPublicKey) ? sub.endpoint : null);
+    }).catch(() => { if (!cancelled) setEndpoint(null); });
+    return () => { cancelled = true; };
+  }, [checkWeb, config.vapidPublicKey, revision]);
   let state: PushState;
   if (demo) state = prefs?.enabled ? 'on' : 'ask';
-  // The iPhone app has no Web Push (WKWebView); its own native push is a later step (docs/app-store.md). Until then: in-app only.
-  else if (isNative) state = 'off';
-  else if (!pushCapable()) state = isIos() && !standalone() ? 'needs-install' : 'unsupported';
+  else if (isIos() && !standalone()) state = 'needs-install';
+  else if (!pushCapable()) state = 'unsupported';
+  else if (config.loading) state = 'checking';
+  else if (config.error) state = 'unavailable';
   else if (config.mode === 'off') state = 'off';
   else if (perm === 'denied') state = 'denied';
-  else if (perm === 'granted' && prefs?.enabled && mine && mine.kind === config.mode) state = 'on';
+  else if (checkWeb && endpoint === undefined) state = 'checking';
+  else if (perm === 'granted' && prefs?.enabled && mine &&
+    (config.mode === 'webpush' ? mine.kind === 'webpush' && mine.endpoint === endpoint : mine.kind === 'fcm')) state = 'on';
   else state = 'ask';
-  return { state, config, prefs, kinds: kindsOf(prefs), enabled: !!prefs?.enabled, refresh: () => setPerm(pushCapable() ? Notification.permission : 'none') };
+  return { state, config, prefs, kinds: kindsOf(prefs), enabled: !!prefs?.enabled, refresh };
 }
 
 // ---------- subscribe / unsubscribe ----------
@@ -96,6 +125,20 @@ const b64ToBytes = (b64: string) => {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
+function subKeyMatches(sub: PushSubscription, vapidPublicKey?: string) {
+  if (!sub.options.applicationServerKey || !vapidPublicKey) return false;
+  const expected = b64ToBytes(vapidPublicKey);
+  const actual = new Uint8Array(sub.options.applicationServerKey);
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+async function readyRegistration() {
+  const serviceWorker = navigator.serviceWorker;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('הדפדפן עדיין מכין התראות. אפשר לנסות שוב.')), 8000);
+  });
+  return Promise.race([serviceWorker.register('/sw.js').then(() => serviceWorker.ready), deadline]).finally(() => clearTimeout(timer));
+}
 const ua = () => {
   const u = navigator.userAgent;
   const os = /iPhone|iPad/.test(u) ? 'iPhone' : /Android/.test(u) ? 'Android' : /Mac/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : 'other';
@@ -103,24 +146,39 @@ const ua = () => {
   return `${os} · ${br}${standalone() ? ' · app' : ''}`;
 };
 
-/** Saves (or replaces) this browser's entry and turns the person's push on. Other devices are kept as they are. */
-async function saveDevice(profile: Profile, device: PushDevice | null, patch: Partial<PushPrefs>) {
-  const prefs = (profile as Profile & { push?: PushPrefs }).push || { enabled: false };
-  const others = (prefs.devices || []).filter((d) => d.id !== deviceId());
-  const devices = device ? [...others, device].slice(-6) : others;
-  const next: PushPrefs = { enabled: prefs.enabled, ...(prefs.kinds ? { kinds: prefs.kinds } : {}), ...patch, devices, updatedAt: nowIso() };
-  await saveAccountChange(profile.uid, 'push_changed', { push: next, updatedAt: nowIso() });
+const requireConnection = () => {
+  if (!getDemo().on && (!navigator.onLine || getDemoStates().offline)) throw new Error('כדי לשמור התראות צריך חיבור לאינטרנט.');
+};
+
+/** Change this device against the current profile so another phone's registration is kept. */
+async function saveDevice(profile: Profile, device: PushDevice | null, turnOn?: boolean) {
+  requireConnection();
+  const id = deviceId();
+  const logId = newId('account_activity');
+  await transact(async (tx) => {
+    const person = await tx.get('users', profile.uid);
+    if (!person) throw new Error('לא הצלחנו למצוא את החשבון.');
+    const prefs = person.push as PushPrefs | undefined;
+    const others = (prefs?.devices || []).filter((item) => item.id !== id);
+    const devices = device ? [...others, device].slice(-6) : others;
+    const enabled = turnOn ?? (!!prefs?.enabled && devices.length > 0);
+    if (turnOn === undefined && others.length === prefs?.devices?.length) return;
+    const at = nowIso();
+    tx.update('users', profile.uid, { push: { ...prefs, enabled, devices, updatedAt: at }, updatedAt: at });
+    tx.set('account_activity', logId, { uid: profile.uid, action: 'push_changed', at });
+  });
 }
 
 /** Must run inside a tap (iOS asks only from a user gesture). Resolves to the new state. */
 export async function enablePush(profile: Profile, config: PushConfig): Promise<PushState> {
-  if (getDemo().on) { await saveDevice(profile, null, { enabled: true }); return 'on'; }
-  if (isNative) return 'off';
-  if (!pushCapable()) return isIos() && !standalone() ? 'needs-install' : 'unsupported';
+  if (getDemo().on) { await saveDevice(profile, null, true); return 'on'; }
+  if (isIos() && !standalone()) return 'needs-install';
+  if (!pushCapable()) return 'unsupported';
   if (config.mode === 'off') return 'off';
-  const perm = await Notification.requestPermission();
+  requireConnection();
+  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (perm !== 'granted') return perm === 'denied' ? 'denied' : 'ask';
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await readyRegistration();
   const createdAt = nowIso();
   let device: PushDevice;
   if (config.mode === 'webpush') {
@@ -128,8 +186,7 @@ export async function enablePush(profile: Profile, config: PushConfig): Promise<
     const key = b64ToBytes(config.vapidPublicKey);
     let sub = await reg.pushManager.getSubscription();
     // a subscription made with another key (FCM before, or a rotated VAPID key) must be replaced
-    const same = sub && sub.options.applicationServerKey && new Uint8Array(sub.options.applicationServerKey).every((b, i) => b === key[i]);
-    if (sub && !same) { await sub.unsubscribe().catch(() => false); sub = null; }
+    if (sub && !subKeyMatches(sub, config.vapidPublicKey)) { await sub.unsubscribe(); sub = null; }
     sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
     const j = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
     if (!j.endpoint || !j.keys?.p256dh || !j.keys?.auth) throw new Error('המכשיר לא החזיר מינוי');
@@ -138,10 +195,7 @@ export async function enablePush(profile: Profile, config: PushConfig): Promise<
     if (!config.fcmVapidKey) throw new Error('חסר מפתח לשליחה');
     const old = await reg.pushManager.getSubscription();
     // FCM subscribes with its own key; drop a plain Web Push subscription first
-    if (old && old.options.applicationServerKey && config.vapidPublicKey) {
-      const k = b64ToBytes(config.vapidPublicKey);
-      if (new Uint8Array(old.options.applicationServerKey).every((b, i) => b === k[i])) await old.unsubscribe().catch(() => false);
-    }
+    if (old && subKeyMatches(old, config.vapidPublicKey)) await old.unsubscribe();
     const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
     if (!(await isSupported())) return 'unsupported';
     const { app } = await import('../../firebase');
@@ -149,14 +203,15 @@ export async function enablePush(profile: Profile, config: PushConfig): Promise<
     if (!token) throw new Error('המכשיר לא החזיר מינוי');
     device = { id: deviceId(), kind: 'fcm', token, ua: ua(), createdAt };
   }
-  await saveDevice(profile, device, { enabled: true });
+  await saveDevice(profile, device, true);
   return 'on';
 }
 
-/** Turns push off for the person (all devices stop receiving) and removes this browser's subscription. */
+/** Turns push off on this device. Other registered devices keep receiving. */
 export async function disablePush(profile: Profile) {
-  if (!getDemo().on) await dropSubscription();
-  await saveDevice(profile, null, { enabled: false });
+  if (getDemo().on) { await saveDevice(profile, null, false); return; }
+  await saveDevice(profile, null);
+  await dropSubscription();
 }
 
 /** Sign-out (system area): this browser stops receiving for this person; the person's other phones keep theirs. */
@@ -164,7 +219,7 @@ export async function revokeThisDevice(profile: Profile) {
   if (getDemo().on) return;
   await dropSubscription();
   const prefs = (profile as Profile & { push?: PushPrefs }).push;
-  if (prefs?.devices?.some((d) => d.id === deviceId())) await saveDevice(profile, null, {});
+  if (prefs?.devices?.some((d) => d.id === deviceId())) await saveDevice(profile, null);
 }
 
 async function dropSubscription() {
@@ -174,6 +229,8 @@ async function dropSubscription() {
 
 /** C1 "מה לקבל": which kinds reach the lock screen. */
 export async function setPushKinds(profile: Profile, kinds: PushKind[]) {
-  const prefs = (profile as Profile & { push?: PushPrefs }).push || { enabled: false };
-  await saveAccountChange(profile.uid, 'push_changed', { push: { ...prefs, kinds, updatedAt: nowIso() }, updatedAt: nowIso() });
+  const at = nowIso();
+  const prefs = (profile as Profile & { push?: PushPrefs }).push;
+  const patch = getDemo().on ? { push: { ...prefs, kinds, updatedAt: at } } : { 'push.kinds': kinds, 'push.updatedAt': at };
+  await saveAccountChange(profile.uid, 'push_changed', { ...patch, updatedAt: at });
 }
