@@ -3,6 +3,7 @@ import { useAuth, useProfile, isOwner, isTeam } from './store';
 import { useSettings, useSwitchesDoc } from './data';
 import { publishSwitches, useAppSwitches } from './switches';
 import { signOutUser } from './firebase';
+import { useAndroidPushRefresh } from './v2/data/push';
 import { useRoute } from './router';
 import { useUsage } from './usage';
 import { ROLE_LABELS } from './types';
@@ -83,6 +84,7 @@ function Splash() {
 export default function App() {
   const { user, loading } = useAuth();
   const { profile, loading: profileLoading, missing, error: profileError } = useProfile(user);
+  useAndroidPushRefresh(user ? profile : null);
   const { settings, loading: settingsLoading, error: settingsError } = useSettings();
   const demo = useDemo();
   const route = useRoute();

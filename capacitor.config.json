@@ -10,6 +10,7 @@
     "allowsLinkPreview": false
   },
   "plugins": {
+    "PushNotifications": { "presentationOptions": ["alert", "sound"] },
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
       "providers": ["google.com", "apple.com"]

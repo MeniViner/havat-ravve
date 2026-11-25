@@ -15,12 +15,14 @@ import { newId, transact, useDoc } from '../../db';
 import { nowIso } from '../../clock';
 import { getDemo, getDemoStates } from '../../demo/store';
 import type { Profile } from '../../types';
+import { isNative, isNativeAndroid, isNativeIos } from '../../native';
+import { androidPushPermission, registerAndroidPush, unregisterAndroidPush } from '../../native-push';
 
 export type PushMode = 'off' | 'webpush' | 'fcm';
-export type PushConfig = { mode: PushMode; vapidPublicKey?: string; fcmVapidKey?: string; updatedAt?: string };
+export type PushConfig = { mode: PushMode; vapidPublicKey?: string; fcmVapidKey?: string; androidFcm?: boolean; updatedAt?: string };
 export type PushDevice =
   | { id: string; kind: 'webpush'; endpoint: string; keys: { p256dh: string; auth: string }; ua: string; createdAt: string }
-  | { id: string; kind: 'fcm'; token: string; ua: string; createdAt: string };
+  | { id: string; kind: 'fcm' | 'android-fcm'; token: string; ua: string; createdAt: string };
 export type PushPrefs = { enabled: boolean; kinds?: string[]; updatedAt?: string; devices?: PushDevice[] };
 
 /** What a person can choose to receive (C1 "מה לקבל", L6/C12 "3 מתוך 5 פעילות"). The Worker maps job kinds onto these. */
@@ -39,6 +41,8 @@ export const kindsOf = (p: PushPrefs | undefined): PushKind[] => (p?.kinds ? (p.
 
 // ---------- what this phone can do ----------
 export type PushState =
+  | 'android-off'    // Android system delivery has not been enabled on the farm server
+  | 'native-ios'    // iPhone Web Push is available as the home screen website
   | 'checking'      // reading the farm's settings or the device registration
   | 'unavailable'   // the settings could not be read
   | 'unsupported'   // no service worker / PushManager (old browser, in-app browser)
@@ -49,7 +53,7 @@ export type PushState =
   | 'on';           // this device is subscribed and saved
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-export const pushCapable = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+export const pushCapable = () => !isNative && typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 const DEVICE_KEY = 'farm-push-device';
 /** A random id for this browser, kept in localStorage: one device entry per browser, replaced on resubscribe. */
@@ -64,7 +68,7 @@ export function deviceId() {
 export const usePushConfig = (): PushConfig & { loading: boolean; error?: string } => {
   const r = useDoc<PushConfig & Record<string, unknown>>('settings/push');
   const c = r.item;
-  return { ...(c && (c.mode === 'webpush' || c.mode === 'fcm') ? { mode: c.mode, vapidPublicKey: c.vapidPublicKey, fcmVapidKey: c.fcmVapidKey } : { mode: 'off' as const }), loading: r.loading, error: r.error };
+  return { ...(c && (c.mode === 'webpush' || c.mode === 'fcm') ? { mode: c.mode, vapidPublicKey: c.vapidPublicKey, fcmVapidKey: c.fcmVapidKey, androidFcm: c.androidFcm === true } : { mode: 'off' as const }), loading: r.loading, error: r.error };
 };
 
 /** The phone's state for push, live. In demo it follows the demo profile only. */
@@ -77,7 +81,8 @@ export function usePush(profile: Profile) {
   const [endpoint, setEndpoint] = useState<string | null>();
   const [revision, setRevision] = useState(0);
   const refresh = () => {
-    setPerm(pushCapable() ? Notification.permission : 'none');
+    if (isNativeAndroid && !demo) void androidPushPermission().then(setPerm, () => setPerm('none'));
+    else setPerm(pushCapable() ? Notification.permission : 'none');
     setRevision((v) => v + 1);
   };
   useEffect(() => {
@@ -95,6 +100,20 @@ export function usePush(profile: Profile) {
       permission?.removeEventListener('change', changed);
     };
   }, [demo]);
+  useEffect(() => {
+    if (!isNativeAndroid || demo) return;
+    let cancelled = false;
+    const check = () => {
+      if (document.visibilityState !== 'visible') return;
+      void androidPushPermission().then(
+        (status) => { if (!cancelled) setPerm(status); },
+        () => { if (!cancelled) setPerm('none'); },
+      );
+    };
+    check();
+    document.addEventListener('visibilitychange', check);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', check); };
+  }, [demo]);
   const checkWeb = !demo && config.mode === 'webpush' && perm === 'granted' && mine?.kind === 'webpush';
   useEffect(() => {
     if (!checkWeb) return;
@@ -107,6 +126,15 @@ export function usePush(profile: Profile) {
   }, [checkWeb, config.vapidPublicKey, revision]);
   let state: PushState;
   if (demo) state = prefs?.enabled ? 'on' : 'ask';
+  else if (isNativeIos) state = 'native-ios';
+  else if (isNativeAndroid) {
+    if (config.loading) state = 'checking';
+    else if (config.error) state = 'unavailable';
+    else if (!config.androidFcm) state = 'android-off';
+    else if (perm === 'none') state = 'unavailable';
+    else if (perm === 'denied') state = 'denied';
+    else state = perm === 'granted' && prefs?.enabled && mine?.kind === 'android-fcm' ? 'on' : 'ask';
+  }
   else if (isIos() && !standalone()) state = 'needs-install';
   else if (!pushCapable()) state = 'unsupported';
   else if (config.loading) state = 'checking';
@@ -151,7 +179,7 @@ const requireConnection = () => {
 };
 
 /** Change this device against the current profile so another phone's registration is kept. */
-async function saveDevice(profile: Profile, device: PushDevice | null, turnOn?: boolean) {
+async function saveDevice(profile: Profile, device: PushDevice | null, turnOn?: boolean, replaceToken?: string) {
   requireConnection();
   const id = deviceId();
   const logId = newId('account_activity');
@@ -159,6 +187,8 @@ async function saveDevice(profile: Profile, device: PushDevice | null, turnOn?: 
     const person = await tx.get('users', profile.uid);
     if (!person) throw new Error('לא הצלחנו למצוא את החשבון.');
     const prefs = person.push as PushPrefs | undefined;
+    if (replaceToken && (!prefs?.enabled || !prefs.devices?.some((item) =>
+      item.id === id && item.kind === 'android-fcm' && item.token === replaceToken))) return;
     const others = (prefs?.devices || []).filter((item) => item.id !== id);
     const devices = device ? [...others, device].slice(-6) : others;
     const enabled = turnOn ?? (!!prefs?.enabled && devices.length > 0);
@@ -172,6 +202,17 @@ async function saveDevice(profile: Profile, device: PushDevice | null, turnOn?: 
 /** Must run inside a tap (iOS asks only from a user gesture). Resolves to the new state. */
 export async function enablePush(profile: Profile, config: PushConfig): Promise<PushState> {
   if (getDemo().on) { await saveDevice(profile, null, true); return 'on'; }
+  if (isNativeAndroid) {
+    if (!config.androidFcm) return 'android-off';
+    requireConnection();
+    const result = await registerAndroidPush(true);
+    if (result.permission !== 'granted') return result.permission === 'denied' ? 'denied' : 'ask';
+    await saveDevice(profile, {
+      id: deviceId(), kind: 'android-fcm', token: result.token, ua: 'Android · app', createdAt: nowIso(),
+    }, true);
+    return 'on';
+  }
+  if (isNativeIos) return 'native-ios';
   if (isIos() && !standalone()) return 'needs-install';
   if (!pushCapable()) return 'unsupported';
   if (config.mode === 'off') return 'off';
@@ -217,14 +258,46 @@ export async function disablePush(profile: Profile) {
 /** Sign-out (system area): this browser stops receiving for this person; the person's other phones keep theirs. */
 export async function revokeThisDevice(profile: Profile) {
   if (getDemo().on) return;
+  if (isNativeAndroid) {
+    const prefs = (profile as Profile & { push?: PushPrefs }).push;
+    if (prefs?.devices?.some((item) => item.id === deviceId() && item.kind === 'android-fcm')) {
+      await Promise.all([dropSubscription(), saveDevice(profile, null)]);
+    }
+    return;
+  }
   await dropSubscription();
   const prefs = (profile as Profile & { push?: PushPrefs }).push;
   if (prefs?.devices?.some((d) => d.id === deviceId())) await saveDevice(profile, null);
 }
 
 async function dropSubscription() {
+  if (isNativeAndroid) { await unregisterAndroidPush(); return; }
   if (!pushCapable()) return;
   try { const reg = await navigator.serviceWorker.getRegistration(); const sub = await reg?.pushManager.getSubscription(); await sub?.unsubscribe(); } catch { /* nothing to drop */ }
+}
+
+/** Refresh a rotated Android token on app open/resume only for an already opted-in profile. */
+export function useAndroidPushRefresh(profile: Profile | null) {
+  const demo = getDemo().on;
+  const enabled = isNativeAndroid && !demo && profile?.status === 'active';
+  const config = useDoc<PushConfig & Record<string, unknown>>('settings/push', enabled);
+  const prefs = (profile as (Profile & { push?: PushPrefs }) | null)?.push;
+  const mine = prefs?.enabled && prefs.devices?.find((item) => item.id === deviceId() && item.kind === 'android-fcm');
+  useEffect(() => {
+    if (!profile || !enabled || !config.item?.androidFcm || !mine || mine.kind !== 'android-fcm') return;
+    let cancelled = false;
+    const check = async () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      const result = await registerAndroidPush(false);
+      if (!cancelled && result.permission === 'granted' && result.token !== mine.token) {
+        await saveDevice(profile, { ...mine, token: result.token }, undefined, mine.token);
+      }
+    };
+    const refresh = () => { void check().catch(() => {}); };
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', refresh); };
+  }, [profile?.uid, enabled, config.item?.androidFcm, mine && 'token' in mine ? mine.token : undefined]);
 }
 
 /** C1 "מה לקבל": which kinds reach the lock screen. */

@@ -5,12 +5,16 @@ import { useState, type ReactNode } from 'react';
 import { useToast, go } from '../../core';
 import { Button, Card, ListCard, Row, Sheet, Toggle } from '../../kit';
 import type { V2Ctx } from '../../ctx';
+import { isNativeAndroid, openSitePage } from '../../../native';
+import { openAndroidNotificationSettings } from '../../../native-push';
 import type { Profile } from '../../../types';
 import { PUSH_KINDS, disablePush, enablePush, setPushKinds, usePush, type PushKind, type PushState } from '../../data/push';
 
 const NOTE: Record<PushState, string> = {
   on: 'פעיל במכשיר הזה. הודעות יכולות להופיע גם כשהאפליקציה סגורה.',
   ask: 'כבוי במכשיר הזה. לחצו להפעלה ואשרו התראות אם תתבקשו.',
+  'android-off': 'החווה עוד לא הפעילה התראות באפליקציית Android. אפשר לקבל התראות דרך האתר ב־Chrome.',
+  'native-ios': 'באייפון אפשר לקבל התראות מהאתר אחרי שמוסיפים אותו למסך הבית.',
   checking: 'בודקים אם אפשר לקבל התראות במכשיר.',
   unavailable: 'לא הצלחנו לבדוק את הגדרות ההתראות. נסו לרענן את הדף.',
   denied: 'חסום בהגדרות הטלפון. אפשר לאשר שוב בהגדרות של האתר או של הטלפון.',
@@ -45,6 +49,8 @@ export function DevicePushRow({ profile, readOnly = false }: { profile: Profile;
     ? <Toggle checked label="התראות לטלפון" onChange={turnOff} disabled={busy || readOnly} />
     : s === 'ask' ? <Button variant="outline" onClick={turnOn} disabled={busy || readOnly}>{busy ? 'מפעילים…' : 'להפעיל'}</Button>
     : s === 'needs-install' ? <Button variant="outline" onClick={() => go('/install')}>איך מוסיפים</Button>
+    : s === 'denied' && isNativeAndroid ? <Button variant="outline" onClick={() => void openAndroidNotificationSettings().catch(() => toast.refused('לא הצלחנו לפתוח את הגדרות המכשיר.'))}>הגדרות Android</Button>
+    : s === 'android-off' || s === 'native-ios' ? <Button variant="outline" onClick={() => openSitePage('/app/me/account?notifications=1')}>הגדרה באתר</Button>
     : undefined;
   return <Row minHeight={64} title="התראות במכשיר" meta={NOTE[s]} actions={action} />;
 }
