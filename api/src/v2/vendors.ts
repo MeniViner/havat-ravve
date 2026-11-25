@@ -166,7 +166,7 @@ def('vendors.removePerson', 'vendors:write', 'הסרת אדם מהדוכן וס�
     c.fs.patch('vendors', v.id, { people: people.filter((x) => x !== p), updatedAt: at }, v.updateTime),
     c.fs.patch('vendor_invites', invite.id, { active: false }, invite.updateTime),
     c.fs.create('activity', code, {
-      kind: 'event', refId: v.id, action: 'removed', text: 'גישה לדוכן', by: c.me, at,
+      kind: 'inbox', refId: v.id, action: 'removed', text: 'גישה לדוכן', by: c.me, at,
       subjectUid: '', eventId: '', ...(c.fs.via ? { via: c.fs.via } : {}),
     }),
   ];
