@@ -6,7 +6,7 @@
 import { useMemo } from 'react';
 import { useList, write, transact, ConflictError } from '../../db';
 import { nowIso, nowMs } from '../../clock';
-import { logActivity } from '../../activity';
+import { activityOp } from '../../activity';
 import { isFemale } from '../gender';
 import { ROLE_LABELS } from '../../types';
 import type { Actor, Profile, RoleInvite } from '../../types';
@@ -62,16 +62,23 @@ export async function createTeamLink(actor: Actor, p: { phone: string; name: str
     code: newCode(), role: p.role, name, phone: p.phone.trim().slice(0, 25), ...(name && isFemale(name) ? { fem: true } : {}),
     active: true, usedBy: null, usedAt: null, createdBy: actor, createdAt: nowIso(), expiresMs: nowMs() + LINK_DAYS * DAY,
   };
-  await write.set('team_links', link.code, link as unknown as Record<string, unknown>);
-  logActivity(actor, 'user', link.code, 'invited', `${name || link.phone} הוגדר/ה מראש כ${ROLE_LABELS[p.role]}`);
+  await write.batch([
+    { op: 'set', col: 'team_links', id: link.code, data: link as unknown as Record<string, unknown> },
+    activityOp(actor, 'user', actor.uid, 'invited', `קישור הזמנה · ${ROLE_LABELS[p.role]}`),
+  ]);
   return { link, text: linkText(link) };
 }
 /** "ביטול": the link is deleted, so it can no longer be claimed. */
-export const cancelTeamLink = (code: string) => write.remove('team_links', code);
+export const cancelTeamLink = (actor: Actor, code: string) => write.batch([
+  { op: 'remove', col: 'team_links', id: code }, activityOp(actor, 'user', actor.uid, 'cancelled', 'קישור הזמנה'),
+]);
 /** Undo of a cancel: the same link again (the message already sent works again). */
-export const restoreTeamLink = (l: TeamLink) => {
+export const restoreTeamLink = (actor: Actor, l: TeamLink) => {
   const { id: _id, ...data } = l;
-  return write.set('team_links', l.code, data as unknown as Record<string, unknown>);
+  return write.batch([
+    { op: 'set', col: 'team_links', id: l.code, data: data as unknown as Record<string, unknown> },
+    activityOp(actor, 'user', actor.uid, 'saved', 'קישור הזמנה'),
+  ]);
 };
 
 /** C9 for a new account that came through a team link: the link shown as the "X added you as …" invitation. */
@@ -91,6 +98,8 @@ export async function claimTeamLink(user: Session, code: string): Promise<TeamRo
     if (me.role !== 'guest' || me.status !== 'active') throw new ConflictError('החשבון הזה כבר בצוות או מחובר לדוכן. נכנסים עם חשבון אחר.');
     tx.update('users', user.uid, { role: l!.role, teamLink: code, updatedAt: at });
     tx.update('team_links', code, { usedBy: user.uid, usedAt: at, active: false });
+    const log = activityOp({ uid: user.uid, name: me.displayName }, 'user', user.uid, 'joined', 'הצטרפות לצוות');
+    tx.set(log.col, log.id, log.data);
     return l!.role;
   });
 }

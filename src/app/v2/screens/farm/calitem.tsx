@@ -83,7 +83,7 @@ function Form({ ctx, params, existing }: ScreenProps & { existing: FarmCalItem |
       label: 'מחיקה', icon: 'trash', tone: 'danger',
       confirm: {
         title: 'למחוק מהיומן?', text: `"${existing.title}" יימחק מהיומן של כולם.`, confirmLabel: 'מחיקה',
-        onConfirm: () => remove(() => deleteCalItem(existing.id), { text: 'הפריט הוסר מהיומן', after: () => back(`/farm/calendar?view=day&date=${date}`) }),
+        onConfirm: () => remove(() => deleteCalItem(ctx.actor, existing), { text: 'הפריט הוסר מהיומן', after: () => back(`/farm/calendar?view=day&date=${date}`) }),
       },
     }]} />
   ) : null;

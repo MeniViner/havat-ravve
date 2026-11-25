@@ -7,6 +7,7 @@ import { now } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
 import { useCalendarRange, useFeed, useUpcoming } from '../../data/farm';
 import { addDays, israelIso, barHeights, countsByDay, dayNum, feedLines, firstOf, heroHours, weekDays, weekdayOf, whoIsHere } from './logic';
+import { LinkCard } from '../manage/shared';
 import { femaleOf, useNowMin } from './parts';
 
 const MONTH_SHORT = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
@@ -108,6 +109,7 @@ export function FarmRoot({ ctx }: ScreenProps) {
         </div>
         <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
       </a>
+      {!ctx.manager && <LinkCard path="/manage/activity" title="כל הפעילות" meta="פעילות הצוות בחווה" />}
     </AppScreen>
   );
 }

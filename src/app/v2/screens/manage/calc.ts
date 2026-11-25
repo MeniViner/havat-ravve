@@ -200,12 +200,14 @@ export function letterGroups<T extends { displayName: string }>(people: T[]) {
 }
 
 // ---------- activity (N14) ----------
-export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings';
+export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings' | 'messages';
 export function activityGroup(kind: Activity['kind']): Exclude<ActivityFilter, 'all'> | 'other' {
   if (kind === 'ticket' || kind === 'tab' || kind === 'donation') return 'money';
   if (kind === 'user' || kind === 'visit') return 'people';
   if (kind === 'task' || kind === 'task_private' || kind === 'shopping' || kind === 'place') return 'tasks';
-  if (kind === 'event') return 'events';
+  if (kind === 'event' || kind === 'calendar' || kind === 'calendar_private') return 'events';
+  if (kind === 'message') return 'messages';
+  if (kind === 'project') return 'tasks';
   return 'other';
 }
 /** Does an activity line belong under this chip? Shopping and settings have chips of their own (tasks ≠ shopping). */
@@ -267,6 +269,10 @@ const VERBS: Record<string, Verb> = {
 };
 /** Same action, other meaning on another kind: a vendor invited to an event, a ticket stopped at the gate. */
 const KIND_VERBS: Record<string, Verb> = {
+  'message:personal_notification_created': { m: 'יצר התראה אישית', f: 'יצרה התראה אישית', join: ':' },
+  'message:message_sent': { m: 'שלח הודעה', f: 'שלחה הודעה', join: ':' },
+  'message:message_resent': { m: 'שלח שוב הודעה', f: 'שלחה שוב הודעה', join: ':' },
+  'message:message_deleted': { m: 'מחק הודעה', f: 'מחקה הודעה', join: ':' },
   'event:invited': { m: 'הזמין', f: 'הזמינה', join: ':' },
   'event:added': { m: 'הוסיף', f: 'הוסיפה', join: ':' },
   'event:removed': { m: 'הסיר', f: 'הסירה', join: ':' },
@@ -274,7 +280,7 @@ const KIND_VERBS: Record<string, Verb> = {
 };
 /** Role labels in older texts carry both forms ("מתנדב/ת"): keep the one that fits the person. */
 const roleFor = (label: string, name: string) => label.replace(/\/ת$/, isFemale(name) ? 'ת' : '');
-const KIND_WORD: Record<string, string> = { task: 'משימות', task_private: 'משימות מנהלים', shopping: 'קניות', event: 'אירועים', ticket: 'כרטיסים', tab: 'דוכן', place: 'מקומות', visit: 'ביקורים', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
+const KIND_WORD: Record<string, string> = { task: 'משימות', task_private: 'משימות מנהלים', shopping: 'קניות', event: 'אירועים', ticket: 'כרטיסים', tab: 'דוכן', place: 'מקומות', visit: 'ביקורים', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט', inbox: 'לטיפול', calendar: 'יומן', calendar_private: 'יומן מנהלים' };
 /**
  * One feed line: "בני אישר תשלום: 150 ₪ · רוני לוי" + meta "פסטיבל הסתיו · 3 כרטיסים".
  * Team members appear by first name, guests by full name. The text's first segment goes in the line, the rest is the meta

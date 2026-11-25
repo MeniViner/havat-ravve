@@ -1,10 +1,10 @@
 // U7 GuestAccount (signed in) / U12 GuestSignIn (signed out, and /login), "מה יש לי בחווה" (all items), edit details (with the
 // updates switch and account deletion at the bottom), the notifications sheet, U14 messages, and the item pages behind U7's
-// rows: a visit, a donation (pay block), the stall account (U10).
+// rows: a visit (U15), a donation (U16, pay block), the stall account (U10).
 import { useEffect, useMemo, useState } from 'react';
-import { AppScreen, go, useToast, useRemove } from '../../core';
+import { AppScreen, go, useToast, useRemove, useExternal, waUrl } from '../../core';
 import {
-  Avatar, BottomBar, Button, DetailList, DetailRow, EmptyState, Field, FormHeader, Icon, IconTile, ListCard, MoreMenu, Overline, PageTitle, PickerSheet,
+  Avatar, BottomBar, Button, ConfirmSheet, DetailList, DetailRow, EmptyState, Field, FormHeader, Icon, IconTile, ListCard, MoreMenu, Overline, PageTitle, PickerSheet,
   Row, Sheet, Tag, Toggle, TopBar, UnderlineLink,
 } from '../../kit';
 import { claimDonationPaid, claimTabPaid, cancelVisit, contactPhoneOk, hasTabPurchases, receiptDestination, receiptPreference, useDonation } from '../../../data';
@@ -18,6 +18,7 @@ import { isRead, markRead, useBroadcastNotification, useMyBroadcasts, useReceipt
 import { usePush, enablePush, disablePush } from '../../data/push';
 import { registrationQuestions, answerOf, answersFor, missingAnswers } from '../../data/system';
 import { RegistrationQuestions } from '../system/fields';
+import { gw } from '../../gender';
 import { signOutEverywhere } from '../system/profile';
 import type { Broadcast, Donation, Profile, ReceiptPreference, Tab, Visit } from '../../../types';
 import {
@@ -99,7 +100,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const demo = useDemo();
   const { items } = useItems(ctx);
   const messages = useMyBroadcasts(p.uid, 30);
-  const msgs = messages.items.filter((b) => b.by?.uid !== p.uid);
+  const msgs = messages.items;
   const [sheet, setSheet] = useState<'notify' | 'receipt' | null>(null);
   const toast = useToast();
   const questions = registrationQuestions(ctx.settings.registrationFields);
@@ -254,7 +255,7 @@ export function MessagesPage({ ctx }: { ctx: GuestCtx }) {
   const events = useEvents();
   const messages = useMyBroadcasts(p?.uid || '', 30);
   if (!p) return <SignInPage ctx={ctx} next="/me/messages" />;
-  const list = messages.items.filter((b) => b.by?.uid !== p.uid);
+  const list = messages.items;
   const flip = (on: boolean) => setUpdatesOptIn(p.uid, on).then(() => toast.show({ text: on ? 'עדכונים על אירועים חדשים: פעיל' : 'לא תקבלו עדכונים על אירועים חדשים', check: true, actions: [{ label: 'ביטול', onClick: () => void setUpdatesOptIn(p.uid, !on) }] }), (e) => toast.refused(`לא נשמר. ${authErrorMessage(e)}`));
   return (
     <AppScreen variant="detail" gap={12}>
@@ -274,55 +275,101 @@ export function MessagesPage({ ctx }: { ctx: GuestCtx }) {
 // ---------- the pages behind U7's rows ----------
 const backToAccount = (ctx: GuestCtx) => ({ label: ctx.team ? 'מה יש לי בחווה' : 'החשבון שלי', onClick: () => go(ctx.team ? '/me/items' : paths(ctx).account) });
 
+/** U15: the request, its tag, what was asked, the three-step status line, WhatsApp to the farm and "ביטול הבקשה" (also, alone, in ⋯). */
 export function VisitPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const mine = useMine(ctx);
   const remove = useRemove();
+  const open = useExternal();
+  const [asking, setAsking] = useState(false);
   const v = mine.visits.find((x) => x.id === id);
   const tag = v && visitTag(v);
+  const canCancel = !!v && v.status === 'new';
+  const wa = ctx.settings.contact?.whatsapp || '';
+  const cancel = { title: 'לבטל את בקשת הביקור?', text: 'המנהלים יראו שהבקשה בוטלה.', confirmLabel: 'ביטול הבקשה', onConfirm: () => remove(() => cancelVisit(v!), { text: 'הבקשה בוטלה' }) };
   return (
     <AppScreen variant="detail" gap={12}>
-      <TopBar className="guest-pull" back={backToAccount(ctx)} end={v && v.status === 'new' && <MoreMenu title="הבקשה" items={[
-        { label: 'ביטול הבקשה', icon: 'close', tone: 'danger', confirm: { title: 'לבטל את בקשת הביקור?', text: 'המנהלים יראו שהבקשה בוטלה.', confirmLabel: 'ביטול הבקשה', onConfirm: () => remove(() => cancelVisit(v), { text: 'הבקשה בוטלה' }) } },
-      ]} />} />
+      <TopBar className="guest-pull" back={backToAccount(ctx)} end={canCancel && <MoreMenu title="הבקשה" items={[{ label: 'ביטול הבקשה', icon: 'close', tone: 'danger', confirm: cancel }]} />} />
       {!v ? (!mine.loading && <EmptyState variant="fill" icon="pin" title="הבקשה לא נמצאה" />) : <>
-        <Overline>בקשת ביקור</Overline>
-        <PageTitle size="detail">{dayName(v.date)}, {longDate(v.date)}</PageTitle>
+        <div className="guest-titleblock">
+          <span className="guest-sub guest-sub--sm">בקשת ביקור</span>
+          <div className="guest-titlerow"><PageTitle size="detail">{dayName(v.date)}, {longDate(v.date)}</PageTitle><Tag tone={tag!.tone}>{tag!.text}</Tag></div>
+        </div>
         <DetailList>
-          <DetailRow term="מצב">{tag!.text}{v.status === 'new' ? ', נחזור אליך' : ''}</DetailRow>
           <DetailRow term="כמה">{v.people} אנשים</DetailRow>
           <DetailRow term="סוג">{v.type}</DetailRow>
-          {v.note && <DetailRow term="מילים" plain>{v.note}</DetailRow>}
-          {v.managerNote && <DetailRow term="מהחווה" plain>{v.managerNote}</DetailRow>}
+          {v.note && <DetailRow term="כתבת">{v.note}</DetailRow>}
+          {v.managerNote && v.status !== 'approved' && <DetailRow term="מהחווה">{v.managerNote}</DetailRow>}
         </DetailList>
+        {(v.status === 'new' || v.status === 'approved') && <VisitSteps v={v} />}
+        {(wa || canCancel) && (
+          <div className="guest-actions">
+            {wa && <Button variant="outline" size="tall" icon="message" onClick={() => open(waUrl(wa, `שלום, לגבי בקשת הביקור ל${dayName(v.date)} ${ddmm(v.date)}`))}>וואטסאפ לחווה</Button>}
+            {canCancel && <Button variant="quiet" onClick={() => setAsking(true)}>ביטול הבקשה</Button>}
+          </div>
+        )}
+        <ConfirmSheet open={asking} onClose={() => setAsking(false)} title={cancel.title} text={cancel.text} confirmLabel={cancel.confirmLabel}
+          onConfirm={async () => { await cancel.onConfirm(); setAsking(false); }} />
       </>}
     </AppScreen>
   );
 }
+/** U15's status line: sent, the farm gets back to you, the visit is set. Approved fills the last two (the last with the farm's note). */
+function VisitSteps({ v }: { v: Visit }) {
+  const set = v.status === 'approved';
+  const steps = [
+    { title: 'הבקשה נשלחה', meta: messageWhen(v.createdAt), done: true },
+    { title: 'החווה חוזרת אליך', meta: set ? '' : 'בדרך כלל תוך יום, בוואטסאפ או בטלפון', done: set },
+    { title: 'הביקור נקבע', meta: set ? (v.managerNote || `${dayName(v.date)}, ${longDate(v.date)}`) : 'יופיע כאן עם השעה', done: set },
+  ];
+  return (
+    <section className="k-card guest-steps" aria-label="מצב הבקשה">
+      <ol className="guest-steps__list">
+        {steps.map((s) => (
+          <li key={s.title} className={s.done ? 'guest-step guest-step--done' : 'guest-step'}>
+            <span className="guest-step__rail" aria-hidden="true"><span className="guest-step__dot">{s.done && <Icon name="check" size={14} />}</span><span className="guest-step__line" /></span>
+            <span className="guest-step__body"><span className="guest-step__title">{s.title}</span>{s.meta && <span className="guest-step__meta">{s.meta}</span>}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
-/** A donation: the same pay block, "העברתי", and what was asked (dedication, receipt). The donate form lands here. */
+/** U16: what was given (dedication, receipt), the shared pay block and "העברתי את התשלום". The donate form lands here (?new=1: "תודה!"). */
 export function DonationPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const { item: d, loading } = useDonation(id, !!ctx.profile);
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const thanks = param('new') === '1';
   if (!ctx.profile || !d || d.uid !== ctx.profile.uid) return <AppScreen variant="detail"><TopBar className="guest-pull" back={backToAccount(ctx)} />{!loading && <EmptyState variant="fill" icon="heart" title="התרומה לא נמצאה" />}</AppScreen>;
+  const p = ctx.profile;
   const state = d.paymentStatus === 'pending' ? 'due' : d.paymentStatus === 'claimed' ? 'claimed' : 'paid';
+  const tag = donationTag(d);
+  const title = `${money(d.amount)}${d.label ? ` · ${d.label}` : ''}`;
+  const method = receiptPreference(p);
+  const otherName = d.receiptName && d.receiptName !== p.displayName ? ` על שם ${d.receiptName}` : '';
+  const receipt = d.receiptSent ? `נשלחה${otherName}` : `ביקשת${otherName} · ${state === 'paid' ? 'תישלח בקרוב' : 'תישלח אחרי האישור'}`;
+  const after = method ? `, ואז ${gw(p.displayName, 'תקבל', 'תקבלי', p)} אישור ${method === 'email' ? 'במייל' : 'בוואטסאפ'}.` : '.';
   const claim = async () => {
     setBusy(true);
     try { await claimDonationPaid(d); toast.show({ text: 'תודה! המנהלים יאשרו את ההעברה.', check: true }); } catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); } finally { setBusy(false); }
   };
   return (
-    <AppScreen variant="detail" gap={14} bar={state === 'due' ? <BottomBar><Button size="bar" grow icon="check" disabled={busy} onClick={claim}>העברתי את התשלום</Button></BottomBar> : undefined}>
+    <AppScreen variant="detail" gap={12} bar={state === 'due' ? <BottomBar><Button size="bar" grow icon="check" disabled={busy} onClick={claim}>העברתי את התשלום</Button></BottomBar> : undefined}>
       <TopBar className="guest-pull" back={thanks ? { label: 'בית', onClick: () => go('/') } : backToAccount(ctx)} />
-      <div className="guest-titleblock"><Overline>{d.label}{d.memorial ? ` · לזכר ${d.memorial}` : ''}</Overline><PageTitle size="detail">{thanks ? 'תודה!' : `תרומה · ${money(d.amount)}`}</PageTitle></div>
-      {d.paymentStatus === 'cancelled' ? <Note>התרומה בוטלה.</Note> : <PayBlock amount={d.amount} purpose="תרומה" name={ctx.profile.displayName} settings={ctx.settings} state={state} />}
-      {(d.receiptWanted || d.note) && (
+      <div className="guest-titleblock">
+        <span className="guest-sub guest-sub--sm">{thanks ? `תרומה · ${title}` : `תרומה · ${messageWhen(d.createdAt)}`}</span>
+        <div className="guest-titlerow"><PageTitle size="detail">{thanks ? 'תודה!' : title}</PageTitle><Tag tone={tag.tone}>{tag.text}</Tag></div>
+      </div>
+      {(d.memorial || d.receiptWanted || d.note) && (
         <DetailList>
-          {d.receiptWanted && <DetailRow term="קבלה">{d.receiptName}{d.receiptSent ? ' · נשלחה' : ''}</DetailRow>}
+          {d.memorial && <DetailRow term="הנצחה">לזכר {d.memorial}</DetailRow>}
+          {d.receiptWanted && <DetailRow term="קבלה">{receipt}</DetailRow>}
           {d.note && <DetailRow term="מילים" plain>{d.note}</DetailRow>}
         </DetailList>
       )}
-      {state === 'due' && <Note>אחרי ההעברה לוחצים "העברתי". המנהלים יאשרו{d.receiptWanted ? ' וישלחו קבלה ידנית מהעמותה' : ''}.</Note>}
+      {d.paymentStatus === 'cancelled' ? <Note>התרומה בוטלה.</Note> : <PayBlock amount={d.amount} purpose="תרומה" name={p.displayName} settings={ctx.settings} state={state} />}
+      {state === 'due' && <Note>אחרי "העברתי" מנהל מאשר שהכסף הגיע{after}</Note>}
     </AppScreen>
   );
 }

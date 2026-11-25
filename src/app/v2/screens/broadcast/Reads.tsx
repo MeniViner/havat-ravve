@@ -7,12 +7,14 @@ import { dayTime, hhmm, initials, keyOf } from '../../format';
 import { useEvent } from '../../../data';
 import type { ScreenProps } from '../../ctx';
 import type { Profile } from '../../../types';
-import { deleteBroadcast, firstName, isOutside, isRead, resendBroadcast, sentLine, useBroadcast, usePresenceToday, useReceipts, type Receipt } from '../../data/broadcast';
+import { broadcastReceiptText, deleteBroadcast, firstName, isOutside, isRead, resendBroadcast, sentLine, useBroadcast, usePresenceToday, useReceipts, type Receipt } from '../../data/broadcast';
+import { usePushConfig } from '../../data/push';
 import { MESSAGES_PATH } from './Compose';
 
 const SHOWN = 3;
 
 export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
+  const push = usePushConfig();
   const toast = useToast(); const open = useExternal();
   const { item: b, loading } = useBroadcast(params.id, ctx.manager);
   const receipts = useReceipts(params.id, ctx.manager);
@@ -41,7 +43,7 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
     }
     // who saw it first comes first; people whose phone has not shown it yet at the end
     unread.sort((x, y) => (x.seen ? 0 : 1) - (y.seen ? 0 : 1) || x.seen.localeCompare(y.seen) || x.name.localeCompare(y.name, 'he'));
-    // the sender's own receipt is written with the broadcast: list them last, the others in the order they read
+    // List the sender last, and the others in the order they read.
     read.sort((x, y) => (x.uid === b?.by.uid ? 1 : 0) - (y.uid === b?.by.uid ? 1 : 0) || String(x.at).localeCompare(String(y.at)));
     return { unread, read };
   }, [b, outside, receipts.items, presence.items, ctx.peopleByUid]);
@@ -50,8 +52,8 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
     if (!b || busy) return;
     setBusy(true);
     try {
-      const n = await resendBroadcast(ctx.actor, b, receipts.items);
-      toast.show({ text: n === 1 ? 'נשלח שוב לאדם אחד' : `נשלח שוב ל־${n} אנשים` });
+      const receipt = await resendBroadcast(ctx.actor, b, receipts.items);
+      toast.show({ text: broadcastReceiptText(receipt, push.mode !== 'off', true) });
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); } finally { setBusy(false); }
   }
 
@@ -61,7 +63,7 @@ export function BroadcastReads({ ctx, params }: ScreenProps): ReactNode {
     confirm: {
       title: 'למחוק את ההודעה?', confirmLabel: 'מחיקה',
       text: 'ההודעה תימחק מהרשימה ומהמסך של מי שקיבל אותה. מי שכבר קיבל אותה עדיין רואה אותה בהתראות שלו.',
-      onConfirm: () => remove(() => deleteBroadcast(b), { text: 'ההודעה נמחקה', after: () => go(MESSAGES_PATH, true) }),
+      onConfirm: () => remove(() => deleteBroadcast(ctx.actor, b), { text: 'ההודעה נמחקה', after: () => go(MESSAGES_PATH, true) }),
     },
   }] : [];
   const backBar = <TopBar back={{ label: 'הודעות', onClick: () => go(MESSAGES_PATH) }} end={<MoreMenu title="הודעה" items={more} />} />;

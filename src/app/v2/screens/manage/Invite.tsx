@@ -14,7 +14,8 @@ import {
 import './manage.css';
 
 type How = 'phone' | 'email';
-const agoDays = (iso: string) => {
+/** "היום", "אתמול", "לפני 3 ימים": when a pending invite or link was sent (Q27, and G5's phone links). */
+export const agoDays = (iso: string) => {
   const d = Math.floor((nowMs() - new Date(iso).getTime()) / 86400_000);
   return d <= 0 ? 'היום' : d === 1 ? 'אתמול' : d === 2 ? 'לפני יומיים' : d === 7 ? 'לפני שבוע' : d === 14 ? 'לפני שבועיים' : `לפני ${d} ימים`;
 };
@@ -69,8 +70,8 @@ export function InviteScreen({ ctx }: ScreenProps) {
     setPhone(''); setName(''); setError('');
   };
   const cancel = (p: Pending) => p.kind === 'email'
-    ? run(() => cancelInvite(p.invite.id), { text: `בוטל: ${p.invite.email}`, undo: () => inviteRole(ctx.actor, p.invite.email, p.invite.role) })
-    : run(() => cancelTeamLink(p.link.code), { text: `הקישור בוטל: ${p.link.name || p.link.phone}`, undo: () => restoreTeamLink(p.link) });
+    ? run(() => cancelInvite(ctx.actor, p.invite.id), { text: `בוטל: ${p.invite.email}`, undo: () => inviteRole(ctx.actor, p.invite.email, p.invite.role) })
+    : run(() => cancelTeamLink(ctx.actor, p.link.code), { text: `הקישור בוטל: ${p.link.name || p.link.phone}`, undo: () => restoreTeamLink(ctx.actor, p.link) });
 
   const openCard = existing ? 'פתיחת הכרטיס שלו' : '';
   const bar = how === 'phone'

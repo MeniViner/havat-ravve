@@ -4,7 +4,7 @@ const NAMES: Record<string, string> = {
   donations: 'תרומות', visits: 'ביקורים', places: 'מקומות', calendar: 'לוח זמנים', activity: 'יומן הפעולות', notifications: 'תיבת המנהלים',
   broadcasts: 'הודעות לצוות', vendors: 'דוכנים', settings: 'הגדרות', api_log: 'יומן אינסטינקט', push_jobs: 'תור התראות לטלפון',
   email_outbox: 'תור מיילים', role_invites: 'תפקידים מראש', tabs: 'חשבונות דוכן', counters: 'מונים', invites: 'הזמנות',
-  projects: 'פרויקטים', api_failures: 'תקלות שרת', account_deletions: 'בקשות מחיקת חשבון', cms_admins: 'עורכי האתר',
+  projects: 'פרויקטים', api_failures: 'תקלות שרת', account_deletions: 'בקשות מחיקת חשבון', notification_activity: 'יומן שליחת התראות אישיות', account_activity: 'פעילות חשבונות פרטית', cms_admins: 'עורכי האתר',
   cms_content: 'תוכן האתר', cms_media: 'תמונות האתר', cms_history: 'היסטוריית האתר', join_codes: 'קודי הצטרפות',
   products: 'מוצרים', staffing: 'שיבוץ צוות', vendor_requests: 'בקשות דוכנים', reads: 'קריאות', orders: 'הזמנות',
   api_idempotency: 'מניעת כפילויות בשרת',

@@ -171,7 +171,7 @@ try {
     check((await acts(eventId)).some((a) => a.text === 'מוצר עודכן: קפה · 14 ₪'), 'activity "מוצר עודכן: קפה · 14 ₪"');
     const nActs = (await acts(eventId)).length;
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: tea, active: false }), 'saveProduct active=false');
-    check((await acts(eventId)).length === nActs, 'the availability toggle writes no activity (as the app)');
+    check((await acts(eventId)).length === nActs + 1, 'the availability toggle writes activity');
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: coffee, unit: '' }), 'unit "" removes it');
     check(!('unit' in (await docOf(`events/${eventId}/products/${coffee}`))), 'the unit field is gone');
     check((await w(STAFF, 'events.saveProduct', { eventId, name: 'x', price: 1 })).status === 403, 'staff cannot change products');
@@ -238,6 +238,19 @@ try {
     check(sl.status === 200 && sl.json.data.items.length === 2, 'staff read eventStaffing.list');
     ok(await w(MGR, 'events.removeFromStation', { eventId, station: 'kitchen', uid: 'syn-staff2' }), 'removeFromStation');
     check((await docOf(`events/${eventId}/staffing/kitchen`)).people.length === 0 && (await acts(eventId)).some((x) => x.text === 'ערב חנוכה: יואב כהן הוסר/ה ממטבח'), 'removed, with its activity line');
+    const draft = await w(MGR, 'events.create', { title: 'INSTINCT AUDIT station', start: '2026-12-15T10:00', end: '2026-12-15T11:00', published: false, open: false });
+    const draftId = draft.json.data.eventId;
+    check(draft.status === 201 && (await docOf('events/' + draftId)).published === false, 'station fixture is unpublished');
+    const self = { eventId: draftId, station: 'gate', uid: 'syn-mgr' };
+    ok(await w(MGR, 'events.assignStation', self), 'a manager assigns themself to a station');
+    check((await w(MGR, 'events.assignStation', self)).status === 400, 'a second assignment to the same station is refused');
+    const selfNotes = (await listCol('users/syn-mgr/notifications')).filter((n) => n.refId === draftId && n.kind === 'event');
+    const selfJobs = (await where('push_jobs', 'refId', draftId)).filter((j) => j.kind === 'event' && j.to.includes('syn-mgr'));
+    check(selfNotes.length === 1 && selfNotes[0].readAt === null && selfJobs.length === 1 && selfJobs[0].to.join() === 'syn-mgr', 'one unread station assignment copy and one job to self');
+    await w(MGR, 'events.delete', { eventId: draftId });
+    const records = [`events/${draftId}/staffing/gate`, ...selfNotes.map((n) => `users/syn-mgr/notifications/${n.id}`), ...selfJobs.map((j) => `push_jobs/${j.id}`)];
+    for (const path of records) await fetch(`${DOCS}/${path}`, { method: 'DELETE', headers: admin });
+    check((await Promise.all([...records, 'events/' + draftId].map(docOf))).every((d) => d === null), 'station fixture, notification and push job are gone');
   }
 
   section('guests and payments (M5, N12, V5)');

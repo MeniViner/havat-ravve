@@ -356,7 +356,7 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
             <MoreMenu title="פרויקט" items={[{
               label: 'מחיקה', icon: 'trash', tone: 'danger',
               confirm: { title: 'למחוק את הפרויקט?', text: `"${project.item.title}" יימחק עם כל הצעדים שלו, גם אלה שכבר בוצעו.`,
-                onConfirm: () => remove(() => deleteProject(project.item!, steps.items), { text: 'הפרויקט נמחק', after: () => go('/projects', true) }) },
+                onConfirm: () => remove(() => deleteProject(ctx.actor, project.item!, steps.items), { text: 'הפרויקט נמחק', after: () => go('/projects', true) }) },
             }]} />
             <button type="button" className="k-quietlink" onClick={cancel}>ביטול</button>
           </div>

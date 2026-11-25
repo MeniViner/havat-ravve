@@ -23,9 +23,9 @@ export const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** The activity / notification title of a task (tasks.ts short()). */
 export const short = (s: string) => (s.length > 60 ? s.slice(0, 60) + '…' : s);
 
-/** createTask / updateTask / assignTask: "משימה חדשה: …" to the person it was put on. Empty when that is the actor. */
+/** createTask / updateTask / assignTask: "משימה חדשה: …" to the person it was put on. */
 export const taskToPerson = (fs: Firestore, me: Person, to: Person, taskId: string, title: string): Write[] =>
-  to.uid === me.uid ? [] : notifyWrites(fs, [to.uid], { kind: 'task', title: `משימה חדשה: ${short(title)}`, sub: `${firstName(me.name)} ${gw(me.name, 'העביר', 'העבירה')} אליך`, link: `/tasks/${taskId}`, refId: taskId, by: me });
+  notifyWrites(fs, [to.uid], { kind: 'task', title: `משימה חדשה: ${short(title)}`, sub: `${firstName(me.name)} ${gw(me.name, 'העביר', 'העבירה')} אליך`, link: `/tasks/${taskId}`, refId: taskId, by: me });
 
 // ---------- the team (shopping.ts teamUids): active staff, managers and owners ----------
 export async function teamUids(fs: Firestore): Promise<string[]> {

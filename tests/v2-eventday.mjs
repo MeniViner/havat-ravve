@@ -237,6 +237,10 @@ console.log('manager · eventDay');
     await s.go(`/manage/events/${FEST}/live/scans`);
     await s.tap('בשער · 34'); await s.see('רחל שטרן'); await s.see('שילם בשער');
     await s.tap('אחר כך ·'); await s.see('רוני לוי');
+    // "יצאו וחזרו" moved here from the event summary (needs-design 7): three tickets, both scans of each
+    await s.tap('יצאו וחזרו · 3'); await s.see('16:36');
+    assert.equal(await s.page.locator('.k-row').count(), 6, 'two scans for each of the three tickets');
+    assert.equal(await s.page.getByText('רוני לוי').count(), 0, 'only the tickets that went out and came back');
     await s.tap('הכל');
     await s.fill('שם או טלפון', 'נועם'); await s.see('כרטיס 2 מתוך 2');
     const dl = s.page.waitForEvent('download', { timeout: 5000 });
@@ -345,6 +349,42 @@ console.log('guest side');
     await s.see('הכרטיסים שלי');
   });
   await step('no page errors (guest side)', async () => { assert.deepEqual(s.errors, []); });
+  await s.ctx.close();
+}
+
+// ───────── needs-design 5-7: the moved figures (Q4 chip, Q14 "משימות" drill-in, nothing left on the summary) ─────────
+console.log('manager · moved figures');
+{
+  const s = await session('manager', 'regular');
+  await step('Q4: three tiles, the waiting sum in the chip (one waiting)', async () => {
+    await s.go('/manage/donations');
+    await s.see('לאישור · 180 ₪');
+    assert.equal(await s.page.locator('.k-stat').count(), 3, 'no fourth "ממתין" tile');
+    assert.equal(await s.page.getByText('ממתין', { exact: true }).count(), 0);
+  });
+  await step('Q14: no extra tiles; the "משימות" row opens the detail', async () => {
+    await s.go('/manage/reports');
+    assert.equal(await s.page.getByText('חוזרות בזמן', { exact: true }).count(), 0, 'no "חוזרות בזמן" tile on Q14');
+    await s.see('מהחוזרות בוצעו בזמן');
+    await s.page.locator('a', { hasText: 'מהחוזרות בוצעו בזמן' }).first().click();
+    await s.page.waitForURL(/\/manage\/reports\/tasks/);
+    await s.see('חוזרות בזמן'); await s.see('פתוחות באיחור'); await s.see('מי ביצע'); await s.see('בני גוטמן');
+  });
+  await step('Q15 compare: no "יצאו וחזרו" tile', async () => {
+    await s.go('/manage/events/demo-e-october?tab=summary&part=compare');
+    await s.see('הגעה');
+    assert.equal(await s.page.getByText('יצאו וחזרו').count(), 0);
+  });
+  await step('no page errors (moved figures, regular)', async () => { assert.deepEqual(s.errors, []); });
+  await s.ctx.close();
+}
+{
+  const s = await session('manager', 'afterEvent');
+  await step('Q4: two waiting reads "לאישור · 2 · 360 ₪"', async () => {
+    await s.go('/manage/donations');
+    await s.see('לאישור · 2 · 360 ₪');
+    await s.tap('לאישור · 2'); await s.see('אסתר כהן'); await s.see('מיכל ברק');
+  });
   await s.ctx.close();
 }
 

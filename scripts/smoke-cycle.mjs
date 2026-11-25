@@ -23,6 +23,14 @@ async function pickPhoto(s, trigger) {
   const [chooser] = await Promise.all([s.page.waitForEvent('filechooser', { timeout: 5000 }), trigger()]);
   await chooser.setFiles(PHOTO); await s.settle(1200);
 }
+/** Q4 "לאישור" chip as the page shows it, and what it should read from the data (decision 5). */
+async function q4Chip(s) {
+  const waiting = (await adminList('donations')).filter((d) => d.paymentStatus === 'claimed' || d.paymentStatus === 'pending');
+  const sum = `${waiting.reduce((a, d) => a + d.amount, 0).toLocaleString('en-US')} ₪`;
+  const want = waiting.length === 1 ? `לאישור · ${sum}` : `לאישור · ${waiting.length} · ${sum}`;
+  const chip = (await s.page.getByRole('radio', { name: /^לאישור/ }).or(s.page.getByRole('button', { name: /^לאישור/ })).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+  return { n: waiting.length, want, chip };
+}
 async function findBy(coll, pred, timeout = 8000) { return until(async () => (await adminList(coll)).find(pred), timeout); }
 /** U3/U9 "לאן לשלוח אישור תשלום": the picker row and its sheet. */
 async function pickReceipt(s, label) {
@@ -265,6 +273,15 @@ async function item2() {
   await n.click('כניסה לאפליקציה', { role: 'button', wait: 2500 });
   const np = await until(async () => adminGet('users/' + U.noga));
   check(np?.role === 'staff' && np?.status === 'active', 'C9 profile created with the invited role (staff)', 'new volunteer');
+  // needs-design decision 1: C10 once, as its own step right after C9; "אחר כך" goes on into the app; then never again
+  check(n.path() === '/install' && await n.has('להוסיף למסך הבית') && await n.has('אחר כך'), 'C10 is offered right after the first entry, as its own screen', 'new volunteer');
+  await n.shot('2-C10-after-C9');
+  await n.click('אחר כך', { role: 'button', wait: 1200 });
+  check(n.path() === '/tasks', 'C10 "אחר כך" goes on into the app', 'new volunteer');
+  const strip = () => n.page.locator('aside[aria-label="התקנה למסך הבית"], .system-installbar, .install-banner').count();
+  for (const p of ['/tasks', '/shopping', '/farm', '/me']) { await n.go(p, 900); check(!(await strip()) && n.path() === p, `no install strip on ${p}, and C10 is not offered again`, 'new volunteer'); }
+  await n.click('התקנה למסך הבית', { wait: 800 });
+  check(n.path() === '/install', 'installing stays reachable from the profile row "התקנה למסך הבית"', 'new volunteer');
   await n.go('/tasks', 1500);
   check(await n.has('משימות') && !(await n.has('ניהול')), 'the new volunteer has the team app without the manage tab', 'new volunteer');
   noErrors(n, 'first entry');
@@ -431,26 +448,52 @@ async function item3day() {
   await v.shot('3-D5-vendor-day');
   await v.click('הגעתי לחווה', { role: 'button', wait: 1200 });
   check(await until(async () => (await adminGet(`events/${ev.id}/vendors/${vendor.id}`))?.arrivedAt), 'D5 "הגעתי לחווה" saved (arrivedAt)', 'vendor');
-  check(await v.has('הגעתם ב־') && await v.has('צריך משהו?'), 'D6 live view after check-in', 'vendor');
+  // the event runs 17:00-23:00 today: before 17:00 D6 shows the arrival ("הגעתם ב־"), after it the live count
+  check((await v.has('הגעתם ב־') || await v.has('מבקרים נכנסו עד עכשיו')) && await v.has('צריך משהו?'), 'D6 live view after check-in', 'vendor', (await v.has('הגעתם ב־')) ? 'before the opening' : 'event open');
   await v.click('החשמל נפל', { wait: 1200 });
   const req = await findBy(`events/${ev.id}/vendor_requests`, (r) => r.kind === 'power' && !r.closedAt);
   check(req && await v.has('ביקשת: החשמל נפל'), 'D6 request "החשמל נפל" sent', 'vendor');
+  const d6 = async () => { await v.go('/vendor', 1500); const st = v.page.locator('.vendor-status'); return (await st.count()) ? (await st.first().innerText()).replace(/\n+/g, ' | ') : ''; };
+  check(req && (await d6()).includes('נשלח למנהלים'), 'D6 state 1: the open request reads "נשלח למנהלים"', 'vendor');
   await v.shot('3-D6-vendor-request');
 
-  // managers see it and handle it
+  // managers see it and handle it: the inbox card opens W2 (needs-design decision 3)
   const m = await session('dana');
   await m.go('/manage/inbox', 1500);
   check(await m.has('גבינות העמק · חשמל'), 'M2 the vendor request reaches the manager inbox', 'manager');
+  const vcard = m.page.locator('section.k-card', { hasText: 'גבינות העמק · חשמל' }).first();
+  await vcard.locator('.manage-item__hit').click(); await m.settle(1200);
+  const w2 = await m.text();
+  check(m.path() === `/manage/inbox/stall/${ev.id}/${req?.id}` && w2.includes('פתוחה') && w2.includes('החשמל נפל') && w2.includes('גבינות העמק') && w2.includes('רז כהן') && w2.includes('עוד אף אחד'),
+    'W2 the inbox card opens the request: open tag, the stall and the sender as rows, nobody handling yet', 'manager', m.path());
+  const w2more = await moreText(m);
+  check(w2more.includes('מחיקה') && await m.page.getByRole('button', { name: 'אני על זה', exact: true }).count() && await m.page.getByRole('button', { name: 'טופל', exact: true }).count(),
+    'W2 bottom bar "טופל" and "אני על זה", delete in ⋯', 'manager', w2more.replace(/\n+/g, ' | ').slice(0, 80));
+  await m.shot('3-W2-stall-request');
+  await m.click('אני על זה', { role: 'button', exact: true, wait: 1200 });
+  const taken = await until(async () => { const r = await adminGet(`events/${ev.id}/vendor_requests/${req.id}`); return r?.takenBy?.uid === U.dana && r.takenAt && !r.closedAt && r; });
+  check(taken && await m.has('דנה אברהם'), 'W2 "אני על זה" saves who handles it (takenBy, takenAt), the request stays open', 'manager');
+  check((await d6()).includes('דנה בדרך אליך'), 'D6 state 2: the vendor sees "דנה בדרך אליך"', 'vendor');
+  await v.shot('3-D6-on-the-way');
+  // V7 lists it with who took it, and its row opens the same W2
   await m.go(`/manage/events/${ev.id}/vendors/today`, 1500);
-  check(await m.has('ביקשו משהו') && await m.has('החשמל נפל'), 'V7 vendors today lists the open request', 'manager');
-  await m.click('טופל', { role: 'button', wait: 1200 });
-  check(await until(async () => (await adminGet(`events/${ev.id}/vendor_requests/${req.id}`))?.closedAt), 'V7 request handled (closed)', 'manager');
+  check(await m.has('ביקשו משהו') && await m.has('החשמל נפל') && await m.has('דנה לקחה'), 'V7 vendors today lists the open request, "דנה לקחה"', 'manager');
   await m.shot('3-V7-vendors-today');
-  await v.go('/vendor', 1500);
-  check(!(await v.has('ביקשת: החשמל נפל')), 'the vendor sees the request closed', 'vendor');
+  await row(m, 'גבינות העמק').click(); await m.settle(1200);
+  check(m.path() === `/manage/events/${ev.id}/vendors/today/${req.id}` && await m.has('הדוכנים היום') && await m.has('פתוחה'), 'W2 opens from V7 too, back to "הדוכנים היום"', 'manager', m.path());
+  await m.click('טופל', { role: 'button', exact: true, wait: 1500 });
+  const closed = await until(async () => { const r = await adminGet(`events/${ev.id}/vendor_requests/${req.id}`); return r?.closedAt && r.closedBy?.uid === U.dana && r; });
+  check(closed && m.path() === `/manage/events/${ev.id}/vendors/today`, 'W2 "טופל" closes the request and goes back to V7', 'manager', m.path());
+  const d6closed = await d6();
+  check(!d6closed && !(await v.has('ביקשת: החשמל נפל')), 'D6 state 3: the vendor sees the request closed (no status line)', 'vendor', d6closed);
   await v.click('נגמר לי משהו', { wait: 1200 });
   await m.go('/manage/inbox', 1500);
   check(await m.has('גבינות העמק · נגמר לי משהו'), 'M2 a "נגמר לי משהו" request reads in Hebrew', 'manager');
+  // the row's own "טופל" on V7 still closes a request without opening it
+  const req2 = await findBy(`events/${ev.id}/vendor_requests`, (r) => r.kind === 'supply' && !r.closedAt) || await findBy(`events/${ev.id}/vendor_requests`, (r) => !r.closedAt);
+  await m.go(`/manage/events/${ev.id}/vendors/today`, 1500);
+  await row(m, 'גבינות העמק').getByRole('button', { name: 'טופל', exact: true }).click(); await m.settle(1200);
+  check(req2 && await until(async () => (await adminGet(`events/${ev.id}/vendor_requests/${req2.id}`))?.closedAt), 'V7 the row\'s "טופל" closes the second request', 'manager');
   noErrors(v, 'vendor on the day');
   await v.done();
 
@@ -837,6 +880,35 @@ async function item8() {
   check(await until(async () => (await adminList('notifications')).some((n) => n.type === 'contact' && `${n.title} ${n.text}`.includes('חניה לאוטובוס')), 5000), 'U11 contact message reaches the managers\' inbox', 'new guest');
   noErrors(g, 'new guest flows'); await g.done();
 
+  // W1 (needs-design decision 2): the manager opens the contact message from its card and closes it ("טופל")
+  const w = await session('dana');
+  await w.go('/manage/inbox', 1500);
+  const ccard = w.page.locator('section.k-card', { hasText: 'חניה לאוטובוס' }).first();
+  const cbtns = await ccard.getByRole('button').evaluateAll((bs) => bs.map((b) => (b.getAttribute('aria-label') || b.textContent || '').trim()));
+  check(await ccard.count() && !cbtns.some((b) => /סגיר|הסר|close|^רותם/i.test(b)) && !(await ccard.getByRole('link').count()), 'M2 the contact card has no X and no inline link to the sender', 'manager', cbtns.join(' / ').slice(0, 120));
+  await ccard.locator('.manage-item__hit').click(); await w.settle(1200);
+  const cn = await findBy('notifications', (n) => n.type === 'contact' && `${n.title} ${n.text}`.includes('חניה לאוטובוס'));
+  const w1 = await w.text();
+  check(cn && w.path() === '/manage/inbox/' + cn.id && w1.includes('חניה לאוטובוס') && w1.includes('אפשר להגיע עם אוטובוס של 50 מקומות?') && w1.includes('רותם אברהם') && w1.includes('מענה בוואטסאפ') && w1.includes('התקשרות'),
+    'W1 the card opens the message: text, the sender row, WhatsApp and call', 'manager', w.path());
+  check((await moreText(w)).includes('מחיקה'), 'W1 delete is in ⋯', 'manager');
+  await w.shot('8-W1-inbox-message');
+  const waN = external.length;
+  await w.click('מענה בוואטסאפ', { role: 'button', wait: 800 });
+  check(external.slice(waN).some((u) => /wa\.me\/972541234567|wa\.me\/0?541234567/.test(u)), 'W1 "מענה בוואטסאפ" opens WhatsApp to the sender\'s phone', 'manager', external.slice(waN)[0]?.slice(0, 60) || 'none');
+  await row(w, 'רותם אברהם').click(); await w.settle(1000);
+  check(w.path() === '/manage/people/' + uids().rotem, 'W1 the sender row opens their person file', 'manager', w.path());
+  await w.go('/manage/inbox/' + cn?.id, 1200);
+  await w.click('טופל', { role: 'button', exact: true, wait: 1500 });
+  const handled = await until(async () => (await adminGet('notifications/' + cn.id))?.handled === true);
+  check(handled && w.path() === '/manage/inbox', 'W1 "טופל" closes the message and goes back to the inbox', 'manager', w.path());
+  await w.go('/manage/inbox/' + cn?.id, 1200);
+  check(await w.has('החזרה לתור') && await w.has('טופל ·'), 'W1 the handled message shows who closed it and "החזרה לתור"', 'manager');
+  await w.go('/manage/donations', 1500);
+  const c1 = await q4Chip(w);
+  check(c1.n === 1 && c1.chip === c1.want, `Q4 one donation waiting: the chip reads "${c1.want}"`, 'manager', c1.chip);
+  noErrors(w, 'W1 contact message'); await w.done();
+
   // an existing guest sees her own history
   const m = await session('michal');
   await m.go('/me', 1800);
@@ -844,7 +916,45 @@ async function item8() {
   await m.go('/me/account', 1200);
   if (await m.page.getByRole('button', { name: /^הכל · / }).count()) await m.click('הכל · ', { wait: 900 }); // more than four: the visit may be under "הכל"
   check(await m.has('ביקור ·') && await m.has('תרומה · 180'), 'existing guest: her visit and donation are on her account', 'guest');
+  // U15 (needs-design decision 10): her visit request, opened from "מה יש לי בחווה"
+  await row(m, 'ביקור ·').click(); await m.settle(1200);
+  const u15 = await m.text();
+  check(m.path() === '/me/visits/vi-michal' && u15.includes('בקשת ביקור') && u15.includes('מחכה לתשובה') && u15.includes('4 אנשים') && u15.includes('משפחה עם שני ילדים'), 'U15 the visit request opens from the account list: details and "מחכה לתשובה"', 'guest', m.path());
+  check(u15.includes('הבקשה נשלחה') && u15.includes('החווה חוזרת אליך') && u15.includes('הביקור נקבע') && await m.page.locator('.guest-step--done').count() === 1, 'U15 the three-step status line, the first step done', 'guest');
+  const u15more = await moreText(m);
+  check(u15more.includes('ביטול הבקשה') && !u15more.includes('מחיקה') && (await m.page.getByRole('dialog').count()) === 0, 'U15 ⋯ holds the cancel and nothing else', 'guest', u15more.replace(/\n+/g, ' | '));
+  const waG = external.length;
+  await m.click('וואטסאפ לחווה', { role: 'button', wait: 800 });
+  check(external.slice(waG).some((u) => /wa\.me\/(972)?0?507654321/.test(u)), 'U15 "וואטסאפ לחווה" opens WhatsApp to the farm', 'guest', external.slice(waG)[0]?.slice(0, 60) || 'none');
+  await m.shot('8-U15-visit');
+  // U16: a new donation left unpaid on the thanks screen, then opened from the account and marked paid
+  await m.go('/donate', 1200);
+  await m.click('סכום אחר', { wait: 200 });
+  await m.page.getByLabel('כמה (₪)').fill('120');
+  await m.click('לתרום', { role: 'button', wait: 1800 });
+  const md = await findBy('donations', (d) => d.uid === uids().michal && d.amount === 120);
+  check(md?.paymentStatus === 'pending' && m.path() === '/me/donations/' + md.id, 'U9 her new donation lands on U16 (pending)', 'guest', m.path());
+  await m.go('/me/account', 1200);
+  if (!(await row(m, 'תרומה · 120').count())) await m.click('הכל · ', { wait: 900 });
+  await row(m, 'תרומה · 120').click(); await m.settle(1200);
+  const u16 = await m.text();
+  check(m.path() === '/me/donations/' + md?.id && u16.includes('נשאר לשלם') && u16.includes('050-1234567') && await m.page.locator('.guest-pay--due').count() === 1 && !u16.includes('תודה!'),
+    'U16 opens from the account list: the amber pay block with the amount and Bit', 'guest', m.path());
+  await m.shot('8-U16-donation');
+  await m.click('העברתי את התשלום', { role: 'button', wait: 1500 });
+  check(await until(async () => (await adminGet('donations/' + md.id))?.paymentStatus === 'claimed') && await m.waitText('סימנת שהעברת · מחכה לאישור', 4000), 'U16 "העברתי את התשלום" marks it paid (claimed), the block says it waits for approval', 'guest');
   noErrors(m, 'existing guest'); await m.done();
+
+  // a manager sees it as reported paid; Q4's "לאישור" chip carries the count and the sum (decision 5)
+  const q = await session('dana');
+  await q.go('/manage/inbox', 1500); await q.click('תשלומים', { exact: false });
+  const dcard = q.page.locator('section.k-card', { hasText: '120 ₪ · מיכל בר' }).first();
+  check(await dcard.count() && (await dcard.innerText()).includes('סימנה שהעבירה') && await dcard.getByRole('button', { name: 'אישור תשלום' }).count(), 'the manager sees her donation as reported paid ("סימנה שהעבירה"), ready to approve', 'manager');
+  await q.go('/manage/donations', 1500);
+  const c2 = await q4Chip(q);
+  check(c2.n > 1 && c2.chip === c2.want && !(await q.has('ממתין')), `Q4 the "לאישור" chip reads "${c2.want}" and there is no "ממתין" tile`, 'manager', c2.chip);
+  await q.shot('8-Q4-chip');
+  noErrors(q, 'reported paid'); await q.done();
 }
 
 // ====================================================================================================================
@@ -983,6 +1093,16 @@ async function item10() {
   await o.shot('10-Q27-pending');
   await row(o, 'ליאור דהן').getByRole('button', { name: 'ביטול' }).click(); await o.settle(1200);
   check(two.l && await until(async () => !(await adminGet('team_links/' + two.l.code))) && (await row(o, 'ליאור דהן').count()) === 0, 'Q27 "ביטול" removes the second link (row and link gone)', 'owner');
+  // G5 (needs-design decision 12): the pending manager links by phone are listed with the e-mail invites, with "ביטול"
+  const three = await addAhead('052-555-5656', 'שקד ברק', 'מנהל');
+  await o.go('/manage/settings/managers', 1500);
+  const g5row = (re) => o.page.locator('.k-row').filter({ hasText: re }).first();
+  const g5one = await g5row(/555-?1212/).innerText().catch(() => '');
+  check(/מנהל · לפי טלפון · הקישור נשלח/.test(g5one) && await g5row(/555-?5656/).count() && !(await g5row(/555-?3434/).count()),
+    'G5 lists the pending manager links by phone ("מנהל · לפי טלפון · הקישור נשלח …"), not the volunteer one', 'owner', g5one.replace(/\n+/g, ' | '));
+  await o.shot('10-G5-pending-phone');
+  await g5row(/555-?5656/).getByRole('button', { name: 'ביטול', exact: true }).click(); await o.settle(1200);
+  check(three.l && await until(async () => !(await adminGet('team_links/' + three.l.code))) && !(await g5row(/555-?5656/).count()) && await g5row(/555-?1212/).count(), 'G5 "ביטול" cancels that link (row and link gone), the other stays', 'owner');
   noErrors(o, 'add ahead'); await o.done();
   void pending;
   if (!one.url) return;
@@ -1026,7 +1146,7 @@ async function item11() {
   const waBefore = external.filter((u) => /wa\.me/.test(u)).length;
   // WhatsApp: Michal's order for the event of item 3 (she chose WhatsApp), approved from the inbox
   await m.go('/manage/inbox', 1500); await m.click('תשלומים', { exact: false });
-  const card = m.page.locator('section.k-card', { hasText: 'מיכל בר' }).filter({ has: m.page.getByRole('button', { name: 'אישור תשלום' }) }).first();
+  const card = m.page.locator('section.k-card', { hasText: 'מיכל בר' }).filter({ hasText: EV }).filter({ has: m.page.getByRole('button', { name: 'אישור תשלום' }) }).first(); // her order (her donation of item 8 waits too)
   await card.getByRole('button', { name: 'אישור תשלום' }).click(); await m.settle(900);
   const sheet = m.page.getByRole('dialog').last();
   const q7 = await sheet.innerText().catch(() => '');
@@ -1125,7 +1245,90 @@ async function item12() {
 }
 
 // ====================================================================================================================
-const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8, 9: item9, 10: item10, 11: item11, 12: item12 };
+// 13 (W4): the owner switches the first-visit demo off for volunteers. A new volunteer account (invited by e-mail, first
+// entry through C9) lands on the real account with no demo; a new guest account (U13 sign-up) still opens in demo; an
+// existing volunteer opening the app on a new browser gets none either. Then the switch goes back on.
+async function item13() {
+  setItem('13 First-visit demo per kind of account');
+  const o = await session('owner');
+  await o.go('/manage/settings', 1500);
+  await o.click('הדגמה בכניסה ראשונה', { wait: 900 });
+  const sw = (name) => o.page.getByRole('switch', { name, exact: true });
+  const states = await Promise.all(['אורחים', 'מתנדבים', 'מנהלים', 'בעלי דוכנים'].map((n) => sw(n).getAttribute('aria-checked')));
+  check(o.path() === '/manage/settings/demo' && states.join() === 'true,true,true,false', 'W4 opens from Q19 with the defaults (vendors off)', 'owner', states.join());
+  await sw('מתנדבים').click(); await o.settle(1200);
+  const saved = await until(async () => (await adminGet('settings/app'))?.demoIntro?.staff === false);
+  check(saved, 'W4: volunteers off is saved in settings/app', 'owner');
+  await o.shot('13-W4-volunteers-off');
+  // a new volunteer: the role by e-mail (Q27), as in item 2
+  await o.go('/manage/people/invite', 1200);
+  await o.click('לפי מייל', { role: 'button' });
+  await o.page.getByLabel('כתובת Google של האדם').fill('adi.smoke@example.com');
+  await o.click('שמירת התפקיד', { role: 'button' });
+  check(await until(async () => (await adminGet('role_invites/adi.smoke@example.com'))?.role === 'staff'), 'W4: a new volunteer is invited by e-mail (staff)', 'owner');
+  noErrors(o, 'W4 switch'); await o.done();
+  const demoOn = async (s) => s.page.evaluate(() => { try { return JSON.parse(localStorage.getItem('farm-demo') || '{}').on === true; } catch { return false; } });
+  const U = uids();
+  const a = await session('adi', { firstVisit: true });
+  await a.go('/', 2000);
+  check(await a.has('ברוך הבא לצוות'), 'W4: the new volunteer\'s first entry opens C9', 'new volunteer');
+  await a.page.getByLabel('השם שלך בעברית').fill('עדי נחום'); await a.page.getByLabel('טלפון').fill('052-666-7788');
+  await a.click('כניסה לאפליקציה', { role: 'button', wait: 2500 });
+  check(await until(async () => (await adminGet('users/' + U.adi))?.role === 'staff'), 'W4: the new account is a volunteer', 'new volunteer');
+  if (a.path() === '/install') await a.click('אחר כך', { role: 'button', wait: 1500 });
+  await a.settle(1500);
+  check(!(await demoOn(a)) && !(await a.page.locator('.k-demo__switch').count()) && a.path() === '/tasks' && await a.has('משימות'), 'W4: with volunteers off, the new volunteer lands on the real account, no demo', 'new volunteer', a.path());
+  await a.go('/tasks', 1500);
+  check(!(await demoOn(a)) && !(await a.page.locator('.k-demo__switch').count()), 'W4: still no demo on the next opening', 'new volunteer');
+  noErrors(a, 'W4 new volunteer'); await a.done();
+  // an existing volunteer on a new browser: none either
+  const v = await session('yoav', { firstVisit: true });
+  await v.go('/', 2500);
+  check(!(await demoOn(v)) && !(await v.page.locator('.k-demo__switch').count()) && await v.has('משימות'), 'W4: an existing volunteer opening on a new browser gets no demo', 'volunteer');
+  noErrors(v, 'W4 volunteer first visit'); await v.done();
+  // a new guest: guests are still on
+  const g = await session('ella', { firstVisit: true });
+  await g.go('/', 1800);
+  check(await g.has('עוד רגע ונכנסים'), 'W4: the new guest\'s first sign-in opens U13', 'new guest');
+  await g.fill('השם שלך בעברית', 'אלה גולן'); await g.fill('טלפון', '0547778899');
+  await g.click('כניסה', { role: 'button', wait: 2500 });
+  check(await until(async () => (await adminGet('users/' + U.ella))?.role === 'guest'), 'W4: the new account is a guest', 'new guest');
+  await g.settle(1500);
+  const sw2 = (await g.page.locator('.k-demo__switch').first().innerText().catch(() => ''));
+  check(await demoOn(g) && sw2.includes('מחובר כ'), 'W4: a new guest\'s first visit still opens in demo (guests on)', 'new guest', sw2.replace(/\n+/g, ' ').slice(0, 60));
+  await g.shot('13-W4-guest-demo');
+  noErrors(g, 'W4 new guest'); await g.done();
+  const o2 = await session('owner');
+  await o2.go('/manage/settings/demo', 1500);
+  await o2.page.getByRole('switch', { name: 'מתנדבים', exact: true }).click(); await o2.settle(1000);
+  check(await until(async () => (await adminGet('settings/app'))?.demoIntro?.staff === true), 'W4: volunteers back on', 'owner');
+  noErrors(o2, 'W4 restore'); await o2.done();
+}
+
+// 14 (decision 1): no install strip, banner or its X on any screen, for every role (C10 is its own screen, item 2).
+async function item14() {
+  setItem('14 No install strip on any screen');
+  const SEL = 'aside[aria-label="התקנה למסך הבית"], .system-installbar, .install-banner, [aria-label="סגירת הזמנת התקנה"]';
+  const ev = ctx3.ev?.id || 'ev-winter';
+  const sweeps = [
+    ['owner', 'owner', ['/tasks', '/shopping', '/farm', '/me', '/manage', '/manage/inbox', '/manage/people', '/manage/settings', '/manage/donations', '/manage/reports', `/manage/events/${ev}`, '/manage/vendors', '/notifications']],
+    ['dana', 'manager', ['/tasks', '/tasks?view=time', '/shopping', '/farm', '/places', '/me', '/manage', '/manage/inbox', '/manage/events', '/manage/visits']],
+    ['yoav', 'volunteer', ['/tasks', '/shopping', '/farm', '/me', '/me/edit', '/notifications']],
+    ['raz', 'vendor', ['/vendor', '/vendor/stall', '/me']],
+    ['michal', 'guest', ['/', '/me', '/me/account', '/me/items', '/visit', '/donate', '/contact', '/events/ev-winter']],
+    [null, 'signed-out', ['/', '/events/ev-winter', '/login', '/me', '/visit']],
+  ];
+  for (const [who, role, paths] of sweeps) {
+    const s = await session(who);
+    const bad = [];
+    for (const p of paths) { await s.go(p, 1000); if (await s.page.locator(SEL).count()) bad.push(p); }
+    check(!bad.length, `no install strip on ${paths.length} screens`, role, bad.join(', '));
+    noErrors(s, 'install sweep'); await s.done();
+  }
+}
+
+// ====================================================================================================================
+const ITEMS = { 1: item1, 2: item2, 3: item3, 4: item4, 5: item5, 6: item6, 7: item7, 8: item8, 9: item9, 10: item10, 11: item11, 12: item12, 13: item13, 14: item14 };
 await launch();
 for (const [k, fn] of Object.entries(ITEMS)) {
   if (only.length && !only.includes(k)) continue;

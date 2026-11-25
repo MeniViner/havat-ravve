@@ -23,6 +23,10 @@ import {
   cleanPresets, cleanTypes, templateParts, questionMeta, fieldId, settingsLines, gw, isFemale, emailOk, type ManageSettings, type PresetRow, type PaymentForm,
 } from '../../data/manage';
 import { lnk } from './shared';
+import { demoIntroLine } from './DemoFirstVisit';
+import { agoDays } from './Invite';
+import { roleWord } from './calc';
+import { useTeamLinks, cancelTeamLink, restoreTeamLink, linkOpen } from '../../data/invite';
 
 const back = { label: 'הגדרות', ...lnk('/manage/settings') };
 const closeTo = () => go('/manage/settings');
@@ -56,6 +60,7 @@ export function SettingsScreen({ ctx }: ScreenProps) {
       <ListCard title="מנהלים ומערכת">
         <Row {...lnk('/manage/settings/contact')} title="פרטי קשר לחווה" meta={<span dir="ltr">{l.contact}</span>} />
         {ctx.owner && <Row {...lnk('/manage/settings/managers')} title="מנהלים ובעלים" meta={l.managers} />}
+        {ctx.owner && <Row {...lnk('/manage/settings/demo')} title="הדגמה בכניסה ראשונה" meta={demoIntroLine(s)} />}
         {ctx.cmsEditor
           ? <Row onClick={() => setSiteSheet(true)} title="אתר החווה ותנאי שימוש" meta="נפתח בחלון נפרד" />
           : <Row {...lnk('/terms')} title="תנאי שימוש ופרטיות" meta="הנוסח שהאורחים מאשרים" />}
@@ -447,9 +452,19 @@ function ManagersPage({ ctx }: ScreenProps) {
   const owners = sortMe(people.filter((p) => p.role === 'owner' && p.status === 'active'));
   // Managers: most recently active first (G5 shows who is around).
   const managers = people.filter((p) => p.role === 'manager' && p.status === 'active').sort((a, b) => (lastSeen.get(b.uid) || '').localeCompare(lastSeen.get(a.uid) || '') || a.displayName.localeCompare(b.displayName, 'he'));
-  const pending = (role: 'owner' | 'manager') => invites.filter((i) => i.role === role).map((i) => (
-    <Row key={i.id} minHeight={56} {...lnk('/manage/people/invite')} leading={<Avatar initials="?" />} title={i.email} meta="הוגדר, עוד לא נכנס" />
-  ));
+  // Pending: the e-mail invites, then the one-time links sent by phone (Q27), each with the quiet "ביטול" Q27 has
+  const links = useTeamLinks(true).items;
+  const run = useRun();
+  const pending = (role: 'owner' | 'manager') => [
+    ...invites.filter((i) => i.role === role).map((i) => (
+      <Row key={i.id} minHeight={56} {...lnk('/manage/people/invite')} leading={<Avatar initials="?" />} title={i.email} meta="הוגדר, עוד לא נכנס" />
+    )),
+    ...links.filter((l) => l.role === role).map((l) => (
+      <Row key={'p:' + l.code} minHeight={56} leading={<Avatar initials="?" />} title={<span dir="ltr">{l.phone}</span>}
+        meta={`${roleWord(l.role, !!l.fem)} · לפי טלפון · ${linkOpen(l) ? `הקישור נשלח ${agoDays(l.createdAt)}` : 'הקישור פג תוקף'}`}
+        actions={<Button variant="quiet" onClick={() => run(() => cancelTeamLink(ctx.actor, l.code), { text: `הקישור בוטל: ${l.name || l.phone}`, undo: () => restoreTeamLink(ctx.actor, l) })}>ביטול</Button>} />
+    )),
+  ];
   const personRow = (p: typeof people[number], owner: boolean) => {
     const self = p.uid === ctx.actor.uid;
     return self

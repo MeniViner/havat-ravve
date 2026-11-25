@@ -1,3 +1,4 @@
+import { TEAM_ACTIVITY_KINDS } from '../../shared/activity';
 // Generic reads: every collection of the app, listed and fetched with the same rules the app's Firestore
 // Rules apply. Each resource below becomes "<name>.list" and "<name>.get" in the catalog.
 import { ApiError, invalid } from './http';
@@ -81,8 +82,8 @@ const bool = (he: string): Param => ({ type: 'bool', he });
 const en = (values: string[], he: string): Param => ({ type: 'enum', values, he });
 
 export const PAYMENT = ['free', 'pending', 'claimed', 'paid', 'paid_onsite', 'cancelled'];
-export const TEAM_KINDS = ['task', 'shopping', 'event', 'ticket', 'tab', 'place'];
-const ALL_KINDS = [...TEAM_KINDS, 'task_private', 'visit', 'donation', 'user', 'settings'];
+const TEAM_KINDS: readonly string[] = TEAM_ACTIVITY_KINDS;
+const ALL_KINDS = [...TEAM_KINDS, 'task_private', 'visit', 'donation', 'user', 'settings', 'project', 'calendar_private', 'inbox'];
 
 export const RESOURCES: ResourceDef[] = [
   {
@@ -273,7 +274,7 @@ export const RESOURCES: ResourceDef[] = [
     name: 'activity', col: 'activity', path: '/v1/activity', scope: 'activity:read', he: 'יומן הפעילות: מי עשה מה ומתי, בכל המערכת',
     order: { field: 'at', dir: 'DESCENDING' },
     filters: {
-      kind: { field: 'kind', param: en(ALL_KINDS, 'task, task_private (manager-only task, managers only), shopping, event, ticket, tab, place, visit, donation, user, settings') },
+      kind: { field: 'kind', param: en(ALL_KINDS, 'סוג הפעילות. תוצאות לפי הרשאת התפקיד') },
       refId: { field: 'refId', param: id('הרשומה שהפעולה עליה') }, subjectUid: { field: 'subjectUid', param: id('האדם שהפעולה נוגעת אליו') },
       eventId: { field: 'eventId', param: id('אירוע') }, byUid: { field: 'by.uid', param: id('מי ביצע') },
       action: { field: 'action', param: s('created, edited, done, undone, deleted, assigned, bought, paid, approved...') },
@@ -285,7 +286,7 @@ export const RESOURCES: ResourceDef[] = [
     },
     visible: (c, d) => isManager(c) || TEAM_KINDS.includes(String(d.kind)),
     redact: redactTaskActivity,
-    notes: ['Newest first. "at" is an ISO time in UTC.', 'Staff see only task, shopping, event, ticket, tab and place entries, as in the app, and task entries of manager-only or deleted tasks come with generic text ("redacted": true).'],
+    notes: ['Newest first. "at" is an ISO time in UTC.', 'Staff see only team activity. Old task entries of manager-only or deleted tasks come with generic text ("redacted": true).'],
   },
 ];
 

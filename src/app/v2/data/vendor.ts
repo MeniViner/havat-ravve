@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useDoc, useList, write, newId, push, pull, transact, ConflictError } from '../../db';
 import { isFemale } from '../gender';
 import { nowIso, nowMs, todayKey } from '../../clock';
-import { logActivity } from '../../activity';
+import { activityOp, logActivity } from '../../activity';
 import { fillTemplate } from '../../data';
 import { notify } from './notify';
 import { hhmm, ddmm, dayName, keyOf } from '../format';
@@ -181,6 +181,7 @@ const managersOf = (info: VendorInfo | null, rec: EventVendorDoc | null) => [...
 export async function declineInvite(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: EventVendorDoc | null, info: VendorInfo | null) {
   const at = nowIso();
   await write.update(`events/${e.id}/vendors`, v.id, { status: 'declined', confirmed: false, answeredAt: at, updatedAt: at });
+  await logActivity(ctx.actor, 'event', v.id, 'edited', 'דוכן דחה הזמנה', { eventId: e.id });
   await notify(managersOf(info, rec), { kind: 'vendor', title: `${v.name} ${g(v.fem, 'לא מגיע', 'לא מגיעה')} ל${e.title}`, sub: ctx.actor.name, link: `/manage/events/${e.id}/vendors`, refId: v.id, by: ctx.actor, push: false });
 }
 
@@ -193,13 +194,17 @@ export async function confirmWithNeeds(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, r
     { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { status: 'confirmed', confirmed: true, answeredAt: at, sells: f.sells.trim(), needs: f.needs, people: f.people, withVehicle: f.withVehicle, vehicle: f.withVehicle ? 'רכב לפריקה' : '', note: f.note.trim(), updatedAt: at } },
     { op: 'update', col: 'vendors', id: v.id, data: { sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, ...(f.note.trim() ? { note: f.note.trim() } : {}), updatedAt: at } },
   ]);
+  await logActivity(ctx.actor, 'event', v.id, 'edited', 'דוכן עדכן הגעה וצרכים', { eventId: e.id });
   await notify(managersOf(info, rec), { kind: 'vendor', title: was === 'confirmed' ? `${v.name} ${g(v.fem, 'עדכן', 'עדכנה')} את מה שצריך בדוכן` : `${v.name} ${g(v.fem, 'אישר', 'אישרה')} הגעה ל${e.title}`, sub: needsText(f.needs) || ctx.actor.name, link: `/manage/events/${e.id}/vendors`, refId: v.id, by: ctx.actor, push: false });
 }
 
 /** D5 "הגעתי לחווה" (vendor or helper). */
 export async function checkIn(ctx: V2Ctx, eid: string, vid: string) {
   const at = nowIso();
-  await write.update(`events/${eid}/vendors`, vid, { arrivedAt: at, arrivedBy: ctx.actor.uid, updatedAt: at });
+  await write.batch([
+    { op: 'update', col: `events/${eid}/vendors`, id: vid, data: { arrivedAt: at, arrivedBy: ctx.actor.uid, updatedAt: at } },
+    activityOp(ctx.actor, 'event', vid, 'saved', 'דוכן הגיע לחווה', { eventId: eid }),
+  ]);
 }
 export const markGuidelinesRead = (eid: string, vid: string) => write.update(`events/${eid}/vendors`, vid, { guidelinesReadAt: nowIso() }, { quiet: true });
 
@@ -207,7 +212,10 @@ export const markGuidelinesRead = (eid: string, vid: string) => write.update(`ev
 export async function createRequest(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: EventVendorDoc | null, info: VendorInfo | null, kind: RequestKind) {
   const col = `events/${e.id}/vendor_requests`; const id = newId(col); const text = REQUEST_LABELS[kind];
   const doc: VendorRequestDoc = { id, eventId: e.id, vendorId: v.id, vendorName: v.name, kind, text, by: ctx.actor, createdAt: nowIso(), takenBy: null, closedAt: null, closedBy: null };
-  await write.set(col, id, doc as unknown as Record<string, unknown>);
+  await write.batch([
+    { op: 'set', col, id, data: doc as unknown as Record<string, unknown> },
+    activityOp(ctx.actor, 'event', id, 'created', 'בקשה מדוכן', { eventId: e.id }),
+  ]);
   await notify(managersOf(info, rec), { kind: 'vendor', title: `${v.name}: ${text}`, sub: rec?.spot ? `דוכן ${rec.spot} · ${ctx.actor.name}` : ctx.actor.name, link: `/manage/events/${e.id}/vendors/today`, refId: id, by: ctx.actor });
   return id;
 }
@@ -217,8 +225,19 @@ export async function closeRequest(ctx: V2Ctx, eid: string, rid: string, notifyU
     const r = await tx.get<VendorRequestDoc>(`events/${eid}/vendor_requests`, rid);
     if (!r || r.closedAt) throw new ConflictError('לא נשמר. הבקשה כבר נסגרה.');
     tx.update(`events/${eid}/vendor_requests`, rid, { closedAt: nowIso(), closedBy: ctx.actor });
+    const log = activityOp(ctx.actor, 'event', rid, 'closed', 'בקשה מדוכן', { eventId: eid });
+    tx.set(log.col, log.id, log.data);
   });
-  if (notifyUid && notifyUid !== ctx.actor.uid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
+  if (notifyUid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
+}
+/** W2 "אני על זה": the team member who handles the request (takenBy + takenAt). The vendor reads it on D6 ("נועה בדרך אליך").
+ *  A closed request is not taken; taking it from someone else is allowed (the latest one is the one on the way). */
+export async function takeRequest(ctx: V2Ctx, eid: string, rid: string) {
+  await transact(async (tx) => {
+    const r = await tx.get<VendorRequestDoc>(`events/${eid}/vendor_requests`, rid);
+    if (!r || r.closedAt) throw new ConflictError('לא נשמר. הבקשה כבר נסגרה.');
+    tx.update(`events/${eid}/vendor_requests`, rid, { takenBy: ctx.actor, takenAt: nowIso() });
+  });
 }
 
 /** D9 "שליחה לחווה". */
@@ -227,17 +246,23 @@ export async function saveFeedback(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: 
   await write.batch([
     { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { feedback: { rating: f.rating, text: f.text.trim(), inviteNext: f.inviteNext, at }, updatedAt: at } },
     { op: 'update', col: 'vendors', id: v.id, data: { inviteNext: f.inviteNext, updatedAt: at } },
+    activityOp(ctx.actor, 'event', v.id, 'saved', 'משוב מדוכן', { eventId: e.id }),
   ]);
   await notify(managersOf(info, rec), { kind: 'vendor', title: `משוב מ${v.name}: ${RATING_LABELS[f.rating] || ''}`, sub: f.text.trim().slice(0, 120), link: `/manage/vendors/${v.id}`, refId: v.id, by: ctx.actor, push: false });
 }
 export const RATING_LABELS: Record<number, string> = { 5: 'מצוין', 3: 'בסדר', 1: 'פחות' };
 /** D10 "להזמין אותי לאירוע הבא". */
-export const setInviteNext = (vid: string, on: boolean) => write.update('vendors', vid, { inviteNext: on, updatedAt: nowIso() });
+export const setInviteNext = (actor: Actor, vid: string, on: boolean) => write.batch([
+  { op: 'update', col: 'vendors', id: vid, data: { inviteNext: on, updatedAt: nowIso() } },
+  activityOp(actor, 'event', vid, 'saved', 'העדפת הזמנה לדוכן'),
+]);
 
 /** D7 "עריכה": the stall details the vendor owns. */
 export type StallForm = { name: string; sells: string; phone: string; needs: VendorNeed[]; note: string; photo?: string };
-export const saveStall = (vid: string, f: StallForm) =>
-  write.update('vendors', vid, { name: f.name.trim(), sells: f.sells.trim(), product: f.sells.trim(), phone: f.phone.trim(), needs: f.needs, note: f.note.trim(), ...(f.photo !== undefined ? { photo: f.photo } : {}), updatedAt: nowIso() });
+export const saveStall = (actor: Actor, vid: string, f: StallForm) => write.batch([
+  { op: 'update', col: 'vendors', id: vid, data: { name: f.name.trim(), sells: f.sells.trim(), product: f.sells.trim(), phone: f.phone.trim(), needs: f.needs, note: f.note.trim(), ...(f.photo !== undefined ? { photo: f.photo } : {}), updatedAt: nowIso() } },
+  activityOp(actor, 'event', vid, 'edited', 'פרטי דוכן'),
+]);
 
 /** D8 (vendor) and V6 "לקשר עוד מישהו" (manager): an access invite plus a row in the stall's people. Returns the WhatsApp text and link. */
 export async function addPerson(ctx: V2Ctx, v: VendorDoc, p: { name: string; phone: string; role: 'owner' | 'helper'; fem?: boolean }) {
@@ -247,6 +272,7 @@ export async function addPerson(ctx: V2Ctx, v: VendorDoc, p: { name: string; pho
   await write.batch([
     { op: 'set', col: 'vendor_invites', id: code, data: invite as unknown as Record<string, unknown> },
     { op: 'update', col: 'vendors', id: v.id, data: { people: push(person), updatedAt: at } },
+    activityOp(ctx.actor, 'event', v.id, 'added', 'גישה לדוכן'),
   ]);
   return { code, link: inviteLink('', code), text: helperText(v, p.name, inviteLink('', code), p.role) };
 }
@@ -255,10 +281,11 @@ export const helperText = (v: VendorDoc, name: string, link: string, role: 'owne
     ? `שלום ${first(name)}, זה הקישור לאפליקציה של חוות רווה בשביל ${v.name}: ${link} נכנסים עם חשבון Google.`
     : `שלום ${first(name)}, צירפתי אותך לדוכן ${v.name} באפליקציה של חוות רווה. נכנסים כאן עם חשבון Google: ${link}`;
 /** Removes a helper from the stall and closes their invite (D7 sheet). The account itself stays, without the stall. */
-export async function removePerson(v: VendorDoc, p: VendorPerson) {
+export async function removePerson(actor: Actor, v: VendorDoc, p: VendorPerson) {
   const people = (v.people || []).filter((x) => !(x.code ? x.code === p.code : x.name === p.name && x.role === p.role));
   const ops: Parameters<typeof write.batch>[0] = [{ op: 'update', col: 'vendors', id: v.id, data: { people, updatedAt: nowIso() } }];
   if (p.code) ops.push({ op: 'update', col: 'vendor_invites', id: p.code, data: { active: false } });
+  ops.push(activityOp(actor, 'event', v.id, 'removed', 'גישה לדוכן'));
   await write.batch(ops);
 }
 
@@ -270,7 +297,10 @@ export async function savePoolVendor(ctx: V2Ctx, f: PoolForm, existing?: VendorD
   const data = { name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, notes: '', external: f.external, fem: f.fem, updatedAt: at };
   const priv = { notes: f.notes.trim(), updatedAt: at };
   if (existing) {
-    await write.batch([{ op: 'update', col: 'vendors', id: existing.id, data }, { op: 'set', col: `vendors/${existing.id}/private`, id: 'main', data: priv }]);
+    await write.batch([
+      { op: 'update', col: 'vendors', id: existing.id, data }, { op: 'set', col: `vendors/${existing.id}/private`, id: 'main', data: priv },
+      activityOp(ctx.actor, 'event', existing.id, 'edited', 'פרטי דוכן במאגר'),
+    ]);
     return existing.id;
   }
   const id = newId('vendors');
@@ -320,7 +350,7 @@ export async function inviteToEvent(ctx: V2Ctx, v: VendorDoc, e: FarmEvent, info
   ops.push({ op: 'update', col: 'vendors', id: v.id, data: vendorPatch });
   await write.batch(ops);
   await ensureVendorInfo(ctx, e, info);
-  if (!existing) logActivity(ctx.actor, 'event', e.id, 'invited', `${v.name} הוזמן לדוכן`, { eventId: e.id });
+  await logActivity(ctx.actor, 'event', e.id, existing ? 'edited' : 'invited', existing ? 'הזמנה לדוכן' : `${v.name} הוזמן לדוכן`, { eventId: e.id });
   const enteredOwner = owner(v)?.entered;
   return { text: inviteText(ctx, v, e, enteredOwner ? undefined : code) };
 }
@@ -331,7 +361,10 @@ export function inviteText(ctx: V2Ctx, v: VendorDoc, e: FarmEvent, code?: string
 /** N8 "תזכורת": stamps the reminder and returns the WhatsApp text: the saved "הזמנת בעל דוכן" message when the farm wrote one
  *  (the old "הזמנה שוב" sent it), otherwise the short reminder. */
 export async function remindVendor(ctx: V2Ctx, v: VendorDoc, e: FarmEvent) {
-  await write.update(`events/${e.id}/vendors`, v.id, { remindedAt: nowIso() }, { quiet: true });
+  await write.batch([
+    { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { remindedAt: nowIso() } },
+    activityOp(ctx.actor, 'event', e.id, 'saved', 'תזכורת לבעל דוכן', { eventId: e.id }),
+  ], { quiet: true });
   const code = owner(v)?.entered ? undefined : owner(v)?.code;
   if (ctx.settings.templates.vendorInvite?.trim()) return inviteText(ctx, v, e, code);
   return `שלום ${first(v.contact || v.name)}, מזכירים: ${e.title} ב־${dayShort(e.start)}. מגיעים? אפשר לענות כאן: ${inviteLink(e.id, code)}`;
@@ -432,6 +465,8 @@ export async function claimVendorInvite(user: Session, code: string, details?: {
       });
     }
     tx.update('vendor_invites', code, { usedBy: user.uid, usedAt: at, active: false });
+    const log = activityOp({ uid: user.uid, name: (me?.displayName || details?.displayName || inv.name).slice(0, 80) }, 'user', inv.vendorId, 'joined', 'קישור לדוכן התקבל');
+    tx.set(log.col, log.id, log.data);
     return inv.vendorId;
   });
   forgetVendorInvite();

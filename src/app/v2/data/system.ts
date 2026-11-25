@@ -1,6 +1,7 @@
 // Data for the system area: my profile (L6, C12, C13), profile photo (A1, A2), global search (C2), first entry (C9),
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
+import { saveAccountChange } from '../../account-activity';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useList, useDoc, write, type Spec } from '../../db';
 import { nowIso, todayKey, nowMs } from '../../clock';
@@ -89,11 +90,11 @@ export async function cropToDataUrl(img: HTMLImageElement, view: { size: number;
   return compressPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }), OUT, 80_000);
 }
 /** The cropped photo goes to R2 when it can (a short link in the profile); otherwise the small data URL, as before. */
-export const saveCustomPhoto = async (uid: string, photo: string) => write.update('users', uid, { photo: await storePhoto(photo, 'avatar'), photoSource: 'custom', updatedAt: nowIso() });
+export const saveCustomPhoto = async (uid: string, photo: string) => saveAccountChange(uid, 'photo_updated', { photo: await storePhoto(photo, 'avatar'), photoSource: 'custom', updatedAt: nowIso() });
 export async function savePhotoSource(uid: string, source: PhotoSource) {
   const patch: Record<string, unknown> = { photoSource: source, updatedAt: nowIso() };
   if (source === 'google') { const g = await googlePhotoUrl(); if (g) patch.googlePhoto = g; }
-  return write.update('users', uid, patch);
+  return saveAccountChange(uid, 'photo_updated', patch);
 }
 /** Keeps the copy of the Google picture fresh (quiet: the rules may still refuse it, which must not alarm anyone). */
 export function useGooglePhotoSync(profile: Profile) {
@@ -150,7 +151,7 @@ export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4
 const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
 export function saveProfile(p: Profile, d: ProfileDraft) {
-  return write.update('users', p.uid, {
+  return saveAccountChange(p.uid, 'profile_updated', {
     displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), birthDate: parseBirth(d.birthDate) || '',
     fields: { ...(p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
@@ -195,7 +196,7 @@ export const INVITE_ROLE_WORD: Record<RoleInvite['role'], string> = { staff: 'כ
 export const firstName = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
 /** `fields`: the whole answers map to store (the profile's fields with the new answers); left out, fields stay untouched. */
 export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string> }) =>
-  write.update('users', uid, { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
+  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
 
 // ---------- install (C10) ----------
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
@@ -214,29 +215,24 @@ export async function promptInstall() {
 export const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const isStandalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone);
 
-// ---------- the install banner (the old team shell's, src/app/InstallBanner.tsx: same keys, so a dismissal carries over) ----------
-const INSTALL_SEEN_KEY = 'farm-app-install-seen';
-const INSTALL_DISMISSED_KEY = 'farm-app-install-dismissed-until';
+// ---------- the install offer (C10 once, right after the first entry) ----------
+// No strip or banner anywhere (needs-design decision 1): C10 is offered once, as its own screen after C9, and then only from
+// the profile row "התקנה למסך הבית". "Once" is per device (localStorage), like installing itself: a new phone is offered again.
+const INSTALL_OFFERED_KEY = 'farm-install-offered';
 const INSTALLED_KEY = 'farm-app-installed';
-/** "סגירה" hides the banner for two weeks. */
-export const INSTALL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
 function readFlag(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
 function writeFlag(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* installing still works for this visit */ } }
-/** Read once when the app loads: the very first visit, straight in, gets no banner. */
-const seenOnArrival = typeof window !== 'undefined' && readFlag(INSTALL_SEEN_KEY) === 'yes';
-export const installSeenOnArrival = () => seenOnArrival;
-export const markInstallSeen = () => writeFlag(INSTALL_SEEN_KEY, 'yes');
 export const isInstalledApp = () => isStandalone() || readFlag(INSTALLED_KEY) === 'yes';
-export const installDismissedUntil = () => Number(readFlag(INSTALL_DISMISSED_KEY)) || 0;
-/** Real time (Date.now), not the demo clock: the key is shared with the old banner and outlives a demo. */
-export function snoozeInstall(now = Date.now()) { const until = now + INSTALL_SNOOZE_MS; writeFlag(INSTALL_DISMISSED_KEY, String(until)); return until; }
-/** As the old banner: not when installed, not on the first screen of a first visit, not while dismissed, and only where the
- *  browser can install (a prompt) or on iPhone (the Safari steps). Never on /install, which already explains it. */
-export function installBannerShown(o: { installed: boolean; seenBefore: boolean; depth: number; dismissedUntil: number; now: number; prompt: boolean; ios: boolean; route: string }) {
-  if (o.installed || o.route === '/install') return false;
-  if (!o.seenBefore && o.depth === 0) return false;
-  if (o.dismissedUntil > o.now) return false;
-  return o.prompt || o.ios;
+/** C10 as the step after C9: /install with first=1 ("אחר כך" and installing go on to the app instead of back). */
+export const FIRST_INSTALL = '/install?first=1';
+/** Pure: offer C10 after the first entry? Not in demo, not when the app already runs installed, and only once on this device. */
+export const installOfferDue = (o: { demo: boolean; installed: boolean; offered: boolean }) => !o.demo && !o.installed && !o.offered;
+export const installOffered = () => readFlag(INSTALL_OFFERED_KEY) === 'yes';
+/** Where C9 goes when it is done: C10 the first time on this device (and remembers it was offered), else the app. */
+export function afterFirstEntry(demo: boolean): string {
+  if (!installOfferDue({ demo, installed: isInstalledApp(), offered: installOffered() })) return '/tasks';
+  writeFlag(INSTALL_OFFERED_KEY, 'yes');
+  return FIRST_INSTALL;
 }
 
 // ---------- offline queue (C8) ----------

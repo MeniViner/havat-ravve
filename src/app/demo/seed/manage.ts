@@ -16,7 +16,7 @@ const MONTH_START = '2026-11-01';
 const DONE_TARGET: Record<string, number> = { 'demo-u-yoav': 28, 'demo-u-noa': 18, 'demo-u-dana': 6, 'demo-u-eliya': 1 };
 const TASK_NAMES = ['האכלת העיזים', 'השקיית העציצים', 'ניקוי הלול', 'פתיחת השער ובדיקת הברזים', 'החלפת מים לסוסים', 'איסוף ביצים', 'סידור המחסן', 'גיזום בפינת החי'];
 
-const slice: Slice = (seed) => {
+const slice: Slice = (seed, scenario) => {
   // ---- N1/N2 visits: approved list as designed; the new request keeps its place ----
   patch(seed, 'visits', 'demo-vi-cohen', { managerNote: 'נפגשים בשער ב־10:00' });
   patch(seed, 'visits', 'demo-vi-kindergarten', { name: 'בית ספר אורנים', people: 30, date: key(5), type: 'מפגש קבוצתי', managerNote: '09:30 · להכין את פינת החי', note: 'שכבת ד׳, 30 ילדים ו־3 מורות.' });
@@ -42,6 +42,12 @@ const slice: Slice = (seed) => {
   const hist = (id: string, uid: string, name: string, amount: number, label: string, d: number): Row => ({
     id, uid, name, phone: '', amount, label, note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt: at(d), updatedAt: at(d),
   });
+  // Q4 chip, both forms (needs-design decision 5): one waiting on a regular day ("לאישור · 180 ₪"); after the festival Ester
+  // marked a second donation as sent, so the chip reads "לאישור · 2 · 360 ₪".
+  if (scenario === 'afterEvent') put(seed, 'donations', [{
+    id: 'demo-d-ester-fest', uid: 'demo-u-ester', name: 'אסתר כהן', phone: '050-000-0310', amount: 180, label: 'עשר פעמים חי', note: '', memorial: '',
+    receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'claimed', createdAt: at(9, '20:40'), updatedAt: at(9, '20:40'),
+  }]);
   put(seed, 'donations', [
     hist('demo-d-h-mar', 'demo-u-roni', 'רוני לוי', 3600, 'סכום חופשי', -250),
     hist('demo-d-h-jun', 'demo-u-noam', 'נועם אדרי', 1800, 'סכום חופשי', -160),
@@ -50,16 +56,20 @@ const slice: Slice = (seed) => {
   ]);
 
   // ---- M2 inbox wording ----
-  patch(seed, 'notifications', 'demo-n-contact', { text: 'לקראת פסטיבל הסתיו' });
+  // W1 shows the whole message; the M2 card shows it on one line after the sender
+  patch(seed, 'notifications', 'demo-n-contact', { text: 'יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. אנחנו מגיעים לפסטיבל הסתיו.' });
   patch(seed, 'notifications', 'demo-n-tab', { createdAt: ago(6) });
 
-  // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows two waiting (omer.levi2 by e-mail,
-  // the phone link below), Q19 "2 בעלים · 3 מנהלים" ----
+  // ---- Q27/Q19: no pending e-mail invite; the farm's own address is not a person. Q27 shows three waiting (omer.levi2 by e-mail,
+  // the two phone links below), Q19 "2 בעלים · 3 מנהלים" ----
   drop(seed, 'role_invites', ['farm.ravve@gmail.com']);
   // ---- Q27: a volunteer added ahead by phone yesterday; the one-time WhatsApp link is still open (team_links/{code}) ----
   put(seed, 'team_links', [
     { id: 't-demo2k7q9mfx4r', code: 't-demo2k7q9mfx4r', role: 'staff', name: '', phone: '054-000-0421', fem: true, active: true, usedBy: null, usedAt: null,
       createdBy: A.beni, createdAt: ago(26), expiresMs: new Date(ago(26)).getTime() + 14 * 86400_000 },
+    // G5 (needs-design decision 12): a manager link sent by phone this morning, listed with the pending invites
+    { id: 't-demo8m3wq5hz7n', code: 't-demo8m3wq5hz7n', role: 'manager', name: '', phone: '052-000-0315', active: true, usedBy: null, usedAt: null,
+      createdBy: A.beni, createdAt: ago(2), expiresMs: new Date(ago(2)).getTime() + 14 * 86400_000 },
   ]);
 
   // ---- N6/N7/G1/G4 settings (new keys are optional extras, see docs/redesign-data/manage.md) ----
@@ -77,6 +87,8 @@ const slice: Slice = (seed) => {
       paymentConfirmation: 'שלום [שם], קיבלנו [סכום]. תודה מכל הלב. חוות רווה',
     },
   };
+  // ---- W4 first-visit demo per kind of account (the designed state, which is also the default) ----
+  seed.documents['settings/app'] = { ...seed.documents['settings/app'], demoIntro: { guest: true, staff: true, manager: true, vendor: false } };
 
   // ---- N14 today's feed ----
   patch(seed, 'activity', 'demo-a-3', { at: at(0, '09:40'), text: '180 ₪ · תרומה · לזכר יוסף ברק' });

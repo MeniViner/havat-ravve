@@ -87,4 +87,42 @@ assert.equal(I.runIntro(old, false, false), 'start');
 assert.equal(stage('u3'), 'demo');
 I.setDemo({ on: false });
 
+// W4: the owners' switch per kind of account (settings/app.demoIntro); missing = guests, volunteers and managers on, vendors off
+assert.deepEqual(I.demoIntroOf(undefined), { guest: true, staff: true, manager: true, vendor: false });
+assert.deepEqual(I.demoIntroOf({}), I.DEMO_INTRO_DEFAULT);
+assert.deepEqual(I.demoIntroOf({ demoIntro: { staff: false, vendor: 'yes' } }), { guest: true, staff: false, manager: true, vendor: false }, 'partial or odd values fall back');
+assert.deepEqual(['owner', 'manager', 'staff', 'vendor', 'helper', 'guest'].map(I.introKind), ['manager', 'manager', 'staff', 'vendor', 'vendor', 'guest']);
+assert.deepEqual(I.introStep(null, { leftNow: false, on: false }), { action: 'none', stage: null }, 'switch off: no first-visit demo, nothing remembered');
+assert.deepEqual(I.introStep(null, { leftNow: false, on: true }), { action: 'start', stage: 'demo' });
+assert.deepEqual(I.introStep('left', { leftNow: false, on: false }), { action: 'ask', stage: 'left' }, 'someone who already left goes on as before');
+assert.deepEqual(I.introStep('done', { leftNow: false, on: false }), { action: 'none', stage: 'done' });
+newOpening();
+const roles = { ...I.DEMO_INTRO_DEFAULT, staff: false };
+// a new volunteer with volunteers off: no demo, now or on the next opening
+const v = p({ uid: 'w4-vol', role: 'staff' });
+assert.equal(I.runIntro(v, false, false, roles), 'none');
+assert.deepEqual([I.getDemo().on, stage('w4-vol')], [false, null]);
+newOpening();
+assert.equal(I.runIntro(v, false, false, roles), 'none', 'still none on the next opening');
+assert.equal(I.getDemo().on, false);
+// the other kinds are untouched by the volunteers' switch
+const g = p({ uid: 'w4-guest' });
+assert.equal(I.runIntro(g, false, false, roles), 'start');
+assert.deepEqual([I.getDemo().persona, stage('w4-guest')], ['guest', 'demo']);
+I.setDemo({ on: false });
+newOpening();
+// vendors are off by default (no settings saved); with the switch on they get it
+const vend = p({ uid: 'w4-vend', role: 'vendor' });
+assert.equal(I.runIntro(vend, false, false), 'none', 'vendors off by default');
+assert.equal(I.runIntro(vend, false, false, { ...I.DEMO_INTRO_DEFAULT, vendor: true }), 'start', 'turned on later: the vendor gets it on the next opening');
+assert.equal(I.getDemo().persona, 'vendor');
+I.setDemo({ on: false });
+newOpening();
+// owners count with managers
+const own = p({ uid: 'w4-own', role: 'owner' });
+assert.equal(I.runIntro(own, true, true, { ...I.DEMO_INTRO_DEFAULT, manager: false }), 'none', 'owners follow the managers switch');
+// a volunteer who already left the demo is not changed by turning the switch off: the one question still comes
+localStorage.setItem('farm-demo-intro:w4-old', 'left');
+assert.equal(I.runIntro(p({ uid: 'w4-old', role: 'staff' }), false, false, roles), 'ask');
+
 console.log('demo-intro: ok');

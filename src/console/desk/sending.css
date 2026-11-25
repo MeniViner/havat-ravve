@@ -1,0 +1,65 @@
+/* The console on a computer: what only the sending screens need. Shared parts: desk.css. */
+.dn-fixed { flex: none; }
+
+/* the queue (K11) */
+.dn-daily { font-size: 13px; color: var(--soft); }
+.dn-queue { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.dn-what { display: block; overflow: hidden; text-overflow: ellipsis; }
+.dn-more { margin: 0; padding: 10px 12px; }
+.dn-mail { margin-top: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.dn-mail b { font-size: 14px; } .dn-mail p { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.dn-card { margin-top: 10px; display: flex; } .dn-card .d-act { white-space: normal; }
+.dn-preview { display: flex; flex-direction: column; gap: 12px; }
+.dn-preview .c-mailhead { font-size: 14px; } .dn-preview .c-note { font-size: 13px; max-width: 70ch; }
+.dn-sheet { display: flex; flex-direction: column; }
+
+/* scheduled jobs (K12) */
+.dn-jobs { flex: none; display: flex; } .dn-jobs > .d-card { flex: 1 !important; }
+.dn-job { display: inline-flex; align-items: center; gap: 8px; }
+.dn-by { display: block; font-size: 12px; color: var(--soft); }
+.dn-result { display: block; overflow: hidden; text-overflow: ellipsis; } .dn-result.is-bad { color: var(--red); font-weight: 600; }
+.dn-do { display: inline-flex; align-items: center; gap: 12px; vertical-align: middle; } .dn-none { font-size: 12px; line-height: 20px; color: var(--soft); }
+.dn-caption { margin: 8px 0 0; font-size: 12px; color: var(--soft); } .dn-caption--alone { flex: none; margin: 0; }
+.dn-bottom { min-height: 220px; }
+.d-body:has(> .dn-bottom) { min-height: 720px; }
+.dn-round { display: flex; flex-direction: column; }
+.dn-round__row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.dn-round__row b { flex: 1; min-width: 0; font-weight: 600; } .dn-round__row > span:last-child { max-width: 60%; color: var(--soft); text-align: end; } .dn-round__row > span.is-bad { color: var(--red); }
+.dn-foot { display: flex; }
+
+/* switches (K13) */
+.dn-info { display: flex; align-items: center; gap: 12px; }
+.dn-info__icon { display: flex; color: var(--soft); } .dn-info__text { flex: 1; min-width: 0; font-size: 14px; }
+.d-cols.dn-cards { align-items: stretch; }
+.dn-sws { margin-top: -4px; }
+.dn-sw { padding: 14px 0; border-top: 1px solid var(--line); }
+.dn-sw__row { display: flex; align-items: flex-start; gap: 14px; }
+.dn-sw__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .dn-sw__text b { font-size: 15px; } .dn-sw__text span { font-size: 13px; line-height: 1.45; color: var(--soft); }
+.dn-sw__end { flex: none; display: flex; align-items: center; gap: 8px; padding-top: 2px; font-size: 13px; font-weight: 600; color: var(--soft); } .dn-sw__end .is-on { color: var(--ink); }
+.dn-sw__form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.dn-keys .d-small { margin: 6px 0 0; }
+.dn-changes { flex: none; }
+/* the history is the page's last block: what does not fit the window scrolls with the page */
+.d-body:has(> .dn-changes) { flex: 1 0 auto; min-height: 0; }
+
+/* a narrow window: the words wrap, so that the state (and the actions) stay in sight */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .dn-jobs th, .dn-jobs td { padding-inline: 8px; white-space: normal; }
+  .dn-jobs .d-act, .dn-none { white-space: nowrap; } .dn-do { gap: 8px; }
+  .dn-jobs th, .dn-bottom th, .dn-changes th { width: auto !important; }
+  .dn-bottom td { white-space: normal; }
+  .dn-bottom > .d-card:last-child { width: 272px !important; }
+  .dn-sw__row { gap: 8px; } .dn-sw__end { gap: 6px; }
+}
+/* the queue's table, by its own width: the message's line gives way, then goes under the name */
+.dn-under { display: none; font-size: 12px; font-weight: 400; color: var(--soft); white-space: normal; }
+@container (max-width: 640px) {
+  .dn-queue :is(th, td) { width: auto !important; padding-inline: 8px; } .dn-queue td:nth-child(2) { max-width: 120px; } .dn-queue :is(th, td):nth-child(3) { width: 100% !important; max-width: 0; }
+}
+@container (max-width: 560px) {
+  .dn-queue :is(th, td):is(:nth-child(1), :nth-child(3)) { display: none; } .dn-queue :is(th, td):nth-child(2) { width: 100% !important; max-width: 0; } .dn-under { display: block; }
+  .dn-queue :is(th, td) { padding-inline: 6px; }
+}
+
+/* a phone's row keeps its room above and below when its words take three lines */
+.dn-prow.k-row:not(.k-row--hit), .dn-prow.k-row--hit .k-row__hit { padding-block: 10px; }

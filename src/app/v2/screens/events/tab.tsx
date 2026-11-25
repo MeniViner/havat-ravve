@@ -56,7 +56,7 @@ function TabBody({ ctx, t, parent }: { ctx: V2Ctx; t: Tab; parent: string }) {
   const remind = async () => {
     const text = fillDebtTemplate(ctx.settings.templates.debtReminder, { name: t.guestName, event: t.eventTitle, amount: t.total, bit: ctx.settings.payment.bit });
     open(waUrl(t.guestPhone, text));
-    await run(() => stampReminder('tab', [t.id]));
+    await run(() => stampReminder(ctx.actor, t.eventId, 'tab', [t.id]));
   };
   const removeLine = async (index: number) => {
     const item = t.items[index]; if (!item) return;

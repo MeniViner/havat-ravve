@@ -21,8 +21,6 @@ export { PhotoSource, PhotoCrop } from './photo';
 export { SearchScreen } from './search';
 /** C9-Welcome (/welcome), C10-Install, C8-Offline (queue view; OfflineQueue is the card for T1) */
 export { WelcomeScreen, InstallScreen, OfflineScreen, OfflineQueue } from './misc';
-/** The automatic install invitation (old InstallBanner), for the shell's top chrome: <InstallBanner /> */
-export { InstallBanner, useInstallBanner } from './misc';
 /** Z1-DemoStart, Z3-DemoSwitch (DemoSheet({open,onClose})) */
 export { DemoStart, DemoSheet } from './demo';
 

@@ -5,11 +5,14 @@
 import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { db, readyAuth } from '../app/firebase';
 import { demoSource } from './demo';
+import { DEMO_AT } from './demo/base';
+import { freezeClock } from '../app/clock';
 
 export type Me = { uid: string; name: string; role: 'owner' };
 export type Overview = {
   server: { status: string; catalogVersion: string; version: string | null; deployedAt: string | null; project: string | null };
-  last24h: { requests: number | null; writes: number | null; failed: number | null; failures: number | null };
+  /** p50: the regular request's time today, in ms (a newer Worker). */
+  last24h: { requests: number | null; writes: number | null; failed: number | null; failures: number | null; p50?: number | null };
   queues: { pushPending: number | null; email: { pending: number | null; sent: number | null; failed: number | null } };
   crons: { at: string; wallMs?: number } | null;
   switches: { email: { on: boolean; configured: boolean; brevo: boolean; resend: boolean }; push: { mode: string; missing?: string }; files: { r2: boolean } };
@@ -27,6 +30,8 @@ export type Person = {
 export type LogEntry = {
   id: string; at: string; credential: string; keyLabel: string; actor: { id: string; role: string; uid: string; name: string };
   kind: 'read' | 'write'; op: string; opHe: string; verb: string; ok: boolean; code: string; message: string; status: number;
+  /** What was sent, as JSON text (writes only): its title names the record in the list. */
+  body?: string; result?: string;
 };
 export type KeyAction = 'rename' | 'revoke' | 'restore' | 'expire' | 'rotate' | 'scopes';
 export type Backup = { date: string; startedAt: string; finishedAt: string; docs: number; bytes: number; parts: number; collections: Record<string, number>; by: string };
@@ -40,16 +45,25 @@ export type SiteCheck = { at: string; ok: boolean; ms: number; status: number };
 export type Quota = { at: string; since?: string; reads?: number; writes?: number; deletes?: number; error?: 'permission' | 'billing' | 'unavailable' | 'failed'; detail?: string };
 export type HealthState = 'ok' | 'warn' | 'bad' | 'unknown';
 export type Health = { at: string; date: string; by: string; worst: HealthState; items: { id: string; he: string; state: HealthState; detail: string }[]; r2Bytes: number | null };
-export type AlertSettings = { on: boolean; push: boolean; updatedAt: string | null; updatedBy: string | null };
+/** daily: the morning summary, also when all is well (undefined: the server does not offer it yet). */
+export type AlertSettings = { on: boolean; push: boolean; daily?: boolean; updatedAt: string | null; updatedBy: string | null };
 export type Monitor = {
   site: { url: string; checks: SiteCheck[]; downSince: string | null; incidents: { from: string; to: string | null }[]; uptime: number | null };
   quota: Quota | null; limits: { reads: number; writes: number; deletes: number; r2Bytes: number }; health: Health | null;
-  alerts: AlertSettings; cronAt: string | null;
+  alerts: AlertSettings; monitorPaused?: boolean; alertsAvailable?: boolean; pushState?: PushQueueState; cronAt: string | null;
+  /** The last morning checks, oldest first: each check's state by its id (a newer Worker). */
+  week?: { date: string; states: Record<string, HealthState> }[];
+  /** What went wrong lately, newest first: how long it lasted and whether the owners were told (a newer Worker). */
+  events?: MonitorEvent[];
 };
+export type PushQueueState = 'enabled' | 'paused' | 'off';
+export type TestAlert = { accepted?: boolean; created?: number; queued?: number; pushState?: PushQueueState; sent?: boolean; push?: boolean };
+export type MonitorEvent = { at: string; kind: 'site' | 'backup' | 'failures' | 'quota' | 'cron' | 'other'; he: string; minutes: number | null; until?: 'morning' | null; alerted: boolean };
 export type SecurityEvent = { at: string; kind: 'refused' | 'limited' | 'console'; who: string; what: string; detail: string; ok: boolean };
 
 export type DataCollection = { group: string; count: number | null; backupCount: number | null; readOnly: boolean };
-export type DataDocRow = { path: string; id: string; title: string; updateTime: string | null };
+/** fields: the record's simple fields (text, number, yes/no, a person's name), for the table's columns (a newer Worker). */
+export type DataDocRow = { path: string; id: string; title: string; updateTime: string | null; fields?: Record<string, unknown> };
 export type DataDoc = { path: string; id: string; group: string; title: string; fields: Record<string, unknown>; types: Record<string, string>; createTime: string | null; updateTime: string | null; subcollections: string[]; readOnly: boolean };
 export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; changed: string[] };
 export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number };
@@ -60,20 +74,30 @@ export type Switches = {
   emailPaused: boolean; pushPaused: boolean; keysStopped: boolean; readOnly: boolean;
   maintenance: boolean; maintenanceText: string; registrationClosed: boolean;
   backupPaused: boolean; monitorPaused: boolean; cleanupPaused: boolean;
+  /** "לשלוח גם במייל" messages wait (undefined: the server has no such switch yet). */
+  broadcastEmailPaused?: boolean;
   updatedAt: string | null; updatedBy: string | null;
 };
-export type SwitchesView = { switches: Switches; server: { email: { on: boolean; configured: boolean }; push: { mode: string; missing?: string[] | string | null } } };
+export type SwitchChange = { at: string; by: string; key: string; to: boolean; reason: string };
+/** history: the last changes with the reason given (undefined: the server keeps none yet, and takes no reason). */
+export type SwitchesView = { history?: SwitchChange[]; switches: Switches; server: { email: { on: boolean; configured: boolean }; push: { mode: string; missing?: string[] | string | null } } };
 export type QueueEmail = { id: string; kind: string; status: string; reason: string; error: string; who: string; attempts: number; provider: string; createdAt: string; nextAt: string; updatedAt: string; updateTime: string };
 export type QueuePush = { id: string; kind: string; title: string; body: string; to: number; done: number; createdAt: string; by: string; stale: boolean; updateTime: string };
-export type Queue = { emails: QueueEmail[]; pushes: QueuePush[]; switches: Switches; email: { on: boolean }; push: { mode: string } };
+/** sent: what went out lately, newest first; daily: the mail service's own count today (a newer Worker). */
+export type QueueSent = { id: string; type: 'email' | 'push'; kind: string; who: string; what: string; to: number; attempts: number; at: string };
+export type Queue = { emails: QueueEmail[]; pushes: QueuePush[]; switches: Switches; email: { on: boolean }; push: { mode: string }; sent?: QueueSent[]; sentToday?: number; daily?: { used: number; limit: number } };
+/** One waiting, failed or sent email as the guest gets it (a newer Worker). uid: the person's card, when they have an account. */
+export type QueueEmailView = { id: string; to: string; subject: string; text: string; uid: string; amount: number | null; by: string; createdAt: string; lastAttemptAt: string | null; providerSaid: string };
 export type EmailPreview = { subject: string; from: string; template: string; custom: boolean; text: string; html: string };
 export type JobRun = { at: string; ms: number; ok: boolean; result: Record<string, unknown>; by?: string };
-export type Job = { id: string; he: string; every: string; canPause: boolean; paused: boolean; canRun: boolean; last: JobRun | null };
+export type Job = { id: string; he: string; every: string; canPause: boolean; paused: boolean; canRun: boolean; blocked?: 'phone' | 'email' | 'storage' | 'settings' | null; last: JobRun | null };
 export type CleanupItem = { collection: string; he: string; days: number; due: number | null };
 export type Jobs = {
   cronAt: string | null; cronMs: number | null; jobs: Job[];
   cleanup: { items: CleanupItem[]; last: { date: string; archived: number; deleted: number; done: boolean; at: string; by: string } | null };
   archive: { collections: { collection: string; files: number; bytes: number }[] };
+  /** The last four hours of five-minute rounds, oldest first (a newer Worker). used: requests out of the free plan's 50. */
+  rounds?: { items: { at: string; ok: boolean; ms: number; used?: number | null; failed?: string; why?: string }[]; limit: number };
 };
 /** How fast the server answers (api/src/speed.ts), from the assistant log's own timings. */
 export type Speed = {
@@ -97,6 +121,8 @@ export type OpResult = { status: number; ms: number; json: unknown };
 export type Ranked = { key: string; count: number }[];
 export type Traffic = {
   days: number; from: string; cap: number;
+  /** How far back the server counts (365; a newer Worker). */
+  maxDays?: number;
   today: { day: string; views: number; visitors: number; opens: number; users: number; capped: boolean };
   totals: { views: number; visitors: number; returning: number; opens: number; users: number; appReturning: number; hits: number };
   perDay: { day: string; views: number; visitors: number; opens: number; users: number }[];
@@ -116,6 +142,14 @@ export type Stats = {
   events: EventFunnel[];
 };
 
+export type KeyUsage = { requests: number; failed: number; days: number };
+/** Last entry to the app per person (Firebase Auth), and from what, when the server knows. */
+export type PersonAccess = { at: string | null; device: 'phone' | 'computer' | null };
+export type ImportBatch = { id: string; kind: 'tasks' | 'shopping'; at: string; by: string; count: number; undoUntil: string; undone: boolean };
+/** A line of a person's permission history, from the app's activity log. */
+export type AccessChange = { at: string; text: string; by: string };
+
+export type LastUse = { at: Record<string, string>; since: string | null };
 export interface Source {
   demo: boolean;
   me(): Promise<Me>;
@@ -125,7 +159,10 @@ export interface Source {
   changeKey(id: string, action: KeyAction, body?: Record<string, unknown>): Promise<{ id: string; key?: string }>;
   people(): Promise<Person[]>;
   recent(n: number): Promise<LogEntry[]>;
-  lastUse(ids: string[]): Promise<Record<string, string | null>>;
+  /** When each key was last used, from the latest requests of all of them: one query. A key that is not in `at` was not used since `since` (never, when it is null). */
+  lastUse(ids: string[]): Promise<LastUse>;
+  /** One key's last use, however long ago. */
+  lastUseOf(id: string): Promise<string | null>;
   /** Any API action (/v1/actions/<op>), as the signed-in owner. */
   action(op: string, body: Record<string, unknown>): Promise<Record<string, unknown>>;
   backups(): Promise<Backups>;
@@ -138,8 +175,8 @@ export interface Source {
   restoreTrash(keys: string[]): Promise<{ restored: string[]; exists: string[]; gone: string[] }>;
   monitor(): Promise<Monitor>;
   checkNow(): Promise<Monitor>;
-  setAlerts(b: { on?: boolean; push?: boolean }): Promise<AlertSettings>;
-  testAlert(): Promise<{ sent: boolean; push: boolean }>;
+  setAlerts(b: { on?: boolean; push?: boolean; daily?: boolean }): Promise<AlertSettings>;
+  testAlert(): Promise<TestAlert>;
   security(days: number): Promise<{ since: string; items: SecurityEvent[] }>;
   dataCollections(): Promise<{ items: DataCollection[]; backupDate: string | null }>;
   dataDocs(group: string, after?: string | null, parent?: string | null): Promise<{ items: DataDocRow[]; next: string | null }>;
@@ -155,11 +192,23 @@ export interface Source {
   /** Any API operation as the signed-in owner (/v1/console/api/...). `path` is the operation's path with its ids filled in. */
   runOp(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<OpResult>;
   switches(): Promise<SwitchesView>;
-  setSwitches(b: Partial<Switches>): Promise<SwitchesView>;
+  /** reason: why, kept with the change (only when the server keeps a history). */
+  setSwitches(b: Partial<Switches>, reason?: string): Promise<SwitchesView>;
   queue(): Promise<Queue>;
   emailAction(id: string, action: 'retry' | 'cancel', updateTime: string): Promise<{ id: string; status: string }>;
   cancelPush(id: string, updateTime: string): Promise<{ id: string; cancelled: boolean }>;
   emailPreview(): Promise<EmailPreview>;
+  /** null: the server does not show single emails yet. */
+  queueEmail(id: string): Promise<QueueEmailView | null>;
+  /** null: the server does not count yet. */
+  keyUsage(id: string): Promise<KeyUsage | null>;
+  /** Everyone's last entry, one request for all; null: the server does not say yet. */
+  peopleAccess(): Promise<Record<string, PersonAccess> | null>;
+  accessChanges(uid: string): Promise<AccessChange[]>;
+  /** null: the server keeps no imports yet (so nothing can be undone). */
+  imports(): Promise<ImportBatch[] | null>;
+  saveImport(kind: 'tasks' | 'shopping', ids: string[]): Promise<ImportBatch | null>;
+  undoImport(id: string): Promise<{ removed: number; kept: number; left?: number }>;
   jobs(): Promise<Jobs>;
   runJob(id: string): Promise<{ id: string; result: Record<string, unknown> | null }>;
 }
@@ -219,6 +268,12 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
   return j.data as T;
 }
 
+/** A route only a newer Worker has: null while today's answers "no such route". */
+async function ifServed<T>(run: () => Promise<T>): Promise<T | null> {
+  try { return await run(); } catch (e) { if (e instanceof ConsoleError && e.code === 'NOT_FOUND') return null; throw e; }
+}
+
+const LAST_USE_ROWS = 100;
 const liveSource: Source = {
   demo: false,
   me: () => call('GET', '/me'),
@@ -229,13 +284,17 @@ const liveSource: Source = {
   people: async () => (await getDocs(collection(db, 'users'))).docs.map((d) => ({ ...(d.data() as Person), uid: d.id })),
   recent: async (n) => (await getDocs(query(collection(db, 'api_log'), where('kind', '==', 'write'), orderBy('at', 'desc'), limit(n)))).docs.map((d) => d.data() as LogEntry),
   lastUse: async (ids) => {
-    const out: Record<string, string | null> = {};
-    await Promise.all(ids.map(async (id) => {
-      const s = await getDocs(query(collection(db, 'api_log'), where('credential', '==', id), orderBy('at', 'desc'), limit(1))).catch(() => null);
-      out[id] = (s?.docs[0]?.data().at as string) || null;
-    }));
+    const out: LastUse = { at: {}, since: null };
+    // "in" takes thirty keys, so up to thirty keys are one query
+    for (let i = 0; i < ids.length; i += 30) {
+      const rows = (await getDocs(query(collection(db, 'api_log'), where('credential', 'in', ids.slice(i, i + 30)), orderBy('at', 'desc'), limit(LAST_USE_ROWS)))).docs.map((d) => d.data() as { credential: string; at: string });
+      for (const r of rows) out.at[r.credential] ||= r.at;
+      const oldest = rows.length === LAST_USE_ROWS ? rows[rows.length - 1].at : null;
+      if (oldest && (!out.since || oldest > out.since)) out.since = oldest;
+    }
     return out;
   },
+  lastUseOf: async (id) => ((await getDocs(query(collection(db, 'api_log'), where('credential', '==', id), orderBy('at', 'desc'), limit(1)))).docs[0]?.data().at as string) || null,
   action: (op, body) => call('POST', '/api/actions/' + op, body),
   backups: () => call('GET', '/backups'),
   runBackup: () => call('POST', '/backups/run'),
@@ -276,17 +335,29 @@ const liveSource: Source = {
     return { status: res.status, ms: Math.round(performance.now() - t), json: await res.json().catch(() => null) };
   },
   switches: () => call('GET', '/switches'),
-  setSwitches: (b) => call('POST', '/switches', b),
+  setSwitches: (b, reason) => call('POST', '/switches', reason ? { ...b, reason } : b),
   queue: () => call('GET', '/queue'),
   emailAction: (id, action, updateTime) => call('POST', `/queue/email/${encodeURIComponent(id)}/${action}`, { updateTime }),
   cancelPush: (id, updateTime) => call('POST', `/queue/push/${encodeURIComponent(id)}/cancel`, { updateTime }),
   emailPreview: () => call('GET', '/queue/preview'),
+  queueEmail: (id) => ifServed(() => call<QueueEmailView>('GET', `/queue/email/${encodeURIComponent(id)}`)),
+  keyUsage: (id) => ifServed(() => call<KeyUsage>('GET', `/keys/${encodeURIComponent(id)}/usage`)),
+  peopleAccess: () => ifServed(async () => (await call<{ people: Record<string, PersonAccess> }>('GET', '/people/access')).people),
+  accessChanges: async (uid) => (await getDocs(query(collection(db, 'activity'), where('subjectUid', '==', uid), orderBy('at', 'desc'), limit(40)))).docs
+    .map((d) => d.data() as { at: string; kind: string; action: string; text: string; by?: { name?: string } })
+    .filter((x) => x.kind === 'user' || x.kind === 'person' || /role|status|joined|blocked/.test(x.action || ''))
+    .map((x) => ({ at: x.at, text: x.text || '', by: x.by?.name || '' })),
+  imports: () => ifServed(async () => (await call<{ items: ImportBatch[] }>('GET', '/imports')).items),
+  saveImport: (kind, ids) => ifServed(() => call<ImportBatch>('POST', '/imports', { kind, ids })),
+  undoImport: (id) => call('POST', `/imports/${encodeURIComponent(id)}/undo`),
   jobs: () => call('GET', '/jobs'),
   runJob: (id) => call('POST', `/jobs/${id}/run`),
   exportCsv: (group) => download(`/data/export?collection=${encodeURIComponent(group)}`, `havat-ravve-${group.replace(/\/\*\//g, '-')}.csv`),
 };
 
 export const isDemo = () => { try { return new URLSearchParams(location.search).has('demo'); } catch { return false; } };
+// the demo's clock stands at the designs' moment, in every place that says how long ago
+if (isDemo()) freezeClock(DEMO_AT);
 export const source: Source = isDemo() ? demoSource : liveSource;
 
 const FALLBACK = 'משהו השתבש בשרת. נסו שוב בעוד רגע.';

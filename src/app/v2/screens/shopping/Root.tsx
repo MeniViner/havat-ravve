@@ -9,7 +9,7 @@ import type { ScreenProps } from '../../ctx';
 import type { ShoppingCategory, ShoppingItem } from '../../../types';
 import {
   LISTS, addPlaceholder, addShopItem, catOfKey, deleteShopItem, doneThisMonth, doneToday, doneWord, first, listLabel, openOf, openOverline,
-  openToBuy, startTrip, suggestions, useShopping, useTrips, SUGGESTED, type ListKey,
+  openToBuy, startTrip, suggestions, useShopping, useMyTrips, SUGGESTED, type ListKey,
 } from '../../data/shopping';
 import { agoLong, link, useMarkBought } from './common';
 
@@ -31,9 +31,10 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
   const cat = catOfKey(key);
   const today = todayKey();
   const { open, history } = useShopping();
-  const trips = useTrips();
+  const trips = useMyTrips(ctx.user.uid);
   const toast = useToast();
   const { leaving, mark, fail } = useMarkBought(ctx.actor);
+  const [starting, setStarting] = useState(false);
   const [text, setText] = useState('');
 
   const counts = useMemo(() => Object.fromEntries(LISTS.map((l) => [l.key, openOf(open, l.cat).length])) as Record<ListKey, number>, [open]);
@@ -44,7 +45,9 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
 
   const toAdd = (extra = '') => go(`/new?kind=shopping&list=${key}${extra}`);
   const begin = async () => {
-    try { await startTrip(ctx.actor, cat, trips.items, ctx.team); go('/shopping/trip'); } catch (e) { fail(e); }
+    if (starting || trips.loading || trips.error) return;
+    setStarting(true);
+    try { await startTrip(ctx.actor, cat, trips.items, ctx.team); go('/shopping/trip'); } catch (e) { fail(e); } finally { setStarting(false); }
   };
   // swiping a row left and pressing "מחיקה": gone at once, with six seconds to take it back (the delete waits for them)
   const remove = (i: ShoppingItem) => {
@@ -66,7 +69,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
       <RootHead overline={openOverline(openToBuy(open))} title="קניות" />
       <Tabs label="סוג הרשימה" value={key} onChange={(k) => go(k === 'super' ? '/shopping' : `/shopping?list=${k}`, true)}
         options={LISTS.map((l) => ({ value: l.key, label: l.label, count: counts[l.key] }))} />
-      {cat === 'super' && <Button size="bar" icon="cart" block onClick={begin}>אני בסופר, מתחילים</Button>}
+      {cat === 'super' && <Button size="bar" icon="cart" block onClick={begin} disabled={starting || trips.loading || !!trips.error}>אני בסופר, מתחילים</Button>}
       {chips.length > 0 && (
         <div className="k-chips shopping-chips" role="group" aria-label="קונים בדרך כלל">
           {chips.map((c) => <AddChip key={c.title} onClick={() => quick(c)}>{c.title}</AddChip>)}

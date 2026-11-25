@@ -4,6 +4,8 @@
 //   3. the next opening                      → one question: "רוצה לראות איך נראים נתוני דמו?" (הפעלה / לא תודה)
 //   4. after the answer                      → never again
 // Remembered per person in this browser (localStorage, per uid). Nothing here reads or writes Firestore: the demo layer stays a sandbox.
+// W4: the owners choose per kind of account whether step 1 happens at all (settings/app.demoIntro, missing = DEMO_INTRO_DEFAULT).
+//   A kind that is off never starts by itself; a person who already got it (left, or was asked) goes on as before.
 import { getDemo, setDemo, subscribeDemo, type Persona } from './store';
 import type { Profile } from '../types';
 
@@ -17,6 +19,19 @@ export const INTRO_DECLINED = {
   team: 'אפשר לחזור לדמו בכל רגע מהפרופיל, ב״לראות איך האפליקציה עובדת״',
   guest: 'אפשר לחזור לדמו בכל רגע מעמוד הכניסה, ב״לראות איך האפליקציה עובדת״',
 } as const;
+
+/** W4: the four switches of "הדגמה בכניסה ראשונה". Owners count with managers, a stall's helper with its owner. */
+export type IntroKind = 'guest' | 'staff' | 'manager' | 'vendor';
+export type DemoIntroRoles = Record<IntroKind, boolean>;
+export const DEMO_INTRO_DEFAULT: DemoIntroRoles = { guest: true, staff: true, manager: true, vendor: false };
+/** The switches as saved, with anything missing (an older document, a partial map) at its default. */
+export const demoIntroOf = (s?: { demoIntro?: Partial<DemoIntroRoles> | null } | null): DemoIntroRoles => {
+  const d = s?.demoIntro;
+  const pick = (k: IntroKind) => (d && typeof d[k] === 'boolean' ? d[k] as boolean : DEMO_INTRO_DEFAULT[k]);
+  return { guest: pick('guest'), staff: pick('staff'), manager: pick('manager'), vendor: pick('vendor') };
+};
+export const introKind = (persona: Persona): IntroKind =>
+  persona === 'owner' || persona === 'manager' ? 'manager' : persona === 'staff' ? 'staff' : persona === 'vendor' || persona === 'helper' ? 'vendor' : 'guest';
 
 const STAGE = (uid: string) => 'farm-demo-intro:' + uid;
 /** sessionStorage: demo was left during this opening of the app (the question waits for the next opening). */
@@ -67,9 +82,10 @@ export function introPersona(p: Profile, owner: boolean, manager: boolean): Pers
   return 'guest';
 }
 
-/** Pure: what to do when a real account is on screen with demo off. */
-export function introStep(stage: IntroStage | null, o: { leftNow: boolean }): { action: IntroAction; stage: IntroStage | null } {
-  if (stage === null) return { action: 'start', stage: 'demo' };
+/** Pure: what to do when a real account is on screen with demo off. `on`: the W4 switch for this person's kind (default on).
+ *  Off leaves a person who never had it untouched (nothing remembered), so turning the switch on later still reaches them. */
+export function introStep(stage: IntroStage | null, o: { leftNow: boolean; on?: boolean }): { action: IntroAction; stage: IntroStage | null } {
+  if (stage === null) return o.on === false ? { action: 'none', stage: null } : { action: 'start', stage: 'demo' };
   if (stage === 'done') return { action: 'none', stage };
   // 'demo' with demo off means the person left it; 'left' waits for an opening other than the one they left in
   if (o.leftNow) return { action: 'none', stage: 'left' };
@@ -81,14 +97,16 @@ const readStage = (uid: string): IntroStage | null => {
   return s === 'demo' || s === 'left' || s === 'done' ? s : null;
 };
 
-/** Called once the real account and its role are known, with demo off. Returns what the screen should do. */
-export function runIntro(p: Profile, owner: boolean, manager: boolean): IntroAction {
+/** Called once the real account, its role and the farm's settings are known, with demo off. Returns what the screen should do.
+ *  `roles`: the W4 switches (demoIntroOf(settings)). */
+export function runIntro(p: Profile, owner: boolean, manager: boolean, roles: DemoIntroRoles = DEMO_INTRO_DEFAULT): IntroAction {
   if (getDemo().on) return 'none';
   let stage = readStage(p.uid);
   if (ls.get(RESET)) { ls.del(RESET); stage = null; ss.set(LEFT_NOW, ''); }
-  const step = introStep(stage, { leftNow: ss.get(LEFT_NOW) === '1' });
+  const persona = introPersona(p, owner, manager);
+  const step = introStep(stage, { leftNow: ss.get(LEFT_NOW) === '1', on: roles[introKind(persona)] });
   if (step.stage !== stage) step.stage ? ls.set(STAGE(p.uid), step.stage) : ls.del(STAGE(p.uid));
-  if (step.action === 'start') startOwnDemo(introPersona(p, owner, manager));
+  if (step.action === 'start') startOwnDemo(persona);
   return step.action;
 }
 

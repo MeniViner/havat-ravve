@@ -10,7 +10,7 @@ import { U, A, E } from '../data';
 const at = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00+02:00`).toISOString();
 const TODAY = '2026-11-19';
 
-const slice: Slice = (seed) => {
+const slice: Slice = (seed, scenario) => {
   // her payment confirmations go to WhatsApp (U3, U7 "נשלח אליי בוואטסאפ"); her registration answer stays
   // U7: every registration question answered, so no "נשאר לענות" nudge on her account
   patch(seed, 'users', U.michal, { updatesOptIn: true, fields: { city: 'טנא עומרים', source: 'חברים', birthday: '1988-05-12', receiptPreference: 'whatsapp' } });
@@ -26,5 +26,13 @@ const slice: Slice = (seed) => {
     { id: 'demo-vi-michal', uid: U.michal, name: 'מיכל ברק', phone: '054-000-0155', date: '2026-11-27', people: 4, type: 'סיור בחווה', note: 'סבא וסבתא עם הנכדים, מעדיפים בוקר.',
       status: 'approved', managerNote: 'נפגשים בשער ב־10:00', handledBy: A.beni, createdAt: at('2026-11-17', '20:10'), updatedAt: at('2026-11-18', '09:30') },
   ]);
+  // U15 / U16 (decision 10): on event day her visit request still waits for an answer and her donation is not paid yet, so the
+  // visit page shows the status line with "ביטול הבקשה" and the donation page the pay block with "העברתי את התשלום". Only on
+  // that day: the regular day keeps U7, N1, N3 and Q1 exactly as designed (approved visit, claimed donation).
+  if (scenario === 'eventDay') {
+    const DAY = '2026-11-28';
+    patch(seed, 'visits', 'demo-vi-michal', { date: '2026-12-04', people: 8, status: 'new', managerNote: '', handledBy: null, createdAt: at(DAY, '09:48'), updatedAt: at(DAY, '09:48') });
+    patch(seed, 'donations', 'demo-d-michal', { paymentStatus: 'pending', note: '', createdAt: at(DAY, '09:40'), updatedAt: at(DAY, '09:40') });
+  }
 };
 export default slice;

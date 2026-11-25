@@ -17,7 +17,7 @@ const inboxFor = (c: Ctx, refId: string) => whereEq(c.fs, 'notifications', { ref
 // ======================= people =======================
 
 // deletePerson()
-def('people.delete', 'people:write', 'מחיקת אדם מהאפליקציה (בעלים בלבד)', { ifUpdatedAt: IF_UPDATED_AT as Param, uid: req('uid מתוך people.search או profiles.list') }, async (c) => {
+def('people.delete', 'people:delete', 'מחיקת אדם מהאפליקציה (בעלים בלבד)', { ifUpdatedAt: IF_UPDATED_AT as Param, uid: req('uid מתוך people.search או profiles.list') }, async (c) => {
   // canDeletePerson(): the owner, never themselves and never the farm's own owner account (firestore.rules users delete: isOwner)
   if (!isOwner(c.caller)) throw forbidden('only the owner deletes a person');
   if (c.input.uid === c.me.uid) throw forbidden('you cannot delete yourself');
@@ -75,7 +75,7 @@ def('donations.undoApproval', 'donations:write', 'ביטול אישור תשלו
 }, ['Only for a donation marked paid by mistake.']);
 
 // deleteDonation()
-def('donations.delete', 'donations:write', 'מחיקת תרומה (עם הפריטים בתור ההתראות)', { ifUpdatedAt: IF_UPDATED_AT as Param, donationId: req() }, async (c) => {
+def('donations.delete', 'donations:delete', 'מחיקת תרומה (עם הפריטים בתור ההתראות)', { ifUpdatedAt: IF_UPDATED_AT as Param, donationId: req() }, async (c) => {
   const d = await mustGet(c.fs, 'donations', c.input.donationId, c.tx, 'donation');
   fresh(d, c.input.ifUpdatedAt);
   const inbox = await inboxFor(c, d.id);

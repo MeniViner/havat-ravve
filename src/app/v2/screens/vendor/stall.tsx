@@ -25,7 +25,7 @@ export function VendorStall({ ctx }: ScreenProps) {
   const edit = useParam('edit') === '1' && !ctx.helper;
   if (v.loading) return <AppScreen variant="root" gap={10}><VendorHead title="הדוכן שלי" /><Quiet text="טוען את הדוכן..." /></AppScreen>;
   if (!v.item) return <AppScreen variant="root" gap={10}><VendorHead title="הדוכן שלי" /><EmptyState variant="card" icon="stall" title="החשבון עוד לא מקושר לדוכן" text="בקשו מהחווה קישור חדש בוואטסאפ." /></AppScreen>;
-  return edit ? <StallEdit v={v.item} /> : <Stall ctx={ctx} v={v.item} />;
+  return edit ? <StallEdit ctx={ctx} v={v.item} /> : <Stall ctx={ctx} v={v.item} />;
 }
 
 function Stall({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
@@ -42,7 +42,7 @@ function Stall({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
     open(waUrl(p.phone, helperText(v, p.name, inviteLink('', p.code))));
   };
   const remove = async (p: VendorPerson) => {
-    try { await removePerson(v, p); toast.show({ text: `${first(p.name)} הוסר מהדוכן`, check: true }); setSel(null); }
+    try { await removePerson(ctx.actor, v, p); toast.show({ text: `${first(p.name)} הוסר מהדוכן`, check: true }); setSel(null); }
     catch (e) { toast.refused(errText(e)); }
   };
   return (
@@ -88,7 +88,7 @@ function Stall({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
   );
 }
 
-function StallEdit({ v }: { v: VendorDoc }) {
+function StallEdit({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
   const toast = useToast();
   const [f, setF] = useState<StallForm>({ name: v.name || '', sells: v.sells || v.product || '', phone: v.phone || '', needs: v.needs || [], note: v.note || '' });
   const [errs, setErrs] = useState<{ name?: string; phone?: string }>({});
@@ -106,7 +106,7 @@ function StallEdit({ v }: { v: VendorDoc }) {
     if (f.phone.trim() && !phoneOk(f.phone)) e.phone = 'מספר טלפון לא תקין';
     setErrs(e); if (Object.keys(e).length) return;
     setBusy(true);
-    try { await saveStall(v.id, { ...f, ...(photo !== undefined ? { photo } : {}) }); toast.show({ text: 'הדוכן עודכן. החווה רואה את השינוי', check: true }); navigate('/vendor/stall', true); }
+    try { await saveStall(ctx.actor, v.id, { ...f, ...(photo !== undefined ? { photo } : {}) }); toast.show({ text: 'הדוכן עודכן. החווה רואה את השינוי', check: true }); navigate('/vendor/stall', true); }
     catch (x) { toast.refused(errText(x)); } finally { setBusy(false); }
   };
   const shown = photo ?? v.photo;
