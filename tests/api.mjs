@@ -1304,6 +1304,25 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     check(hits.filter((h) => h.name === 'ok-vendor-self').length === 1 && !hits.some((h) => h.name === 'ok-other-vendor'),
       'a vendor can receive their own selected copy without opening vendor-to-vendor push');
 
+    for (const uid of ['pu-guest-opted', 'pu-guest-no-consent', 'pu-guest-outside']) {
+      await seed('users', uid, {
+        ...person(uid, 'guest', { enabled: true, devices: [sub('ok-' + uid)] }),
+        updatesOptIn: uid !== 'pu-guest-no-consent',
+      });
+    }
+    const guests = ['pu-guest-opted', 'pu-guest-no-consent', 'pu-guest-outside'];
+    await seed('broadcasts', 'pu-farm-news', { audience: 'everyone', recipients: guests.slice(0, 2) });
+    await seed('broadcasts', 'pu-event-news', { audience: 'registrants', recipients: guests.slice(0, 2) });
+    await job('pj-guest-task', 'task', 'pu-mgr', guests);
+    await job('pj-guest-farm', 'broadcast', 'pu-mgr', guests, { refId: 'pu-farm-news' });
+    await job('pj-guest-event', 'broadcast', 'pu-mgr', guests, { refId: 'pu-event-news' });
+    await run(p2); await run(p2);
+    const guestHits = hits.filter((hit) => hit.name.startsWith('ok-pu-guest-'));
+    check(guestHits.map((hit) => hit.payload.tag + ':' + hit.name).sort().join() === [
+      'pj-guest-event:ok-pu-guest-no-consent', 'pj-guest-event:ok-pu-guest-opted', 'pj-guest-farm:ok-pu-guest-opted',
+    ].join() && guestHits.every((hit) => hit.payload.link === '/me/messages'),
+    'guest push follows the broadcast recipient list and current update consent, and opens guest messages', guestHits.map((hit) => hit.payload.tag));
+
     // a job bigger than one run's budget: continues from its cursor, every device exactly once
     const many = Array.from({ length: 40 }, (_, i) => 'pu-bulk-' + String(i).padStart(2, '0'));
     await seedPeople(many.map((uid) => ({ uid, displayName: 'סינתטי', role: 'staff' })));
@@ -1317,6 +1336,29 @@ section('phone push (cron drain of push_jobs → mock Web Push and mock FCM)');
     const end = await getDoc('push_jobs', 'pj-bulk');
     check(bulk.length === 40 && new Set(bulk.map((h) => h.name)).size === 40 && typeof end.sentAt === 'string' && end.delivered === 40, '… and finishes on later runs: 40 devices, each exactly once, then sentAt', { sent: bulk.length, unique: new Set(bulk.map((h) => h.name)).size, end });
   } catch (e) { failures++; console.error(e); } finally { await stopWorker(w2).catch((e) => { failures++; console.error(e); }); }
+
+  // Dedicated Android FCM can send on the same outbox run as browser Web Push.
+  const android = { id: 'android-1', kind: 'android-fcm', token: 'tok-native', ua: 'synthetic', createdAt: t };
+  await seed('users', 'pu-two-platforms', person('pu-two-platforms', 'staff', { enabled: true, devices: [sub('ok-mixed'), android] }));
+  await job('pj-mixed', 'task', 'pu-mgr', ['pu-two-platforms'], { tag: 'mixed', urgent: true, link: '/tasks/synthetic' });
+  const mixedPort = PORT + 27;
+  const mixedWorker = startWorker(mixedPort, { ...webpushVars, PUSH_ANDROID_FCM: 'true', FCM_SERVICE_ACCOUNT: JSON.stringify(SA), GOOGLE_TOKEN_URL: FCM_BASE + '/token', FCM_API_URL: FCM_BASE }, ['--test-scheduled', '--persist-to', persist]);
+  try {
+    await waitUp(`http://127.0.0.1:${mixedPort}`);
+    await run(mixedPort);
+    const jobDoc = await getDoc('push_jobs', 'pj-mixed');
+    const config = await getDoc('settings', 'push');
+    const messages = fcmHits.filter((hit) => hit.message?.token === android.token);
+    const message = messages[0]?.message;
+    check(config.mode === 'webpush' && config.androidFcm === true && config.vapidPublicKey === VAPID_PUB,
+      'native Android support keeps the existing Web Push mode and public key');
+    check(jobDoc?.delivered === 2 && messages.length === 1 && hits.filter((hit) => hit.name === 'ok-mixed').length === 1,
+      'one eligible account gets one submission per registered device across native Android and Web Push');
+    check(message?.android?.priority === 'HIGH' && Number.parseInt(message.android.ttl, 10) > 0 &&
+      message.android.notification.channel_id === 'farm_updates' && message.android.notification.visibility === 'PRIVATE' &&
+      message.android.notification.tag === 'mixed' && message.data.link === '/tasks/synthetic' && !message.webpush,
+      'Android FCM carries an OS notification, short-lived data, a tag and the in-app click target');
+  } catch (e) { failures++; console.error(e); } finally { await stopWorker(mixedWorker).catch((e) => { failures++; console.error(e); }); }
 
   // 4. FCM
   await seed('users', 'pu-fcm', person('pu-fcm', 'staff', { enabled: true, devices: [{ id: 'f1', kind: 'fcm', token: 'tok-ok', ua: 'x', createdAt: t }, { id: 'f2', kind: 'fcm', token: 'tok-gone', ua: 'x', createdAt: t }, sub('wp-in-fcm')] }));

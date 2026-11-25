@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { AppScreen, go, useToast } from '../../core';
 import { TopBar, Button, Icon, StatRow, StatTile, DetailList, DetailRow, TextLink, ListCard, Row, IconTile, FormHeader, Field, BottomBar, Toggle, Sheet, UnderlineLink, initials } from '../../kit';
-import { back } from '../../../router';
+import { back, navigate, useParam } from '../../../router';
 import { signOutUser } from '../../../firebase';
 import { useDemo, setDemo } from '../../../demo/store';
 import { setViewAsStaff } from '../../App';
@@ -36,7 +36,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const lead = ctx.manager || ctx.owner;
   const counts = useMyCounts(ctx);
   const presence = usePresenceText(ctx.user.uid, ctx.today, !vendor);
-  const [notifs, setNotifs] = useState(false);
+  const notifs = useParam('notifications') === '1';
   useGooglePhotoSync(p);
   const src = photoOf(p);
   const kinds = usePush(p).kinds;
@@ -66,7 +66,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         {!vendor && <DetailRow term="בחווה" action={<TextLink onClick={() => go('/farm/presence')}>שינוי</TextLink>}>{presence}</DetailRow>}
       </DetailList>
       <ListCard>
-        <Row leading={<IconTile icon="bell-settings" />} title="התראות" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => setNotifs(true)} />
+        <Row leading={<IconTile icon="bell-settings" />} title="התראות במכשיר" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => navigate('/me?notifications=1', false, true)} />
         {(lead || ctx.viewAsStaff) && (
           <Row leading={<IconTile icon="people" />} title="לראות את האפליקציה כמו מתנדב"
             meta={ctx.viewAsStaff ? 'פעיל עכשיו. נגיעה מחזירה לתצוגה הרגילה' : 'בלי ניהול ובלי פרויקטים'} onClick={() => setViewAsStaff(!ctx.viewAsStaff)} />
@@ -82,7 +82,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         {/* the demo link (parity): a quiet link too, only while the demo is off */}
         {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}
       </div>
-      <NotificationsSheet open={notifs} onClose={() => setNotifs(false)} ctx={ctx} />
+      <NotificationsSheet open={notifs} onClose={() => navigate('/me', true, true)} ctx={ctx} />
     </AppScreen>
   );
 }

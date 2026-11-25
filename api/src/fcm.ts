@@ -1,6 +1,5 @@
 // Firebase Cloud Messaging HTTP v1 from a Worker (the second sender behind PUSH_MODE, docs/push-setup.md).
-// The message is data-only: the app's own service worker (src/sw.ts, `push`) shows it, exactly like a Web Push
-// message, so both senders look the same on the phone.
+// Browser messages are data-only for the service worker. Installed Android apps use the system's notification payload.
 //
 // Credentials: FCM_SERVICE_ACCOUNT (a service account with the "Firebase Cloud Messaging API Admin" role), or the
 // Worker's GCP_SERVICE_ACCOUNT when that one has the role. The access token has its own scope and its own KV key,
@@ -81,17 +80,23 @@ export async function fcmToken(env: FcmEnv, tokenUrl = TOKEN_URL): Promise<strin
 export type FcmMessage = { title: string; body: string; link: string; tag: string; urgent: boolean; ttl: number };
 
 /** Sends one data message to one registration token. 404 / UNREGISTERED means the token is gone (drop it). */
-export async function sendFcm(env: FcmEnv, token: string, m: FcmMessage, urls: { api?: string; token?: string } = {}): Promise<FcmResult> {
-  const bearer = await fcmToken(env, urls.token);
+export async function sendFcm(env: FcmEnv, token: string, m: FcmMessage, options: { api?: string; token?: string; android?: boolean; bearer?: string } = {}): Promise<FcmResult> {
+  const bearer = options.bearer ?? await fcmToken(env, options.token);
   const message = {
     token,
     // data values must be strings
     data: { title: m.title, body: m.body, link: m.link, tag: m.tag, urgent: m.urgent ? 'true' : 'false' },
-    webpush: { headers: { TTL: String(m.ttl), Urgency: m.urgent ? 'high' : 'normal' } },
+    ...(options.android ? { android: {
+      ttl: `${m.ttl}s`,
+      priority: m.urgent ? 'HIGH' : 'NORMAL',
+      notification: {
+        title: m.title, body: m.body, tag: m.tag, channel_id: 'farm_updates', visibility: 'PRIVATE',
+      },
+    } } : { webpush: { headers: { TTL: String(m.ttl), Urgency: m.urgent ? 'high' : 'normal' } } }),
   };
   let res: Response;
   try {
-    res = await (env.FETCH || fetch)(`${urls.api || FCM_URL}/v1/projects/${encodeURIComponent(fcmProject(env))}/messages:send`, { method: 'POST', headers: { authorization: 'Bearer ' + bearer, 'content-type': 'application/json' }, body: JSON.stringify({ message }), signal: AbortSignal.timeout(8000) });
+    res = await (env.FETCH || fetch)(`${options.api || FCM_URL}/v1/projects/${encodeURIComponent(fcmProject(env))}/messages:send`, { method: 'POST', headers: { authorization: 'Bearer ' + bearer, 'content-type': 'application/json' }, body: JSON.stringify({ message }), signal: AbortSignal.timeout(8000) });
   } catch { return { status: 0, ok: false, gone: false, retry: true }; }
   const s = res.status;
   let code = '';
