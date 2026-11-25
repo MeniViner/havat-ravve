@@ -129,6 +129,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       <ListCard>
         <Row leading={<IconTile icon="megaphone" />} title="הודעות מהחווה" meta={msgs.length ? `${msgs.length === 1 ? 'הודעה אחת' : `${msgs.length} הודעות`} · האחרונה ${relDayWord(msgs[0].createdAt)}` : 'אין הודעות עדיין'} onClick={() => go('/me/messages')} />
         <Row leading={<IconTile icon="bell" />} title="התראות ועדכונים" meta={`עדכונים על אירועים חדשים: ${p.updatesOptIn ? 'פעיל' : 'כבוי'}`} onClick={() => setSheet('notify')} />
+        <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
         {canChooseReceipt(p) && <Row leading={<IconTile icon="message" />} title="אישור תשלום" meta={method ? `נשלח אליי ב${RECEIPT_WORD[method]}` : 'עוד לא בחרת לאן'} onClick={() => setSheet('receipt')} />}
         <Row leading={<IconTile icon="phone" />} title="פנייה לחווה" onClick={() => go('/contact')} />
       </ListCard>

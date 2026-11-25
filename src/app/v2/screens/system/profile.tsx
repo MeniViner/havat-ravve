@@ -67,6 +67,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
       </DetailList>
       <ListCard>
         <Row leading={<IconTile icon="bell-settings" />} title="התראות" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => setNotifs(true)} />
+        <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
         {(lead || ctx.viewAsStaff) && (
           <Row leading={<IconTile icon="people" />} title="לראות את האפליקציה כמו מתנדב"
             meta={ctx.viewAsStaff ? 'פעיל עכשיו. נגיעה מחזירה לתצוגה הרגילה' : 'בלי ניהול ובלי פרויקטים'} onClick={() => setViewAsStaff(!ctx.viewAsStaff)} />
