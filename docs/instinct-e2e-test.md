@@ -200,7 +200,7 @@ On `AI7hjkF77KQS5CYlnjw4` only:
 **Phase 11: things the whole team sees: ask me first**
 Stop here and send me the list below with who each item reaches (names from `profiles.list`). Run it only after I
 answer "כן".
-- `shopping.startTrip`: notifies the whole team, with a push.
+- `shopping.startTrip`: creates in-app notifications and a push job for the team only when a new trip opens. Resuming an unclosed trip uses its existing list.
 - `shopping.closeTrip`: an in-app notification to the team.
 - `shopping.reopenTrip`, `shopping.deleteTrip`.
 - `shopping.add` with `urgent: true`, and `tasks.addShopping` with `urgent: true`: both notify the whole team.

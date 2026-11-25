@@ -1,13 +1,15 @@
 // Q16 all farm activity: one feed of the activity log, grouped by day, with search and two dropdowns (type, person).
 // With ?event=<id> it is one event's history (the old "היסטוריית האירוע"): that event's log, types orders/payments/stall/edits.
 // Table view and export are ⋯ items (Q5, Q9).
+import { TEAM_ACTIVITY_KINDS } from '../../../../../shared/activity';
+import { useList } from '../../../db';
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen } from '../../core';
 import { Avatar, Button, Dropdown, EmptyState, Inline, MoreMenu, PageTitle, SearchField, TopBar } from '../../kit';
 import { tableCell, useTableView } from '../../patterns';
 import { dayName, ddmm, daysFromToday, hhmm, keyOf } from '../../format';
-import { KIND_LABELS, type Activity } from '../../../types';
+import { KIND_LABELS, type Activity, type Task } from '../../../types';
 import { ACTION_LABELS, useActivityForEvent } from '../../../activity';
 import { useEvent } from '../../../data';
 import {
@@ -17,7 +19,7 @@ import { lnk, Loading } from './shared';
 
 const FILTERS: { v: ActivityFilter; l: string }[] = [
   { v: 'all', l: 'כל הסוגים' }, { v: 'money', l: 'כסף' }, { v: 'people', l: 'אנשים' }, { v: 'tasks', l: 'משימות' }, { v: 'shopping', l: 'קניות' },
-  { v: 'events', l: 'אירועים' }, { v: 'settings', l: 'הגדרות' },
+  { v: 'events', l: 'אירועים' }, { v: 'messages', l: 'הודעות' }, { v: 'settings', l: 'הגדרות' },
 ];
 const EVENT_FILTERS: { v: EventActivityFilter; l: string }[] = [
   { v: 'all', l: 'כל הסוגים' }, { v: 'orders', l: 'הזמנות' }, { v: 'payments', l: 'תשלומים' }, { v: 'stall', l: 'דוכן' }, { v: 'edits', l: 'עריכות' },
@@ -27,14 +29,27 @@ const dayLabel = (key: string) => { const d = daysFromToday(key); return d === 0
 
 export function ActivityScreen({ ctx, params }: ScreenProps) {
   const [shown, setShown] = useState(PAGE);
-  const eventId = params.event || '';
-  const all = useActivityAll(!eventId, Math.max(400, shown + 1));
+  const eventId = ctx.manager ? params.event || '' : '';
+  const max = Math.max(400, shown + 1);
+  const all = useActivityAll(ctx.manager && !eventId, max);
+  const personal = useList<Omit<Activity, 'text'> & { recipientCount: number; queued: number }>(
+    'notification_activity', { orderBy: [['at', 'desc']], limit: max }, ctx.owner && !eventId,
+  );
+  const teamActivity = useList<Activity>('activity', { where: [['kind', 'in', [...TEAM_ACTIVITY_KINDS]]], orderBy: [['at', 'desc']], limit: max }, !ctx.manager);
+  const publicTasks = useList<Task>('tasks', { where: [['managersOnly', '==', false]] }, !ctx.manager);
+  const publicTaskIds = useMemo(() => new Set(publicTasks.items.map((t) => t.id)), [publicTasks.items]);
+  const filters = ctx.manager ? FILTERS : FILTERS.filter((f) => f.v !== 'settings' && f.v !== 'people');
   // One event: its own query (activity eventId + at), so an old event's lines are all there, not only the latest 400 of the farm.
   const ofEvent = useActivityForEvent(eventId, !!eventId);
   const event = useEvent(eventId).item;
-  const { items, loading } = eventId ? ofEvent : all;
+  const { items: sourceItems, loading } = ctx.manager ? (eventId ? ofEvent : all) : teamActivity;
+  const items = useMemo(() => ctx.manager ? [...sourceItems, ...personal.items.map((row) => ({
+    ...row, text: `נשמרו ${row.recipientCount} התראות באפליקציה${row.queued ? ' · נוספו לתור שליחה לטלפון' : ''}`,
+  }))] : sourceItems.map((a) =>
+    a.kind === 'task' && !publicTaskIds.has(a.refId) ? { ...a, text: 'משימה שאינה זמינה לך' } : a,
+  ), [ctx.manager, sourceItems, publicTaskIds, personal.items]);
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<ActivityFilter>((FILTERS.some((f) => f.v === params.filter) ? params.filter : 'all') as ActivityFilter);
+  const [filter, setFilter] = useState<ActivityFilter>((filters.some((f) => f.v === params.filter) ? params.filter : 'all') as ActivityFilter);
   const [efilter, setEfilter] = useState<EventActivityFilter>('all');
   const [who, setWho] = useState('');
   const people = useMemo(() => [...new Map(items.map((a) => [a.by.uid, a.by.name])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'he')), [items]);
@@ -59,7 +74,7 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
     title, filename: eventId && event ? `${event.title} - היסטוריה.csv` : 'פעילות.csv', headers: ['מתי', 'מי', 'פעולה', 'מה', 'סוג'],
     rows: () => rows.map(({ a }) => [tableCell.time(a.at), a.by.name, ACTION_LABELS[a.action] || a.action, a.text, KIND_LABELS[a.kind] || a.kind]),
   });
-  const back = eventId ? { label: event?.title || 'האירוע', path: `/manage/events/${eventId}` } : { label: 'ניהול', path: '/manage' };
+  const back = eventId ? { label: event?.title || 'האירוע', path: `/manage/events/${eventId}` } : ctx.manager ? { label: 'ניהול', path: '/manage' } : { label: 'בחווה', path: '/farm' };
   if (table.active) return table.screen;
   if (loading && !items.length) return <Loading back={back} />;
   const reset = () => setShown(PAGE);
@@ -71,7 +86,7 @@ export function ActivityScreen({ ctx, params }: ScreenProps) {
       <Inline gap={8}>
         {eventId
           ? <Dropdown label="סוג" value={efilter} onChange={(v) => { setEfilter(v); reset(); }} options={EVENT_FILTERS.map((f) => ({ value: f.v, label: f.l }))} />
-          : <Dropdown label="סוג" value={filter} onChange={(v) => { setFilter(v); reset(); }} options={FILTERS.map((f) => ({ value: f.v, label: f.l }))} />}
+          : <Dropdown label="סוג" value={filter} onChange={(v) => { setFilter(v); reset(); }} options={filters.map((f) => ({ value: f.v, label: f.l }))} />}
         <Dropdown label="אדם" value={who} onChange={(v) => { setWho(v); reset(); }}
           options={[{ value: '', label: 'כל האנשים' }, ...people.map(([uid, name]) => ({ value: uid, label: name, leading: <Avatar name={name} size={32} /> }))]} />
       </Inline>

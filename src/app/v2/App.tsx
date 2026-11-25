@@ -19,7 +19,7 @@ import type { V2Ctx, V2Role } from './ctx';
 import { TEAM_ROUTES, VENDOR_ROUTES, VENDOR_LEGACY, resolve, redirectOf, type NavTab } from './routes';
 import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
-import { DemoSheet, useInstallBanner } from './screens/system';
+import { DemoSheet } from './screens/system';
 import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
 import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
@@ -54,15 +54,12 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
   // a write the server refused after the screen moved on (X1)
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
   const pending = demo.on && states.offline ? Math.max(3, sync.pending) : sync.pending;
-  // the old shell's automatic install invitation (two weeks after "סגירה"; never on /install or in the demo)
-  const install = useInstallBanner();
   // the owners turned on read-only from the console (switches.ts): say so, before anyone tries to change something
   const locked = useAppSwitches().locked && !demo.on;
-  const top = (demo.on || offline || install || locked) ? <>
+  const top = (demo.on || offline || locked) ? <>
     {locked && <Strip icon="blocked">{READ_ONLY_TEXT}</Strip>}
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
-    {install}
   </> : null;
   const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   const route = useRoute();
@@ -160,7 +157,10 @@ export function V2Root(props: { user: Session; profile: Profile; settings: Setti
 /** First visits in demo, for the real account only (the demo personas never see it). */
 function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
   const demo = useDemo(); const toast = useToast();
-  if (demo.on) return null;
+  // C10 right after the first entry comes first: the first-visit demo starts once it is answered ("אחר כך" or installing)
+  const route = useRoute(); const search = useSearch();
+  const firstInstall = route === '/install' && new URLSearchParams(search).get('first') === '1';
+  if (demo.on || firstInstall) return null;
   return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user)} manager={canManage(profile, user)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
 }
 export { canManage };

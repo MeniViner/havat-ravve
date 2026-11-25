@@ -9,7 +9,7 @@ import {
 } from '../../kit';
 import { tableCell, useTableView } from '../../patterns';
 import { MONTHS, money, relDay, dayName, ddmm, keyOf, dayTime, firstName } from '../../format';
-import { setUserNotes } from '../../../store';
+import { savePersonNotes } from '../../data/manage';
 import { useActivityForUser, ACTION_LABELS } from '../../../activity';
 import { nowMs } from '../../../clock';
 import { contactPhoneOk } from '../../../data';
@@ -134,7 +134,7 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
     run(() => changeRole(ctx.actor, p, role), { text: `${p.displayName}: ${roleWord(role, female)}`, undo: () => changeRole(ctx.actor, { ...p, role }, before) });
   };
   const block = () => run(() => toggleBlock(ctx.actor, p), { text: blocked ? `${p.displayName} ${gw(p.displayName, 'שוחרר', 'שוחררה')}` : `${p.displayName} ${gw(p.displayName, 'נחסם', 'נחסמה')}`, undo: () => toggleBlock(ctx.actor, { ...p, status: blocked ? 'active' : 'blocked' }) });
-  const saveNote = async () => { if (await run(() => setUserNotes(p, notes.trim()), 'נשמר')) setSheet(''); };
+  const saveNote = async () => { if (await run(() => savePersonNotes(ctx.actor, p, notes.trim()), 'נשמר')) setSheet(''); };
 
   const orders = [...new Map(tickets.map((t) => [t.orderId, tickets.filter((x) => x.orderId === t.orderId)])).values()];
   const ticketTag = (o: Ticket[]) => {

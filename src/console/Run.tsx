@@ -1,12 +1,17 @@
 // הרצת פעולה: any of the API's operations, as the signed-in owner, without a key. The form is built from the operation's
 // own description in the catalog (the same one the server validates with), so it is always the current list. A change
 // asks first, and every run is written to the assistant log under the console's name.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button, Card, ConfirmSheet, EmptyState, Field, ListCard, Row, Segmented, Tag } from '../app/v2/kit';
-import { Section, useLoad } from './shared';
+import { outHref, Section, useLoad } from './shared';
+import { nowMs } from '../app/clock';
 import { sec } from './Speed';
 import { fieldLabel } from './labels';
 import { errorText, source, type CatalogOp, type CatalogParam, type OpResult } from './source';
+import { useRest, useWide } from './desk/route';
+import { RunDesk } from './desk/RunDesk';
+import { appPath, shape, undoOf, type Names, type Undo } from './desk/runOps';
+import { Fact } from './desk/desk';
 
 type Values = Record<string, string>;
 // date and time get the browser's own picker, so no format hint for them (it would not match what the picker shows)
@@ -32,10 +37,59 @@ function typed(p: CatalogParam, raw: string): unknown {
   return v;
 }
 
+/** Why a run failed, in Hebrew, and the field it is about. */
+export type OpFailure = { ok?: boolean; error?: { code?: string; he?: string; message?: string; details?: { field?: string } } } | null;
+export type Ran = OpResult & { at: number; sent: Record<string, unknown>; undo: Undo | null; undone: boolean };
+
+/**
+ * Running an operation and undoing it, for both layouts. The server does a write once per key: a run whose outcome is not
+ * known (no answer, or a server error) is sent again with the same key while nothing in the form changed.
+ */
+export function useOpRun(op: CatalogOp, ops: CatalogOp[], notify: (t: string, tone?: 'info' | 'alert') => void) {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<Ran | null>(null);
+  const [lost, setLost] = useState('');
+  const open = useRef<{ what: string; key: string } | null>(null);
+  const run = async (path: string, body: Record<string, unknown>) => {
+    const what = path + JSON.stringify(body);
+    if (open.current?.what !== what) open.current = { what, key: crypto.randomUUID() };
+    setBusy(true); setLost('');
+    try {
+      const r = await source.runOp(op.method, path, op.method === 'POST' ? body : undefined, op.method === 'POST' ? open.current.key : undefined);
+      if (r.status < 500) open.current = null;
+      const ok = r.status < 300;
+      setRes({ ...r, at: nowMs(), sent: body, undo: ok ? undoOf(op, body, r.json, ops) : null, undone: false });
+      return ok;
+    } catch (e) { setRes(null); setLost(errorText(e)); notify(errorText(e), 'alert'); return false; }
+    finally { setBusy(false); }
+  };
+  const undo = async () => {
+    if (!res?.undo) return;
+    const u = res.undo;
+    const by = ops.find((o) => o.name === u.op);
+    try {
+      const r = await source.runOp('POST', by?.path || `/v1/actions/${u.op}`, u.body);
+      if (r.status >= 300) { notify((r.json as OpFailure)?.error?.he || 'הביטול לא הצליח', 'alert'); return; }
+      setRes((x) => (x && x.undo === u ? { ...x, undone: true } : x));
+      notify('הפעולה בוטלה');
+    } catch (e) { notify(errorText(e), 'alert'); }
+  };
+  return { busy, res, lost, run, undo };
+}
+
 export function RunScreen({ notify }: { notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const cat = useLoad(() => source.catalog());
+  const wide = useWide();
+  if (wide) return <RunDesk cat={cat} notify={notify} />;
+  return <RunPhone cat={cat} notify={notify} />;
+}
+export type CatalogLoad = { data: CatalogOp[] | null; error: string | null; loading: boolean; reload: () => void };
+
+function RunPhone({ cat, notify }: { cat: CatalogLoad; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const [q, setQ] = useState('');
-  const [pick, setPick] = useState<CatalogOp | null>(null);
+  const [rest, setRest] = useRest('run');
+  const pick = cat.data?.find((o) => o.name === rest[0]) || null;
+  const setPick = (o: CatalogOp) => setRest([o.name]);
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
     const ops = cat.data || [];
@@ -64,19 +118,20 @@ export function RunScreen({ notify }: { notify: (t: string, tone?: 'info' | 'ale
               </ListCard>
             ) : <EmptyState variant="card" icon="search" title="לא נמצאה פעולה" text="נסו מילה אחרת, בעברית או באנגלית." />}
           </div>
-          <div>{pick ? <OpForm key={pick.name} op={pick} notify={notify} /> : <Card pad="lg" className="c-flat c-soft">בחרו פעולה מהרשימה.</Card>}</div>
+          <div>{pick ? <OpForm key={pick.name} op={pick} ops={cat.data} notify={notify} /> : <Card pad="lg" className="c-flat c-soft">בחרו פעולה מהרשימה.</Card>}</div>
         </div>
       )}
     </>
   );
 }
 
-function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'info' | 'alert') => void }) {
+const NO_NAMES: Names = new Map();
+function OpForm({ op, ops, notify }: { op: CatalogOp; ops: CatalogOp[]; notify: (t: string, tone?: 'info' | 'alert') => void }) {
   const fields = fieldsOf(op);
   const [vals, setVals] = useState<Values>(() => Object.fromEntries(fields.map(([k, p]) => [k, p.default !== undefined && p.type !== 'bool' ? String(p.default) : ''])));
   const [ask, setAsk] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<OpResult | null>(null);
+  const { busy, res, run, undo } = useOpRun(op, ops, notify);
+  const [askUndo, setAskUndo] = useState(false);
   const missing = fields.filter(([k, p]) => p.required && !vals[k]?.trim()).map(([k, p]) => heName(k, p));
   const build = () => {
     let path = op.path;
@@ -92,20 +147,17 @@ function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'inf
     return { path: path + (query.toString() ? '?' + query : ''), body };
   };
   const go = async () => {
-    setBusy(true); setAsk(false);
-    try {
-      const { path, body } = build();
-      const r = await source.runOp(op.method, path, op.method === 'POST' ? body : undefined);
-      setRes(r);
-      if (op.kind === 'write' && r.status < 300) notify('הפעולה בוצעה');
-    } catch (e) { notify(errorText(e), 'alert'); }
-    finally { setBusy(false); }
+    setAsk(false);
+    const { path, body } = build();
+    if ((await run(path, body)) && op.kind === 'write') notify('הפעולה בוצעה');
   };
   const set = (k: string, v: string) => setVals((x) => ({ ...x, [k]: v }));
-  const j = res?.json as { ok?: boolean; error?: { code?: string; he?: string; message?: string; details?: { field?: string } } } | null;
+  const j = res?.json as OpFailure;
   const ok = !!res && res.status < 300;
   const errField = j?.error?.details?.field;
   const errLine = j?.error ? `${j.error.he || 'השרת לא קיבל את הבקשה'}${errField ? `: ${heName(errField, fields.find(([k]) => k === errField)?.[1])}` : ''}` : 'השרת לא קיבל את הבקשה';
+  const told = res && ok ? shape(op, res.json, NO_NAMES) : null;
+  const link = res && ok && !res.undone ? appPath(op, res.json) : null;
   const raw = res ? JSON.stringify(res.json, null, 2) : '';
   return (
     <div className="c-stack c-stack--sm">
@@ -132,7 +184,14 @@ function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'inf
               {ok ? <Tag tone="paid">הצליחה</Tag> : <Tag tone="urgent">נכשלה</Tag>}{' '}
               {ok ? (op.kind === 'write' ? 'הפעולה בוצעה.' : 'התשובה הגיעה.') : errLine}
             </p>
-            <p className="c-note">לקח {sec(res.ms)}.</p>
+            <p className="c-note">לקח {sec(res.ms)}.{told?.note ? ` ${told.note}` : ''}{told?.list ? ` התקבלו ${told.list.items.length} רשומות.` : ''}</p>
+            {!!told?.rows.length && <div>{told.rows.map((r) => <Fact key={r.key} label={r.label}>{r.mono ? <bdi className="c-raw" dir="ltr">{r.value}</bdi> : r.value}</Fact>)}</div>}
+            {(link || res.undo) && (
+              <div className="c-actions">
+                {link && <a className="c-link" href={outHref(link)} target="_blank" rel="noreferrer">לפתוח באפליקציה</a>}
+                {res.undone ? <span className="c-soft">הפעולה בוטלה.</span> : res.undo && <button type="button" className="d-act" onClick={() => setAskUndo(true)}>לבטל את הפעולה</button>}
+              </div>
+            )}
             <details className="c-tech">
               <summary>התשובה המלאה (פרטים טכניים)</summary>
               <p><bdi dir="ltr">HTTP {res.status}</bdi>{j?.error?.code && <> · <bdi dir="ltr">{j.error.code}</bdi></>}{j?.error?.message && <> · <bdi dir="ltr">{j.error.message}</bdi></>}</p>
@@ -141,6 +200,9 @@ function OpForm({ op, notify }: { op: CatalogOp; notify: (t: string, tone?: 'inf
             </details>
           </Card>
         </Section>
+      )}
+      {askUndo && res?.undo && (
+        <ConfirmSheet open title="לבטל את הפעולה?" text={`${res.undo.text} גם הביטול נרשם ביומן.`} confirmLabel="כן, לבטל" cancelLabel="חזרה" onClose={() => setAskUndo(false)} onConfirm={async () => { await undo(); setAskUndo(false); }} />
       )}
       {ask && (
         <ConfirmSheet open title="להריץ את הפעולה?" text={`"${op.he}" תשנה נתונים אמיתיים של החווה, ותירשם ביומן בשם הקונסולה.`} confirmLabel="כן, להריץ"

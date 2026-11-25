@@ -243,7 +243,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
   const remind = async () => {
     const text = fillDebtTemplate(ctx.settings.templates.debtReminder, { name: o.name, event: e.title, amount: o.owed, bit: ctx.settings.payment.bit });
     open(waUrl(o.phone, text));
-    await run(() => stampReminder('tickets', o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
+    await run(() => stampReminder(ctx.actor, e.id, 'tickets', o.tickets.filter((t) => t.paymentStatus === 'pending' || t.paymentStatus === 'claimed').map((t) => t.id)));
   };
   const markPaidNow = async () => {
     const before = o.tickets.map((t) => ({ ...t }));
@@ -469,9 +469,9 @@ function SummaryPart({ ctx, e, part }: { ctx: V2Ctx; e: FarmEvent; part: Part })
       )}
       {part === 'compare' && (
         <>
+          {/* "יצאו וחזרו" moved to the scans log (Y2), needs-design decision 7. */}
           <StatRow>
             <StatTile value={`${pct}%`} label="הגעה" />
-            <StatTile value={num(X.returned)} label="יצאו וחזרו" />
           </StatRow>
           {past.length > 0 ? (
             <ListCard>

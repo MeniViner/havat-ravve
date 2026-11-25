@@ -1,8 +1,8 @@
 // C9-Welcome (first entry), C10-Install, C8-Offline (the queue of writes kept on the phone) and X2-Suspended.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AppScreen, go, useToast, useExternal, waUrl, telUrl, ToastProvider, ToastStack } from '../../core';
 import { TopBar, Button, BottomBar, Field, Hero, Avatar, Segmented, ListCard, Row, IconTile, TextLink, EmptyState, Icon, MoreDetails, initials } from '../../kit';
-import { back, navigate, depth, useRoute } from '../../../router';
+import { back, navigate, useSearch } from '../../../router';
 import { useSync } from '../../../db';
 import { useOnline, createProfile } from '../../../store';
 import { contactPhoneOk } from '../../../data';
@@ -16,7 +16,7 @@ import type { Profile, RegistrationField, RoleInvite, Settings } from '../../../
 import type { Session } from '../../../firebase';
 import {
   useInviteFor, INVITE_ROLE_WORD, firstName, markWelcomed, registrationQuestions, answersFor, missingAnswers, useInstallPrompt, promptInstall, isIos,
-  installBannerShown, installSeenOnArrival, markInstallSeen, isInstalledApp, installDismissedUntil, snoozeInstall, INSTALL_SNOOZE_MS, useOfflineQueue, setOfflineSince, suspendedAt,
+  afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
 import { RegistrationQuestions } from './fields';
@@ -55,7 +55,8 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
         if (link) forgetVendorInvite();
         void write.update('users', user.uid, { welcomedAt: nowIso() }, { quiet: true }).catch(() => {});
       }
-      navigate('/tasks', true);
+      // C10 once, as its own step right after the first entry (not in demo, not when already installed)
+      navigate(afterFirstEntry(demoOnly()), true);
     } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -116,14 +117,18 @@ const ANDROID = [
   ['בוחרים "התקנת אפליקציה"', 'או "הוספה למסך הבית"'],
   ['פותחים מהאייקון החדש', 'ומאשרים קבלת התראות'],
 ];
+/** C10. `?first=1`: the one offer right after the first entry (C9), where "אחר כך" and installing go on into the app.
+ *  Otherwise it is the guide behind the profile row "התקנה למסך הבית" (Q18), and "אחר כך" goes back. */
 export function InstallScreen(_: ScreenProps) {
+  const first = new URLSearchParams(useSearch()).get('first') === '1';
+  const later = () => (first ? navigate('/tasks', true) : back('/me'));
   const [os, setOs] = useState<'ios' | 'android'>(!isIos() && /Android/i.test(navigator.userAgent) ? 'android' : 'ios');
   const prompt = useInstallPrompt();
   const demo = useDemo();
   const steps = os === 'ios' ? IPHONE : ANDROID;
   return (
     <AppScreen className="system-scr" variant="detail" gap={14}>
-      <div className="system-install-top"><Button variant="quiet" onClick={() => back('/me')}>אחר כך</Button></div>
+      <div className="system-install-top"><Button variant="quiet" onClick={later}>אחר כך</Button></div>
       <h1 className="system-install-title">להוסיף למסך הבית</h1>
       <span className="system-lead">כך מקבלים התראות, והאפליקציה נפתחת בנגיעה אחת.</span>
       <Segmented label="סוג הטלפון" value={os} onChange={setOs} options={[{ value: 'ios', label: 'iPhone' }, { value: 'android', label: 'Android' }]} />
@@ -134,40 +139,8 @@ export function InstallScreen(_: ScreenProps) {
           ))}
         </ul>
       </section>
-      {os === 'android' && prompt && !demo.on && <Button size="lg" block icon="download" onClick={() => void promptInstall()}>להתקין עכשיו</Button>}
+      {os === 'android' && prompt && !demo.on && <Button size="lg" block icon="download" onClick={() => void promptInstall().then((ok) => { if (ok && first) navigate('/tasks', true); })}>להתקין עכשיו</Button>}
     </AppScreen>
-  );
-}
-
-/** The automatic install invitation of the old team shell (src/app/InstallBanner.tsx), as a v2 strip for the shell's top
- *  chrome. Same storage keys, so "סגירה" there or here hides it for two weeks; never on /install or in the demo. */
-export function InstallBanner() { return useInstallBanner(); }
-/** The same banner as a hook: the shell renders the top chrome only when something is in it (an empty top would drop the
- *  screen's own safe-area padding), so it needs the node, or null, before it builds the top. */
-export function useInstallBanner() {
-  const prompt = useInstallPrompt(); const route = useRoute(); const demo = useDemo();
-  const [until, setUntil] = useState(installDismissedUntil);
-  useEffect(() => markInstallSeen(), []);
-  useEffect(() => {
-    const left = until - Date.now();
-    if (left <= 0) return;
-    const t = window.setTimeout(() => setUntil(0), Math.min(INSTALL_SNOOZE_MS, left));
-    return () => window.clearTimeout(t);
-  }, [until]);
-  if (demo.on || !installBannerShown({ installed: isInstalledApp(), seenBefore: installSeenOnArrival(), depth: depth(), dismissedUntil: until, now: Date.now(), prompt: !!prompt, ios: isIos(), route })) return null;
-  const dismiss = () => setUntil(snoozeInstall());
-  // as before: a "not now" in the browser's own dialog counts as a dismissal
-  const install = async () => { if (!(await promptInstall())) dismiss(); };
-  return (
-    <aside className="k-strip k-strip--warm system-installbar" aria-label="התקנה למסך הבית">
-      <Icon name="download" size={20} />
-      <span className="k-strip__text">
-        <b>חוות רווה במסך הבית</b>
-        {!prompt && <span className="system-installbar__how">ב־Safari לחצו על <b>שיתוף</b>, ואז על <b>הוספה למסך הבית</b>.</span>}
-      </span>
-      {prompt && <button type="button" className="k-strip__action" onClick={() => void install()}>הוספה למסך הבית</button>}
-      <button type="button" className="k-strip__action system-installbar__x" aria-label="סגירת הזמנת התקנה" onClick={dismiss}><Icon name="close" size={20} /></button>
-    </aside>
   );
 }
 

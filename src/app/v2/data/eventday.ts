@@ -211,6 +211,7 @@ export async function logRejected(actor: Actor, event: FarmEvent, v: { ticket?: 
     await bumpCounters(tx, event.id, at, { scans: 1, rejected: 1 });
   }, { queue: true });
   if (t) logActivity(actor, 'ticket', t.id, 'rejected', `${ticketName(t)} · נדחה בשער · ${v.reason}`, { subjectUid: t.ownerUid, eventId: event.id });
+  else logActivity(actor, 'event', sid, 'rejected', 'כניסה נדחתה בשער', { eventId: event.id });
   return sid;
 }
 
@@ -270,6 +271,7 @@ export async function keepRejected(actor: Actor, eventId: string, scan: ScanV2) 
     if (!s || s.reopenedAt) throw new ConflictError();
     tx.update(`events/${eventId}/scans`, scan.id, { keptBy: actor, keptAt: nowIso() });
   });
+  logActivity(actor, 'event', scan.id, 'edited', 'כניסה נשארה דחויה', { eventId });
 }
 
 // ---------- stall ----------

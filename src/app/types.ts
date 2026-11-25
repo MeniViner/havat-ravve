@@ -1,3 +1,4 @@
+import type { BroadcastAudience } from '../../shared/message-activity';
 export type Role = 'owner' | 'manager' | 'staff' | 'guest' | 'vendor';
 export type Status = 'active' | 'pending' | 'blocked';
 
@@ -141,11 +142,11 @@ export type ShoppingTrip = {
 };
 
 export type RoleInvite = { id: string; email: string; role: 'staff' | 'manager' | 'owner'; createdBy: Actor; createdAt: string };
-export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings' | 'project';
+export type ActivityKind = 'task' | 'task_private' | 'shopping' | 'event' | 'ticket' | 'tab' | 'place' | 'visit' | 'donation' | 'user' | 'settings' | 'project' | 'message' | 'calendar' | 'calendar_private' | 'inbox';
 export type Activity = { id: string; kind: ActivityKind; refId: string; action: string; text: string; by: Actor; at: string; subjectUid: string; eventId: string;
   /** Written through the API: the key that did it (its name in the owners' assistant log). */
   via?: { credential: string; label: string } };
-export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט' };
+export const KIND_LABELS: Record<ActivityKind, string> = { task: 'משימה', task_private: 'משימת מנהלים', shopping: 'קניות', event: 'אירוע', ticket: 'כרטיס', tab: 'דוכן', place: 'מקום', visit: 'ביקור', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט', message: 'הודעה', calendar: 'יומן', calendar_private: 'יומן מנהלים', inbox: 'לטיפול' };
 export type Invite = { code: string; role: 'staff'; active: boolean; createdBy: Actor; createdAt: string; usedBy: string[] };
 
 export const CATEGORY_LABELS: Record<ShoppingCategory, string> = { super: 'סופר', building: 'חומרי בניין', online: 'אינטרנט', giveaway: 'מוצרי מסירה' };
@@ -263,10 +264,7 @@ export type ProjectStep = {
 /** Team broadcast (B1-B4). Read receipts at broadcasts/{id}/reads/{uid}. */
 /** Team audiences: all, farmToday, managers, crew. Outside the team (tidy round, Q26): registrants of one event (eventId, a
  *  service message to every registrant), vendors, and everyone (all users who opted in to updates, `Profile.updatesOptIn`). */
-export type BroadcastAudience = 'all' | 'farmToday' | 'managers' | 'crew' | 'vendors' | 'registrants' | 'everyone';
-export const AUDIENCE_LABELS: Record<BroadcastAudience, string> = { all: 'כל הצוות', farmToday: 'בחווה היום', managers: 'מנהלים', crew: 'צוות האירוע', vendors: 'בעלי דוכנים', registrants: 'נרשמי האירוע', everyone: 'כל המשתמשים' };
-/** Audiences outside the team (Q25 neutral tag; team audiences get the warm tag). */
-export const OUTSIDE_AUDIENCES: BroadcastAudience[] = ['registrants', 'vendors', 'everyone'];
+export { AUDIENCE_LABELS, OUTSIDE_AUDIENCES, type BroadcastAudience } from '../../shared/message-activity';
 export type Broadcast = {
   id: string; text: string; audience: BroadcastAudience; eventId?: string; urgent: boolean;
   by: Actor; createdAt: string; recipients: string[]; recipientCount: number; resentAt?: string | null;
@@ -295,7 +293,7 @@ export type EventVendorV2 = EventVendor & {
 };
 /** events/{id}/vendor_requests/{rid} (D6, V7, M2). */
 export type VendorRequestKind = 'power' | 'water' | 'help' | 'supply' | 'other';
-export type VendorRequest = { id: string; eventId: string; vendorId: string; vendorName: string; kind: VendorRequestKind; text: string; by: Actor; createdAt: string; takenBy: Actor | null; closedAt: string | null; closedBy?: Actor | null };
+export type VendorRequest = { id: string; eventId: string; vendorId: string; vendorName: string; kind: VendorRequestKind; text: string; by: Actor; createdAt: string; takenBy: Actor | null; /** W2 "אני על זה": when takenBy took it. */ takenAt?: string | null; closedAt: string | null; closedBy?: Actor | null };
 
 /** Vendor pool (vendors/{id}), extended. */
 export type VendorV2 = Vendor & {

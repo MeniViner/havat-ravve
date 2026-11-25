@@ -113,7 +113,7 @@ What to try:
 
 ## Limits and behaviour
 
-- **Budget.** Each 5-minute run uses at most 30 outside calls, counting Firestore calls and sends. The free plan allows 50 per run, and email and account deletion use some of them. A big job, like a broadcast to 40 people with phones, continues on the next runs from where it stopped. Everyone gets it exactly once.
+- **Budget.** Each 5-minute run uses at most 30 outside calls, counting Firestore calls and sends. The free plan allows 50 per run, and email and account deletion use some of them. A big job, like a broadcast to 40 people with phones, continues on the next runs from where it stopped. Each job targets distinct user IDs. A phone must be registered and its notification preferences must allow the kind.
 - **Two runs never send the same job.** Each job is claimed under a lease. If a run dies after sending but before recording, the next run may send that slice again. Every push carries the job's tag (`b_<id>` for a broadcast), so the phone replaces the first copy instead of showing two.
 - **What the Worker refuses:**
   - jobs older than 6 hours
@@ -121,4 +121,6 @@ What to try:
   - senders who are not active
   - links outside the app (they become the app's first screen)
   - endpoints that are not Apple, Google, Mozilla or Microsoft push services (the device is dropped)
+- **Queue status.** A send can write a job while phone notifications are off on the Worker. In-app copies are available independently. The job's existing `delivered` field counts acknowledgements from the push provider. Display on a phone is unknown.
+- **Release order for sender copies.** First release Firestore rules that accept self-addressed jobs from roles already allowed to send each kind. The current workflow on main deploys Hosting and rules, so make rules active before serving the new app. Release the Worker separately after the rules are active. Older app versions can keep writing jobs with or without `includeSelf`. Enabling and verifying phone push is a separate operation.
 - **What is never stored in the repo:** keys, service-account JSON, and device files.

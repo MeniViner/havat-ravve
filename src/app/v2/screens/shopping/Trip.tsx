@@ -6,7 +6,7 @@ import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem, ShoppingTrip } from '../../../types';
 import {
   activeTripOf, addedLive, byListOrder, closeTrip, deleteTrip, first, g, keyOfCat, lastClosedTripOf, listLabel, mergeItems, reopenTrip, setItemBought,
-  setItemMissing, tripView, useShopping, useTrip, useTrips,
+  setItemMissing, tripView, useShopping, useTrip, useMyTrips,
 } from '../../data/shopping';
 
 const useFail = () => {
@@ -16,7 +16,7 @@ const useFail = () => {
 
 // ---------- S6 ----------
 export function TripScreen({ ctx }: ScreenProps) {
-  const trips = useTrips();
+  const trips = useMyTrips(ctx.user.uid);
   const { open, history, loading } = useShopping();
   const trip = activeTripOf(trips.items, ctx.user.uid);
   // nobody opens this screen without a trip: "אני בסופר, מתחילים" starts one
@@ -91,7 +91,7 @@ function TripRow({ item, state, meta, live, onCheck, onMissing }: { item: Shoppi
 
 // ---------- S7 ----------
 export function TripDoneScreen({ ctx, params }: ScreenProps) {
-  const trips = useTrips();
+  const trips = useMyTrips(ctx.user.uid);
   const byId = useTrip(params.id || '');
   const trip = (params.id ? byId.item : null) || lastClosedTripOf(trips.items, ctx.user.uid);
   const waiting = params.id ? byId.loading : trips.loading;
@@ -110,7 +110,7 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
     return { bought: pick(trip.bought, live.bought).sort(byListOrder), missing: pick(trip.missing, live.missing).sort(byListOrder) };
   }, [trip, all]);
   const back = async () => {
-    try { await reopenTrip(trip); go('/shopping/trip', true); } catch (e) { fail(e); }
+    try { await reopenTrip(ctx.actor, trip); go('/shopping/trip', true); } catch (e) { fail(e); }
   };
   const done = (i: ShoppingItem) => {
     const parts = [i.qty];
@@ -133,7 +133,7 @@ function TripDone({ trip, ctx }: { trip: ShoppingTrip; ctx: ScreenProps['ctx'] }
             label: 'מחיקה', icon: 'trash', tone: 'danger',
             confirm: {
               title: 'למחוק את הקנייה?', text: 'הקנייה תימחק. מה שנקנה נשאר מסומן כנקנה, ומה שלא היה נשאר ברשימה.', confirmLabel: 'מחיקה',
-              onConfirm: () => remove(() => deleteTrip(trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) }),
+              onConfirm: () => remove(() => deleteTrip(ctx.actor, trip), { text: 'הקנייה נמחקה', after: () => go('/shopping', true) }),
             },
           }]} />
         </div>

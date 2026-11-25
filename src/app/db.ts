@@ -128,14 +128,14 @@ const setSync = (next: Partial<SyncState>) => { sync = { ...sync, ...next }; syn
 export const useSync = () => useSyncExternalStore((l) => { syncListeners.add(l); return () => syncListeners.delete(l); }, () => sync);
 export const syncState = () => sync;
 let failureId = 0;
-function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<void> {
+function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<boolean> {
   setSync({ pending: sync.pending + 1 });
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     let answered = false;
     // `wait`: maintenance work that must know the server stored it; it resolves only on the server's answer
-    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(); }, navigator.onLine ? 1500 : 0);
+    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(false); }, navigator.onLine ? 1500 : 0);
     p.then(
-      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(); },
+      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(true); },
       (e) => {
         clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) });
         const err = new Error(readError(e));
@@ -201,12 +201,12 @@ export const write = {
   async remove(col: string, id: string, o: WriteOpts = {}) { if (demoOnly()) return demoDelete(col, id); await settle(deleteDoc(real(col, id)), o.quiet); },
   /** Several sets/updates that should land together. */
   async batch(ops: { op: 'set' | 'update' | 'remove'; col: string; id: string; data?: Record<string, unknown> }[], o: WriteOpts = {}) {
-    if (!ops.length) return;
-    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return; }
+    if (!ops.length) return true;
+    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return true; }
     const refs = ops.map((x) => real(x.col, x.id)); // throws before anything is queued if one of them is a demo id
     const b = writeBatch(db);
     ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], x.data!) : x.op === 'update' ? b.update(refs[i], toFirestore(x.data!)) : b.delete(refs[i]); });
-    await settle(b.commit(), o.quiet, o.wait);
+    return settle(b.commit(), o.quiet, o.wait);
   },
 };
 
@@ -218,6 +218,7 @@ export type Tx = {
   get<T extends Row>(col: string, id: string): Promise<(T & { id: string }) | null>;
   set(col: string, id: string, data: Record<string, unknown>): void;
   update(col: string, id: string, patch: Record<string, unknown>): void;
+  remove(col: string, id: string): void;
 };
 export type TransactOpts = {
   /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
@@ -242,6 +243,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
       get: async (col, id) => (demoDoc(`${col}/${id}`) as never) || null,
       set: (col, id, data) => ops.push(() => demoSet(col, id, applyLocal({}, data))),
       update: (col, id, patch) => ops.push(() => demoSet(col, id, applyLocal(demoDoc(`${col}/${id}`) || {}, patch))),
+      remove: (col, id) => ops.push(() => demoDelete(col, id)),
     });
     ops.forEach((o) => o());
     return out;
@@ -255,6 +257,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
       get: async (col, id) => { const snap = await t.get(real(col, id)); return snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as never) : null; },
       set: (col, id, data) => ops.push((tt) => tt.set(real(col, id), toFirestore(data))),
       update: (col, id, patch) => ops.push((tt) => tt.update(real(col, id), toFirestore(patch))),
+      remove: (col, id) => ops.push((tt) => tt.delete(real(col, id))),
     });
     if (abandoned) throw new Abandoned();
     committing = true; // from here the attempt may still land after the phone gave up waiting
@@ -279,17 +282,22 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
  *  `attempt`: the transaction this replaces, when its commit was already on the way. If it still landed, the batch repeats it
  *  and the rules refuse the repeat (the scan id is fixed per entry), so that refusal is not a failure the shell should show. */
 async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>): Promise<T> {
-  const ops: { op: 'set' | 'update'; col: string; id: string; data: Record<string, unknown> }[] = [];
+  const ops: Parameters<typeof write.batch>[0] = [];
   const cache = new Map<string, unknown>();
   const out = await fn({
     get: async (col, id) => { const k = `${col}/${id}`; if (!cache.has(k)) cache.set(k, await readCached(col, id)); return cache.get(k) as never; },
     set: (col, id, data) => ops.push({ op: 'set', col, id, data }),
     update: (col, id, patch) => ops.push({ op: 'update', col, id, data: patch }),
+    remove: (col, id) => ops.push({ op: 'remove', col, id }),
   });
   if (!ops.length) return out;
   const refs = ops.map((x) => real(x.col, x.id));
   const b = writeBatch(db);
-  ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], toFirestore(x.data)) : b.update(refs[i], toFirestore(x.data)); });
+  ops.forEach((x, i) => {
+    if (x.op === 'remove') b.delete(refs[i]);
+    else if (x.op === 'set') b.set(refs[i], toFirestore(x.data!));
+    else b.update(refs[i], toFirestore(x.data!));
+  });
   const commit = b.commit();
   await settle(attempt ? commit.catch(async (e) => { if (await attempt.then(() => true, () => false)) return; throw e; }) : commit);
   return out;

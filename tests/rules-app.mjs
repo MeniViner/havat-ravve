@@ -392,6 +392,11 @@ try{
  await assertFails(updateDoc(doc(vol,'visits','v1'),{status:'approved',managerNote:'',handledBy:actor('vol'),updatedAt:now}));
  await assertSucceeds(updateDoc(doc(beni,'visits','v1'),{status:'approved',managerNote:'בשער',handledBy:actor('beni'),updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'visits','v1'),{status:'cancelled',updatedAt:now}));         // only from 'new'
+ // U15: the guest cancels her own request while it waits for an answer, and nothing else on it
+ await assertSucceeds(setDoc(doc(guest,'visits','v3'),vs));
+ await assertFails(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',people:9,updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'visits','v3'),{status:'cancelled',updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',updatedAt:now}));
 
  // donations
  const dn={uid:'guest',name:'אורח',phone:'',amount:180,label:'חי',note:'',memorial:'',receiptWanted:true,receiptName:'אורח',receiptSent:false,paymentStatus:'pending',createdAt:now,updatedAt:now};
@@ -838,6 +843,14 @@ try{
  await v2no(getDocs(collection(vol,'broadcasts/b1/reads')),'broadcast 12 staff lists receipts');
  await v2ok(getDocs(collection(mgr,'broadcasts/b1/reads')),'broadcast 13 manager lists receipts');
  await v2ok(setDoc(doc(raz,'broadcasts/b1/reads','raz'),{id:'raz',uid:'raz',name:'בדיקה',at:now,seenAt:now}),'broadcast vendor recipient reads');
+ const sendLog = 'notification_activity/log1';
+ await env3.withSecurityRulesDisabled(async(c) => setDoc(doc(c.firestore(),sendLog),{kind:'message',by:actor('mgr'),at:now,recipientCount:1,accepted:true,created:1,queued:1}));
+ await v2ok(getDocs(collection(owner,'notification_activity')),'owner reads personal send metadata');
+ for(const [who,db_] of [['manager',mgr],['staff',vol],['vendor',raz],['guest',guest]]){
+  await v2no(getDoc(doc(db_,sendLog)),`${who} cannot get personal send metadata`);
+  await v2no(getDocs(collection(db_,'notification_activity')),`${who} cannot list personal send metadata`);
+ }
+ await v2no(setDoc(doc(owner,sendLog),{kind:'message'}),'personal send journal is Worker-written');
  await v2ok(getDocs(collection(vol,'users/vol/notifications')),'broadcast 14 me reads my notifications');
  await v2ok(updateDoc(doc(vol,'users/vol/notifications','n1'),{readAt:now}),'broadcast 14 me marks read');
  await v2no(updateDoc(doc(vol,'users/vol/notifications','n1'),{title:'x'}),'broadcast 15 me edits title');
@@ -859,7 +872,17 @@ try{
  await v2no(setDoc(doc(vol,'push_jobs','j2'),job('j2','vol',{kind:'broadcast'})),'broadcast 21 staff broadcast push');
  await v2no(setDoc(doc(vol,'push_jobs','j3'),job('j3','noa')),'broadcast 21 createdBy someone else');
  await v2no(setDoc(doc(vol,'push_jobs','j4'),job('j4','vol',{to:Array.from({length:201},(_,i)=>'u'+i)})),'broadcast 21 to 201');
- await v2no(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'broadcast 21 to self');
+ await v2ok(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'staff queues a task including self');
+ for(const [who, db_, kind] of [['owner',owner,'system'],['mgr',mgr,'broadcast'],['vol',vol,'task'],['raz',raz,'vendor']]){
+  const id = 'self-'+who;
+  const batch = writeBatch(db_);
+  batch.set(doc(db_,'users',who,'notifications',id),note(id,who,{kind}));
+  batch.set(doc(db_,'push_jobs',id),job(id,who,{kind,to:[who]}));
+  await v2ok(batch.commit(), `${who}: self notification and push commit together`);
+ }
+ await v2ok(setDoc(doc(mgr,'push_jobs','old-self'),job('old-self','mgr',{kind:'broadcast',to:['mgr'],includeSelf:true})),'a cached manager client can still write includeSelf');
+ await v2no(setDoc(doc(vol,'push_jobs','denied-self'),job('denied-self','vol',{kind:'system',to:['vol']})),'staff cannot send a system push to self');
+ await v2no(setDoc(doc(raz,'push_jobs','denied-vendor-self'),job('denied-vendor-self','raz',{kind:'task',to:['raz']})),'vendor cannot send a task push to self');
  await v2no(setDoc(doc(vol,'push_jobs','j6'),job('j6','vol',{sentAt:now})),'push created sent');
  await v2ok(setDoc(doc(mgr,'push_jobs','j7'),job('j7','mgr',{kind:'broadcast'})),'manager broadcast push');
  await v2ok(setDoc(doc(raz,'push_jobs','j8'),job('j8','raz',{kind:'vendor'})),'vendor queues a vendor push');
@@ -950,6 +973,25 @@ try{
  await v2ok(updateDoc(doc(mgr,'users','g4'),{role:'guest',status:'blocked',notes:'',updatedAt:now}),'manage 7 manager blocks a guest');
  await v2ok(updateDoc(doc(mgr,'users','vdana'),{role:'vendor',status:'active',notes:'משלם במזומן',updatedAt:now}),'manager edits a vendor note, role stays vendor');
  await v2no(updateDoc(doc(mgr,'users','g2'),{role:'vendor',status:'active',notes:'',updatedAt:now}),'manager makes a vendor without a claim');
+ // ---------------- W4: first-visit demo per kind of account (settings/app.demoIntro), owners only ----------------
+ await env3.withSecurityRulesDisabled(async(c)=>{await setDoc(doc(c.firestore(),'users/own2'),P('own2','owner'));});
+ {
+  const own2=C('own2'), on={guest:true,staff:true,manager:true,vendor:false};
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 1 the bootstrap owner sets the switches');
+  await v2ok(setDoc(doc(own2,'settings','app'),{demoIntro:{...on,vendor:true}},{merge:true}),'W4 2 an owner (role) sets the switches');
+  await v2no(setDoc(doc(mgr,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 3 a manager cannot set them');
+  await v2no(updateDoc(doc(mgr,'settings','app'),{'demoIntro.staff':false}),'W4 4 a manager cannot change one switch');
+  await v2no(setDoc(doc(guest,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 5 a guest cannot set them');
+  await v2no(setDoc(doc(vol,'settings','app'),{demoIntro:{...on,staff:false}},{merge:true}),'W4 6 a volunteer cannot set them');
+  await v2no(setDoc(doc(raz,'settings','app'),{demoIntro:{...on,vendor:false}},{merge:true}),'W4 7 a vendor cannot set them');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,owner:false}},{merge:true}),'W4 8 an unknown kind');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,guest:'yes'}},{merge:true}),'W4 9 a switch that is not true or false');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:'off'},{merge:true}),'W4 10 not a map');
+  await v2ok(setDoc(doc(mgr,'settings','app'),{guestIntro:'ברוכים הבאים'},{merge:true}),'W4 11 a manager still saves the rest with the switches stored');
+  const read=(await getDoc(doc(anon,'settings','app'))).data();
+  assert.deepEqual(read.demoIntro,{...on,vendor:true},'W4 12 everyone reads the switches (a first visit is decided before any role)');
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 13 the owner switches vendors off again');
+ }
  // ---------------- events area (events.md 1-8) ----------------
  await v2ok(getDoc(doc(vol,'events/ev-day/staffing','gate')),'events 1 staff reads staffing');
  for(const [who,db_] of [['guest',guest],['vendor',raz],['anon',anon]]) await v2no(getDoc(doc(db_,'events/ev-day/staffing','gate')),`events 1 ${who} reads staffing`);
@@ -1206,11 +1248,19 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await ok(getDocs(query(collection(raz, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz'))), '15 owner lists own requests');
     await no(getDocs(collection(raz, 'events/e-hidden/vendor_requests')), '15 owner cannot list all requests');
     await no(getDoc(reqRef(raz, 'r-dana', 'e-other')), '15 cannot read another stall request');
-    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), '16 staff takes a request');
-    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz') }), '16 vendor cannot take');
+    await no(setDoc(reqRef(raz, 'r6'), request('r6', 'e-hidden', 'v-raz', 'raz', { takenAt: now })), 'W2 a new request carries no handler time');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), 'W2 taking without the time is refused');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 cannot name someone else as the handler');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: 'אחר כך' }), 'W2 handler time must be a time');
+    await ok(updateDoc(reqRef(mgr, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 manager taps "אני על זה" (takenBy + takenAt)');
+    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: now }), '16 staff takes a request (W2, takes it over)');
+    await ok(getDoc(reqRef(raz, 'r1')), 'W2 the vendor reads who is handling it (D6)');
+    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz'), takenAt: now }), '16 vendor cannot take');
+    await no(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz'), takenAt: '2026-01-01T10:00:00.000Z' }), 'W2 vendor cannot change the handler time while closing');
     await ok(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz') }), '16 owner closes own request');
     await no(updateDoc(reqRef(mgr, 'r1'), { closedAt: now, closedBy: actor('mgr') }), '16 closing twice is refused');
     await ok(updateDoc(reqRef(mgr, 'r2'), { closedAt: now, closedBy: actor('mgr') }), '16 manager closes a request');
+    await no(updateDoc(reqRef(mgr, 'r2'), { takenBy: actor('mgr'), takenAt: now }), 'W2 a closed request cannot be taken');
 
     vsection('Rules: the stall and its people');
     await ok(updateDoc(doc(raz, 'vendors/v-raz'), { name: 'גבינות רז', note: 'מגיע עם מקרר', sells: 'גבינות', product: 'גבינות', inviteNext: true, updatedAt: now }), '17 owner edits the stall');

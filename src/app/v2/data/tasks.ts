@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
-import { logActivity, taskKind } from '../../activity';
+import { activityOp, logActivity, taskKind } from '../../activity';
 import { addTask, editTask, editShopping, type NewTask } from '../../store';
 import { addShopItem, setItemPhoto } from './shopping';
 import { notify } from './notify';
@@ -508,7 +508,7 @@ export async function doneWithPhoto(actor: Actor, t: Task, photo: string, note: 
   if (!t.done) Object.assign(patch, { done: true, doneBy: actor, doneAt: now }, !t.assignee && !t.templateId ? { assignee: actor } : {});
   await write.update('tasks', t.id, patch);
   if (!t.done) logActivity(actor, taskKind(t), t.id, 'done', short(t.title), { subjectUid: t.assignee?.uid || actor.uid });
-  if (photo) logActivity(actor, taskKind(t), t.id, 'photo', `${short(t.title)}${note.trim() ? ': ' + note.trim() : ''}`);
+  if (photo || t.done) logActivity(actor, taskKind(t), t.id, photo ? 'photo' : 'note', short(t.title));
 }
 /** After done (old T3): add or replace the done photo, add or edit the done note. The done stamp itself stays. */
 export async function setDoneDetails(actor: Actor, t: Task, data: { donePhoto?: string; doneNote?: string }) {
@@ -565,31 +565,34 @@ export async function releaseTask(actor: Actor, t: Task, manager: boolean) {
 }
 /** C4: who the task is on. Refused when someone else changed the assignee since the screen opened. Notifies the new person. */
 export async function assignTask(actor: Actor, t: Task, to: Actor | null, seenUid: string | null) {
-  await transact(async (tx) => {
+  const changed = await transact(async (tx) => {
     const cur = await tx.get<Task>('tasks', t.id);
     if (!cur) throw new ConflictError('לא נשמר. המשימה כבר לא קיימת');
     if (cur.done) throw new ConflictError('לא נשמר. המשימה כבר בוצעה');
     const now = (cur.assignee?.uid || null);
-    if (now !== seenUid && now !== (to?.uid || null)) throw new ConflictError(cur.assignee ? `לא נשמר. המשימה כבר על ${firstName(cur.assignee.name)}` : 'לא נשמר. מישהו שינה את המשימה לפני רגע');
+    if (now === (to?.uid || null)) return false;
+    if (now !== seenUid) throw new ConflictError(cur.assignee ? `לא נשמר. המשימה כבר על ${firstName(cur.assignee.name)}` : 'לא נשמר. מישהו שינה את המשימה לפני רגע');
     const at = nowIso();
     tx.update('tasks', t.id, to ? { assignee: to, takenAt: at, updatedAt: at } : { assignee: null, updatedAt: at });
+    return true;
   });
+  if (!changed) return;
   if (to) {
     logActivity(actor, taskKind(t), t.id, 'assigned', `${short(t.title)} ← ${to.name}`, { subjectUid: to.uid });
-    if (to.uid !== actor.uid) await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+    await notify([to.uid], { kind: 'task', title: `משימה חדשה: ${short(t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
   } else logActivity(actor, taskKind(t), t.id, 'released', short(t.title), { subjectUid: t.assignee?.uid || '' });
 }
 
 export type TaskInput = NewTask;
-/** T5 add: the existing store action (activity log included), plus a notification when it is put on someone else. */
+/** T5 add: the existing store action (activity log included), plus a notification when a person is assigned. */
 export async function createTask(actor: Actor, data: TaskInput) {
   const id = await addTask(actor, data);
-  if (data.assignee && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
+  if (data.assignee) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${id}`, refId: id, by: actor }).catch(() => {});
   return id;
 }
 export async function updateTask(actor: Actor, t: Task, data: Partial<TaskInput>) {
   await editTask(actor, t, data);
-  if (data.assignee && data.assignee.uid !== t.assignee?.uid && data.assignee.uid !== actor.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
+  if (data.assignee && data.assignee.uid !== t.assignee?.uid) await notify([data.assignee.uid], { kind: 'task', title: `משימה חדשה: ${short(data.title || t.title)}`, sub: `${firstName(actor.name)} ${gwA(actor, "העביר", "העבירה")} אליך`, link: `/tasks/${t.id}`, refId: t.id, by: actor }).catch(() => {});
 }
 
 /** Who may delete a task: a manager, or the person who created it (rules: tasks delete). A recurring day's instance
@@ -638,13 +641,21 @@ export async function saveTemplateV2(actor: Actor, data: TemplateInput, existing
   const base: Record<string, unknown> = { title: data.title.trim(), note: data.note, days: daysToSave(data.days), time: data.time.trim(), active: data.active, managersOnly: data.managersOnly, updatedAt: now };
   if (data.assignee || (existing && 'assignee' in existing)) base.assignee = data.managersOnly ? null : data.assignee;
   if (data.placeId || (existing && 'placeId' in existing)) base.placeId = data.placeId;
-  if (existing) { await write.update('task_templates', existing.id, base); return existing.id; }
-  const id = newId('task_templates');
-  await write.set('task_templates', id, { ...base, createdBy: actor, createdAt: now });
+  const id = existing?.id ?? newId('task_templates');
+  await write.batch([
+    { op: existing ? 'update' : 'set', col: 'task_templates', id, data: existing ? base : { ...base, createdBy: actor, createdAt: now } },
+    activityOp(actor, 'task_private', id, existing ? 'edited' : 'created', 'משימה חוזרת'),
+  ]);
   return id;
 }
-export const setTemplateActive = (t: Template, active: boolean) => write.update('task_templates', t.id, { active, updatedAt: nowIso() });
-export const removeTemplate = (id: string) => write.remove('task_templates', id);
+export const setTemplateActive = (actor: Actor, t: Template, active: boolean) => write.batch([
+  { op: 'update', col: 'task_templates', id: t.id, data: { active, updatedAt: nowIso() } },
+  activityOp(actor, 'task_private', t.id, 'edited', 'זמינות משימה חוזרת'),
+]);
+export const removeTemplate = (actor: Actor, id: string) => write.batch([
+  { op: 'remove', col: 'task_templates', id },
+  activityOp(actor, 'task_private', id, 'deleted', 'משימה חוזרת'),
+]);
 
 // ---------- places (L3, L4) ----------
 export type PlaceV2 = Place & { photo?: string; accuracy?: number; updatedAt?: string };

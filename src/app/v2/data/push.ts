@@ -9,8 +9,9 @@
 // users/{uid}.push.enabled is the person's master switch, push.kinds what they want on the lock screen (C1 "מה לקבל").
 // The in-app notifications (C1) never depend on any of this.
 // Demo: nothing real happens (no permission prompt, no subscription); the choice is stored in the demo profile only.
+import { saveAccountChange } from '../../account-activity';
 import { useEffect, useState } from 'react';
-import { useDoc, write } from '../../db';
+import { useDoc } from '../../db';
 import { nowIso } from '../../clock';
 import { getDemo } from '../../demo/store';
 import type { Profile } from '../../types';
@@ -108,7 +109,7 @@ async function saveDevice(profile: Profile, device: PushDevice | null, patch: Pa
   const others = (prefs.devices || []).filter((d) => d.id !== deviceId());
   const devices = device ? [...others, device].slice(-6) : others;
   const next: PushPrefs = { enabled: prefs.enabled, ...(prefs.kinds ? { kinds: prefs.kinds } : {}), ...patch, devices, updatedAt: nowIso() };
-  await write.update('users', profile.uid, { push: next, updatedAt: nowIso() });
+  await saveAccountChange(profile.uid, 'push_changed', { push: next, updatedAt: nowIso() });
 }
 
 /** Must run inside a tap (iOS asks only from a user gesture). Resolves to the new state. */
@@ -174,5 +175,5 @@ async function dropSubscription() {
 /** C1 "מה לקבל": which kinds reach the lock screen. */
 export async function setPushKinds(profile: Profile, kinds: PushKind[]) {
   const prefs = (profile as Profile & { push?: PushPrefs }).push || { enabled: false };
-  await write.update('users', profile.uid, { push: { ...prefs, kinds, updatedAt: nowIso() }, updatedAt: nowIso() });
+  await saveAccountChange(profile.uid, 'push_changed', { push: { ...prefs, kinds, updatedAt: nowIso() }, updatedAt: nowIso() });
 }

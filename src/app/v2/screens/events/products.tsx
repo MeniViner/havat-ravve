@@ -27,7 +27,7 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const products = useProducts(e.id, ctx.manager);
   const [copying, setCopying] = useState(false);
   const list = products.items as ProductV2[];
-  const order = useReorder(list, (next) => { run(() => reorderProducts(e.id, next)); });
+  const order = useReorder(list, (next) => { run(() => reorderProducts(ctx.actor, e.id, next)); });
   return (
     <AppScreen variant="detail">
       <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<MoreMenu title="מוצרי הדוכן" items={[{ label: 'העתקה מאירוע קודם', icon: 'calendar', onSelect: () => setCopying(true) }]} />} />
@@ -43,7 +43,7 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
                   <span className="events-prodrow__name">{p.name}</span>
                   <b className="events-value">{money(p.price)}</b>
                 </a>
-                <Toggle checked={p.active} onChange={(v) => run(() => setProductActive(e.id, p, v))} label={`מוצג בדוכן: ${p.name}`} />
+                <Toggle checked={p.active} onChange={(v) => run(() => setProductActive(ctx.actor, e.id, p, v))} label={`מוצג בדוכן: ${p.name}`} />
               </li>
             ))}
           </ul>

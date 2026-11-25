@@ -8,10 +8,10 @@ import { readJobs, readMonitor } from './monitor';
 const TZ = 'Asia/Jerusalem';
 const dayOf = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso));
 /** The value below which `p` of the sorted numbers fall (nearest rank). */
-const pct = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] : 0);
+export const pct = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] : 0);
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
-/** Slower than this is "slow" (the console lists these). */
+/** Slower than this is "slow". */
 export const SLOW_MS = 2000;
 
 export async function speed(env: Env, fs: Firestore, daysIn: number) {
@@ -50,7 +50,8 @@ export async function speed(env: Env, fs: Firestore, daysIn: number) {
       days.push({ day: d, count: s.length, p50: pct(s, 0.5), p95: pct(s, 0.95) });
     }
   }
-  const slow = timed.filter((r) => num(r.ms)! >= SLOW_MS).sort((a, b) => num(b.ms)! - num(a.ms)!).slice(0, 10)
+  // the ten slowest, also when none of them is "slow" (total.slow keeps the threshold)
+  const slow = [...timed].sort((a, b) => num(b.ms)! - num(a.ms)!).slice(0, 10)
     .map((r) => ({ at: str(r.at), op: str(r.op), he: str(r.opHe), ms: num(r.ms)!, status: num(r.status) || 0, key: str(r.keyLabel) }));
 
   // the 5-minute round and the site, from the monitor's record (no Firestore read)

@@ -5,10 +5,11 @@ import { BarList, Card, Chip, ChipRow, StatRow, StatTile } from '../app/v2/kit';
 import { ddmm, dayName } from '../app/v2/format';
 import { fmt, Section, useLoad } from './shared';
 import { Columns } from './charts';
-import { source } from './source';
+import { source, type Stats } from './source';
+import { useWide } from './desk/route';
+import { inLast, PERIODS, periodText } from './desk/farm';
+import { StatsDesk } from './desk/StatsDesk';
 
-export const PERIODS = [7, 30, 90, 365] as const;
-export const periodText = (d: number) => (d === 7 ? 'שבוע' : d === 30 ? 'חודש' : d === 90 ? '3 חודשים' : 'שנה');
 const ROLE: Record<string, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'מתנדבים', vendor: 'דוכנים', guest: 'אורחים' };
 const WEEKDAY = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
@@ -19,6 +20,10 @@ export function Period({ days, onChange }: { days: number; onChange: (d: number)
 export function StatsScreen() {
   const [days, setDays] = useState(30);
   const st = useLoad(() => source.stats(days), [days]);
+  return useWide() ? <StatsDesk st={st} days={days} setDays={setDays} /> : <StatsPhone st={st} days={days} setDays={setDays} />;
+}
+
+function StatsPhone({ st, days, setDays }: { st: { data: Stats | null; loading: boolean; error: string | null }; days: number; setDays: (d: number) => void }) {
   const f = st.data?.farm;
   const step = f ? Math.max(1, Math.ceil(f.activity.days.length / 6)) : 1;
   return (
@@ -26,7 +31,7 @@ export function StatsScreen() {
       <div className="c-title">
         <div>
           <h1 className="c-h1">סטטיסטיקות</h1>
-          <p className="c-sub">מה קרה בחווה ב{periodText(days)} האחרון: משימות, קניות, ביקורים ואנשים.</p>
+          <p className="c-sub">מה קרה בחווה {inLast(days)}: משימות, קניות, ביקורים ואנשים.</p>
         </div>
       </div>
       <Period days={days} onChange={setDays} />
@@ -79,7 +84,7 @@ export function StatsScreen() {
           <Section title={`אנשים · ${fmt(f.people.total)}`}>
             <Card pad="lg" className="c-flat">
               <BarList items={Object.entries(f.people.byRole).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ label: ROLE[r] || r, value: n, display: fmt(n) }))} />
-              <p className="c-note">הצטרפו ב{periodText(days)} האחרון: {fmt(f.people.joined)}{f.people.blocked ? ` · חסומים: ${fmt(f.people.blocked)}` : ''}</p>
+              <p className="c-note">הצטרפו {inLast(days)}: {fmt(f.people.joined)}{f.people.blocked ? ` · חסומים: ${fmt(f.people.blocked)}` : ''}</p>
             </Card>
           </Section>
         </div>

@@ -39,7 +39,7 @@ One document per trip ("אני בסופר, מתחילים" to "סיימתי לק
 | by | Actor | the shopper |
 | list | category | which list (the button exists on סופר only for now) |
 | startedAt | ISO | |
-| closedAt | ISO\|null | null while open. A trip open more than 8 h counts as over (`TRIP_MAX_HOURS`); the next start closes it |
+| closedAt | ISO\|null | null while open. Starting again resumes the newest unclosed trip for the same shopper, using that trip’s list. It leaves other trips untouched and sends no new notification |
 | bought | string[] ≤ 200 | item ids bought on the trip, filled on close |
 | missing | string[] ≤ 200 | item ids marked "אין", filled on close |
 
@@ -55,7 +55,7 @@ Existing actions: added, edited, bought, found, unbought, deleted. New: `unavail
 - trip start: kind 'trip', "יואב יוצא לסופר עכשיו", push on, action {label 'הוספה', kind 'addToTrip'}, link `/shopping?list=super`.
 - trip close: kind 'trip', "הקנייה בסופר נסגרה", sub "5 נקנו · קפה שחור לא היה", push off, link `/shopping/trip/done?id=`.
 - urgent add (`addShopItem` with urgent): kind 'urgent', "דחוף לכולם".
-Recipients: active staff, managers and owners; notify() leaves out the sender.
+Recipients include all active staff, managers and owners, including the shopper when on the team.
 
 ## Rules needed (`firestore.rules`)
 

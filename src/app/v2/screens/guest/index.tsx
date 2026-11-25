@@ -1,4 +1,4 @@
-// The guest side on the v2 kit (U1-U14): its shell (demo strip, offline strip, install invitation, the three-tab nav
+// The guest side on the v2 kit (U1-U14): its shell (demo strip, offline strip, the three-tab nav
 // בית · הכרטיסים שלי · החשבון שלי) and its routes. A team member opens the same screens from the team app
 // (`guestScreen(route, { team: true })`, src/app/v2/App.tsx): their tickets are at /me/tickets and their /me is the team profile.
 import { useEffect, useState, type ReactNode } from 'react';
@@ -12,7 +12,7 @@ import type { Profile, Settings } from '../../../types';
 import type { Session } from '../../../firebase';
 import { ToastProvider, useToast, ChromeProvider, AppScreen } from '../../core';
 import { BottomNav, DemoStrip, Strip, EmptyState, Button, TopBar } from '../../kit';
-import { DemoSheet, useInstallBanner, InstallScreen } from '../system';
+import { DemoSheet, InstallScreen } from '../system';
 import { Guard } from '../../../guard';
 import { V2DemoStrip } from '../../DemoChrome';
 import { DemoIntro } from '../../DemoIntro';
@@ -70,14 +70,12 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
   const [sheet, setSheet] = useState(false);
   const offline = !online || (demo.on && states.offline);
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
-  const install = useInstallBanner();
   // the owners turned on read-only from the console (switches.ts), as in the team shell
   const locked = useAppSwitches().locked && !demo.on;
-  const top = (demo.on || offline || install || locked) ? <>
+  const top = (demo.on || offline || locked) ? <>
     {locked && <Strip icon="blocked">{READ_ONLY_TEXT}</Strip>}
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <Strip icon="offline">{sync.pending ? `אין קליטה. ${sync.pending} פעולות שמורות בטלפון` : 'אין קליטה. הכרטיסים שלך עובדים גם בלי קליטה'}</Strip>}
-    {install}
   </> : null;
   const tab = tabOf(route);
   const nav = <BottomNav items={[

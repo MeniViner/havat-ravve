@@ -21,7 +21,7 @@ async function deleteAuthUser(fs: Firestore, env: Env, uid: string) {
   if (fs.emulator && !env.FIREBASE_AUTH_EMULATOR_HOST) throw new ApiError('INTERNAL', 'FIREBASE_AUTH_EMULATOR_HOST is not set');
   let res: Response;
   try {
-    res = await fetch(url, { method: 'POST', headers: { authorization: await fs.bearer(), 'content-type': 'application/json' }, body: JSON.stringify({ localId: uid }), signal: AbortSignal.timeout(8000) });
+    res = await (env.FETCH || fetch)(url, { method: 'POST', headers: { authorization: await fs.bearer(), 'content-type': 'application/json' }, body: JSON.stringify({ localId: uid }), signal: AbortSignal.timeout(8000) });
   } catch { throw new ApiError('UPSTREAM_ERROR', 'Identity Toolkit unreachable'); }
   if (res.ok) return;
   const text = await res.text().catch(() => '');

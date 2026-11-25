@@ -102,7 +102,7 @@ service cloud.firestore {
    // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()
    match /notifications/{nid} {
     function noteShape(){return incoming().keys().hasOnly(['id','kind','title','sub','link','refId','action','by','createdAt','readAt']) && incoming().id == nid && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 120) && str(incoming().sub, 240) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().get('refId', ''), 80) && (!('action' in incoming()) || (incoming().action is map && incoming().action.keys().hasOnly(['label','kind']) && str(incoming().action.label, 40) && incoming().action.kind in ['addToTrip','open'])) && isoTime(incoming().createdAt);}
-    function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff']));}
+    function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && (self(id) || get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff'])));}
     allow read: if self(id);
     allow create: if noteShape() && incoming().readAt == null && sender();
     // the owner of the list only marks read; "לשלוח שוב" rewrites b_<id> as new (a manager overwrites a broadcast notification)
@@ -187,11 +187,25 @@ service cloud.firestore {
    allow read: if isOwner();
    allow write: if false;
   }
+  // Personal settings activity. The client can append only a fixed event code for its own account.
+  match /account_activity/{id} {
+   allow read: if isOwner();
+   allow create: if signed() && incoming().keys().hasOnly(['uid','action','at']) && incoming().uid == uid()
+     && incoming().action in ['profile_updated','photo_updated','welcome_completed','updates_changed','push_changed'] && isoTime(incoming().at);
+   allow update, delete: if false;
+  }
+  // Metadata for personal sends is written only by the Worker and read only by owners.
+  match /notification_activity/{id} {
+   allow read: if isOwner();
+   allow write: if false;
+  }
   match /activity/{id} {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
-   function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place'];}
-   allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && resource.data.kind != 'task_private');
-   allow create: if signed() && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings'] && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place','message','calendar'];}
+   allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && !(resource.data.kind in ['task_private','project','calendar_private','inbox']));
+   function joinedInBatch(){return google() && incoming().kind == 'user' && incoming().action == 'joined'
+     && existsAfter(userPath()) && getAfter(userPath()).data.status == 'active';}
+   allow create: if (signed() || joinedInBatch()) && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings','project','message','calendar','calendar_private','inbox'] && (!(incoming().kind in ['project','message','calendar_private','inbox']) || isManager()) && (incoming().kind != 'calendar' || isStaff()) && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
    // the one change ever allowed: a manager moves a task's history between the open and the managers-only kind when the task changes visibility
    allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
    allow delete: if false;
@@ -258,8 +272,10 @@ service cloud.firestore {
    function numberOk(v){return str(v, 25) && (v == '' || v.matches('[+]?([() .-]*[0-9]){9,15}[() .-]*'));}
    function contactOk(){let c = incoming().get('contact', {}); return c is map && c.keys().hasOnly(['phone','whatsapp']) && numberOk(c.get('phone', '')) && numberOk(c.get('whatsapp', ''));}
    function confirmationTemplateOk(){let t = incoming().get('templates', {}); return t is map && str(t.get('paymentConfirmation', ''), 2000);}
-   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming())) && contactOk() && confirmationTemplateOk();
-   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk());
+   // W4: the first-visit demo per kind of account (demo/intro.ts) is the owners' decision too; missing means the defaults
+   function demoIntroOk(){let d = incoming().get('demoIntro', {}); return d is map && d.keys().hasOnly(['guest','staff','manager','vendor']) && d.get('guest', true) is bool && d.get('staff', true) is bool && d.get('manager', true) is bool && d.get('vendor', false) is bool;}
+   allow create: if isManager() && name == 'app' && (isOwner() || !('payment' in incoming())) && (isOwner() || !('demoIntro' in incoming())) && contactOk() && confirmationTemplateOk() && demoIntroOk();
+   allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment','demoIntro'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk()) && (!changed().hasAny(['demoIntro']) || demoIntroOk());
    allow delete: if isOwner() && name == 'app';
   }
   match /events/{id} {
@@ -294,13 +310,15 @@ service cloud.firestore {
     allow list: if isStaff();
     allow write: if isManager() && doc == 'main' && (request.method == 'delete' || infoShape());
    }
-   // D6 "need something": the stall creates and may close its own; staff take and close (V7, M2)
+   // D6 "need something": the stall creates and may close its own; staff take (W2, while open) and close (V7, M2, W2)
    match /vendor_requests/{rid} {
-    function reqShape(){return incoming().keys().hasOnly(['id','eventId','vendorId','vendorName','kind','text','by','createdAt','takenBy','closedAt','closedBy']) && incoming().id == rid && incoming().eventId == id && incoming().kind in ['power','help','supply','other','water'] && str(incoming().text, 200) && str(incoming().vendorName, 200) && actorOf(incoming().by);}
+    function reqShape(){return incoming().keys().hasOnly(['id','eventId','vendorId','vendorName','kind','text','by','createdAt','takenBy','takenAt','closedAt','closedBy']) && incoming().id == rid && incoming().eventId == id && incoming().kind in ['power','help','supply','other','water'] && str(incoming().text, 200) && str(incoming().vendorName, 200) && actorOf(incoming().by);}
+    // W2 "אני על זה": the writer becomes the handler with the time (D6 shows it to the vendor); or a release, both cleared
+    function takeOk(){return (actorOk(incoming().takenBy) && isoTime(incoming().get('takenAt', null))) || (incoming().takenBy == null && incoming().get('takenAt', null) == null);}
     function confirmedStall(){return get(/databases/$(database)/documents/events/$(id)/vendors/$(incoming().vendorId)).data.get('status', '') == 'confirmed';}
     allow get, list: if isStaff() || vendorPerson(resource.data.vendorId);
-    allow create: if reqShape() && vendorPerson(incoming().vendorId) && confirmedStall() && actorOk(incoming().by) && isoTime(incoming().createdAt) && incoming().takenBy == null && incoming().closedAt == null && incoming().closedBy == null;
-    allow update: if reqShape() && incoming().vendorId == resource.data.vendorId && incoming().by == resource.data.by && incoming().createdAt == resource.data.createdAt && ((isStaff() && changed().hasOnly(['takenBy']) && (incoming().takenBy == null || actorOk(incoming().takenBy))) || ((isStaff() || vendorPerson(resource.data.vendorId)) && resource.data.closedAt == null && changed().hasOnly(['closedAt','closedBy']) && isoTime(incoming().closedAt) && actorOk(incoming().closedBy)));
+    allow create: if reqShape() && vendorPerson(incoming().vendorId) && confirmedStall() && actorOk(incoming().by) && isoTime(incoming().createdAt) && incoming().takenBy == null && incoming().get('takenAt', null) == null && incoming().closedAt == null && incoming().closedBy == null;
+    allow update: if reqShape() && incoming().vendorId == resource.data.vendorId && incoming().by == resource.data.by && incoming().createdAt == resource.data.createdAt && ((isStaff() && resource.data.closedAt == null && changed().hasOnly(['takenBy','takenAt']) && takeOk()) || ((isStaff() || vendorPerson(resource.data.vendorId)) && resource.data.closedAt == null && changed().hasOnly(['closedAt','closedBy']) && isoTime(incoming().closedAt) && actorOk(incoming().closedBy)));
     allow delete: if isManager();
    }
    // links to permits, layout maps and lists: managers only (they used to sit in the public event document).
@@ -453,7 +471,7 @@ service cloud.firestore {
   // the push outbox: the app creates jobs, only the Worker (service account) reads and updates them
   match /push_jobs/{jid} {
    allow read: if false;
-   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && !(uid() in incoming().to) && incoming().urgent is bool
+   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId','includeSelf']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && incoming().get('includeSelf', false) is bool && incoming().urgent is bool
      && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor'));
    allow update, delete: if false;
   }

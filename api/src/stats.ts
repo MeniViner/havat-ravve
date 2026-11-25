@@ -116,9 +116,11 @@ export async function stats(fs: Firestore, daysIn: number) {
   for (const t of tabs) { const k = str(t.eventId); tabsBy.set(k, [...(tabsBy.get(k) || []), t]); }
   const ticketsBy = new Map<string, Row[]>();
   for (const t of tickets) { const k = str(t.eventId); ticketsBy.set(k, [...(ticketsBy.get(k) || []), t]); }
+  // the events of the last 90 days at least, also when the period is shorter (the money and the farm stay in the period)
+  const eventsFrom = new Date(now.getTime() - Math.max(daysIn, 90) * 86400_000).toISOString();
   const soon = new Date(now.getTime() + 180 * 86400_000).toISOString();
   const evs = events
-    .filter((e) => str(e.start) >= from && str(e.start) <= soon)
+    .filter((e) => str(e.start) >= eventsFrom && str(e.start) <= soon)
     .map((e) => {
       const ts = ticketsBy.get(str(e.id)) || [];
       const ok = ts.filter((t) => t.status !== 'cancelled');

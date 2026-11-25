@@ -7,6 +7,8 @@
 //      maintenance     the app shows a maintenance screen to everyone but owners, with an optional message
 //      registration    closed: someone without an account sees "ההרשמה סגורה כרגע" instead of the sign-up questions
 //      backupPaused, monitorPaused, cleanupPaused   the scheduled jobs of the same names skip their turn
+//      broadcastEmailPaused   "לשלוח גם במייל" messages wait in the outbox (payment emails go as usual)
+//    The record also keeps the last 20 changes (who, what, why).
 //    What the app needs (maintenance, registration, readOnly) is copied to settings/switches, which the app already may
 //    read (settings/* is public) and nobody but this Worker can write (the Rules allow only settings/app to managers).
 //  - the send queue: payment emails (email_outbox) and phone pushes (push_jobs) that wait or failed; send again, cancel,
@@ -17,8 +19,10 @@
 import { type Env, Firestore, type RawDoc } from './firestore';
 import { ApiError, invalid } from './http';
 import { ilDate, pathOf } from './backup';
-import { OUTBOX, emailHtml } from './email';
+import { OUTBOX, brevoUsed, emailHtml } from './email';
 import { JOBS } from './push';
+import { todayIL } from './core';
+import { isoFromIL } from './writes';
 
 export const SWITCHES_KEY = 'console:switches';
 const CLEANUP_KEY = 'console:cleanup';
@@ -27,13 +31,22 @@ export const ARCHIVE = 'archive/';
 export type Switches = {
   emailPaused: boolean; pushPaused: boolean; keysStopped: boolean; readOnly: boolean;
   maintenance: boolean; maintenanceText: string; registrationClosed: boolean;
-  backupPaused: boolean; monitorPaused: boolean; cleanupPaused: boolean;
+  backupPaused: boolean; monitorPaused: boolean; cleanupPaused: boolean; broadcastEmailPaused: boolean;
   updatedAt: string | null; updatedBy: string | null;
 };
-const BOOLS = ['emailPaused', 'pushPaused', 'keysStopped', 'readOnly', 'maintenance', 'registrationClosed', 'backupPaused', 'monitorPaused', 'cleanupPaused'] as const;
+export type SwitchChange = { at: string; by: string; key: string; to: boolean; reason: string };
+const KEEP_CHANGES = 20;
+const MAX_REASON = 200;
+/** Each switch as the security log names it. */
+export const SWITCH_HE: Record<string, string> = {
+  emailPaused: 'השהיית מיילים על תשלומים', pushPaused: 'השהיית התראות לטלפון', broadcastEmailPaused: 'השהיית מיילים לנרשמים', keysStopped: 'עצירת מפתחות API',
+  readOnly: 'קריאה בלבד', maintenance: 'מצב תחזוקה', registrationClosed: 'סגירת ההרשמה', backupPaused: 'השהיית הגיבוי', monitorPaused: 'השהיית הניטור', cleanupPaused: 'השהיית הניקוי',
+  maintenanceText: 'הודעת התחזוקה',
+};
+const BOOLS = ['emailPaused', 'pushPaused', 'keysStopped', 'readOnly', 'maintenance', 'registrationClosed', 'backupPaused', 'monitorPaused', 'cleanupPaused', 'broadcastEmailPaused'] as const;
 export const DEFAULT_SWITCHES: Switches = {
   emailPaused: false, pushPaused: false, keysStopped: false, readOnly: false, maintenance: false, maintenanceText: '', registrationClosed: false,
-  backupPaused: false, monitorPaused: false, cleanupPaused: false, updatedAt: null, updatedBy: null,
+  backupPaused: false, monitorPaused: false, cleanupPaused: false, broadcastEmailPaused: false, updatedAt: null, updatedBy: null,
 };
 
 let cache: { at: number; sw: Switches } | null = null;
@@ -41,18 +54,32 @@ let cache: { at: number; sw: Switches } | null = null;
  *  not free on every request); the cron and the console read them fresh. */
 export async function readSwitches(env: Env, fresh = false): Promise<Switches> {
   if (!fresh && cache && Date.now() - cache.at < 20_000) return cache.sw;
-  let sw = DEFAULT_SWITCHES;
-  try { sw = { ...DEFAULT_SWITCHES, ...(JSON.parse((await env.TOKEN_KV?.get(SWITCHES_KEY)) || '{}') || {}) }; } catch { /* keep the defaults */ }
-  cache = { at: Date.now(), sw };
-  return sw;
+  return (await readSwitchRecord(env)).switches;
+}
+/** The whole record, read fresh: the switches and their last changes, newest first. */
+export async function readSwitchRecord(env: Env): Promise<{ switches: Switches; history: SwitchChange[] }> {
+  let switches = DEFAULT_SWITCHES;
+  let history: SwitchChange[] = [];
+  try {
+    const { history: h, ...sw } = JSON.parse((await env.TOKEN_KV?.get(SWITCHES_KEY)) || '{}') || {};
+    switches = { ...DEFAULT_SWITCHES, ...sw };
+    if (Array.isArray(h)) history = h;
+  } catch { /* keep the defaults */ }
+  cache = { at: Date.now(), sw: switches };
+  return { switches, history };
 }
 
-/** Flip switches: { readOnly: true } … Returns the new switches. The app's part goes to settings/switches. */
-export async function saveSwitches(env: Env, fs: Firestore, body: Record<string, unknown>, by: string): Promise<Switches> {
+/** Flip switches: { readOnly: true, reason? } … Returns the record before and after. The app's part goes to settings/switches. */
+export async function saveSwitches(env: Env, fs: Firestore, body: Record<string, unknown>, by: string): Promise<{ before: Switches; switches: Switches; history: SwitchChange[] }> {
   if (!env.TOKEN_KV) throw new ApiError('INTERNAL', 'no KV namespace for the switches');
-  const cur = await readSwitches(env, true);
+  const { switches: cur, history } = await readSwitchRecord(env);
   const next: Switches = { ...cur };
+  let reason = '';
   for (const [k, v] of Object.entries(body)) {
+    if (k === 'reason') {
+      if (typeof v !== 'string' || v.trim().length > MAX_REASON) throw invalid(k, `text up to ${MAX_REASON} characters`, `הסיבה יכולה להיות עד ${MAX_REASON} תווים`);
+      reason = v.trim(); continue;
+    }
     if ((BOOLS as readonly string[]).includes(k)) { if (typeof v !== 'boolean') throw invalid(k, 'true or false'); (next as Record<string, unknown>)[k] = v; continue; }
     if (k === 'maintenanceText') { if (typeof v !== 'string' || v.length > 300) throw invalid(k, 'text up to 300 characters'); next.maintenanceText = v.trim(); continue; }
     throw invalid(k, `unknown switch ${k}`);
@@ -64,9 +91,12 @@ export async function saveSwitches(env: Env, fs: Firestore, body: Record<string,
   if (app(next) !== app(cur)) {
     await fs.commit([fs.set('settings', 'switches', { maintenance: next.maintenance, maintenanceText: next.maintenanceText, registrationClosed: next.registrationClosed, readOnly: next.readOnly, updatedAt: next.updatedAt })]);
   }
-  await env.TOKEN_KV.put(SWITCHES_KEY, JSON.stringify(next));
+  // one line per switch that really changed (the maintenance text is not a switch)
+  const changes = BOOLS.filter((k) => next[k] !== cur[k]).map((key) => ({ at: next.updatedAt!, by, key, to: next[key], reason }));
+  const kept = [...changes, ...history].slice(0, KEEP_CHANGES);
+  await env.TOKEN_KV.put(SWITCHES_KEY, JSON.stringify({ ...next, history: kept }));
   cache = { at: Date.now(), sw: next };
-  return next;
+  return { before: cur, switches: next, history: kept };
 }
 
 /** An API key request while a switch says no. The console (Google sign-in) is never stopped. */
@@ -82,26 +112,57 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const SOURCE: Record<string, string> = { order: 'tickets', donation: 'donations', tab: 'tabs' };
 const STALE_PUSH_MS = 6 * 3600_000; // push.ts STALE_MS
 
-export async function sendQueue(fs: Firestore) {
-  const [emailOpen, emailFailed, pushOpen] = await Promise.all([
+/** The mail service's free allowance a day (Brevo). */
+const DAILY_LIMIT = 300;
+const SENT_ROWS = 30;
+const SENT_SCAN = 50;
+const ils = (v: unknown) => (typeof v === 'number' ? ` · ${v.toLocaleString('he-IL')} ₪` : '');
+
+/** Reads: at most 50 for each of the five lists, the people they name, and two counts. */
+export async function sendQueue(env: Env, fs: Firestore) {
+  const midnight = isoFromIL(todayIL());
+  const since = (col: string) => fs.count({ from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: 'sentAt' }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: midnight } } } }).catch(() => null);
+  const latest = (col: string, field: string) => fs.query({ from: [{ collectionId: col }], orderBy: [{ field: { fieldPath: field }, direction: 'DESCENDING' }], limit: SENT_SCAN }).catch(() => []);
+  const [emailOpen, emailFailed, pushOpen, emailLast, pushLast, emailsToday, pushesToday, used] = await Promise.all([
     fs.query({ from: [{ collectionId: OUTBOX }], where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: { arrayValue: { values: [{ stringValue: 'queued' }, { stringValue: 'sending' }] } } } }, limit: 50 }),
     fs.query({ from: [{ collectionId: OUTBOX }], where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'failed' } } }, limit: 50 }),
     fs.query({ from: [{ collectionId: JOBS }], where: { unaryFilter: { op: 'IS_NULL', field: { fieldPath: 'sentAt' } } }, limit: 50 }),
+    latest(OUTBOX, 'updatedAt'), latest(JOBS, 'createdAt'), since(OUTBOX), since(JOBS), brevoUsed(env),
   ]);
+  // what went out: emails marked sent, pushes whose last recipient was done (not cancelled, refused or too old)
+  const sentMail = emailLast.filter((d) => d.id !== '_state' && d.data.status === 'sent');
+  const pushOut = (d: { data: Record<string, unknown> }) => !!d.data.sentAt && d.data.outcome === 'sent';
+  const sentPush = pushLast.filter(pushOut);
   // who each email is for: the guest's name on the payment (never the address in the list)
   const emails = [...emailOpen, ...emailFailed].filter((d) => d.id !== '_state');
+  const onlyOne = (d: { data: Record<string, unknown> }) => (Array.isArray(d.data.to) && d.data.to.length === 1 ? str(d.data.to[0]) : '');
+  const uids = [...new Set([...emails, ...sentMail].map((d) => str(d.data.uid)).concat(sentPush.map(onlyOne)).filter(Boolean))].slice(0, 200);
   const refs = new Map<string, string[]>();
   for (const e of emails) { const col = SOURCE[str(e.data.kind)]; if (col) refs.set(col, [...(refs.get(col) || []), str(e.data.refId)]); }
   const names = new Map<string, string>();
-  await Promise.all([...refs].map(async ([col, ids]) => {
+  const person = new Map<string, string>();
+  await Promise.all([fs.getMany('users', uids, ['displayName']).then((ds) => { for (const d of ds) person.set(d.id, str(d.data.displayName)); }, () => {}), ...[...refs].map(async ([col, ids]) => {
     const docs = await fs.getMany(col, [...new Set(ids.filter(Boolean))].slice(0, 60)).catch(() => []);
     for (const d of docs) names.set(col + '/' + d.id, str(d.data.ownerName) || str(d.data.name) || str(d.data.guestName));
-  }));
+  })]);
   const now = Date.now();
+  const sent = [
+    ...sentMail.map((e) => ({
+      id: e.id, type: 'email' as const, kind: str(e.data.kind), who: person.get(str(e.data.uid)) || '', what: e.data.kind === 'broadcast' ? 'הודעה מחוות רווה' : 'אישור תשלום' + ils(e.data.amount),
+      to: 1, attempts: Number(e.data.attempts || 0), at: str(e.data.sentAt) || str(e.data.updatedAt),
+    })),
+    ...sentPush.map((p) => ({
+      id: p.id, type: 'push' as const, kind: str(p.data.kind), who: person.get(onlyOne(p)) || '', what: str(p.data.title),
+      to: Array.isArray(p.data.to) ? p.data.to.length : 0, attempts: Number(p.data.attempts || 0), at: str(p.data.sentAt),
+    })),
+  ].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, SENT_ROWS);
+  // a finished push that never went out (cancelled, too old) also carries sentAt: those of today are taken off the count
+  const notOut = pushLast.filter((d) => str(d.data.sentAt) >= midnight && !pushOut(d)).length;
   return {
+    sent, sentToday: (emailsToday ?? 0) + Math.max(0, (pushesToday ?? 0) - notOut), daily: { used, limit: DAILY_LIMIT },
     emails: emails.map((e) => ({
       id: e.id, kind: str(e.data.kind), status: str(e.data.status), reason: str(e.data.reason), error: str(e.data.error).slice(0, 200),
-      who: names.get(SOURCE[str(e.data.kind)] + '/' + str(e.data.refId)) || '', attempts: Number(e.data.attempts || 0),
+      who: names.get(SOURCE[str(e.data.kind)] + '/' + str(e.data.refId)) || person.get(str(e.data.uid)) || '', attempts: Number(e.data.attempts || 0),
       provider: str(e.data.provider), createdAt: str(e.data.createdAt), nextAt: str(e.data.nextAt), updatedAt: str(e.data.updatedAt), updateTime: e.updateTime,
     })).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
     pushes: pushOpen.map((p) => ({

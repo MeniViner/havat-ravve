@@ -1,7 +1,6 @@
 // Manager projects (P1-P6): projects/{pid} and projects/{pid}/steps/{sid}, managers and owners only. Each action writes what its
 // function in src/app/v2/data/projects.ts writes (pure helpers ported from src/app/v2/screens/projects/logic.ts), in one
-// transaction with the idempotency record. Like the app, projects log no activity (the activity collection has no managers-only
-// project kind yet); people given a step are notified.
+// transaction with the idempotency record and manager-only activity. People given a step are notified.
 import { ApiError, invalid } from '../http';
 import type { Param } from '../catalog';
 import type { Doc, Firestore, Write } from '../firestore';
@@ -115,7 +114,7 @@ const STEPS_HE = 'הצעדים לפי הסדר, JSON: [{"id":"<קיים, מתו�
 async function projectFor(c: Ctx, pid: string) { return mustGet(c.fs, P, pid, c.tx, 'project'); }
 async function stepFor(c: Ctx, pid: string, sid: string) { return mustGet(c.fs, stepsCol(pid), sid, c.tx, 'step'); }
 const conflict = (message: string, details: Record<string, unknown> = {}) => new ApiError('STALE_WRITE', message, details);
-const MGR_NOTE = 'Managers and owners only, like the app (staff cannot see projects). Projects log no activity, as in the app.';
+const MGR_NOTE = 'Managers and owners only, like the app (staff cannot see projects). Activity entries are visible to managers and owners.';
 const STEPS_NOTE = 'steps is a string that holds a JSON array (send the array serialized, not as an array): [{"id":"<existing id>","title":"...","assignee":"<uid>"|null}]. No id = a new step; assignee null = free; no assignee key = unchanged.';
 
 // createProject()
