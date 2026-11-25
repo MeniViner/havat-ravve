@@ -4,6 +4,6 @@
 .recurring-record__count { font-size: 14px; font-weight: 400; color: var(--soft); }
 .recurring-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; margin: 0; padding: 0; list-style: none; }
 .recurring-grid__day { height: 22px; border-radius: 4px; background: var(--photo-ph); }
-.recurring-grid__day--done { background: var(--green); }
+.recurring-grid__day--done { background: var(--green-fill); }
 .recurring-grid__day--missed { background: color-mix(in srgb, var(--green) 16%, var(--surface)); }
 .recurring-record__lead { margin: 0; font-size: 13px; line-height: 1.5; color: var(--soft); }

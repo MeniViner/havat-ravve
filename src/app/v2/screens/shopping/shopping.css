@@ -37,7 +37,7 @@
   display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; box-sizing: border-box;
   border-radius: 8px; border: 2.5px solid var(--ink); color: #FFFFFF;
 }
-.shopping-trip-row__box--on { border: 0; background: var(--selected); }
+.shopping-trip-row__box--on { border: 0; background: var(--selected-fill); }
 @media (prefers-reduced-motion: no-preference) {
   .shopping-trip-row__box--on .k-icon { animation: shopping-pop .18s ease-out; }
   @keyframes shopping-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -50,7 +50,7 @@
   flex: none; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--surface); color: var(--soft); font-size: 15px;
 }
-.shopping-trip-row__none[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; }
+.shopping-trip-row__none[aria-pressed="true"] { border-color: var(--selected); background: var(--selected-fill); color: #FFFFFF; }
 .v2 .k-tag.shopping-live { background: var(--amber); color: var(--ink); padding: 0 6px; }
 
 /* S7: trip closed */

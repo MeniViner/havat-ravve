@@ -41,7 +41,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
   flex: 0 0 calc((100% - 24px) / 7); height: 56px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; min-width: 0;
 }
-.farm-day[aria-pressed="true"] { border-color: var(--selected); background: var(--selected); color: #FFFFFF; }
+.farm-day[aria-pressed="true"] { border-color: var(--selected); background: var(--selected-fill); color: #FFFFFF; }
 .farm-day__name { font-size: 13px; }
 .farm-day__num { font-size: 16px; font-weight: 700; }
 .farm-group__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -81,7 +81,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
 }
 .farm-linkcard__box {
   flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 52px; height: 52px;
-  border-radius: 8px; background: var(--action); color: #FFFFFF;
+  border-radius: 8px; background: var(--action-fill); color: #FFFFFF;
 }
 .farm-linkcard__box b { font-size: 22px; line-height: 1; }
 .farm-linkcard__box span { font-size: 12px; }
@@ -100,7 +100,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
   height: 48px; border-radius: 8px; border: 0; background: transparent; color: var(--ink);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0;
 }
-.farm-month__cell[aria-pressed="true"] { background: var(--selected); color: #FFFFFF; }
+.farm-month__cell[aria-pressed="true"] { background: var(--selected-fill); color: #FFFFFF; }
 .farm-month__top { display: flex; align-items: center; gap: 3px; }
 .farm-month__num { font-size: 16px; line-height: 1; font-weight: 500; }
 .farm-month__num--today { font-weight: 700; }
@@ -135,7 +135,7 @@ button.farm-item, a.farm-item { cursor: pointer; }
   position: absolute; top: 0; height: 22px; border-radius: 4px; background: var(--warm-1); color: var(--ink);
   font-size: 12px; font-weight: 600; display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums;
 }
-.farm-axis__bar--me { background: var(--action); color: #FFFFFF; }
+.farm-axis__bar--me { background: var(--action-fill); color: #FFFFFF; }
 /* volunteers outlined, owners and managers filled (the old calendar's legend) */
 .farm-axis__bar--staff:not(.farm-axis__bar--me) { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--farm-mark); }
 .farm-legend__swatch { width: 14px; height: 10px; border-radius: 3px; background: var(--warm-1); }

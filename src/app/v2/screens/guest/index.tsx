@@ -13,6 +13,7 @@ import type { Session } from '../../../firebase';
 import { ToastProvider, useToast, ChromeProvider, AppScreen } from '../../core';
 import { BottomNav, DemoStrip, Strip, EmptyState, Button, TopBar } from '../../kit';
 import { DemoSheet, InstallScreen } from '../system';
+import { AppearanceScreen } from '../system/appearance';
 import { Guard } from '../../../guard';
 import { V2DemoStrip } from '../../DemoChrome';
 import { DemoIntro } from '../../DemoIntro';
@@ -47,6 +48,7 @@ export function guestScreen(route: string, ctx: GuestCtx): ReactNode | null {
   if ((m = match(route, '/me/donations/:id'))) return <DonationPage {...p} id={m.id} />;
   if ((m = match(route, '/me/stall/:id'))) return <StallPage {...p} id={m.id} />;
   if (!ctx.team && route === '/me/account') return <AccountPage {...p} />;
+  if (!ctx.team && route === '/me/appearance') return ctx.profile ? <AppearanceScreen parent="/me/account" /> : <AccountPage {...p} />;
   if (!ctx.team && route === '/me/edit') return <EditPage {...p} />;
   if (!ctx.team && route === '/me/messages') return <MessagesPage {...p} />;
   if (route === '/visit') return <VisitForm {...p} />;
