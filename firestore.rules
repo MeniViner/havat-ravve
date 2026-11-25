@@ -46,6 +46,40 @@ service cloud.firestore {
   function myVendor(){return isVendor() ? vendorMe().get('vendorId', '') : '';}
   function vendorPerson(vid){return vid is string && vid != '' && isVendor() && vendorMe().get('vendorId', '') == vid;}
   function vendorOwner(vid){return vendorPerson(vid) && vendorMe().get('helper', false) == false;}
+  function vendorInvitePath(code){return /databases/$(database)/documents/vendor_invites/$(code);}
+  function stallPath(vid){return /databases/$(database)/documents/vendors/$(vid);}
+  function profilePath(id){return /databases/$(database)/documents/users/$(id);}
+  function removalLogPath(code){return /databases/$(database)/documents/activity/$(code);}
+  function helperInviteCode(code){return code is string && code.matches('[a-z0-9-]{8,40}');}
+  function stallRows(v){return v.get('people', []);}
+  function helperRowRemoved(before, after, code){
+   let missing = before.removeAll(after);
+   return after.size() + 1 == before.size() && missing.size() == 1
+      && missing[0].get('code', '') == code && missing[0].role == 'helper'
+      && after == before.removeAll(missing);
+  }
+  function helperRemovedFrom(vid, code){
+   return helperRowRemoved(stallRows(get(stallPath(vid)).data), stallRows(getAfter(stallPath(vid)).data), code);
+  }
+  function helperLinked(profile, vid, code){
+   return profile.role == 'vendor' && profile.get('helper', false) == true
+     && profile.get('vendorId', '') == vid && profile.get('inviteCode', '') == code;
+  }
+  function helperAccountClosed(id, vid, code){
+   let path = profilePath(id);
+   return !exists(path) || !helperLinked(get(path).data, vid, code) || getAfter(path).data.role == 'guest';
+  }
+  function helperInviteClosed(code, vid, rowUid){
+   let path = vendorInvitePath(code);
+   let inv = get(path).data;
+   let claimant = inv.usedBy;
+   let after = getAfter(path).data;
+   return inv.code == code && inv.vendorId == vid && inv.role == 'helper' && after.active == false
+     && after.diff(inv).affectedKeys().hasOnly(['active'])
+     && (claimant == null || rowUid == '' || claimant == rowUid)
+     && (claimant != null ? helperAccountClosed(claimant, vid, code)
+       : (rowUid == '' || helperAccountClosed(rowUid, vid, code)));
+  }
   function invitedTo(eid){return isVendor() && vendorMe().get('vendorId', '') != '' && exists(/databases/$(database)/documents/events/$(eid)/vendors/$(vendorMe().get('vendorId', '')));}
   function str(v, max){return v is string && v.size() <= max;}
   function actorOk(a){return a is map && a.keys().hasOnly(['uid','name']) && a.uid == uid() && str(a.name, 80);}
@@ -93,7 +127,24 @@ service cloud.firestore {
    allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
    function fieldsOk(){return incoming().get('fields', {}) is map && incoming().get('fields', {}).get('receiptPreference', '') in ['', 'whatsapp', 'email'];}
    allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole() && (incoming().role == 'vendor' || !incoming().keys().hasAny(['vendorId','helper','addedBy','inviteCode']));
-   allow update: if profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit() || teamClaimEdit());
+   function revokedHelper(vid, code){
+    let invPath = vendorInvitePath(code);
+    let claimant = get(invPath).data.get('usedBy', null);
+    let before = stallRows(get(stallPath(vid)).data);
+    let after = stallRows(getAfter(stallPath(vid)).data);
+    return helperRowRemoved(before, after, code) && getAfter(invPath).data.active == false
+      && (claimant == null ? before.removeAll(after)[0].get('uid', '') == id : claimant == id);
+   }
+   function helperRevoke(){
+    let vid = resource.data.get('vendorId', '');
+    let code = resource.data.get('inviteCode', '');
+    return changed().hasOnly(['role','updatedAt']) && isoTime(incoming().updatedAt)
+      && helperInviteCode(code) && vendorOwner(vid)
+      && revokedHelper(vid, code);
+   }
+   // The removal only changes role and time. All other profile fields stay byte-for-byte unchanged.
+   allow update: if (resource.data.role == 'vendor' && incoming().role == 'guest'
+      && resource.data.get('helper', false) == true && helperRevoke()) || (profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit() || teamClaimEdit()));
    allow delete: if isOwner();
 
    // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()
@@ -200,9 +251,18 @@ service cloud.firestore {
    // a managers-only task logs as 'task_private': not a team kind, so no volunteer query (by refId, kind, actor or subject) can return it
    function teamKind(){return resource.data.kind in ['task','shopping','event','ticket','tab','place','message','calendar'];}
    allow read: if isManager() || (isStaff() && teamKind()) || (mine('subjectUid') && !(resource.data.kind in ['task_private','project','calendar_private','inbox']));
+   // D7 reads this receipt on the server. Old rules refuse the read before any removal is attempted.
+   allow get: if helperInviteCode(id) && exists(vendorInvitePath(id)) && get(vendorInvitePath(id)).data.role == 'helper'
+      && vendorOwner(get(vendorInvitePath(id)).data.vendorId);
+   function helperRemovalLog(){
+    return incoming().kind == 'event' && incoming().action == 'removed'
+      && incoming().refId == get(vendorInvitePath(id)).data.vendorId
+      && helperRemovedFrom(incoming().refId, id);
+   }
    function joinedInBatch(){return google() && incoming().kind == 'user' && incoming().action == 'joined'
      && existsAfter(userPath()) && getAfter(userPath()).data.status == 'active';}
-   allow create: if (signed() || joinedInBatch()) && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings','project','message','calendar','calendar_private','inbox'] && (!(incoming().kind in ['project','message','calendar_private','inbox']) || isManager()) && (incoming().kind != 'calendar' || isStaff()) && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60);
+   allow create: if (signed() || joinedInBatch()) && incoming().keys().hasOnly(['kind','refId','action','text','by','at','subjectUid','eventId']) && incoming().kind in ['task','task_private','shopping','event','ticket','tab','place','visit','donation','user','settings','project','message','calendar','calendar_private','inbox'] && (!(incoming().kind in ['project','message','calendar_private','inbox']) || isManager()) && (incoming().kind != 'calendar' || isStaff()) && str(incoming().refId, 80) && str(incoming().action, 40) && str(incoming().text, 500) && actorOk(incoming().by) && str(incoming().at, 40) && str(incoming().subjectUid, 60) && str(incoming().eventId, 60)
+     && (!helperInviteCode(id) || !exists(vendorInvitePath(id)) || helperRemovalLog());
    // the one change ever allowed: a manager moves a task's history between the open and the managers-only kind when the task changes visibility
    allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
    allow delete: if false;
@@ -398,8 +458,28 @@ service cloud.firestore {
    function poolShape(){return incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt','contact','sells','needs','note','photo','events','people','inviteNext','fem']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().get('product', ''), 300) && str(incoming().get('sells', ''), 300) && str(incoming().get('contact', ''), 80) && incoming().get('external', true) is bool && incoming().get('fem', false) is bool && str(incoming().get('notes', ''), 2000) && str(incoming().get('note', ''), 1000) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && incoming().get('events', []) is list && incoming().get('events', []).size() <= 300 && incoming().get('people', []) is list && incoming().get('people', []).size() <= 12 && photoOk(incoming().get('photo', '')) && incoming().get('inviteNext', false) is bool;}
    // D2, D7, D9, D10: the owner edits what the farm shows about the stall, never the farm's fields
    function ownerEdit(){return changed().hasOnly(['name','phone','product','sells','needs','note','photo','inviteNext','updatedAt']) && vendorOwner(id);}
-   // D8 adds a helper, D7 removes one (display only: access comes from users/{uid}.vendorId)
-   function ownerPeople(){return changed().hasOnly(['people','updatedAt']) && vendorOwner(id);}
+   function helperAdded(before, after){
+    let row = after[before.size()];
+    let code = row.get('code', '');
+    let path = vendorInvitePath(code);
+    return after == before.concat([row]) && row.role == 'helper' && row.get('uid', '') == ''
+      && helperInviteCode(code) && !exists(path) && getAfter(path).data.vendorId == id
+      && getAfter(path).data.role == 'helper' && getAfter(path).data.active == true;
+   }
+   function helperRemoved(before, after){
+    let missing = before.removeAll(after);
+    let code = missing[0].get('code', '');
+    return helperRowRemoved(before, after, code) && helperInviteCode(code)
+      && helperInviteClosed(code, id, missing[0].get('uid', ''))
+      && !exists(removalLogPath(code)) && existsAfter(removalLogPath(code));
+   }
+   function ownerPeople(){
+    let before = stallRows(resource.data);
+    let after = stallRows(incoming());
+    return changed().hasOnly(['people','updatedAt']) && vendorOwner(id)
+      && ((after.size() == before.size() + 1 && helperAdded(before, after))
+        || (after.size() + 1 == before.size() && helperRemoved(before, after)));
+   }
    allow get: if isStaff() || vendorPerson(id);
    allow list: if isStaff();
    allow create: if isManager() && poolShape();
@@ -418,7 +498,7 @@ service cloud.firestore {
    allow list: if isManager() || vendorOwner(resource.data.vendorId);
    allow create: if vInviteShape() && actorOk(incoming().createdBy) && incoming().active == true && incoming().usedBy == null && incoming().usedAt == null && (isManager() || (vendorOwner(incoming().vendorId) && incoming().role == 'helper'));
    allow update: if vInviteShape()
-     && ((changed().hasOnly(['active']) && incoming().active == false && (isManager() || (vendorOwner(resource.data.vendorId) && resource.data.role == 'helper')))
+     && ((changed().hasOnly(['active']) && incoming().active == false && (isManager() || (vendorOwner(resource.data.vendorId) && resource.data.role == 'helper' && helperRemovedFrom(resource.data.vendorId, code))))
       || (google() && resource.data.active == true && resource.data.usedBy == null && changed().hasOnly(['usedBy','usedAt','active']) && incoming().usedBy == uid() && incoming().active == false && isoTime(incoming().usedAt) && getAfter(userPath()).data.get('inviteCode', '') == code && getAfter(userPath()).data.role == 'vendor'));
    allow delete: if isManager();
   }

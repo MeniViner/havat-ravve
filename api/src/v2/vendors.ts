@@ -134,15 +134,46 @@ def('vendors.removePerson', 'vendors:write', 'הסרת אדם מהדוכן וס�
 }, async (c) => {
   const v = await vendorFor(c, c.input.vendorId);
   const people = peopleOfDoc(v.data);
-  const match = (x: VPerson) => (c.input.code ? x.code === c.input.code : x.name === c.input.name && (!c.input.role || x.role === c.input.role));
-  if (!c.input.code && !c.input.name) throw invalid('code', 'send code, or name (and role)');
-  const p = people.find(match);
-  if (!p) throw notFound('person of this stall');
-  const rest = people.filter((x) => !(p.code ? x.code === p.code : x.name === p.name && x.role === p.role));
-  const writes: Write[] = [c.fs.patch('vendors', v.id, { people: rest, updatedAt: nowIso() }, v.updateTime)];
-  if (p.code && await c.fs.get('vendor_invites', p.code, c.tx)) writes.push(c.fs.patch('vendor_invites', p.code, { active: false }));
-  return { writes, refs: [{ col: 'vendors', id: v.id }], data: { removed: p } };
-}, ['Destructive: confirm with the user first. An account that already signed in keeps existing (without the stall\'s screens only after vendors.removeAccess).']);
+  const { code: requestedCode, name, role } = c.input;
+  if (!requestedCode && !name) throw invalid('code', 'send code, or name (and role)');
+  const matches = people.filter((p) => requestedCode ? p.code === requestedCode : p.name === name && (!role || p.role === role));
+  if (matches.length > 1) throw invalid('code', 'more than one matching row: send its invite code');
+  const p = matches[0];
+  if (!p && !requestedCode) throw notFound('person of this stall');
+  const code = p?.code || requestedCode;
+  if (!code || !/^[a-z0-9-]{8,40}$/.test(code)) throw invalid('code', 'this row has no verifiable invite code', 'לקישור הישן חסר מידע. נדרשת בדיקה לפני שמסירים את הגישה.');
+  const invite = await c.fs.get('vendor_invites', code, c.tx);
+  const receipt = await c.fs.get('activity', code, c.tx);
+  if (!p) {
+    if (invite?.data.vendorId === v.id && invite.data.active === false && receipt?.data.refId === v.id && receipt.data.action === 'removed') {
+      return { writes: [], refs: [{ col: 'vendors', id: v.id }], data: { alreadyRemoved: true } };
+    }
+    throw notFound('person of this stall');
+  }
+  if (!invite || invite.data.code !== code || invite.data.vendorId !== v.id || invite.data.role !== p.role || receipt || people.filter((row) => row.code === code).length !== 1) {
+    throw invalid('code', 'could not verify the selected invite', 'לא הצלחנו לבדוק את הקישור. נסו שוב או פנו לחווה.');
+  }
+  const claimant = invite.data.usedBy;
+  if (claimant !== null && (typeof claimant !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(claimant) || (p.uid && p.uid !== claimant))) {
+    throw invalid('code', 'identity on the row and invite could not be reconciled');
+  }
+  const uid = claimant || p.uid;
+  if (uid && !/^[A-Za-z0-9_-]{1,128}$/.test(uid)) throw invalid('code', 'invalid account on the selected row');
+  const u = uid ? await c.fs.get('users', uid, c.tx) : null;
+  const linked = !!u && u.data.role === 'vendor' && u.data.vendorId === v.id && (u.data.helper ?? false) === (p.role === 'helper') && u.data.inviteCode === code;
+  const at = nowIso();
+  const writes: Write[] = [
+    c.fs.patch('vendors', v.id, { people: people.filter((x) => x !== p), updatedAt: at }, v.updateTime),
+    c.fs.patch('vendor_invites', invite.id, { active: false }, invite.updateTime),
+    c.fs.create('activity', code, {
+      kind: 'inbox', refId: v.id, action: 'removed', text: 'גישה לדוכן', by: c.me, at,
+      subjectUid: '', eventId: '', ...(c.fs.via ? { via: c.fs.via } : {}),
+    }),
+  ];
+  if (linked && u) writes.push(toGuest(c, u, `הגישה לדוכן ${v.data.name} הוסרה`, at));
+  return { writes, refs: [{ col: 'vendors', id: v.id }], data: { removed: p, accessRemoved: linked } };
+}, ['Destructive: confirm with the user first. The invite is closed and the row removed in one transaction. A linked account goes back to guest only while its current access came from this invite. Rows without a verifiable code need manual review.']);
+
 // removeAccess()
 def('vendors.removeAccess', 'vendors:write', 'הסרת הגישה של דוכן לאפליקציה: כל הקישורים נסגרים והחשבונות חוזרים לאורח', { vendorId: req() }, async (c) => {
   const v = await vendorFor(c, c.input.vendorId);

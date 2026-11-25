@@ -42,8 +42,13 @@ function Stall({ ctx, v }: { ctx: V2Ctx; v: VendorDoc }) {
     open(waUrl(p.phone, helperText(v, p.name, inviteLink('', p.code))));
   };
   const remove = async (p: VendorPerson) => {
-    try { await removePerson(ctx.actor, v, p); toast.show({ text: `${first(p.name)} הוסר מהדוכן`, check: true }); setSel(null); }
-    catch (e) { toast.refused(errText(e)); }
+    try {
+      await removePerson(ctx.actor, v, p);
+      toast.show({ text: `${first(p.name)} ${g(p.fem ?? femName(p.name), 'הוסר', 'הוסרה')} מהדוכן`, check: true });
+      setSel(null);
+    } catch (e) {
+      toast.refused(isConflict(e) ? (e as Error).message : 'לא הצלחנו להסיר את העוזר מהדוכן. נסו שוב.');
+    }
   };
   return (
     <AppScreen variant="root" gap={10}>
