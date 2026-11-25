@@ -155,8 +155,9 @@ function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
   const demo = useDemo(); const toast = useToast();
   // C10 right after the first entry comes first: the first-visit demo starts once it is answered ("אחר כך" or installing)
   const route = useRoute(); const search = useSearch();
-  const firstInstall = route === '/install' && new URLSearchParams(search).get('first') === '1';
-  if (demo.on || firstInstall) return null;
+  const params = new URLSearchParams(search);
+  const firstInstall = route === '/install' && params.get('first') === '1';
+  if (demo.on || firstInstall || params.get('notifications') === '1') return null;
   return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
 }
 export { canManage };

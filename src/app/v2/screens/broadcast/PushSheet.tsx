@@ -44,7 +44,7 @@ export function DevicePushRow({ profile, readOnly = false }: { profile: Profile;
   const action = s === 'on'
     ? <Toggle checked label="התראות לטלפון" onChange={turnOff} disabled={busy || readOnly} />
     : s === 'ask' ? <Button variant="outline" onClick={turnOn} disabled={busy || readOnly}>{busy ? 'מפעילים…' : 'להפעיל'}</Button>
-    : s === 'needs-install' ? <Button variant="outline" onClick={() => go('/install')}>איך מוסיפים</Button>
+    : s === 'needs-install' ? <Button variant="outline" onClick={() => go('/install?notifications=1')}>איך מוסיפים</Button>
     : undefined;
   return <Row minHeight={64} title="התראות במכשיר" meta={NOTE[s]} actions={action} />;
 }
