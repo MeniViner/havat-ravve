@@ -52,7 +52,7 @@ B3 shows three different states:
 | `seenAt` only | presence today: "בחווה היום, 08:30–13:30" or "לא בחווה היום" |
 | `at` | listed under "קראו" |
 
-The sender's own receipt is written together with the broadcast.
+When the sender is a recipient, their copy starts unread. They mark it read the same way as other recipients.
 
 ### `users/{uid}/notifications/{id}` (C1; personal, separate from the managers' inbox `notifications/{id}`)
 
@@ -66,7 +66,7 @@ The sender's own receipt is written together with the broadcast.
 
 `{ id, kind, title (≤80), body (≤180), link, to: uid[] (≤200), createdBy: { uid, name }, createdAt, sentAt: null, urgent, tag, refId }`
 
-- The sender is never in `to`. A send to more than 200 people becomes several jobs.
+- Each selected recipient appears once in `to`, including the sender when selected. A send to more than 200 people becomes several jobs.
 - The Worker adds:
   - `leaseUntil`, `attempts`, `cursor`
   - `delivered` and `failed` counts

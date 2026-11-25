@@ -1,10 +1,8 @@
 /* Shopping area (S1-S4, S6-S8). Only what the kit does not cover; tokens from .v2. */
 
-/* S1: "אני בסופר, מתחילים" (48 high, 16/600, icon gap 8) and the dashed suggestions row */
-.v2 .shopping-tripbtn { font-size: 16px; gap: 8px; }
-.shopping-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-/* "היסטוריה" when there is no done card to carry it */
-.shopping-histlink { display: flex; justify-content: flex-end; }
+/* Q22: "אני בסופר, מתחילים" is a 56px bar button; the dashed suggestions sit in ONE row that scrolls sideways, never wraps */
+.v2 .shopping-chips { flex-wrap: nowrap; }
+.v2 .shopping-chips > * { flex: none; white-space: nowrap; }
 .shopping-cap { margin: 0; font-size: 14px; color: var(--soft); }
 
 /* a ticked row folds away before it moves to "נקנה היום" */
@@ -22,7 +20,6 @@
 .v2 .shopping-attach .k-btn { font-size: 15px; }
 .shopping-photo { display: block; width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 .shopping-history { display: flex; flex-direction: column; gap: 4px; }
-.v2 .k-btn.shopping-delete { padding: 0 18px; }
 
 /* S6: trip */
 .k-screen.shopping-trip .k-screen__body { padding-top: 10px; gap: 12px; }
@@ -68,4 +65,4 @@
 /* S8: search 48 high with a 1px line; "שוב" */
 .v2 .shopping-search { height: 48px; border-width: 1px; }
 .v2 .k-btn.shopping-again { gap: 4px; }
-.shopping-trip-delete { align-self: flex-start; }
+.shopping-done-top { justify-content: flex-end; }

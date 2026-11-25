@@ -5,14 +5,14 @@ import { ApiError } from './http';
 import { sameHex, sha256hex } from './util';
 
 export type Scope =
-  | 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'tasks:edit' | 'templates:read' | 'templates:write'
+  | 'tasks:read' | 'tasks:create' | 'tasks:assign' | 'tasks:complete' | 'tasks:edit' | 'tasks:delete' | 'templates:read' | 'templates:write'
   | 'projects:read' | 'projects:write'
-  | 'people:read' | 'people:write' | 'shopping:read' | 'shopping:write' | 'places:read' | 'places:write'
-  | 'events:read' | 'events:write' | 'tickets:read' | 'tickets:write' | 'tabs:read' | 'tabs:write' | 'tabs:settle'
-  | 'vendors:read' | 'vendors:write' | 'visits:read' | 'visits:write' | 'donations:read' | 'donations:write'
+  | 'people:read' | 'people:write' | 'people:block' | 'people:delete' | 'shopping:read' | 'shopping:write' | 'shopping:delete' | 'places:read' | 'places:write'
+  | 'events:read' | 'events:write' | 'events:delete' | 'tickets:read' | 'tickets:write' | 'tabs:read' | 'tabs:write' | 'tabs:settle'
+  | 'vendors:read' | 'vendors:write' | 'visits:read' | 'visits:write' | 'donations:read' | 'donations:write' | 'donations:delete'
   | 'notifications:read' | 'notifications:write' | 'calendar:read' | 'calendar:write' | 'activity:read'
   | 'settings:read' | 'settings:write' | 'overview:read' | 'system:read'
-  | 'presence:write' | 'broadcasts:read' | 'broadcasts:write' | 'me:read' | 'me:write' | 'notify:write';
+  | 'presence:write' | 'presence:remove' | 'presence:write:any' | 'broadcasts:read' | 'broadcasts:write' | 'broadcasts:urgent' | 'me:read' | 'me:write' | 'notify:team' | 'notify:all';
 export type ActorRole = 'owner' | 'manager' | 'staff';
 
 export type ActorDef = {
@@ -22,23 +22,25 @@ export type ActorDef = {
   person: { uid: string; name: string };
 };
 
-export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous'; /** The key's name from the console (keys.ts). */ label?: string };
+export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySet<Scope>; keyVersion?: 'current' | 'previous'; /** The key's name from the console (keys.ts). */ label?: string; /** The key carries only some of its person's permissions (keys.ts scopes). */ limited?: boolean; /** Preserves vendor broadcasts for keys created before audience scopes. */ legacyExternalBroadcasts?: boolean };
 
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
-  'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'templates:read', 'shopping:read', 'shopping:write', 'places:read',
+  'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'tasks:delete', 'templates:read', 'shopping:read', 'shopping:write', 'shopping:delete', 'places:read',
   // places: anyone on the team saves and names a place (rules: create/update isStaff); delete stays manager-only in the operation
   'places:write',
   'events:read', 'tickets:read', 'tabs:read', 'tabs:write', 'vendors:read', 'activity:read', 'settings:read', 'overview:read',
   // the farm calendar and their own presence (firestore.rules calendar: read isStaff, presence own), broadcasts sent to them, their own notifications
-  'calendar:read', 'presence:write', 'broadcasts:read', 'me:read', 'me:write',
+  'calendar:read', 'presence:write', 'presence:remove', 'broadcasts:read', 'me:read', 'me:write',
 ];
 const MANAGER: Scope[] = [
-  ...STAFF, 'tasks:assign', 'templates:write', 'projects:read', 'projects:write', 'people:read', 'people:write', 'events:write', 'tickets:write', 'tabs:settle',
-  'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'notifications:read', 'notifications:write',
-  'calendar:write', 'settings:write', 'system:read', 'broadcasts:write', 'notify:write',
+  ...STAFF, 'tasks:assign', 'templates:write', 'projects:read', 'projects:write', 'people:read', 'people:write', 'people:block', 'people:delete', 'events:write', 'events:delete', 'tickets:write', 'tabs:settle',
+  'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'donations:delete', 'notifications:read', 'notifications:write',
+  'calendar:write', 'settings:write', 'system:read', 'presence:write:any', 'broadcasts:write', 'broadcasts:urgent', 'notify:team', 'notify:all',
 ];
 export const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
+/** Every scope there is (the console offers a key a part of them). */
+export const ALL_SCOPES: readonly Scope[] = [...new Set(MANAGER)];
 
 /**
  * Synthetic actors, for tests. Real people are actors named "user:<uid>": a credential lists them, and
@@ -64,10 +66,36 @@ export type CredentialDef = {
   id: string; sha256: string; actors: string[]; disabled?: boolean; expiresAt?: string;
   /** Keys managed in the owners' console (keys.ts, TOKEN_KV): the name shown in the assistant log, and who made it when. */
   label?: string; createdAt?: string; createdBy?: string; updatedAt?: string;
+  /** A limited key (the console): only these scopes, and never more than its person's role allows. Absent: the role's. */
+  scopes?: string[];
+  scopeVersion?: 2;
   /** During a rotation the replaced key keeps working until previousUntil, so the client can switch over. */
   previousSha256?: string; previousUntil?: string;
 };
 
+/** Keep old explicit grants when a permission is split. New lists use only the scopes they name. */
+const LEGACY_SCOPES: Record<string, readonly Scope[]> = {
+  'tasks:edit': ['tasks:delete'],
+  'people:write': ['people:block', 'people:delete'],
+  'events:write': ['events:delete'],
+  'donations:write': ['donations:delete'],
+  'presence:write': ['presence:write:any', 'presence:remove'],
+  'shopping:write': ['shopping:delete'],
+  'broadcasts:write': ['broadcasts:urgent'],
+  'notify:write': ['notify:team', 'notify:all'],
+};
+export function credentialScopes(key: CredentialDef): string[] | null {
+  if (!Array.isArray(key.scopes)) return null;
+  if (key.scopeVersion === 2) return key.scopes;
+  const grants = new Set(key.scopes);
+  for (const scope of key.scopes) {
+    if (Object.hasOwn(LEGACY_SCOPES, scope)) for (const added of LEGACY_SCOPES[scope]) grants.add(added);
+  }
+  grants.delete('notify:write');
+  return [...grants].sort();
+}
+
+const earliest = (a?: string, b?: string) => (!a ? b : !b ? a : a < b ? a : b);
 /** The keys in the API_CREDENTIALS secret (the original registry; the console's keys in KV override them by id). */
 export function credentials(raw: string | undefined, stored: CredentialDef[] = []): CredentialDef[] {
   if (!raw && !stored.length) throw new ApiError('INTERNAL', 'API_CREDENTIALS is not configured');
@@ -81,14 +109,18 @@ export function credentials(raw: string | undefined, stored: CredentialDef[] = [
   };
   const byId = new Map<string, CredentialDef>();
   for (const c of list.filter(valid)) byId.set(c.id, c);
-  for (const c of stored.filter(valid)) byId.set(c.id, c);
+  for (const c of stored.filter(valid)) {
+    // a key from the secret that the console once edited: revoking or expiring it in the secret still counts
+    const s = byId.get(c.id);
+    byId.set(c.id, s ? { ...c, disabled: c.disabled || s.disabled, expiresAt: earliest(c.expiresAt, s.expiresAt) } : c);
+  }
   return [...byId.values()];
 }
 
 /** Loads users/<uid>, or null when it does not exist. Supplied by the caller so this module has no I/O. */
 export type ProfileLoader = (uid: string) => Promise<Record<string, unknown> | null>;
 
-const TEAM_ROLES = new Set<ActorRole>(['owner', 'manager', 'staff']);
+export const TEAM_ROLES: ReadonlySet<string> = new Set<ActorRole>(['owner', 'manager', 'staff']);
 const PROFILE_TTL_MS = 60_000;
 const profileCache = new Map<string, { at: number; actor: ActorDef | null }>();
 
@@ -129,7 +161,12 @@ export async function authenticate(req: Request, rawCredentials: string | undefi
   if (!found.actors.includes(actorId)) throw new ApiError('FORBIDDEN', `credential ${found.id} may not act as ${actorId}`, { actor: actorId });
   const actor = /^user:[A-Za-z0-9_-]{1,128}$/.test(actorId) ? await userActor(actorId, loadProfile) : ACTORS[actorId];
   if (!actor) throw new ApiError('FORBIDDEN', `actor ${actorId} is not registered or not an active team member`, { actor: actorId });
-  return { credentialId: found.id, actor, scopes: new Set(ROLE_SCOPES[actor.role]), keyVersion, ...(found.label ? { label: found.label } : {}) };
+  // a limited key keeps only the scopes it was given that the person's role has (a role change can only take away)
+  const role = ROLE_SCOPES[actor.role];
+  const grants = credentialScopes(found);
+  const scopes = grants ? role.filter((s) => grants.includes(s)) : role;
+  const legacyExternalBroadcasts = found.scopeVersion !== 2 && !!found.scopes?.includes('broadcasts:write');
+  return { credentialId: found.id, actor, scopes: new Set(scopes), keyVersion, ...(found.label ? { label: found.label } : {}), ...(grants ? { limited: true } : {}), ...(legacyExternalBroadcasts ? { legacyExternalBroadcasts } : {}) };
 }
 
 export function requireScope(c: Caller, scope: Scope) {

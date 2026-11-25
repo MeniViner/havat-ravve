@@ -3,20 +3,22 @@
 // exactly the shape the rules and the guest app expect. New settings keys are optional and live next to the old ones.
 import { useCallback } from 'react';
 import { useList, isConflict, readOnce, write } from '../../db';
-import { logActivity } from '../../activity';
+import { activityOp, logActivity } from '../../activity';
 import { nowIso } from '../../clock';
 import {
   useNotifications, useHandledNotifications, handleNotification, handleNotificationsFor, decideVisit, setDonation, setTabStatus,
   setOrderPayment, saveSettingsPart, useOpenTickets, useOpenTabs, useDonations, useDonation, useVisits, useVisit, useCalendar,
   useMyTickets, useMyVisits, useMyDonations, useMyTabs, downloadCsv, useTab, fillTemplate, markPaymentConfirmation,
 } from '../../data';
-import { usePeople, usePerson, useRoleInvites, setUserRole, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
+import { usePeople, usePerson, useRoleInvites, setUserRole, setUserNotes, inviteByEmail, removeRoleInvite, isOwnerEmail } from '../../store';
 import { useActivityByKind } from '../../activity';
+import type { DemoIntroRoles } from '../../demo/intro';
 import { notify } from './notify';
 import { useToast } from '../core';
 import { ROLE_LABELS } from '../../types';
 import type { Actor, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, VendorRequest, RoleInvite } from '../../types';
 import type { PaymentExtra } from '../screens/manage/calc';
+import type { PayConfirmTarget } from '../patterns';
 
 export * from '../screens/manage/calc';
 export {
@@ -32,6 +34,8 @@ export type SettingsExtra = {
   donationOptions?: { custom: boolean; memorial: boolean; receipt: boolean };
   /** G4 details the contact rule does not allow under `contact` (it accepts phone/whatsapp only). */
   contactMore?: { email: string; address: string; inquiries: boolean };
+  /** W4 "הדגמה בכניסה ראשונה" per kind of account; owners only (firestore.rules). Missing = demo/intro DEMO_INTRO_DEFAULT. */
+  demoIntro?: Partial<DemoIntroRoles>;
 };
 export type ManageSettings = Settings & SettingsExtra;
 export const donationOptionsOf = (s: ManageSettings) => ({ custom: true, memorial: true, receipt: true, ...s.donationOptions });
@@ -120,9 +124,18 @@ export async function changeRole(actor: Actor, p: Profile, role: Role) {
     await notify([p.uid], { kind: 'system', title: `קיבלת תפקיד: ${ROLE_LABELS[role]}`, sub: `${actor.name} עדכן/ה את התפקיד שלך באפליקציה`, link: '/me', by: actor, push: false }).catch(() => {});
   }
 }
+export async function savePersonNotes(actor: Actor, p: Profile, notes: string) {
+  await setUserNotes(p, notes);
+  await logActivity(actor, 'inbox', p.uid, 'edited', 'הערה בתיק אדם');
+}
 export const toggleBlock = (actor: Actor, p: Profile) => setUserRole(actor, p, p.role, p.status === 'blocked' ? 'active' : 'blocked');
-export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role'] | 'guest') => inviteByEmail(actor, email, role);
-export const cancelInvite = (email: string) => removeRoleInvite(email);
+export const inviteRole = (actor: Actor, email: string, role: RoleInvite['role']) => inviteByEmail(actor, email, role);
+export async function cancelInvite(actor: Actor, email: string) {
+  await removeRoleInvite(email);
+  await logActivity(actor, 'user', actor.uid, 'cancelled', 'הזמנה לצוות');
+}
+// Q27 by phone: a one-time link claimed at Google sign-in (data/invite.ts)
+export { useTeamLinks, createTeamLink, cancelTeamLink, restoreTeamLink, linkOpen, LINK_DAYS, type TeamLink, type TeamRole } from './invite';
 
 // ---------- deletes (each behind the ConfirmSheet) ----------
 /** The inbox items about a record (visit, donation, order): every one of them, also the handled ones, when the server answers;
@@ -147,9 +160,15 @@ export async function deleteDonation(actor: Actor, d: Donation, open: AppNotific
   logActivity(actor, 'donation', d.id, 'deleted', `${d.name} · ${d.amount} ₪`, { subjectUid: d.uid });
 }
 /** One inbox item (M3). What it points at stays. */
-export const deleteInboxItem = (n: AppNotification) => write.remove('notifications', n.id);
+export const deleteInboxItem = (actor: Actor, n: AppNotification) => write.batch([
+  { op: 'remove', col: 'notifications', id: n.id },
+  activityOp(actor, 'inbox', n.id, 'deleted', 'פריט בתור לטיפול'),
+]);
 /** A stall's request on the event day (M2). */
-export const deleteVendorRequest = (r: VendorRequest) => write.remove(`events/${r.eventId}/vendor_requests`, r.id);
+export const deleteVendorRequest = (actor: Actor, r: VendorRequest) => write.batch([
+  { op: 'remove', col: `events/${r.eventId}/vendor_requests`, id: r.id },
+  activityOp(actor, 'event', r.id, 'deleted', 'בקשה מדוכן', { eventId: r.eventId }),
+]);
 /** The owner deletes a person: the profile and a role waiting for their email. Their tickets, donations and visits stay.
  *  The Google account stays too, so signing in again starts over as a new person (first entry). */
 export async function deletePerson(actor: Actor, p: Profile) {
@@ -164,3 +183,13 @@ export const canDeletePerson = (me: { owner: boolean; uid: string }, p: Profile)
 export const saveSettings = (actor: Actor, patch: Partial<ManageSettings>, what: string) => saveSettingsPart(actor, patch as Partial<Settings>, what);
 
 export const stamp = () => nowIso();
+
+// ---------- Q7: what the payment confirmation sheet needs after an approval ----------
+/** The usePayConfirm target of an approved payment (donation, stall account, ticket order). */
+export function payTarget(p: PayItem): PayConfirmTarget {
+  if (p.kind === 'donation') return { collection: 'donations', ids: [p.doc.id], uid: p.doc.uid, name: p.doc.name, phone: p.doc.phone, amount: p.doc.amount, purpose: 'תרומה לחווה' };
+  if (p.kind === 'tab') return { collection: 'tabs', ids: [p.doc.id], uid: p.doc.guestUid, name: p.doc.guestName, phone: p.doc.guestPhone, amount: p.doc.total, purpose: `חשבון הדוכן באירוע ${p.doc.eventTitle}`, event: p.doc.eventTitle };
+  const ts = p.tickets.filter((t) => t.status === 'valid' && (t.paymentStatus === 'pending' || t.paymentStatus === 'claimed'));
+  const t = ts[0] || p.tickets[0];
+  return { collection: 'tickets', ids: ts.map((x) => x.id), uid: t?.ownerUid || '', name: t?.ownerName || '', phone: t?.ownerPhone || '', amount: ts.reduce((s, x) => s + x.price, 0), purpose: `כרטיסים לאירוע ${t?.eventTitle || ''}`, event: t?.eventTitle };
+}

@@ -13,7 +13,7 @@ import { storePhoto, type FileKind } from '../../../upload';
 import type { Actor, Task } from '../../../types';
 import { useDemo } from '../../../demo/store';
 import {
-  rowMeta, stripPlace, setDone, takeTask, releaseTask, takenText, playTakenInDemo, isOverdue, routineTime, assignTask, deleteTaskLater,
+  rowMeta, stripPlace, setDone, takeTask, releaseTask, takenText, playTakenInDemo, routineTime, assignTask, deleteTaskLater,
   canAssignTo, canDeleteTask, presenceOf, usePresenceToday, type RowView, type ProfileOf,
 } from '../../data/tasks';
 
@@ -103,12 +103,11 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   const uid = ctx.user.uid;
   const title = strip ? stripPlace(t.title, placeName) : t.title;
   const mine = !t.done && t.assignee?.uid === uid;
-  const tags = <>
-    {t.urgent && !t.done && <Tag tone="urgent">דחוף</Tag>}
-    {mine && view !== 'mine' && <Tag tone="outline">שלך</Tag>}
-    {t.managersOnly && <Tag tone="warm">מנהלים</Tag>}
-    {extraTags}
-  </>;
+  // rule 4: at most one status tag, the most pressing one
+  const tags = t.urgent && !t.done ? <Tag tone="urgent">דחוף</Tag>
+    : mine && view !== 'mine' ? <Tag tone="outline">שלך</Tag>
+    : t.managersOnly ? <Tag tone="warm">מנהלים</Tag>
+    : extraTags;
   // owners only: swipe right to finish or take it, left to move it on or delete it (the first button sits at the edge)
   const [moving, setMoving] = useState(false);
   const swipe = ctx.role === 'owner' ? {
@@ -125,7 +124,7 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
   } : undefined;
   return (
     <>
-    <Row className={isOverdue(t, ctx.today) ? 'tasks-row--late' : undefined} swipe={swipe}
+    <Row swipe={swipe}
       check={<CheckButton checked={t.done} onChange={(v) => (v ? a.done(t, placeName) : a.undo(t))} label={`סימון בוצע: ${title}`} />}
       title={title} tags={tags} done={t.done}
       meta={rowMeta(t, { uid, view, today: ctx.today, now: nowMs(), profileOf, time: routineTime(t, ctx.templates) })}

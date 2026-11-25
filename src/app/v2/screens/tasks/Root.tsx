@@ -78,6 +78,9 @@ export function TasksRoot({ ctx }: ScreenProps) {
   const timeGroups = groupByTime(lists, uid, today, true);
   const myOpen = lists.filter((t) => isMine(t, uid) && !t.done);
   const [myLate, myRows] = splitOverdue(ordered(lists.filter((t) => isMine(t, uid) && (!t.done || now - Date.parse(t.doneAt || '') < DONE_VISIBLE_MS)), uid, today), uid, today);
+  const stepsShown = ctx.manager && !eventId ? mineSteps : [];
+  const stepsOpen = stepsShown.filter((s) => !s.step.done);
+  const stepsDone = stepsShown.filter((s) => s.step.done);
   const doneToday = progress.done;
   // the old "בוצעו ביממה האחרונה · N" link to the history (the root keeps done tasks for 24 hours)
   const recent = all.filter((t) => t.done).length;
@@ -105,16 +108,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
           </>} />
       )}
       {failed && <Strip tone="red" role="alert" className="tasks-loaderr">{loadError(root.error)}</Strip>}
-      {ctx.manager && !eventId && mineCount > 0 && (
-        <ListCard title="עליך" count={mineCount}>
-          {mineTasks.filter((t) => !t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
-          {mineSteps.filter((s) => !s.step.done).map((s) => <StepRow key={s.step.id} s={s} />)}
-          {mineTasks.filter((t) => t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
-          {mineSteps.filter((s) => s.step.done).map((s) => <StepRow key={s.step.id} s={s} />)}
-        </ListCard>
-      )}
       {ctx.manager && !eventId && <ProjectsBlock ctx={ctx} />}
-      {ctx.manager && !eventId && <div className="tasks-allhead"><h2>כל המשימות בחווה</h2></div>}
       {eventId && (
         <ChipRow label="סינון">
           <Chip selected onClick={() => go('/tasks', true)}><span className="tasks-chip-x">{`משימות לאירוע ${eventTitle}${root.loading ? '' : ` · ${tasks.filter((t) => !t.done).length}`}`}<Icon name="close" size={16} /></span></Chip>
@@ -138,25 +132,33 @@ export function TasksRoot({ ctx }: ScreenProps) {
           {g.rows.map((t) => <TaskRow key={t.id} t={t} view={g.key === 'late' ? 'late' : g.key === 'today' || g.key === 'none' ? 'time' : 'later'} />)}
         </ListCard>
       ))}
-      {view === 'mine' && (myOpen.length === 0 && !nextTask && !root.loading && !failed ? (
+      {view === 'mine' && (myOpen.length === 0 && !stepsOpen.length && !nextTask && !root.loading && !failed ? (
         <EmptyState variant="done" className="tasks-empty-mine" title="סיימת את כל מה שעליך" text={doneToday === 1 ? 'משימה אחת היום' : `${doneToday} משימות היום`}
           action={free.length > 0 ? <Button className="tasks-take-free" onClick={() => go('/tasks?free=1', true)}>{`לקחת אחת מהפנויות · ${free.length}`}</Button> : undefined} />
       ) : <>
         {lateCard(myLate)}
-        {myRows.length > 0 && (
-          <ListCard title="עליך" count={myRows.length}>
-            {myRows.map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
+        {/* Q2: "רק שלי" covers what the old "עליך" list showed, my project steps included (managers) */}
+        {myRows.length + stepsShown.length > 0 && (
+          <ListCard title="עליך" count={myRows.length + stepsShown.length}>
+            {myRows.filter((t) => !t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
+            {stepsOpen.map((s) => <StepRow key={s.step.id} s={s} />)}
+            {myRows.filter((t) => t.done).map((t) => <TaskRow key={t.id} t={t} view="mine" />)}
+            {stepsDone.map((s) => <StepRow key={s.step.id} s={s} />)}
           </ListCard>
         )}
       </>)}
       {view !== 'mine' && !root.loading && !failed && lists.length === 0 && (
         <EmptyState variant="card" title="אין משימות פתוחות" text="משימה חדשה נכנסת מהשורה למטה" />
       )}
+      {/* Q2: one row to the history and, for managers, one row to the recurring tasks. Places are reached from the Farm tab. */}
       {!eventId && (
-        <ListCard aria-label="עוד במשימות">
+        <ListCard aria-label="בוצעו ביממה האחרונה">
           <Row title={recent > 0 ? `בוצעו ביממה האחרונה · ${recent}` : 'היסטוריה'} {...to('/tasks/history')} />
-          {ctx.manager && <Row title="משימות חוזרות" {...to('/manage/recurring')} />}
-          {ctx.manager && <Row title="מקומות" {...to('/places')} />}
+        </ListCard>
+      )}
+      {!eventId && ctx.manager && (
+        <ListCard aria-label="משימות חוזרות">
+          <Row title={`משימות חוזרות · ${ctx.templates.length}`} meta="רק מנהלים רואים" {...to('/manage/recurring')} />
         </ListCard>
       )}
     </AppScreen>
@@ -183,7 +185,7 @@ function NextStepCard({ s }: { s: MyStep }) {
   );
 }
 
-/** A project step in "עליך" (P6). */
+/** A project step in "רק שלי" (what the old "עליך" list showed, P6). */
 function StepRow({ s }: { s: MyStep }) {
   const ctx = useV2(); const all = useSteps(s.project.id); const fail = useFail(); const toast = useToast();
   const toggle = async (v: boolean) => {

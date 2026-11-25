@@ -1,8 +1,9 @@
-// Small pieces shared by the manage screens: SPA links, loading / not-found frames, the "אקסל" button, drag-to-reorder rows.
-import { useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent } from 'react';
+// Small pieces shared by the manage screens: SPA links, loading / not-found frames, link cards, the history sheet, and the
+// old "אקסל" button (still used by other areas until they move to useTableView in v2/patterns.tsx).
+import { useMemo, useState, type ReactNode } from 'react';
 import { href } from '../../../router';
 import { AppScreen, go } from '../../core';
-import { Button, EmptyState, Icon, SearchField, Sheet, TopBar } from '../../kit';
+import { Button, EmptyState, ListCard, Row, SearchField, Sheet, TopBar } from '../../kit';
 import { downloadCsv } from '../../data/manage';
 import './manage.css';
 
@@ -34,8 +35,31 @@ export function NotFound({ back, title }: { back: { label: string; path: string 
   );
 }
 
+/** A link row in its own bordered card (Q1 "כל הפעילות", Q13 "היסטוריה", Q23 "נוספו מראש ועוד לא נכנסו"). */
+export function LinkCard({ title, meta, path, onClick }: { title: ReactNode; meta?: ReactNode; path?: string; onClick?: () => void }) {
+  return (
+    <ListCard aria-label={typeof title === 'string' ? title : undefined}>
+      <Row minHeight={52} {...(path ? lnk(path) : { onClick })} title={title} meta={meta} />
+    </ListCard>
+  );
+}
+
+export type HistoryLine = { key: string; title: ReactNode; meta: ReactNode };
+/** "היסטוריה" behind ⋯ or a row (Q6, Q13, N2): the record's log lines in a sheet, newest first. */
+export function HistorySheet({ open, onClose, title = 'היסטוריה', lines }: { open: boolean; onClose: () => void; title?: string; lines: HistoryLine[] }) {
+  return (
+    <Sheet open={open} onClose={onClose} title={title}>
+      <ListCard aria-label={title}>
+        {lines.length ? lines.map((l) => <Row key={l.key} minHeight={50} title={<span style={{ fontWeight: 500 }}>{l.title}</span>} meta={l.meta} />)
+          : <Row minHeight={50} title={<span className="k-soft" style={{ fontWeight: 400 }}>עוד אין שינויים</span>} />}
+      </ListCard>
+    </Sheet>
+  );
+}
+
 type Cell = string | number | null | undefined;
-/** Outline "אקסל" button (M8, M10, N3): a CSV that Excel opens, with Hebrew intact; "צפייה בטבלה" opens the same rows in a sheet. */
+/** Outline "אקסל" button (old M8, M10, N3): a CSV that Excel opens, with Hebrew intact; "צפייה בטבלה" opens the same rows in a sheet.
+ *  The manage screens use useTableView (Q9, ⋯ items); this stays for the screens of other areas that still import it. */
 export function ExcelButton({ filename, headers, rows }: { filename: string; headers: string[]; rows: () => Cell[][] }) {
   const [preview, setPreview] = useState<(string | number)[][] | null>(null);
   const clean = () => rows().map((r) => r.map((c): string | number => (c === null || c === undefined ? '' : c)));
@@ -86,66 +110,3 @@ export function ExportTable({ headers, rows }: { headers: string[]; rows: (strin
     </div>
   );
 }
-
-/** Plain link row of the manage root: 44 high, 15px, soft chevron (M1 "הודעות לצוות", "כל הפעילות בחווה"). */
-export function PlainLink({ path, children, meta }: { path: string; children: ReactNode; meta?: ReactNode }) {
-  return (
-    <a className="manage-plainlink" {...lnk(path)}>
-      <span className="manage-plainlink__text"><span>{children}</span>{meta !== undefined && <span className="manage-plainlink__meta">{meta}</span>}</span>
-      <span className="manage-plainlink__chev" aria-hidden="true"><Icon name="chevron" size={20} /></span>
-    </a>
-  );
-}
-
-/**
- * Drag-to-reorder list rows (G1, G2, G3). The grip starts a pointer drag; rows shift while dragging; drop commits.
- * Keyboard: the grip is a button, arrow up/down moves the row one place.
- */
-export function useReorder<T>(items: T[], onChange: (next: T[]) => void) {
-  const [drag, setDrag] = useState<{ from: number; to: number; dy: number } | null>(null);
-  const start = useRef<{ y: number; h: number; from: number } | null>(null);
-  const move = (from: number, to: number) => {
-    if (to < 0 || to >= items.length || from === to) return;
-    const next = [...items]; const [x] = next.splice(from, 1); next.splice(to, 0, x); onChange(next);
-  };
-  const grip = (i: number, label: string) => ({
-    'aria-label': `גרירה לשינוי הסדר: ${label}`,
-    className: 'manage-grip',
-    type: 'button' as const,
-    onPointerDown: (e: RPointerEvent<HTMLButtonElement>) => {
-      const li = (e.currentTarget.closest('li') as HTMLElement | null);
-      start.current = { y: e.clientY, h: li?.offsetHeight || 60, from: i };
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setDrag({ from: i, to: i, dy: 0 });
-    },
-    onPointerMove: (e: RPointerEvent<HTMLButtonElement>) => {
-      const s = start.current; if (!s) return;
-      const dy = e.clientY - s.y;
-      const to = Math.max(0, Math.min(items.length - 1, s.from + Math.round(dy / s.h)));
-      setDrag({ from: s.from, to, dy });
-    },
-    onPointerUp: () => {
-      const s = start.current; start.current = null;
-      if (s && drag) move(s.from, drag.to);
-      setDrag(null);
-    },
-    onPointerCancel: () => { start.current = null; setDrag(null); },
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === 'ArrowUp') { e.preventDefault(); move(i, i - 1); }
-      if (e.key === 'ArrowDown') { e.preventDefault(); move(i, i + 1); }
-    },
-  });
-  /** Inline style for row i while a drag is going on. */
-  const rowStyle = (i: number): React.CSSProperties | undefined => {
-    if (!drag || !start.current) return undefined;
-    const h = start.current.h;
-    if (i === drag.from) return { transform: `translateY(${drag.dy}px)`, position: 'relative', zIndex: 2, background: 'var(--surface)', boxShadow: '0 2px 10px rgba(20,23,27,.15)' };
-    if (drag.from < drag.to && i > drag.from && i <= drag.to) return { transform: `translateY(${-h}px)` };
-    if (drag.from > drag.to && i < drag.from && i >= drag.to) return { transform: `translateY(${h}px)` };
-    return undefined;
-  };
-  return { grip, rowStyle, dragging: !!drag };
-}
-
-/** The grip icon inside the button made by useReorder().grip. */
-export const Grip = () => <Icon name="drag" size={20} />;

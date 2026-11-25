@@ -1,30 +1,13 @@
 /* The owners' console (/admin). Built on the v2 kit (tokens on .v2, k- parts); only the console's own frame lives here.
-   Phone: a top bar with tabs. From 900px: a side column on the start (right) side and a content column up to 880. */
+   Below 1024px: a top bar with tabs over one column up to 880. From 1024px the console is a computer screen: desk/desk.css. */
 html, body { margin: 0; background: #F3F4F2; }
 .c-shell { min-height: 100dvh; background: var(--bg); color: var(--ink); font-family: var(--font, 'IBM Plex Sans Hebrew', Arial, sans-serif); }
 .c-main { box-sizing: border-box; max-width: 880px; padding: 16px 16px 96px; display: flex; flex-direction: column; gap: 20px; }
-.c-side { display: none; }
 .c-top { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); padding: 12px 16px 0; }
 .c-top .c-brand { margin-bottom: 4px; }
 .c-demo { background: var(--selected); color: #fff; font-size: 14px; font-weight: 600; padding: 6px 16px; text-align: center; }
 
-@media (min-width: 900px) {
-  .c-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: auto 1fr; }
-  .c-demo { grid-column: 1 / -1; }
-  .c-top { display: none; }
-  .c-side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100dvh; box-sizing: border-box; padding: 24px 16px; background: var(--surface); border-inline-end: 1px solid var(--line); }
-  .c-main { padding: 32px 40px 96px; gap: 24px; }
-}
-
 .c-brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; color: var(--action); }
-.c-nav { display: flex; flex-direction: column; gap: 4px; }
-.c-nav__item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: 500; color: var(--soft); cursor: pointer; }
-.c-nav__item:hover { background: var(--bg); color: var(--ink); }
-.c-nav__item[aria-current='page'] { background: var(--selected); color: #fff; font-weight: 600; }
-.c-nav__item:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
-.c-side__links { display: flex; flex-direction: column; gap: 10px; padding: 0 12px; margin-top: auto; font-size: 15px; }
-.c-me { display: flex; align-items: center; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
-.c-me__name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .c-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .c-h1 { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 700; }
@@ -58,7 +41,7 @@ html, body { margin: 0; background: #F3F4F2; }
 
 /* at the top, so it never covers a sheet's buttons at the bottom */
 .c-notice { position: fixed; inset-inline: 16px; top: 16px; z-index: 60; max-width: 560px; margin-inline: auto; }
-@media (min-width: 900px) { .c-notice { inset-inline-start: calc(248px + 40px); } }
+@media (min-width: 1024px) { .c-notice { inset-inline: calc(244px + 32px) auto; top: auto; bottom: 24px; width: 440px; max-width: calc(100vw - 340px); margin: 0; } }
 
 .c-frame { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: var(--bg); color: var(--ink); }
 .c-frame__card { width: 100%; max-width: 420px; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; display: flex; flex-direction: column; gap: 14px; }
@@ -67,6 +50,11 @@ html, body { margin: 0; background: #F3F4F2; }
 .c-top .k-tabs { overflow-x: auto; scrollbar-width: none; }
 .c-top .k-tabs::-webkit-scrollbar { display: none; }
 .c-top .k-tabs__tab { flex: 1 0 auto; padding: 0 14px; }
+/* a fade on the edge that has more tabs past it (start = right, end = left in RTL) */
+.c-tabs { --fade: 44px; }
+.c-tabs--end .k-tabs { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to right, transparent 0, #000 var(--fade)); }
+.c-tabs--start .k-tabs { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to left, transparent 0, #000 var(--fade)); }
+.c-tabs--start.c-tabs--end .k-tabs { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); }
 
 /* a document in a backup next to how it is today */
 .c-compare { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; font-size: 14px; }
@@ -104,3 +92,129 @@ html, body { margin: 0; background: #F3F4F2; }
 .c-code { display: block; width: 100%; box-sizing: border-box; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; text-align: left; user-select: all; }
 
 .c-filters { display: grid; gap: 8px; margin: 4px 0 8px; }
+
+/* a record's fields: name, value (or its input while editing) */
+.c-fields { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; font-size: 15px; }
+.c-fields__row { display: grid; grid-template-columns: minmax(90px, .7fr) 1.6fr; gap: 12px; padding: 9px 12px; border-top: 1px solid var(--line); align-items: center; }
+.c-fields__row:first-child { border-top: 0; }
+.c-fields__key { color: var(--soft); font-size: 13px; overflow-wrap: anywhere; text-align: start; }
+.c-fields__val { min-width: 0; overflow-wrap: anywhere; }
+.c-fields__val .k-field { margin: 0; }
+.c-subs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.c-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.c-warn ul { margin: 6px 0; padding: 0 18px 0 0; }
+button.c-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Round 4: statistics, money, events. One hue (the kit's chart fill), bars anchored to the baseline, rounded data end. */
+.c-card-title { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.c-stack { display: flex; flex-direction: column; gap: 20px; }
+.c-loading { opacity: .6; transition: opacity .15s; }
+.c-cols { margin: 0; }
+.c-cols__plot { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); direction: ltr; }
+.c-cols__col { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; cursor: pointer; border-radius: 4px 4px 0 0; }
+.c-cols__col:hover .c-cols__bar { opacity: 1; }
+.c-cols__col:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+.c-cols__col[aria-pressed='true'] .c-cols__bar { opacity: 1; background: var(--action); }
+.c-cols__tip { margin: 8px 0 0; min-height: 1.5em; font-size: 14px; line-height: 1.5; font-weight: 600; }
+.c-cols__bar { display: block; width: 100%; max-width: 28px; margin: 0 auto; background: var(--selected); opacity: .85; border-radius: 4px 4px 0 0; }
+.c-cols__axis { display: flex; gap: 2px; direction: ltr; margin-top: 6px; }
+.c-cols__axis span { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--soft); text-align: center; white-space: nowrap; overflow: visible; font-variant-numeric: tabular-nums; }
+.c-funnel { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.c-funnel__step { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 15px; }
+.c-funnel__track { display: block; height: 12px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.c-funnel__bar { display: block; height: 100%; background: var(--selected); border-radius: 4px; }
+.c-funnel__value { min-width: 84px; text-align: end; white-space: nowrap; }
+.c-money__hero { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.c-money__sum { font-size: 34px; font-weight: 700; line-height: 1.1; }
+.c-money .k-barrow, .c-flat .k-barrow { padding: 0; }
+.c-money .k-barrow__label { width: 112px; }
+.c-money .k-barrow__value { width: auto; min-width: 64px; }
+/* ביקורים ושימוש: a count and its share on one line ("172 · 14%"), and longer names ("ישירות (קישור שמור או הקלדה)") */
+.c-pct .k-barrow__label { width: 132px; line-height: 1.25; }
+.c-pct .k-barrow__value { width: auto; min-width: 76px; white-space: nowrap; font-weight: 400; }
+.c-pct .k-barrow__value b { font-weight: 700; }
+/* two lists in one card (how long, how far): room between them */
+.k-barlist + .c-card-title { margin-top: 18px; }
+@media (max-width: 480px) { .c-pct .k-barrow__label { width: 104px; font-size: 14px; } }
+.c-event { display: flex; flex-direction: column; }
+.c-event__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.c-event__foot { margin: 12px 0 0; font-size: 14px; line-height: 1.5; }
+.c-stack--sm { gap: 12px; }
+.c-mailhead { margin: 0; display: grid; gap: 4px; font-size: 15px; }
+.c-mailhead div { display: flex; gap: 8px; }
+.c-mailhead dt { color: var(--soft); min-width: 44px; }
+.c-mailhead dd { margin: 0; font-weight: 600; }
+.c-mail { width: 100%; height: 130px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.c-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.c-table th { text-align: start; font-size: 13px; font-weight: 600; color: var(--soft); padding: 0 0 6px; border-bottom: 1px solid var(--line); }
+.c-table td { padding: 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.c-table tr:last-child td { border-bottom: 0; }
+.c-table th:not(:first-child), .c-table td:not(:first-child) { text-align: end; white-space: nowrap; padding-inline-start: 12px; }
+.c-qrow { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.c-qrow:last-child { border-bottom: 0; }
+.c-qrow__title { font-size: 16px; line-height: 1.4; }
+.c-qrow__tag { display: inline-block; vertical-align: middle; margin-inline-start: 4px; }
+.c-qrow__meta { margin-top: 2px; color: var(--soft); font-size: 14px; line-height: 1.45; }
+.c-qrow__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.c-qrow__actions:empty { display: none; }
+@media (min-width: 700px) {
+  .c-qrow { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+  .c-qrow__actions { flex: none; }
+}
+.c-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--soft); }
+.c-qrow__actions { align-items: center; }
+
+/* ---------- round 7: limited keys, speed, run any operation, import ---------- */
+/* a key's areas: name, then none / see / see and change; on a phone the choice goes under the name */
+.c-areas { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.c-area { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+.c-area + .c-area { border-top: 1px solid var(--line); }
+.c-area__name { font-size: 15px; font-weight: 600; }
+@media (max-width: 520px) { .c-area { flex-direction: column; align-items: stretch; gap: 6px; } .c-area .k-seg { width: 100%; } }
+.c-grid2 > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.c-tablewrap { overflow-x: auto; margin: 0 -4px; }
+/* run any operation: the list beside the form on a wide screen, above it on a phone */
+.c-run { display: grid; gap: 20px; align-items: start; }
+@media (min-width: 980px) { .c-run { grid-template-columns: minmax(280px, 380px) 1fr; } .c-run__list { max-height: 70vh; overflow-y: auto; } }
+@media (max-width: 979px) { .c-run__list { max-height: 46vh; overflow-y: auto; } }
+.c-row-on { background: var(--bg); box-shadow: inset -4px 0 0 var(--action); }
+.c-param { display: flex; flex-direction: column; gap: 6px; }
+.c-param__label { font-size: 15px; font-weight: 600; }
+.c-select { min-height: 44px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; padding: 0 10px; }
+.c-json { margin: 0; max-height: 420px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; text-align: left; }
+.c-notes summary { cursor: pointer; font-size: 14px; color: var(--soft); }
+.c-notes ul { margin: 8px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--soft); }
+/* import from Excel */
+.c-filerow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.c-filepick { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 15px; font-weight: 600; cursor: pointer; }
+.c-filepick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.c-filepick:focus-within { outline: 2px solid var(--action); outline-offset: 2px; }
+.c-map { display: grid; gap: 12px; }
+@media (min-width: 700px) { .c-map { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ---------- fix round: field names, tap targets, technical details ---------- */
+/* a stored field: its Hebrew name, and the stored name small and left-to-right beside it */
+.c-fname__raw { display: inline-block; font-size: 12px; color: var(--soft); font-weight: 400; }
+.c-compare__row .c-fname__raw, .c-fields__key .c-fname__raw { display: block; }
+.c-fields__key .c-fname { color: var(--ink); font-size: 14px; }
+/* a small text link that is still a 44px target */
+.c-linkbtn { display: inline-flex; align-items: center; min-height: 44px; margin-block: -12px; padding-inline: 4px; }
+.c-tech { font-size: 13px; color: var(--soft); }
+.c-tech summary { cursor: pointer; font-size: 14px; padding: 6px 0; list-style: none; }
+.c-tech summary::-webkit-details-marker { display: none; }
+.c-tech summary::before { content: '◂'; display: inline-block; width: 1em; }
+.c-tech[open] > summary::before { content: '▾'; }
+.c-tech p { margin: 6px 0 0; }
+.c-tech .c-json { margin-top: 8px; }
+.c-raw { font-size: 12px; color: var(--soft); }
+
+.c-permissions { min-width: 0; }
+.c-permissions summary { cursor: pointer; padding: 10px 0; min-height: 40px; font-weight: 600; }
+.c-scope-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.c-scope-table :is(th, td) { padding: 6px; text-align: start; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.c-scope-table label { display: flex; align-items: center; gap: 6px; min-height: 40px; cursor: pointer; }
+.c-scope-table code { unicode-bidi: isolate; }
+@media (max-width: 520px) {
+  .c-scope-table :is(th, td) { padding-inline: 3px; }
+  .c-scope-table label { align-items: flex-start; justify-content: center; flex-direction: column; }
+}

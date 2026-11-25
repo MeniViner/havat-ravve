@@ -1,0 +1,69 @@
+/* The console on a computer: what only the status screens need (K1-K3). Shared parts: desk.css. */
+/* content taller than the window: the page grows with it (and keeps its bottom margin) */
+.d-body:has(> .ds-over), .d-body:has(> .ds-mon), .d-body:has(> .ds-speed) { flex: 1 0 auto; }
+.d-body > .ds-over, .d-body > .ds-mon, .ds-speed > .d-cols { min-height: auto; }
+.ds-busy { opacity: .6; }
+.ds-speed { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.ds-text { margin: 10px 0 12px; font-size: 13px; line-height: 1.5; color: var(--soft); max-width: 70ch; } .ds-text--only { margin: -4px 0 0; } .ds-text b { color: var(--ink); }
+.d-card > .ds-text:last-child { margin-bottom: 0; }
+.ds-soft { color: var(--soft); font-weight: 400; }
+.ds-foot { display: block; font-size: 12px; line-height: 20px; color: var(--soft); }
+.ds-legend { white-space: nowrap; display: flex; align-items: center; gap: 12px; }
+.ds-inline { display: inline-flex; align-items: center; gap: 8px; }
+.ds-aside { font-size: 13px; }
+
+/* the hero */
+.ds-hero__state { flex: none; display: flex; align-items: center; gap: 14px; } .ds-hero__state > div { display: flex; flex-direction: column; }
+.ds-hero__state b { font-size: 24px; line-height: 1.2; } .ds-hero__state div > span { font-size: 14px; color: rgba(255, 255, 255, .9); }
+.ds-hero__mark { flex: none; width: 52px; height: 52px; border-radius: 50%; background: #fff; color: var(--green); display: flex; align-items: center; justify-content: center; } .ds-hero__mark.is-bad { color: var(--red); } .ds-hero__mark.is-wait { color: var(--selected); }
+.ds-hero__strip { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ds-hero__line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: rgba(255, 255, 255, .9); }
+.ds-hero__axis { display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, .75); }
+.ds-hero__none { min-height: 30px; padding: 4px 10px; border-radius: 4px; background: rgba(255, 255, 255, .12); font-size: 13px; line-height: 22px; }
+.ds-hero__retry { border: 0; background: none; padding: 0; font-size: inherit; font-weight: 600; color: #fff; text-decoration: underline; }
+.ds-hero__nums { flex: none; display: flex; gap: 24px; } .ds-hero__nums > div { display: flex; flex-direction: column; }
+.ds-hero__nums b { font-size: 26px; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-hero__nums span { font-size: 13px; color: rgba(255, 255, 255, .85); }
+.ds-waits { flex: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.ds-calm { flex: none; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+
+/* the morning check, two columns */
+.ds-morning { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 32px; margin-top: -4px; } .ds-morning > div { min-width: 0; }
+.ds-check { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.ds-check__name { flex: none; width: 132px; font-size: 14px; font-weight: 600; }
+.ds-check__detail { flex: 1; min-width: 0; font-size: 13px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-check__state { font-size: 13px; font-weight: 600; white-space: nowrap; } .ds-check__state.is-warn { color: var(--d-amber-ink); } .ds-check__state.is-bad { color: var(--red); } .ds-check__state.is-unknown { color: var(--soft); }
+/* five rows of the log; more scroll inside it, unless the window is tall */
+.ds-log > .d-table { max-height: 226px; overflow: auto; }
+@media (min-height: 1000px), (max-width: 1219px) { .ds-log > .d-table { max-height: none; } }
+.ds-sends { margin-top: -4px; }
+.ds-send { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; } .ds-send > span:nth-child(2) { flex: 1; } .ds-send > span:last-child { font-size: 13px; color: var(--soft); text-align: end; }
+
+/* the free quota when Google does not count */
+.ds-quota { display: flex; flex-direction: column; gap: 12px; }
+.ds-quota__why { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--soft); } .ds-quota__why p, .ds-quota__line { margin: 0; } .ds-quota__why b { color: var(--ink); } .ds-quota__why .d-act { white-space: normal; } .ds-quota__why code { max-width: 100%; }
+.ds-quota__line { font-size: 13px; color: var(--soft); }
+
+/* ניטור */
+.ds-alerts { margin-top: -4px; }
+.ds-alert { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); } .ds-alert > span { flex: 1; display: flex; flex-direction: column; } .ds-alert b { font-size: 14px; } .ds-alert span span { font-size: 13px; color: var(--soft); }
+.ds-none { color: var(--line-strong); }
+.ds-week, .ds-events, .ds-ops { overflow-x: auto; }
+.ds-week td { height: 39px; } .ds-week td > span { display: inline-flex; vertical-align: middle; } .ds-week td.is-strong, .ds-week td.is-soft { vertical-align: middle; }
+
+@media (max-width: 1359px) {
+  .ds-check { align-items: baseline; } .ds-check__name { width: 120px; } .ds-check__detail { white-space: normal; text-wrap: pretty; } .ds-morning { column-gap: 20px; }
+  .v2 .d-hero:has(.ds-hero__strip) { flex-wrap: wrap; gap: 14px 24px; }
+  .ds-hero__state { flex: 1; } .ds-hero__strip { order: 3; flex: 0 0 100%; }
+}
+@media (max-width: 1287px) {
+  .ds-log .d-table th { width: auto !important; white-space: normal; padding-inline: 6px; } .ds-log .d-table td { padding-inline: 6px; white-space: normal; }
+}
+/* the main column beside a side column is narrow: one column of checks, and tables fold their cells */
+@media (max-width: 1219px) {
+  .ds-mon .d-card__head, .ds-speed .d-card__head { flex-wrap: wrap; gap: 2px 12px; }
+  .ds-morning { grid-template-columns: minmax(0, 1fr); } .ds-morning > div + div { margin-top: 0; }
+  .ds-log .d-table th, .ds-events .d-table th, .ds-week .d-table th, .ds-ops .d-table th { width: auto !important; white-space: normal; padding-inline: 6px; }
+  .ds-log .d-table td, .ds-events .d-table td, .ds-week .d-table td, .ds-ops .d-table td { padding-inline: 6px; white-space: normal; }
+  .ds-week .d-table th, .ds-week .d-table td { padding-inline: 3px; }
+  .ds-ops .d-table td:not(:first-child) { white-space: nowrap; }
+}

@@ -1,10 +1,10 @@
 // Farm area (v2): presence (F4) and the team calendar (C11), written exactly as src/app/v2/data/farm.ts does
-// (savePresence → presencePlan, saveCalItem, deleteCalItem / removePresence). The app logs no activity for calendar writes,
-// and neither does the API. Model: docs/redesign-data/farm.md.
+// (savePresence → presencePlan, saveCalItem, deleteCalItem / removePresence). Model: docs/redesign-data/farm.md.
+import { requireScope } from '../auth';
 import { invalid } from '../http';
 import type { Param } from '../catalog';
 import type { Write } from '../firestore';
-import { type Person, type Ref, forbidden, isManager, member, mustGet, nowIso, project, whereEq } from '../core';
+import { type Person, type Ref, activity, member, mustGet, nowIso, project, whereEq } from '../core';
 import { autoId } from '../util';
 import { type Ctx, bool, date, def, en, opt, req, str } from '../writes';
 
@@ -70,7 +70,7 @@ def('presence.save', 'presence:write', 'רישום נוכחות בחווה לי�
   // F4 for managers: "בשביל מי"; volunteers register only themselves (firestore.rules createsPresence)
   let who: Person = c.me;
   if (c.input.uid && c.input.uid !== c.me.uid) {
-    if (!isManager(c.caller)) throw forbidden('only managers register presence for someone else');
+    requireScope(c.caller, 'presence:write:any');
     who = await member(c.fs, c.input.uid, 'uid', c.tx);
   }
   const fields = { from: hours.from, to: hours.to, time: timeText(hours), note: String(c.input.note || '').slice(0, 200), title: `${firstOf(who.name)} בחווה` };
@@ -84,11 +84,13 @@ def('presence.save', 'presence:write', 'רישום נוכחות בחווה לי�
       const cur = await mustGet(c.fs, 'calendar', mine.id, c.tx, 'calendar item');
       writes.push(c.fs.patch('calendar', cur.id, { ...fields, date: day }, cur.updateTime));
       refs.push({ col: 'calendar', id: cur.id, expected: { ...fields, date: day } });
+      writes.push(activity(c.fs, c.me, 'calendar', cur.id, 'edited', `נוכחות · ${day}`, { subjectUid: who.uid }));
       updated++;
     } else {
       const id = autoId();
       writes.push(c.fs.create('calendar', id, { ...fields, date: day, kind: 'presence', ownerUid: who.uid, ownerName: who.name, refId: '', createdAt: now }));
       refs.push({ col: 'calendar', id, expected: { ...fields, date: day, kind: 'presence', ownerUid: who.uid } });
+      writes.push(activity(c.fs, c.me, 'calendar', id, 'created', `נוכחות · ${day}`, { subjectUid: who.uid }));
       created++;
     }
   }
@@ -99,12 +101,12 @@ def('presence.save', 'presence:write', 'רישום נוכחות בחווה לי�
 ]);
 
 // removePresence()
-def('presence.remove', 'presence:write', 'הסרת רישום נוכחות מהיומן', { itemId: req('מתוך calendar.list (kind presence)') }, async (c) => {
+def('presence.remove', 'presence:remove', 'הסרת רישום נוכחות מהיומן', { itemId: req('מתוך calendar.list (kind presence)') }, async (c) => {
   const it = await mustGet(c.fs, 'calendar', c.input.itemId, c.tx, 'calendar item');
   if (!isPresence(it.data)) throw invalid('itemId', 'this calendar item is not a presence entry (managers: calendar.delete)');
   // volunteers delete only their own presence (firestore.rules ownsPresence)
-  if (!isManager(c.caller) && !(it.data.kind === 'presence' && it.data.ownerUid === c.me.uid)) throw forbidden('only your own presence, or a manager');
-  return { writes: [c.fs.remove('calendar', it.id, it.updateTime)], refs: [{ col: 'calendar', id: it.id, gone: true }], data: { deleted: project('calendar', it.id, it.data) } };
+  if (it.data.kind !== 'presence' || it.data.ownerUid !== c.me.uid) requireScope(c.caller, 'presence:write:any');
+  return { writes: [c.fs.remove('calendar', it.id, it.updateTime), activity(c.fs, c.me, it.data.audience === 'managers' ? 'calendar_private' : 'calendar', it.id, 'deleted', it.data.kind === 'presence' ? 'נוכחות' : 'פריט ביומן')], refs: [{ col: 'calendar', id: it.id, gone: true }], data: { deleted: project('calendar', it.id, it.data) } };
 }, ['Destructive: confirm with the user first.']);
 
 // ======================= team calendar (C11) =======================
@@ -146,7 +148,7 @@ def('calendar.create', 'calendar:write', 'הוספת פריט ליומן החו�
     reminder: i.reminder ? '60' : '', remindAt: i.reminder ? remindAt(i.date, hours.from) : '', reminderSentAt: null,
     kind: i.kind, ownerUid: c.me.uid, ownerName: c.me.name, refId: '', createdAt: nowIso(),
   };
-  return { status: 201, writes: [c.fs.create('calendar', id, data)], refs: [{ col: 'calendar', id, expected: { title: data.title, date: data.date, time: data.time, remindAt: data.remindAt } }], data: { itemId: id } };
+  return { status: 201, writes: [c.fs.create('calendar', id, data), activity(c.fs, c.me, data.audience === 'managers' ? 'calendar_private' : 'calendar', id, 'created', 'פריט ביומן')], refs: [{ col: 'calendar', id, expected: { title: data.title, date: data.date, time: data.time, remindAt: data.remindAt } }], data: { itemId: id } };
 }, calNotes);
 
 // saveCalItem() (existing): the app saves the whole form, so hours, the reminder time and reminderSentAt are written again
@@ -154,6 +156,7 @@ def('calendar.update', 'calendar:write', 'עדכון פריט ביומן (שינ
   const i = c.input;
   const it = await mustGet(c.fs, 'calendar', i.itemId, c.tx, 'calendar item');
   const d = it.data;
+  if (isPresence(d) && d.ownerUid !== c.me.uid) requireScope(c.caller, 'presence:write:any');
   if (![i.title, i.date, i.from, i.to, i.time, i.allDay, i.audience, i.participants, i.reminder, i.kind].some((v) => v !== null && v !== undefined)) throw invalid('body', 'nothing to change: send at least one field');
   const was = hoursOf(d);
   const hours = i.allDay ? { from: '', to: '' } : { from: i.from || i.time || was.from, to: i.to || was.to };
@@ -169,11 +172,12 @@ def('calendar.update', 'calendar:write', 'עדכון פריט ביומן (שינ
   // kindToSave(): on an edit the kind is written only when it changed
   const shown = d.kind === 'meeting' || d.kind === 'planning' ? d.kind : 'manual';
   if (i.kind && i.kind !== shown) fields.kind = i.kind;
-  return { writes: [c.fs.patch('calendar', it.id, fields, it.updateTime)], refs: [{ col: 'calendar', id: it.id, expected: { date: day, time: fields.time, remindAt: fields.remindAt } }] };
+  return { writes: [c.fs.patch('calendar', it.id, fields, it.updateTime), activity(c.fs, c.me, fields.audience === 'managers' ? 'calendar_private' : 'calendar', it.id, 'edited', 'פריט ביומן')], refs: [{ col: 'calendar', id: it.id, expected: { date: day, time: fields.time, remindAt: fields.remindAt } }] };
 }, ['Only the fields sent change; changing the date or the hours sets a new reminder time (and it will be sent again).', 'Visit and event entries follow their visit/event; change those instead. Presence: presence.save.']);
 
 // deleteCalItem()
 def('calendar.delete', 'calendar:write', 'מחיקת פריט מהיומן', { itemId: req() }, async (c) => {
   const it = await mustGet(c.fs, 'calendar', c.input.itemId, c.tx, 'calendar item');
-  return { writes: [c.fs.remove('calendar', it.id, it.updateTime)], refs: [{ col: 'calendar', id: it.id, gone: true }], data: { deleted: project('calendar', it.id, it.data) } };
+  if (isPresence(it.data) && it.data.ownerUid !== c.me.uid) requireScope(c.caller, 'presence:write:any');
+  return { writes: [c.fs.remove('calendar', it.id, it.updateTime), activity(c.fs, c.me, it.data.audience === 'managers' ? 'calendar_private' : 'calendar', it.id, 'deleted', it.data.kind === 'presence' ? 'נוכחות' : 'פריט ביומן')], refs: [{ col: 'calendar', id: it.id, gone: true }], data: { deleted: project('calendar', it.id, it.data) } };
 }, ['Destructive: confirm with the user first.']);

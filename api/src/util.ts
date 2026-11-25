@@ -24,6 +24,7 @@ export function validate(spec: Record<string, Param>, raw: Record<string, unknow
     let v = raw[k];
     if (v === undefined || v === null || (fromQuery && v === '')) {
       if ('required' in p && p.required) throw invalid(k, `"${k}" is required`);
+      if (p.type === 'bool' && p.ignored) continue;
       out[k] = 'default' in p && p.default !== undefined ? p.default : null;
       continue;
     }
@@ -48,7 +49,7 @@ export function validate(spec: Record<string, Param>, raw: Record<string, unknow
       case 'bool':
         if (fromQuery && typeof v === 'string') { if (v !== 'true' && v !== 'false') throw invalid(k, `"${k}" must be true or false`); v = v === 'true'; }
         if (typeof v !== 'boolean') throw invalid(k, `"${k}" must be a boolean`);
-        out[k] = v;
+        if (!p.ignored) out[k] = v;
         break;
       case 'enum':
         if (typeof v !== 'string' || !p.values.includes(v)) throw invalid(k, `"${k}" must be one of: ${p.values.join(', ')}`);
@@ -140,6 +141,16 @@ export const b64url = {
 /** Lower-case, NFC, no niqqud or cantillation, single spaces: how names are compared. */
 export const normName = (s: string) => s.normalize('NFC').replace(/[֑-ׇ]/g, '').replace(/[\s‏‎]+/g, ' ').trim().toLowerCase();
 
+/**
+ * The last n Israel dates, oldest first, counted by calendar day (never by 24-hour steps, which repeat or skip a day
+ * around a clock change).
+ */
+export function lastIlDays(n: number, now = new Date()): string[] {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(now).split('-').map(Number);
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) out.push(new Date(Date.UTC(y, m - 1, d - i)).toISOString().slice(0, 10));
+  return out;
+}
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Seconds until the next midnight in America/Los_Angeles, when Spark's daily Firestore quotas reset. */

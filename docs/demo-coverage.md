@@ -1,7 +1,7 @@
 # Demo coverage
 
 Every designed screen is reachable in demo under the persona and day scenario below. `scripts/visual-check.mjs` reads this table.
-Route is relative to `/app`. `steps` are actions run after load (`click:<text>`, `fill:<label>=<text>`, `wait:<ms>`, `scroll:<px>`, `demo:<state>`).
+Route is relative to `/app`. `steps` are actions run after load (`click:<text>`, `exact:<whole text>`, `button:<name>`, `fill:<label>=<text>`, `wait:<ms>`, `scroll:<px>`, `demo:<state>`).
 
 | id | persona | scenario | route | steps |
 |---|---|---|---|---|
@@ -43,7 +43,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | F4-Presence | staff | regular | /farm/presence |  |
 | F5-Feed | staff | regular | /farm/today |  |
 | F6-Event | staff | regular | /farm/events/demo-e-festival |  |
-| C11-CalItem | manager | regular | /farm/calendar/new | fill:מה קורה=פגישת צוות לפני הפסטיבל; click:23; fill:משעה=10:30; fill:עד שעה=11:30; click:בני; click:נועה; click:אליה; click:מנהלים בלבד |
+| C11-CalItem | manager | regular | /farm/calendar/new | fill:מה קורה=פגישת צוות לפני הפסטיבל; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה |
 | C5-Teammate | staff | regular | /people/demo-u-noa |  |
 | E1-Home | staff | eventDay | /event |  |
 | E2-Scan | staff | eventDay | /event/gate |  |
@@ -106,7 +106,7 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | C1-Notifs | staff | regular | /notifications |  |
 | C2-Search | owner | regular | /search | fill:חיפוש בכל האפליקציה=כהן |
 | C9-Welcome | new | regular | /welcome |  |
-| C10-Install | staff | regular | /install |  |
+| C10-Install | staff | regular | /install?first=1 |  |
 | X2-Suspended | blocked | regular | / |  |
 | D1-Invite | vendor | regular | /vendor/invite/demo-e-festival |  |
 | D2-Confirm | vendor | regular | /vendor/events/demo-e-festival/needs |  |
@@ -124,3 +124,67 @@ Route is relative to `/app`. `steps` are actions run after load (`click:<text>`,
 | Z3-DemoSwitch | staff | regular | /tasks | click:קראתי; click:נתוני דמו |
 | Z4-DemoOwner | owner | regular | /manage |  |
 | Z5-DemoVendor | vendor | regular | /vendor |  |
+
+## Tidy round (Q, U)
+
+Designs in `havat-raveh-tidy/design` (`--design=havat-raveh-tidy/design`). Sheets open from the screen under them.
+
+| id | persona | scenario | route | steps |
+|---|---|---|---|---|
+| Q1-ManageRoot | owner | regular | /manage |  |
+| Q2-TasksTime | staff | regular | /tasks?view=time | click:קראתי |
+| Q3-AddMore | staff | regular | /new?text=להכין שלטי חניה&event=demo-e-festival | click:אחר; click:ליד הכניסה |
+| Q24-AddRecurring | manager | regular | /new?text=להשקות את שורת העציצים | click:חוזרת; exact:ב׳; exact:ד׳; exact:ו׳; exact:ש׳; fill:עד איזו שעה=07:00 |
+| Q22-ShopSuggest | staff | regular | /shopping |  |
+| Q17-PresenceFor | manager | regular | /farm/presence | click:החלפה; click:אורלי לוי; exact:22; click:בוקר |
+| Q18-Profile | owner | regular | /me |  |
+| Q4-Donations | manager | regular | /manage/donations |  |
+| Q5-MoreMenu | manager | regular | /manage/donations | button:עוד פעולות |
+| Q9-TableView | manager | regular | /manage/donations/table |  |
+| Q6-Donation | manager | regular | /manage/donations/demo-d-michal |  |
+| Q7-PayConfirm | manager | regular | /manage/donations/demo-d-michal | click:אישור תשלום |
+| Q8-ConfirmDelete | manager | regular | /manage/donations/demo-d-michal | button:עוד פעולות; click:מחיקה |
+| Q10-EventVendors | manager | regular | /manage/events/demo-e-festival/vendors |  |
+| Q11-VendorSheet | manager | regular | /manage/events/demo-e-festival/vendors | click:דבש הגבעה |
+| Q12-StallTabs | manager | regular | /manage/events/demo-e-october/tabs |  |
+| Q21-Products | manager | regular | /manage/events/demo-e-festival/products |  |
+| Q15-EventSummary | manager | regular | /manage/events/demo-e-october?tab=summary |  |
+| Q23-People | manager | regular | /manage/people |  |
+| Q25-Messages | manager | regular | /manage/people?tab=messages |  |
+| Q26-ComposeAll | owner | regular | /manage/broadcasts/new | fill:תוכן ההודעה=פסטיבל הסתיו: הפתיחה נדחתה ל־17:00 בגלל הגשם.; click:נרשמי פסטיבל הסתיו; exact:פסטיבל הסתיו; click:דחופה; click:לשלוח גם במייל |
+| Q27-InviteAhead | owner | regular | /manage/people/invite | fill:מספר הטלפון=052-000-0188 |
+| Q13-Person | owner | regular | /manage/people/demo-u-michal |  |
+| Q14-Reports | manager | regular | /manage/reports |  |
+| Q16-Activity | manager | regular | /manage/activity |  |
+| Q19-Settings | owner | regular | /manage/settings |  |
+| Q20-InstinctLog | owner | regular | /manage/instinct |  |
+| Q28-StallSell | staff | eventDay | /event/stall/demo-tab-roni-fest | click:לימונדה; click:לימונדה; click:עוגת תפוחים |
+| Q29-StallAccount | staff | eventDay | /event/stall/demo-tab-roni-fest | click:לימונדה; click:לימונדה; click:עוגת תפוחים; click:כבר בחשבון |
+| Q30-Calendar | staff | regular | /farm/calendar |  |
+| Q31-CalItem | manager | regular | /farm/calendar/new | fill:מה קורה=פגישת צוות לפני הפסטיבל; click:פגישה; exact:23; fill:משעה=10:30; fill:עד שעה=11:30; click:מנהלים בלבד; exact:בני; exact:נועה; exact:אליה |
+| Q32-EventForm | manager | regular | /manage/events/demo-e-festival/edit |  |
+| U1-GuestHome | guest | regular | / |  |
+| U2-GuestEvent | guest | regular | /events/demo-e-festival |  |
+| U3-GuestOrder | guest | regular | /events/demo-e-festival/order | button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים |
+| U4-GuestPay | guest | regular | /events/demo-e-festival/order | button:עוד; button:עוד; fill:מגיעים עם ילדים?=כן, שניים; click:הזמנה · 150 |
+| U5-GuestTickets | guest | regular | /me |  |
+| U6-GuestTicketUnpaid | guest | regular | /me/orders/demo-o-19 |  |
+| U7-GuestAccount | guest | regular | /me/account |  |
+| U10-GuestStall | guest | regular | /me/stall/demo-tab-michal-unpaid-summer |  |
+| U14-GuestMessages | guest | regular | /me/messages |  |
+| U8-GuestVisit | guest | regular | /visit | click:לבחור תאריך; exact:27; button:עוד; button:עוד; button:עוד; button:עוד; fill:סבא וסבתא עם הנכדים, מעדיפים בוקר.=סבא וסבתא עם הנכדים, מעדיפים בוקר. |
+| U9-GuestDonate | guest | regular | /donate | fill:הנצחה=לזכר יוסף ברק |
+| U11-GuestContact | guest | regular | /contact | fill:נושא=חניה נגישה בפסטיבל; fill:מה רצית לשאול=יש חניה נגישה קרוב לכניסה? אמא שלי בכיסא גלגלים. |
+| U12-GuestSignIn | anon | regular | /login |  |
+| U13-GuestRegister | new | regular | /welcome |  |
+| W1-InboxMessage | manager | regular | /manage/inbox/demo-n-contact |  |
+| W2-InboxStallRequest | manager | eventDay | /manage/inbox/stall/demo-e-festival/demo-vr-raz-power |  |
+| Q4-DonationsTwo | manager | afterEvent | /manage/donations |  |
+| Q14-ReportsTasks | manager | regular | /manage/reports/tasks |  |
+| Y2-ScansReturned | manager | eventDay | /manage/events/demo-e-festival/live/scans | click:יצאו וחזרו |
+| W3-VendorPool | manager | regular | /manage/vendors |  |
+| W3-VendorPoolMore | manager | regular | /manage/vendors | button:עוד פעולות |
+| W3-VendorPoolTable | manager | regular | /manage/vendors/table |  |
+| W4-DemoFirstVisit | owner | regular | /manage/settings/demo |  |
+| U15-GuestVisitStatus | guest | eventDay | /me/visits/demo-vi-michal |  |
+| U16-GuestDonation | guest | eventDay | /me/donations/demo-d-michal |  |

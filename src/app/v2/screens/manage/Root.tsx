@@ -1,22 +1,27 @@
-// M1 manage root and M2 inbox ("לטיפול").
+// Q1 manage root and M2 inbox ("לטיפול").
+// Q1: the hero, six tiles, then exactly two rows (כל הפעילות; יומן אינסטינקט for owners). Everything else the parity round
+// appended here has one home elsewhere (rule 1): the calendar is the Farm tab, recurring tasks the managers' row at the bottom
+// of Tasks, stall holders are reached from an event, places from the Farm tab card, and team messages inside People.
+// M2: cards keep their designed buttons; there is no X on a card. Tapping a contact message opens W1 and a stall request
+// opens W2 (their delete is behind ⋯ there); tapping any other card's head opens its row sheet (Q11) with "פתיחה" and the
+// delete from the list. Approving a payment opens the Q7 confirmation sheet.
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, RootHead, go, useExternal, useRemove, useV2, waUrl, telUrl } from '../../core';
-import { Button, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Hero, HeroNumber, Icon, IconButton, ListCard, PageTitle, Row, TextLink, Tile, TileGrid, TopBar, type IconName } from '../../kit';
+import { ActionSheet, Button, Card, Chip, ChipRow, EmptyState, Hero, HeroNumber, Icon, PageTitle, TextLink, Tile, TileGrid, TopBar, type ActionItem, type IconName } from '../../kit';
+import { usePayConfirm, type PayConfirmTarget } from '../../patterns';
 import { agoLong, ago, dayName, ddmm, dayOverline, inDays, money, longDate, firstName } from '../../format';
 import { nowIso } from '../../../clock';
-import { useUpcomingEvents, contactPhoneOk, useCalendar } from '../../../data';
-import { useTemplates, usePlaces } from '../../../store';
-import { useVendorPool } from '../../data/vendor';
+import { useUpcomingEvents, contactPhoneOk } from '../../../data';
 import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } from '../../../types';
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
-  inboxIn, inboxSummary, donationTotals, approvedSoon, isTeam, gw, timeFromNote, needsReceipt, fillTemplate,
-  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, deleteVendorRequest, type PayItem, type InboxFilter,
+  inboxIn, inboxSummary, donationTotals, approvedSoon, gw, timeFromNote, needsReceipt, fillTemplate, payTarget,
+  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, type PayItem, type InboxFilter,
 } from '../../data/manage';
-import { lnk, PlainLink } from './shared';
+import { lnk, LinkCard } from './shared';
 
-// ---------- M1 ----------
+// ---------- Q1 ----------
 export function ManageRoot({ ctx }: ScreenProps) {
   const inbox = useNotifications(true).items;
   const vreq = useVendorRequests(ctx.eventToday?.id || '', !!ctx.eventToday).items;
@@ -29,10 +34,6 @@ export function ManageRoot({ ctx }: ScreenProps) {
   const d = donationTotals(donations, ctx.today);
   const freshVisits = visits.filter((v) => v.status === 'new').length;
   const waiting = inbox.length + vreq.length;
-  const templates = useTemplates(true, true).items.filter((t) => t.active).length;
-  const vendors = useVendorPool(true).items.length;
-  const places = usePlaces(true).items.length;
-  const todayCal = useCalendar(true, ctx.today, ctx.today).items;
   return (
     <AppScreen variant="root">
       <RootHead overline={dayOverline(ctx.today)} title="ניהול" />
@@ -43,29 +44,16 @@ export function ManageRoot({ ctx }: ScreenProps) {
           <span className="k-hero__meta">{waiting ? inboxSummary(inbox, vreq.length) : 'מה שטופל נשמר ב"לטיפול"'}</span>
         </span>
       </Hero>
-      {inbox.length > 0 && (
-        <ListCard title="לטיפול" count={inbox.length} end={<TextLink {...lnk('/manage/inbox')}>הכל</TextLink>}>
-          {inbox.slice(0, 5).map((n) => (
-            <Row key={n.id} minHeight={54} {...lnk('/manage/inbox')} leading={<span className="manage-item__icon" aria-hidden="true"><Icon name={ICON[n.type] || 'bell'} size={20} /></span>}
-              title={n.title} meta={[n.text, agoLong(n.createdAt)].filter(Boolean).join(' · ')} />
-          ))}
-        </ListCard>
-      )}
       <TileGrid>
         <Tile icon="ticket" title="אירועים" meta={next ? `${next.title} ${inDays(next.start)}` : 'אין אירוע קרוב'} {...lnk('/manage/events')} />
-        <Tile icon="people" title="אנשים" meta={`${people.length} רשומים · ${people.filter(isTeam).length} בצוות`} {...lnk('/manage/people')} />
+        <Tile icon="people" title="אנשים והודעות" meta={`${people.length} רשומים · הודעה לצוות או לכולם`} {...lnk('/manage/people')} />
         <Tile icon="pin" title="ביקורים" badge={freshVisits} badgeLabel={`${freshVisits} בקשות חדשות`} meta={`${approvedSoon(visits, ctx.today)} מאושרים החודש`} {...lnk('/manage/visits')} />
         <Tile icon="heart" title="תרומות" badge={d.toApprove} badgeLabel={`${d.toApprove} לאישור`} meta={`${money(d.month)} החודש`} {...lnk('/manage/donations')} />
         <Tile icon="chart" title="דוחות" meta="משימות, כסף, חובות" {...lnk('/manage/reports')} />
         <Tile icon="sliders" title="הגדרות" meta="תשלום, הודעות, מנהלים" {...lnk('/manage/settings')} />
       </TileGrid>
-      <PlainLink path="/farm/calendar" meta={todayCal.length ? `היום: ${todayCal.map((c) => `${c.title}${c.time ? ' ' + c.time : ''}`).join(', ')}` : 'היום: אין כלום ביומן'}>יומן</PlainLink>
-      <PlainLink path="/manage/recurring" meta={`${templates} פעילות`}>משימות חוזרות</PlainLink>
-      <PlainLink path="/manage/vendors" meta={`${vendors} ברשימה`}>בעלי דוכנים</PlainLink>
-      <PlainLink path="/manage/broadcasts">הודעות לצוות</PlainLink>
-      <PlainLink path="/places?from=manage" meta={places ? String(places) : undefined}>מקומות בחווה</PlainLink>
-      <PlainLink path="/manage/activity">כל הפעילות בחווה</PlainLink>
-      {ctx.role === 'owner' && <PlainLink path="/manage/instinct" meta="כל מה שאינסטינקט עשה, לפי מפתח">יומן אינסטינקט</PlainLink>}
+      <LinkCard path="/manage/activity" title="כל הפעילות" meta="מי עשה מה באפליקציה, ומתי" />
+      {ctx.role === 'owner' && <LinkCard path="/manage/instinct" title="יומן אינסטינקט" meta="מה העוזר האישי עשה בשמך · רק בעלים" />}
     </AppScreen>
   );
 }
@@ -86,8 +74,19 @@ function resolve(n: AppNotification, m: { visits: Map<string, Visit>; donations:
   if (n.type === 'claim') { const ts = m.orders.get(n.refId); return { tickets: ts, pay: ts?.length ? { kind: 'order', tickets: ts } : undefined }; }
   return {};
 }
+/** Where "פתיחה" in a card's row sheet goes: the record's own screen when there is one. */
+function detailOf(n: AppNotification, r: Resolved): string {
+  if (r.visit) return `/manage/visits/${r.visit.id}`;
+  if (r.donation) return `/manage/donations/${r.donation.id}`;
+  if (r.tab) return `/manage/events/${r.tab.eventId}/tabs/${r.tab.id}`;
+  if (r.tickets?.length) return `/manage/events/${r.tickets[0].eventId}?tab=guests`;
+  return n.link && n.link !== '/manage/inbox' ? n.link : '';
+}
 /** Still waiting for the manager's approval (claimed or pending), so the payment buttons make sense. */
 const payOpen = (p?: PayItem) => !!p && (p.kind === 'donation' ? p.doc.paymentStatus === 'claimed' || p.doc.paymentStatus === 'pending' : p.kind === 'tab' ? p.doc.status === 'claimed' || p.doc.status === 'open' : p.tickets.some((t) => t.status === 'valid' && (t.paymentStatus === 'claimed' || t.paymentStatus === 'pending')));
+
+/** Q7: the screen's payment confirmation sheet, opened by a card after its approval went through. */
+const AskPay = createContext<(t: PayConfirmTarget) => void>(() => {});
 
 export function InboxScreen({ ctx, params }: ScreenProps) {
   const handledView = params.view === 'handled';
@@ -102,6 +101,7 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
   }, [visits, donations, tabs, tickets]);
   const [filter, setFilter] = useState<Filter>('all');
   const run = useRun();
+  const pay = usePayConfirm();
   const count = (f: Filter) => open.filter((n) => inboxIn(n, f)).length;
   const list = handledView ? handled : open.filter((n) => inboxIn(n, filter));
   const total = open.length + vreq.length;
@@ -119,101 +119,119 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
     );
   }
   return (
-    <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<TextLink {...lnk('/manage/inbox?view=handled')}>מה שטופל</TextLink>} />
-      <PageTitle>לטיפול · <span className="k-num">{total}</span></PageTitle>
-      <ChipRow label="סינון">
-        {chip('all', 'הכל', total)}
-        {chip('payments', 'תשלומים', count('payments'))}
-        {chip('visits', 'ביקורים', count('visits'))}
-        {chip('contact', 'פניות', count('contact'))}
-        {(count('receipts') > 0 || filter === 'receipts') && chip('receipts', 'קבלות', count('receipts'))}
-        {(count('stall') > 0 || filter === 'stall') && chip('stall', 'דוכן', count('stall'))}
-        {(count('orders') > 0 || filter === 'orders') && chip('orders', 'הזמנות', count('orders'))}
-      </ChipRow>
-      {bulk.length > 1 && (
-        <Button variant="outline" block onClick={() => run(() => approveMany(ctx.actor, bulk, open), `אושרו ${bulk.length} תשלומים`)}>
-          אישור כל התשלומים · {bulk.length}
-        </Button>
-      )}
-      {filter === 'all' && vreq.map((r) => <VendorCard key={r.id} r={r} eventId={ctx.eventToday?.id || ''} />)}
-      {list.map((n) => <InboxCard key={n.id} n={n} r={resolve(n, maps)} open={open} />)}
-      {!list.length && !(filter === 'all' && vreq.length) && <EmptyState variant="fill" icon="check" title="אין כלום שמחכה" text="כשאורח פונה, מבקש ביקור או מסמן שהעביר כסף, זה מופיע כאן." />}
-    </AppScreen>
+    <AskPay.Provider value={pay.ask}>
+      <AppScreen variant="detail" gap={10}>
+        <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<TextLink {...lnk('/manage/inbox?view=handled')}>מה שטופל</TextLink>} />
+        <PageTitle>לטיפול · <span className="k-num">{total}</span></PageTitle>
+        <ChipRow label="סינון">
+          {chip('all', 'הכל', total)}
+          {chip('payments', 'תשלומים', count('payments'))}
+          {chip('visits', 'ביקורים', count('visits'))}
+          {chip('contact', 'פניות', count('contact'))}
+          {(count('receipts') > 0 || filter === 'receipts') && chip('receipts', 'קבלות', count('receipts'))}
+          {(count('stall') > 0 || filter === 'stall') && chip('stall', 'דוכן', count('stall'))}
+          {(count('orders') > 0 || filter === 'orders') && chip('orders', 'הזמנות', count('orders'))}
+        </ChipRow>
+        {bulk.length > 1 && (
+          <Button variant="outline" block onClick={() => run(() => approveMany(ctx.actor, bulk, open), `אושרו ${bulk.length} תשלומים`)}>
+            אישור כל התשלומים · {bulk.length}
+          </Button>
+        )}
+        {filter === 'all' && vreq.map((r) => <VendorCard key={r.id} r={r} eventId={ctx.eventToday?.id || ''} />)}
+        {list.map((n) => <InboxCard key={n.id} n={n} r={resolve(n, maps)} open={open} />)}
+        {!list.length && !(filter === 'all' && vreq.length) && <EmptyState variant="fill" icon="check" title="אין כלום שמחכה" text="כשאורח פונה, מבקש ביקור או מסמן שהעביר כסף, זה מופיע כאן." />}
+      </AppScreen>
+      {pay.sheet}
+    </AskPay.Provider>
   );
 }
 
-/** The card's delete (M3): set by the card's wrapper, shown as a quiet X at the end of the head. */
-const OnDelete = createContext<(() => void) | null>(null);
-function CardShell({ icon, over, title, meta, children, done }: { icon: IconName; over: ReactNode; title: ReactNode; meta?: ReactNode; children?: ReactNode; done?: boolean }) {
-  const onDelete = useContext(OnDelete);
+/** What tapping the head of a card does, set by the card's wrapper: its row sheet (Q11, popup) or its own screen (W1, W2). */
+const OnMore = createContext<{ run: () => void; popup: boolean } | null>(null);
+function CardShell({ icon, over, title, meta, children, done, oneLine }: { icon: IconName; over: ReactNode; title: ReactNode; meta?: ReactNode; children?: ReactNode; done?: boolean; oneLine?: boolean }) {
+  const onMore = useContext(OnMore);
+  const head = (
+    <>
+      <span className="manage-item__icon" aria-hidden="true"><Icon name={icon} size={22} /></span>
+      <span className="manage-item__body">
+        <span className="manage-item__over">{over}</span>
+        <span className="manage-item__title">{title}</span>
+        {meta ? <span className={oneLine ? 'manage-item__meta manage-item__meta--one' : 'manage-item__meta'}>{meta}</span> : null}
+      </span>
+    </>
+  );
   return (
     <Card as="section" pad="md" layout="col" className={done ? 'manage-item--done' : undefined}>
-      <div className="manage-item__head">
-        <span className="manage-item__icon" aria-hidden="true"><Icon name={icon} size={22} /></span>
-        <div className="manage-item__body">
-          <span className="manage-item__over">{over}</span>
-          <span className="manage-item__title">{title}</span>
-          {meta ? <span className="manage-item__meta">{meta}</span> : null}
-        </div>
-        {onDelete && <IconButton className="manage-item__del" icon="close" variant="quiet" label="מחיקה מהרשימה" onClick={onDelete} />}
-      </div>
+      {onMore
+        ? <div className="manage-item__head"><button type="button" className="manage-item__hit" onClick={onMore.run} aria-haspopup={onMore.popup ? 'dialog' : undefined}>{head}</button></div>
+        : <div className="manage-item__head">{head}</div>}
       {children && <div className="manage-item__acts">{children}</div>}
     </Card>
   );
 }
 
-/** Wraps a card with its delete and the one confirmation. */
-function Deletable({ title, text, run, children }: { title: string; text: string; run: () => Promise<unknown>; children: ReactNode }) {
-  const [ask, setAsk] = useState(false);
+/** Wraps a card with its row sheet: "פתיחה" (when the item has a screen) and the delete from the list behind Q8. */
+function WithSheet({ title, sub, open, confirm, children }: { title: string; sub?: string; open?: string; confirm: { title: string; text: string; run: () => Promise<unknown> }; children: ReactNode }) {
+  const [shown, setShown] = useState(false);
   const remove = useRemove();
+  const items: ActionItem[] = [
+    { label: 'פתיחה', icon: 'chevron', hidden: !open, onSelect: () => go(open!) },
+    { label: 'מחיקה מהרשימה', icon: 'trash', tone: 'danger', confirm: { title: confirm.title, text: confirm.text, onConfirm: () => remove(confirm.run, { text: 'נמחק מהרשימה' }) } },
+  ];
   return (
-    <OnDelete.Provider value={() => setAsk(true)}>
+    <OnMore.Provider value={{ run: () => setShown(true), popup: true }}>
       {children}
-      <ConfirmSheet open={ask} onClose={() => setAsk(false)} title={title} text={text} confirmLabel="מחיקה"
-        onConfirm={() => remove(run, { after: () => setAsk(false) })} />
-    </OnDelete.Provider>
+      <ActionSheet open={shown} onClose={() => setShown(false)} title={title} sub={sub} items={items} />
+    </OnMore.Provider>
   );
 }
 
-function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
-  return (
-    <Deletable title="למחוק את הבקשה?" text={`הבקשה של ${r.vendorName} תימחק. הדוכן לא יקבל על זה הודעה.`} run={() => deleteVendorRequest(r)}>
-      <VendorCardBody r={r} eventId={eventId} />
-    </Deletable>
-  );
+/** A card whose head opens its own detail screen (W1, W2). */
+function Opens({ path, children }: { path: string; children: ReactNode }) {
+  return <OnMore.Provider value={{ run: () => go(path), popup: false }}>{children}</OnMore.Provider>;
 }
-function VendorCardBody({ r, eventId }: { r: VendorRequest; eventId: string }) {
+
+function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
+  const path = `/manage/inbox/stall/${eventId}/${r.id}`; // W2
   return (
-    <CardShell icon="stall" over={`בקשה מדוכן · ${agoLong(r.createdAt)}`} title={`${r.vendorName} · ${VREQ[r.kind]}`} meta={r.text || undefined}>
-      <Button {...lnk(`/manage/events/${eventId}/vendors/today`)}>פרטים</Button>
-    </CardShell>
+    <Opens path={path}>
+      <CardShell icon="stall" over={`בקשה מדוכן · ${agoLong(r.createdAt)}`} title={`${r.vendorName} · ${VREQ[r.kind]}`} meta={r.text || undefined}>
+        <Button {...lnk(path)}>פרטים</Button>
+      </CardShell>
+    </Opens>
   );
 }
 
 function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+  const { actor } = useV2();
+  if (p.n.type === 'contact') return <Opens path={`/manage/inbox/${p.n.id}`}><InboxCardBody {...p} /></Opens>; // W1
   return (
-    <Deletable title="למחוק מהרשימה?" text="הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים." run={() => deleteInboxItem(p.n)}>
+    <WithSheet title={p.n.title} sub={agoLong(p.n.createdAt)} open={detailOf(p.n, p.r) || undefined}
+      confirm={{ title: 'למחוק מהרשימה?', text: 'הפריט יימחק מהרשימה לטיפול. הביקור, התרומה או ההזמנה עצמם נשארים.', run: () => deleteInboxItem(actor, p.n) }}>
       <InboxCardBody {...p} />
-    </Deletable>
+    </WithSheet>
   );
 }
 function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
   const { actor, peopleByUid, settings } = useV2();
   const run = useRun();
   const ext = useExternal();
+  const askPay = useContext(AskPay);
   const done = () => run(() => setHandled(n, actor, !handled), { text: handled ? 'חזר לתור' : 'סומן טופל', undo: () => setHandled(n, actor, !!handled) });
   const back = handled ? <Button variant="quiet" onClick={done}>החזרה לתור</Button> : null;
   const by = handled && n.handledBy ? ` · ${firstName(n.handledBy.name)}` : '';
-  const approve = (p: PayItem, label: string) => run(() => approvePayment(actor, p, open), { text: `אושר: ${label}`, undo: () => undoApproval(actor, p, open, []) });
+  const approve = async (p: PayItem, label: string) => {
+    const target = payTarget(p);
+    if (await run(() => approvePayment(actor, p, open), { text: `אושר: ${label}`, undo: () => undoApproval(actor, p, open, []) })) askPay(target);
+  };
   const notYet = (p: PayItem) => run(() => paymentNotArrived(actor, p, open), 'סומן: עוד לא הגיע');
 
   if (n.type === 'contact') {
     const sender = peopleByUid.get(n.refId);
     const phone = sender?.phone || '';
     return (
-      <CardShell icon="phone" done={handled} over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
-        meta={<>{sender ? <a className="manage-inline-link" {...lnk(`/manage/people/${sender.uid}`)}>{sender.displayName}</a> : 'פרטי השולח אינם זמינים'}{n.text ? ` · ${n.text}` : ''}</>}>
+      <CardShell icon="phone" done={handled} oneLine over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
+        meta={<>{sender ? sender.displayName : 'פרטי השולח אינם זמינים'}{n.text ? ` · ${n.text}` : ''}</>}>
         {handled ? back : <>
           {contactPhoneOk(phone) && <Button icon="message" onClick={() => ext(waUrl(phone, `שלום ${firstName(sender?.displayName || '')}, `))}>מענה בוואטסאפ</Button>}
           {contactPhoneOk(phone) && <Button variant="outline" onClick={() => ext(telUrl(phone))}>התקשרות</Button>}
@@ -298,4 +316,3 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
     </CardShell>
   );
 }
-

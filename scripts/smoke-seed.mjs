@@ -1,9 +1,9 @@
-// Seeds the Firebase emulators (Firestore 8080, Auth 9099) for the end-to-end smoke cycle of the v2 redesign.
+// Seeds the Firebase emulators (Firestore 8080, Auth 9099) for the end-to-end smoke cycle (v2 redesign, tidy round).
 // Wipes both emulators first, creates the Google accounts in the Auth emulator and the base data in Firestore.
 // Everything a flow creates for real (events, vendor, helper, the invited volunteer, tickets ordered by a guest) is
 // left out on purpose: the smoke cycle (scripts/smoke-cycle.mjs) creates it through the app.
 //
-//   PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
+//   PATH=/opt/homebrew/opt/openjdk/bin:$PATH npx firebase emulators:start --only firestore,auth --project demo-havat-ravve
 //   node scripts/smoke-seed.mjs
 //
 // Emulators only: every URL here is localhost.
@@ -31,7 +31,12 @@ export const ACCOUNTS = {
   noga: { email: 'noga.smoke@example.com', name: 'נגה שמיר', profile: false }, // invited by email (M-people), joins through C9
   raz: { email: 'raz.smoke@example.com', name: 'רז כהן', profile: false }, // stall owner, claims a vendor link
   tamar: { email: 'tamar.smoke@example.com', name: 'תמר כהן', profile: false }, // helper, claims the helper link
-  rotem: { email: 'rotem.smoke@example.com', name: 'רותם אברהם', profile: false }, // new guest, signs up in item 8
+  rotem: { email: 'rotem.smoke@example.com', name: 'רותם אברהם', profile: false }, // new guest, signs up in item 8 (agrees to updates)
+  lior: { email: 'lior.smoke@example.com', name: 'ליאור דהן', role: 'guest', gender: 'm' }, // a guest who opens a cancelled team link (item 10)
+  gal: { email: 'gal.smoke@example.com', name: 'גל מזרחי', profile: false }, // added ahead by phone, claims the team link (item 10)
+  shir: { email: 'shir.smoke@example.com', name: 'שיר לוי', profile: false }, // a second account that opens the used team link (item 10)
+  adi: { email: 'adi.smoke@example.com', name: 'עדי נחום', profile: false }, // a new volunteer invited by e-mail while W4 has volunteers off (item 13)
+  ella: { email: 'ella.smoke@example.com', name: 'אלה גולן', profile: false }, // a new guest who signs up while W4 has volunteers off (item 13)
 };
 
 export async function idpSignIn(key) {
@@ -67,7 +72,7 @@ async function main() {
         ...(a.status === 'blocked' ? { log: [{ at: iso(day(-1, 9, 15)), by: A('owner'), text: 'מצב: נחסם' }] } : {}) });
     }
     await S('counters', 'users', { value: n });
-    await S('settings', 'app', { donationPresets: [{ amount: 18, label: 'חי' }, { amount: 180, label: 'עשר פעמים חי' }, { amount: 360, label: 'לב' }], visitTypes: ['סיור בחווה', 'מפגש קבוצתי', 'אירוע פרטי', 'אחר'], payment: { bit: '050-1234567', paybox: '', cash: true, note: '' }, templates: { visitApproved: 'שלום [שם], הביקור בחוות רווה ב־[תאריך] מאושר. נשמח לראותכם!', donationThanks: 'שלום [שם], תודה רבה על התרומה לחוות רווה.', debtReminder: 'שלום [שם], תודה שהייתם ב־[אירוע]. נשאר לתשלום [סכום] ₪.', ticketReminder: 'שלום [שם], מזכירים: [אירוע] ב־[תאריך].' }, registrationFields: [{ id: 'city', label: 'יישוב', type: 'text', options: [], required: false }], guestIntro: 'ברוכים הבאים לחוות רווה. כאן מזמינים כרטיסים לאירועים, מתאמים ביקור ותורמים.' });
+    await S('settings', 'app', { donationPresets: [{ amount: 18, label: 'חי' }, { amount: 180, label: 'עשר פעמים חי' }, { amount: 360, label: 'לב' }], visitTypes: ['סיור בחווה', 'מפגש קבוצתי', 'אירוע פרטי', 'אחר'], payment: { bit: '050-1234567', paybox: '', cash: true, note: '' }, contact: { whatsapp: '050-7654321', phone: '08-6543210' }, templates: { visitApproved: 'שלום [שם], הביקור בחוות רווה ב־[תאריך] מאושר. נשמח לראותכם!', donationThanks: 'שלום [שם], תודה רבה על התרומה לחוות רווה.', debtReminder: 'שלום [שם], תודה שהייתם ב־[אירוע]. נשאר לתשלום [סכום] ₪.', ticketReminder: 'שלום [שם], מזכירים: [אירוע] ב־[תאריך].' }, registrationFields: [{ id: 'city', label: 'יישוב', type: 'text', options: [], required: false }], guestIntro: 'ברוכים הבאים לחוות רווה. כאן מזמינים כרטיסים לאירועים, מתאמים ביקור ותורמים.' });
     // places
     await S('places', 'pl-gate', { name: 'הכניסה הראשית', lat: 31.3515, lng: 34.972, createdBy: A('dana'), createdAt: now });
     await S('places', 'pl-garden', { name: 'הגינה', lat: 31.3521, lng: 34.9712, createdBy: A('dana'), createdAt: now });

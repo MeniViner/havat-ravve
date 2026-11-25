@@ -2,7 +2,7 @@
 // The in-app notification (users/{uid}/notifications) is the source of truth; a push is a best-effort copy.
 //
 // One switch, the Worker variable PUSH_MODE:
-//   unset     nothing runs and nothing is read (today's production)
+//   unset     nothing runs and nothing is read
 //   "off"     publishes settings/push = { mode: 'off' } once, so the app stops offering push; no jobs are read
 //   "webpush" standard Web Push with VAPID (needs VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT)
 //   "fcm"     Firebase Cloud Messaging HTTP v1 (needs FCM_VAPID_KEY and a service account with the FCM role)
@@ -48,6 +48,7 @@ const prefOf = (kind: string) => (kind === 'vendor' ? 'event' : kind === 'system
 type Mode = 'off' | 'webpush' | 'fcm';
 type Device = { id?: string; kind?: string; endpoint?: string; keys?: { p256dh?: string; auth?: string }; token?: string };
 type Prefs = { enabled?: boolean; kinds?: string[]; devices?: Device[] } & Record<string, unknown>;
+// `delivered` counts provider acknowledgements, not notifications displayed on a phone.
 type Stats = { jobs: number; done: number; delivered: number; failed: number; removed: number; skipped: number; calls: number };
 
 const testMode = (env: PushEnv) => !!env.FIRESTORE_EMULATOR_HOST && env.TEST_FAULTS === '1';
@@ -63,6 +64,12 @@ export function pushMode(env: PushEnv): { mode: Mode; missing?: string } {
   if (want === 'webpush') return env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && /^(mailto:|https:)/.test(env.VAPID_SUBJECT || '') ? { mode: 'webpush' } : { mode: 'off', missing: 'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY or VAPID_SUBJECT' };
   if (want === 'fcm') return fcmConfigured(env) && env.FCM_VAPID_KEY ? { mode: 'fcm' } : { mode: 'off', missing: 'FCM_VAPID_KEY or a service account' };
   return { mode: 'off' };
+}
+
+/** A queued job can exist while this Worker is unable to send phone notifications. */
+export function pushQueueState(env: PushEnv, paused: boolean) {
+  if (pushMode(env).mode === 'off') return 'off';
+  return paused ? 'paused' : 'enabled';
 }
 
 /** What this isolate last saw in settings/push, so a warm isolate does not read it every run. */
@@ -120,7 +127,7 @@ function makeSender(env: PushEnv, mode: Mode): Sender {
       if (d.kind !== 'webpush' || !d.endpoint || !d.keys?.p256dh || !d.keys?.auth) return null;
       if (!allowedEndpoint(d.endpoint, testHosts)) return { ok: false, gone: true, status: 0 }; // not a push service we know: drop it
       try {
-        return await sendWebPush({ endpoint: d.endpoint, keys: { p256dh: d.keys.p256dh, auth: d.keys.auth } }, { title: p.title, body: p.body, link: p.link, tag: p.tag, urgent: p.urgent }, vapid, { ttl: p.ttl, urgency: p.urgent ? 'high' : 'normal', topic: p.tag });
+        return await sendWebPush({ endpoint: d.endpoint, keys: { p256dh: d.keys.p256dh, auth: d.keys.auth } }, { title: p.title, body: p.body, link: p.link, tag: p.tag, urgent: p.urgent }, vapid, { ttl: p.ttl, urgency: p.urgent ? 'high' : 'normal', topic: p.tag, fetch: env.FETCH });
       } catch { return { ok: false, gone: true, status: 0 }; } // malformed keys: the subscription can never work
     };
   }
@@ -162,7 +169,9 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
   const creator = users.get(by.uid)?.data;
   const role = String(creator?.role || '');
   const active = creator?.status === 'active';
-  const allowed = active && (TEAM.has(role) ? (kind === 'broadcast' || kind === 'system' ? MANAGERS.has(role) : true) : role === 'vendor' && kind === 'vendor');
+  // the server's own alerts to the owners (monitor.ts) have no profile: they are sent by the Worker itself
+  const fromServer = by.uid === 'server' && kind === 'system';
+  const allowed = fromServer || (active && (TEAM.has(role) ? (kind === 'broadcast' || kind === 'system' ? MANAGERS.has(role) : true) : role === 'vendor' && kind === 'vendor'));
   if (!allowed) {
     st.calls++; st.skipped++;
     await fs.commit([fs.patch(JOBS, job.id, { sentAt: iso(nowMs), outcome: 'refused', leaseUntil: null }, lease)]).catch(() => {});
@@ -182,9 +191,9 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
     const u = users.get(uid);
     const p = (u?.data.push || {}) as Prefs;
     const rrole = String(u?.data.role || '');
-    // who may receive: active people; a vendor only broadcasts (their event's) and nothing from another vendor
-    const receives = !!u && u.data.status === 'active' && (TEAM.has(rrole) ? (role !== 'vendor' || MANAGERS.has(rrole)) : rrole === 'vendor' && kind === 'broadcast')
-      && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref)) && uid !== by.uid;
+    // who may receive: active people; a vendor receives broadcasts and a copy of their own vendor notification
+    const receives = !!u && u.data.status === 'active' && (TEAM.has(rrole) ? (role !== 'vendor' || MANAGERS.has(rrole)) : rrole === 'vendor' && (kind === 'broadcast' || (kind === 'vendor' && uid === by.uid)))
+      && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref));
     const devices = receives && Array.isArray(p.devices) ? p.devices.slice(0, MAX_DEVICES) : [];
     // keep one call for the progress commit and one for a possible cleanup
     if (BUDGET - st.calls - 2 < devices.length) break;

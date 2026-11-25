@@ -26,13 +26,15 @@ export const HE: Record<ErrorCode, string> = {
 };
 
 export class ApiError extends Error {
+  /** A Hebrew line of its own, instead of the code's. */
+  he?: string;
   constructor(public code: ErrorCode, message: string, public details: Record<string, unknown> = {}, public headers: Record<string, string> = {}) {
     super(message);
   }
   get status() { return STATUS[this.code]; }
 }
 
-export const invalid = (field: string, message: string) => new ApiError('VALIDATION_FAILED', message, { field });
+export const invalid = (field: string, message: string, he?: string) => { const e = new ApiError('VALIDATION_FAILED', message, { field }); if (he) e.he = he; return e; };
 
 /** keyVersion: which key authenticated the request ('previous' = a rotated key still inside its grace period). */
 export type Meta = { requestId: string; started: number; keyVersion?: 'current' | 'previous' };
@@ -42,7 +44,7 @@ export function ok(meta: Meta, data: unknown, status = 200): Response {
 }
 
 export function fail(meta: Meta, e: ApiError): Response {
-  return json(e.status, { ok: false, error: { code: e.code, message: e.message, he: HE[e.code], details: e.details }, meta: { requestId: meta.requestId } }, meta, e.headers);
+  return json(e.status, { ok: false, error: { code: e.code, message: e.message, he: e.he || HE[e.code], details: e.details }, meta: { requestId: meta.requestId } }, meta, e.headers);
 }
 
 function json(status: number, body: unknown, meta: Meta, headers: Record<string, string> = {}): Response {

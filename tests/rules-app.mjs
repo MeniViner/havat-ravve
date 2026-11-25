@@ -51,6 +51,11 @@ try{
  await assertFails(setDoc(doc(beni,'users','guest'),{fields:{receiptPreference:'whatsapp'},updatedAt:now},{merge:true}));
  await assertSucceeds(updateDoc(doc(guest,'users','guest'),{displayName:'אורח',phone:'',updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'users','guest'),{role:'manager',status:'active',updatedAt:now}));
+ // tidy round (U13, U14): the person turns update messages on and off; only a true/false
+ await assertSucceeds(updateDoc(doc(guest,'users','guest'),{updatesOptIn:true,updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(guest,'users','guest'),{updatesOptIn:false,updatedAt:now}));
+ await assertFails(updateDoc(doc(guest,'users','guest'),{updatesOptIn:'yes',updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'users','guest'),{updatesOptIn:true,updatedAt:now}));
 
  // --- role by email (pre-assignment) ---
  await assertFails(setDoc(doc(guest,'role_invites','vol@example.com'),{email:'vol@example.com',role:'staff',createdBy:actor('guest'),createdAt:now}));
@@ -227,6 +232,10 @@ try{
  await assertFails(setDoc(doc(guest,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(setDoc(doc(beni,'settings','app'),{guestIntro:'x'}));
  await assertSucceeds(getDoc(doc(anon,'settings','app')));
+ // the owners' switches (settings/switches) are written only by the Worker; everyone may read them (the app's maintenance screen)
+ await assertSucceeds(getDoc(doc(anon,'settings','switches')));
+ await assertFails(setDoc(doc(owner,'settings','switches'),{maintenance:true}));
+ await assertFails(setDoc(doc(beni,'settings','switches'),{readOnly:false}));
  await assertFails(updateDoc(doc(beni,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));   // a manager cannot change where the money goes
  await assertSucceeds(updateDoc(doc(beni,'settings','app'),{visitTypes:['סיור']}));
  await assertSucceeds(updateDoc(doc(owner,'settings','app'),{payment:{bit:'050',paybox:'',cash:true,note:''}}));
@@ -370,6 +379,11 @@ try{
  await assertFails(updateDoc(doc(vol,'visits','v1'),{status:'approved',managerNote:'',handledBy:actor('vol'),updatedAt:now}));
  await assertSucceeds(updateDoc(doc(beni,'visits','v1'),{status:'approved',managerNote:'בשער',handledBy:actor('beni'),updatedAt:now}));
  await assertFails(updateDoc(doc(guest,'visits','v1'),{status:'cancelled',updatedAt:now}));         // only from 'new'
+ // U15: the guest cancels her own request while it waits for an answer, and nothing else on it
+ await assertSucceeds(setDoc(doc(guest,'visits','v3'),vs));
+ await assertFails(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',people:9,updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'visits','v3'),{status:'cancelled',updatedAt:now}));
+ await assertSucceeds(updateDoc(doc(guest,'visits','v3'),{status:'cancelled',updatedAt:now}));
 
  // donations
  const dn={uid:'guest',name:'אורח',phone:'',amount:180,label:'חי',note:'',memorial:'',receiptWanted:true,receiptName:'אורח',receiptSent:false,paymentStatus:'pending',createdAt:now,updatedAt:now};
@@ -816,6 +830,14 @@ try{
  await v2no(getDocs(collection(vol,'broadcasts/b1/reads')),'broadcast 12 staff lists receipts');
  await v2ok(getDocs(collection(mgr,'broadcasts/b1/reads')),'broadcast 13 manager lists receipts');
  await v2ok(setDoc(doc(raz,'broadcasts/b1/reads','raz'),{id:'raz',uid:'raz',name:'בדיקה',at:now,seenAt:now}),'broadcast vendor recipient reads');
+ const sendLog = 'notification_activity/log1';
+ await env3.withSecurityRulesDisabled(async(c) => setDoc(doc(c.firestore(),sendLog),{kind:'message',by:actor('mgr'),at:now,recipientCount:1,accepted:true,created:1,queued:1}));
+ await v2ok(getDocs(collection(owner,'notification_activity')),'owner reads personal send metadata');
+ for(const [who,db_] of [['manager',mgr],['staff',vol],['vendor',raz],['guest',guest]]){
+  await v2no(getDoc(doc(db_,sendLog)),`${who} cannot get personal send metadata`);
+  await v2no(getDocs(collection(db_,'notification_activity')),`${who} cannot list personal send metadata`);
+ }
+ await v2no(setDoc(doc(owner,sendLog),{kind:'message'}),'personal send journal is Worker-written');
  await v2ok(getDocs(collection(vol,'users/vol/notifications')),'broadcast 14 me reads my notifications');
  await v2ok(updateDoc(doc(vol,'users/vol/notifications','n1'),{readAt:now}),'broadcast 14 me marks read');
  await v2no(updateDoc(doc(vol,'users/vol/notifications','n1'),{title:'x'}),'broadcast 15 me edits title');
@@ -837,7 +859,17 @@ try{
  await v2no(setDoc(doc(vol,'push_jobs','j2'),job('j2','vol',{kind:'broadcast'})),'broadcast 21 staff broadcast push');
  await v2no(setDoc(doc(vol,'push_jobs','j3'),job('j3','noa')),'broadcast 21 createdBy someone else');
  await v2no(setDoc(doc(vol,'push_jobs','j4'),job('j4','vol',{to:Array.from({length:201},(_,i)=>'u'+i)})),'broadcast 21 to 201');
- await v2no(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'broadcast 21 to self');
+ await v2ok(setDoc(doc(vol,'push_jobs','j5'),job('j5','vol',{to:['vol','dana']})),'staff queues a task including self');
+ for(const [who, db_, kind] of [['owner',owner,'system'],['mgr',mgr,'broadcast'],['vol',vol,'task'],['raz',raz,'vendor']]){
+  const id = 'self-'+who;
+  const batch = writeBatch(db_);
+  batch.set(doc(db_,'users',who,'notifications',id),note(id,who,{kind}));
+  batch.set(doc(db_,'push_jobs',id),job(id,who,{kind,to:[who]}));
+  await v2ok(batch.commit(), `${who}: self notification and push commit together`);
+ }
+ await v2ok(setDoc(doc(mgr,'push_jobs','old-self'),job('old-self','mgr',{kind:'broadcast',to:['mgr'],includeSelf:true})),'a cached manager client can still write includeSelf');
+ await v2no(setDoc(doc(vol,'push_jobs','denied-self'),job('denied-self','vol',{kind:'system',to:['vol']})),'staff cannot send a system push to self');
+ await v2no(setDoc(doc(raz,'push_jobs','denied-vendor-self'),job('denied-vendor-self','raz',{kind:'task',to:['raz']})),'vendor cannot send a task push to self');
  await v2no(setDoc(doc(vol,'push_jobs','j6'),job('j6','vol',{sentAt:now})),'push created sent');
  await v2ok(setDoc(doc(mgr,'push_jobs','j7'),job('j7','mgr',{kind:'broadcast'})),'manager broadcast push');
  await v2ok(setDoc(doc(raz,'push_jobs','j8'),job('j8','raz',{kind:'vendor'})),'vendor queues a vendor push');
@@ -849,6 +881,65 @@ try{
  }
  await v2no(updateDoc(doc(vol,'push_jobs','j1'),{sentAt:now}),'broadcast 23 staff sets sentAt');
  await v2no(updateDoc(doc(owner,'push_jobs','j1'),{sentAt:now}),'owner sets sentAt');
+ // ---------------- tidy round, stage 4: messages beyond the team (Q25, Q26), updates consent, "לשלוח גם במייל" ----------------
+ const reg=(id,extra={})=>bc(id,{audience:'registrants',eventId:'ev-day',recipients:['guest','g2','vol'],recipientCount:3,...extra});
+ await v2ok(setDoc(doc(mgr,'broadcasts','b-reg'),reg('b-reg')),'tidy 1 manager writes to an event\'s registrants');
+ await v2ok(setDoc(doc(mgr,'broadcasts','b-all'),bc('b-all',{audience:'everyone',recipients:['guest','g3'],recipientCount:2})),'tidy 1 manager writes to all users');
+ await v2no(setDoc(doc(mgr,'broadcasts','b-bad'),bc('b-bad',{audience:'guests'})),'tidy 1 unknown audience');
+ await v2no(setDoc(doc(vol,'broadcasts','b-vol'),reg('b-vol',{by:A('vol')})),'tidy 1 staff writes to registrants');
+ await v2no(setDoc(doc(guest,'broadcasts','b-g'),reg('b-g',{by:A('guest')})),'tidy 1 guest writes a broadcast');
+ const many=(n)=>Array.from({length:n},(_,i)=>'u'+i);
+ await v2ok(setDoc(doc(mgr,'broadcasts','b-1500'),bc('b-1500',{audience:'everyone',recipients:many(1500),recipientCount:1500})),'tidy 2 1500 recipients');
+ await v2no(setDoc(doc(mgr,'broadcasts','b-2001'),bc('b-2001',{audience:'everyone',recipients:many(2001),recipientCount:2001})),'tidy 2 2001 recipients');
+ await v2ok(getDoc(doc(guest,'broadcasts','b-reg')),'tidy 3 guest recipient gets the message');
+ await v2ok(getDocs(query(collection(guest,'broadcasts'),where('recipients','array-contains','guest'))),'tidy 3 guest lists messages addressed to them (U14)');
+ await v2no(getDoc(doc(C('g4'),'broadcasts','b-reg')),'tidy 3 guest who is not a recipient');
+ await v2no(getDocs(collection(guest,'broadcasts')),'tidy 3 guest lists every message');
+ await v2no(updateDoc(doc(guest,'broadcasts','b-reg'),{resentAt:now}),'tidy 3 guest changes the message');
+ await v2no(deleteDoc(doc(guest,'broadcasts','b-reg')),'tidy 3 guest deletes the message');
+ await v2ok(setDoc(doc(guest,'broadcasts/b-reg/reads','guest'),{id:'guest',uid:'guest',name:'בדיקה',seenAt:now},{merge:true}),'tidy 4 guest: seen');
+ await v2ok(setDoc(doc(guest,'broadcasts/b-reg/reads','guest'),{id:'guest',uid:'guest',name:'בדיקה',at:now,seenAt:now}),'tidy 4 guest: "ראיתי" writes the receipt');
+ await v2ok(getDoc(doc(guest,'broadcasts/b-reg/reads','guest')),'tidy 4 guest reads their own receipt');
+ await v2no(setDoc(doc(guest,'broadcasts/b-reg/reads','guest'),{id:'guest',uid:'guest',name:'בדיקה',at:null,seenAt:now}),'tidy 4 guest turns read back into unread');
+ await v2no(setDoc(doc(guest,'broadcasts/b-reg/reads','g2'),{id:'g2',uid:'g2',name:'בדיקה',at:now}),'tidy 4 guest writes a receipt for someone else');
+ await v2no(setDoc(doc(C('g4'),'broadcasts/b-reg/reads','g4'),{id:'g4',uid:'g4',name:'בדיקה',at:now}),'tidy 4 a guest who is not a recipient writes a receipt');
+ await v2no(setDoc(doc(guest,'broadcasts/b-reg/reads','guest'),{id:'guest',uid:'guest',name:'בדיקה',at:now,seenAt:now,extra:1}),'tidy 4 receipt with an extra key');
+ await v2no(getDocs(collection(guest,'broadcasts/b-reg/reads')),'tidy 4 guest lists the receipts');
+ await v2no(getDoc(doc(guest,'broadcasts/b-reg/reads','vol')),'tidy 4 guest reads someone else\'s receipt');
+ await v2ok(setDoc(doc(mgr,'users/guest/notifications','b_b-reg'),note('b_b-reg','mgr',{kind:'broadcast',link:'/',refId:'b-reg'})),'tidy 5 manager notifies a guest (link /)');
+ await v2ok(getDocs(collection(guest,'users/guest/notifications')),'tidy 5 guest reads their notifications');
+ await v2ok(updateDoc(doc(guest,'users/guest/notifications','b_b-reg'),{readAt:now}),'tidy 5 guest marks it read');
+ await v2no(setDoc(doc(vol,'users/guest/notifications','b_x'),note('b_x','vol',{kind:'broadcast',link:'/'})),'tidy 5 staff sends a guest a broadcast notification');
+ await v2ok(updateDoc(doc(guest,'users','guest'),{updatesOptIn:true,updatedAt:now}),'tidy 6 guest agrees to updates');
+ await v2ok(updateDoc(doc(guest,'users','guest'),{updatesOptIn:false,updatedAt:now}),'tidy 6 guest withdraws');
+ await v2no(updateDoc(doc(guest,'users','guest'),{updatesOptIn:'yes',updatedAt:now}),'tidy 6 updatesOptIn not a boolean');
+ await v2ok(updateDoc(doc(vol,'users','vol'),{updatesOptIn:true,updatedAt:now}),'tidy 6 staff agrees to updates');
+ await v2no(updateDoc(doc(mgr,'users','guest'),{updatesOptIn:true,updatedAt:now}),'tidy 6 a manager sets someone else\'s consent');
+ await v2no(updateDoc(doc(vol,'users','dana'),{updatesOptIn:true,updatedAt:now}),'tidy 6 staff sets someone else\'s consent');
+ await v2ok(setDoc(doc(C('g5'),'users','g5'),P('g5','guest',{updatesOptIn:true})),'tidy 6 a new guest registers with the consent (U13)');
+ await v2no(setDoc(doc(C('g6'),'users','g6'),P('g6','guest',{updatesOptIn:1})),'tidy 6 a new guest with a non-boolean consent');
+ const mj=(bid,u,by='mgr',extra={})=>({kind:'broadcast',broadcastId:bid,uid:u,status:'queued',createdBy:A(by),createdAt:now,...extra});
+ await v2ok(setDoc(doc(mgr,'email_outbox','bc_b-reg_guest'),mj('b-reg','guest')),'tidy 7 manager queues an e-mail to a recipient of their message');
+ const both=writeBatch(mgr);both.set(doc(mgr,'broadcasts','b-reg2'),reg('b-reg2'));both.set(doc(mgr,'email_outbox','bc_b-reg2_g2'),mj('b-reg2','g2'));
+ await v2ok(both.commit(),'tidy 7 the message and its e-mail job in one batch');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_guest'),mj('b-reg','guest')),'tidy 7 the same job again (no overwrite)');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_g4'),mj('b-reg','g4')),'tidy 7 someone who is not a recipient');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_mgr'),mj('b-reg','mgr')),'tidy 7 to the sender');
+ await v2no(setDoc(doc(noa,'email_outbox','bc_b-reg_g2'),mj('b-reg','g2','noa')),'tidy 7 another manager\'s message');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_g2'),mj('b-reg','g2','noa')),'tidy 7 createdBy someone else');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_nothing_g2'),mj('nothing','g2')),'tidy 7 a message that does not exist');
+ await v2no(setDoc(doc(mgr,'email_outbox','x_b-reg_g2'),mj('b-reg','g2')),'tidy 7 id that does not match');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_vol'),mj('b-reg','vol',undefined,{nextAt:now})),'tidy 7 nextAt (the payment lane would pick it up)');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_vol'),mj('b-reg','vol',undefined,{to:'x@example.com'})),'tidy 7 an address in the job');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_vol'),mj('b-reg','vol',undefined,{status:'sent'})),'tidy 7 status other than queued');
+ await v2no(setDoc(doc(mgr,'email_outbox','bc_b-reg_vol'),mj('b-reg','vol',undefined,{kind:'order'})),'tidy 7 kind other than broadcast');
+ await v2no(setDoc(doc(mgr,'email_outbox','order_forged'),{kind:'order',col:'tickets',refId:'o1',uid:'guest',status:'queued',attempts:0,nextAt:now,createdAt:now,updatedAt:now}),'tidy 7 manager forges a payment confirmation');
+ await v2no(setDoc(doc(vol,'email_outbox','bc_b-reg_vol'),mj('b-reg','vol','vol')),'tidy 7 staff queues an e-mail');
+ await v2no(setDoc(doc(guest,'email_outbox','bc_b-reg_g2'),mj('b-reg','g2','guest')),'tidy 7 guest queues an e-mail');
+ await v2no(updateDoc(doc(mgr,'email_outbox','bc_b-reg_guest'),{status:'sent'}),'tidy 7 manager updates a job');
+ await v2no(deleteDoc(doc(owner,'email_outbox','bc_b-reg_guest')),'tidy 7 owner deletes a job');
+ await v2ok(getDoc(doc(mgr,'email_outbox','bc_b-reg_guest')),'tidy 7 manager reads the job');
+ await v2no(getDoc(doc(guest,'email_outbox','bc_b-reg_guest')),'tidy 7 the guest reads the job');
  // ---------------- manage (manage.md 1-7) ----------------
  await v2ok(updateDoc(doc(mgr,'notifications','x'),{handled:true,handledBy:A('mgr'),handledAt:now}),'manage 1 handled');
  await v2no(updateDoc(doc(mgr,'notifications','x'),{handled:false,handledBy:null,handledAt:null,title:'x'}),'manage 1 with title');
@@ -869,6 +960,25 @@ try{
  await v2ok(updateDoc(doc(mgr,'users','g4'),{role:'guest',status:'blocked',notes:'',updatedAt:now}),'manage 7 manager blocks a guest');
  await v2ok(updateDoc(doc(mgr,'users','vdana'),{role:'vendor',status:'active',notes:'משלם במזומן',updatedAt:now}),'manager edits a vendor note, role stays vendor');
  await v2no(updateDoc(doc(mgr,'users','g2'),{role:'vendor',status:'active',notes:'',updatedAt:now}),'manager makes a vendor without a claim');
+ // ---------------- W4: first-visit demo per kind of account (settings/app.demoIntro), owners only ----------------
+ await env3.withSecurityRulesDisabled(async(c)=>{await setDoc(doc(c.firestore(),'users/own2'),P('own2','owner'));});
+ {
+  const own2=C('own2'), on={guest:true,staff:true,manager:true,vendor:false};
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 1 the bootstrap owner sets the switches');
+  await v2ok(setDoc(doc(own2,'settings','app'),{demoIntro:{...on,vendor:true}},{merge:true}),'W4 2 an owner (role) sets the switches');
+  await v2no(setDoc(doc(mgr,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 3 a manager cannot set them');
+  await v2no(updateDoc(doc(mgr,'settings','app'),{'demoIntro.staff':false}),'W4 4 a manager cannot change one switch');
+  await v2no(setDoc(doc(guest,'settings','app'),{demoIntro:{...on,guest:false}},{merge:true}),'W4 5 a guest cannot set them');
+  await v2no(setDoc(doc(vol,'settings','app'),{demoIntro:{...on,staff:false}},{merge:true}),'W4 6 a volunteer cannot set them');
+  await v2no(setDoc(doc(raz,'settings','app'),{demoIntro:{...on,vendor:false}},{merge:true}),'W4 7 a vendor cannot set them');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,owner:false}},{merge:true}),'W4 8 an unknown kind');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:{...on,guest:'yes'}},{merge:true}),'W4 9 a switch that is not true or false');
+  await v2no(setDoc(doc(owner,'settings','app'),{demoIntro:'off'},{merge:true}),'W4 10 not a map');
+  await v2ok(setDoc(doc(mgr,'settings','app'),{guestIntro:'ברוכים הבאים'},{merge:true}),'W4 11 a manager still saves the rest with the switches stored');
+  const read=(await getDoc(doc(anon,'settings','app'))).data();
+  assert.deepEqual(read.demoIntro,{...on,vendor:true},'W4 12 everyone reads the switches (a first visit is decided before any role)');
+  await v2ok(setDoc(doc(owner,'settings','app'),{demoIntro:on},{merge:true}),'W4 13 the owner switches vendors off again');
+ }
  // ---------------- events area (events.md 1-8) ----------------
  await v2ok(getDoc(doc(vol,'events/ev-day/staffing','gate')),'events 1 staff reads staffing');
  for(const [who,db_] of [['guest',guest],['vendor',raz],['anon',anon]]) await v2no(getDoc(doc(db_,'events/ev-day/staffing','gate')),`events 1 ${who} reads staffing`);
@@ -1066,7 +1176,13 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'users/dana'), profile('dana', 'vendor', { vendorId: 'v-dana', helper: false, addedBy: 'mgr', inviteCode: 'code-dana-001' }));
       await setDoc(doc(f, 'users/omer'), profile('omer', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-omer-001' }));
       await setDoc(doc(f, 'counters/users'), { value: 6 });
-      await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'] }));
+      await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'], people: [
+        { name: 'בדיקה בעלים', role: 'owner', uid: 'raz', code: 'code-raz-0001', entered: true },
+        { name: 'בדיקה עוזר', role: 'helper', code: 'code-tamar-01', entered: true },
+        { name: 'בדיקה עוזר נוסף', role: 'helper', code: 'code-omer-001', entered: true },
+        { name: 'בדיקה קישור ישן', role: 'helper', code: 'code-omer-old', entered: true },
+        { name: 'בדיקה רשומה ישנה', role: 'helper', entered: true },
+      ] }));
       await setDoc(doc(f, 'vendors/v-raz/private/main'), { notes: 'משלם באיחור', updatedAt: now });
       await setDoc(doc(f, 'vendors/v-dana'), vendor('קרמיקה של דנה', { events: ['e-other'] }));
       const ev = (title, published) => ({ title, published, start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z', stall: true, createdBy: actor('mgr'), createdAt: now, updatedAt: now });
@@ -1084,6 +1200,9 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'vendor_invites/code-guest-001'), invite('code-guest-001', 'v-dana', 'helper', { createdBy: actor('dana') }));
       await setDoc(doc(f, 'vendor_invites/code-used-0001'), invite('code-used-0001', 'v-raz', 'helper', { active: false, usedBy: 'someone', usedAt: now }));
       await setDoc(doc(f, 'vendor_invites/code-omer-001'), invite('code-omer-001', 'v-raz', 'helper', { active: false, usedBy: 'omer', usedAt: now, createdBy: actor('raz') }));
+      await setDoc(doc(f, 'vendor_invites/code-omer-old'), invite('code-omer-old', 'v-raz', 'helper', { active: false, usedBy: 'omer', usedAt: now, createdBy: actor('raz') }));
+      await setDoc(doc(f, 'users/claim-race'), profile('claim-race', 'guest'));
+
     });
     const omer = db('omer');
     const raz = db('raz'), tamar = db('tamar'), dana = db('dana'), staff = db('staff'), mgr = db('mgr'), guest = db('guest'), fresh = db('fresh'), fresh2 = db('fresh2');
@@ -1130,11 +1249,19 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await ok(getDocs(query(collection(raz, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz'))), '15 owner lists own requests');
     await no(getDocs(collection(raz, 'events/e-hidden/vendor_requests')), '15 owner cannot list all requests');
     await no(getDoc(reqRef(raz, 'r-dana', 'e-other')), '15 cannot read another stall request');
-    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), '16 staff takes a request');
-    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz') }), '16 vendor cannot take');
+    await no(setDoc(reqRef(raz, 'r6'), request('r6', 'e-hidden', 'v-raz', 'raz', { takenAt: now })), 'W2 a new request carries no handler time');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff') }), 'W2 taking without the time is refused');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 cannot name someone else as the handler');
+    await no(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: 'אחר כך' }), 'W2 handler time must be a time');
+    await ok(updateDoc(reqRef(mgr, 'r1'), { takenBy: actor('mgr'), takenAt: now }), 'W2 manager taps "אני על זה" (takenBy + takenAt)');
+    await ok(updateDoc(reqRef(staff, 'r1'), { takenBy: actor('staff'), takenAt: now }), '16 staff takes a request (W2, takes it over)');
+    await ok(getDoc(reqRef(raz, 'r1')), 'W2 the vendor reads who is handling it (D6)');
+    await no(updateDoc(reqRef(raz, 'r1'), { takenBy: actor('raz'), takenAt: now }), '16 vendor cannot take');
+    await no(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz'), takenAt: '2026-01-01T10:00:00.000Z' }), 'W2 vendor cannot change the handler time while closing');
     await ok(updateDoc(reqRef(raz, 'r1'), { closedAt: now, closedBy: actor('raz') }), '16 owner closes own request');
     await no(updateDoc(reqRef(mgr, 'r1'), { closedAt: now, closedBy: actor('mgr') }), '16 closing twice is refused');
     await ok(updateDoc(reqRef(mgr, 'r2'), { closedAt: now, closedBy: actor('mgr') }), '16 manager closes a request');
+    await no(updateDoc(reqRef(mgr, 'r2'), { takenBy: actor('mgr'), takenAt: now }), 'W2 a closed request cannot be taken');
 
     vsection('Rules: the stall and its people');
     await ok(updateDoc(doc(raz, 'vendors/v-raz'), { name: 'גבינות רז', note: 'מגיע עם מקרר', sells: 'גבינות', product: 'גבינות', inviteNext: true, updatedAt: now }), '17 owner edits the stall');
@@ -1155,7 +1282,7 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await no(getDocs(query(collection(tamar, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 helper cannot list invites');
     await no(getDocs(query(collection(dana, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 another vendor cannot list');
     await ok(getDoc(doc(guest, 'vendor_invites/code-owner-new')), '21 the link holder reads the invite');
-    await ok(updateDoc(doc(raz, 'vendor_invites/code-avi-0001'), { active: false }), '26 owner revokes a helper invite');
+    await no(updateDoc(doc(raz, 'vendor_invites/code-avi-0001'), { active: false }), '26 closing a helper invite requires its row removal');
     await no(updateDoc(doc(raz, 'vendor_invites/code-owner-new'), { active: false }), '26 owner cannot revoke an owner invite');
 
     vsection('Rules: claiming an invite');
@@ -1196,8 +1323,34 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, displayName: 'אחר' }), '30 owner cannot touch other fields of the helper');
     await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, vendorId: '' }), '30 owner cannot clear the vendor link itself');
     await ok(getDoc(doc(tamar, 'vendors/v-raz')), '29 before: the helper reads the stall');
-    await ok(updateDoc(doc(raz, 'vendor_invites/code-tamar-01'), { active: false }), '29 owner closes the helper\'s invite');
-    await ok(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 owner sets the removed helper back to guest');
+    const stall = (u = raz) => doc(u, 'vendors/v-raz');
+    const remove = async (code, uid, { log = true, close = true, u = raz } = {}) => {
+      const people = (await getDoc(stall(u))).data().people;
+      const b = writeBatch(u);
+      b.update(stall(u), { people: people.filter((p) => code ? p.code !== code : !!p.code), updatedAt: now });
+      if (close && code) b.update(doc(u, 'vendor_invites', code), { active: false });
+      if (uid) b.update(doc(u, 'users', uid), backToGuest);
+      if (log && code) b.set(doc(u, 'activity', code), { kind: 'event', refId: 'v-raz', action: 'removed', text: 'גישה לדוכן', by: actor('raz'), at: now, subjectUid: '', eventId: '' });
+      return b.commit();
+    };
+    await no(getDoc(doc(raz, 'users/tamar')), '29 stall owner still cannot read a helper profile');
+    await ok(getDoc(doc(raz, 'activity/code-tamar-01')), '29 owner can check their own removal receipt before it exists');
+    await no(getDoc(doc(dana, 'activity/code-tamar-01')), '29 other stall cannot check the receipt');
+    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 profile-only change is refused');
+    await no(remove('code-tamar-01'), '29 row and invite cannot change without revoking the matching account');
+    await no(remove('code-tamar-01', 'tamar', { log: false }), '29 removal must be logged');
+    await no(remove('code-avi-0001', null, { close: false }), '29 active invite must close with the row');
+    await no(remove('', null), '29 legacy row without a code needs manual review');
+    await no(remove('code-omer-old', 'omer'), '29 old link cannot revoke the profile on a newer link');
+    await ok(remove('code-omer-old'), '29 old row can be removed and newer access is kept');
+    await ok(remove('code-tamar-01', 'tamar'), '29 owner removes the row, closes the invite and revokes a full-sized profile in one logged write');
+    const revoked = (await getDoc(doc(tamar, 'users/tamar'))).data();
+    if (revoked.role !== 'guest' || revoked.log.length !== 30 || revoked.push.devices.length !== 6 || revoked.inviteCode !== 'code-tamar-01') {
+      throw new Error('removal changed unrelated profile fields');
+    }
+    await ok(remove('code-avi-0001'), '29 unclaimed link closes with the removed row');
+    await no(claimExisting(guest, 'guest', 'code-avi-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }), '29 removed invite cannot be claimed');
+
     await no(getDoc(doc(tamar, 'vendors/v-raz')), '29 the removed helper no longer reads the stall');
     await no(getDoc(doc(tamar, 'events/e-hidden')), '29 nor the invited event');
     await no(getDoc(liveRef(tamar)), '29 nor its live counters');
@@ -1206,7 +1359,30 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await no(setDoc(reqRef(tamar, 'r6'), request('r6', 'e-hidden', 'v-raz', 'tamar')), '29 and cannot create a request');
     await no(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { guidelinesReadAt: now }), '29 nor write the stall\'s event record');
     await ok(getDoc(doc(tamar, 'users/tamar')), '29 the account itself stays (own profile)');
-    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 removing again is refused (already a guest; the app ignores it)');
+    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 a repeated direct revocation is refused');
+    async function addHelper(code) {
+      const b = writeBatch(raz);
+      b.set(doc(raz, 'vendor_invites', code), invite(code, 'v-raz', 'helper', { createdBy: actor('raz') }));
+      b.update(stall(), { people: arrayUnion({ name: 'בדיקה', role: 'helper', entered: false, code }), updatedAt: now });
+      return b.commit();
+    }
+    await ok(addHelper('reinvite-0001'), '29 stall owner can re-invite a removed helper');
+    await ok(claimExisting(tamar, 'tamar', 'reinvite-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }), '29 removed helper can claim a fresh invite');
+    await ok(getDoc(doc(tamar, 'vendors/v-raz')), '29 helper can read the stall after re-invite');
+    await ok(addHelper('racing-claim1'), '29 owner adds a second test link');
+    const C = db('claim-race');
+    const [claim, removal] = await Promise.allSettled([
+      claimExisting(C, 'claim-race', 'racing-claim1', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }),
+      remove('racing-claim1'),
+    ]);
+    if (claim.status === 'fulfilled') {
+      if (removal.status === 'fulfilled') throw new Error('removal missed the concurrent claimant');
+      await ok(remove('racing-claim1', 'claim-race'), '29 removal recovers if the claim won first');
+    } else if (removal.status !== 'fulfilled') {
+      throw new Error('neither the claim nor removal committed');
+    }
+    await no(getDoc(doc(C, 'vendors/v-raz')), '29 concurrent claim cannot leave the account with access after removal');
+
     await ok(getDoc(doc(raz, 'vendors/v-raz')), '29 the owner keeps the stall');
     await ok(getDoc(liveRef(raz)), '29 the owner keeps the live counters');
     await ok(stallReqs(raz), '29 the owner keeps the requests');
@@ -1224,6 +1400,112 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await env.cleanup();
   }
   console.log(`PASS check — vendor rules (ported from tests/v2-vendor.mjs): ${(v2n - vn0) - (v2fail - vf0)} of ${v2n - vn0} passed`);
+}
+// ---------------------------------------------------------------------------------------------------------------------
+// Q27 "להוסיף מישהו מראש" by phone: one-time team links (team_links/{code}), claimed at Google sign-in. Who may create which
+// role, single use, expiry, cancel, and that nobody raises their own role without a valid unclaimed unexpired link.
+// ---------------------------------------------------------------------------------------------------------------------
+const env5=await initializeTestEnvironment({projectId:'demo-havat-ravve-5',firestore:{rules:fs.readFileSync('firestore.rules','utf8')}});
+{
+  const env = env5;
+  const mail = (uid) => (uid === 'owner' ? 'meniviner@gmail.com' : uid + '@example.com');
+  const db = (uid) => env.authenticatedContext(uid, claims(mail(uid))).firestore();
+  const P = (uid, role, extra = {}) => ({ uid, email: mail(uid), displayName: 'בדיקה', phone: '0500000000', role, status: 'active', customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now, ...extra });
+  const DAY = 86400000, T = Date.now();
+  const L = (code, role, by, extra = {}) => ({ code, role, name: '', phone: '054-000-0421', active: true, usedBy: null, usedAt: null, createdBy: actor(by), createdAt: now, expiresMs: T + 14 * DAY, ...extra });
+  const ok = v2ok, no = v2no;
+  const n0 = v2n, f0 = v2fail;
+  try {
+    await env.withSecurityRulesDisabled(async (c) => {
+      const f = c.firestore();
+      await setDoc(doc(f, 'users/owner'), P('owner', 'owner'));
+      await setDoc(doc(f, 'users/mgr'), P('mgr', 'manager'));
+      await setDoc(doc(f, 'users/staff'), P('staff', 'staff'));
+      await setDoc(doc(f, 'users/guest'), P('guest', 'guest'));
+      await setDoc(doc(f, 'users/guest2'), P('guest2', 'guest'));
+      await setDoc(doc(f, 'users/blockedg'), P('blockedg', 'guest', { status: 'blocked' }));
+      await setDoc(doc(f, 'users/vend'), P('vend', 'vendor', { vendorId: 'v-x', helper: false, addedBy: 'mgr', inviteCode: 'code-vend-001' }));
+      await setDoc(doc(f, 'counters/users'), { value: 10 });
+      await setDoc(doc(f, 'team_links/t-staffopen0001'), L('t-staffopen0001', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-staffopen0002'), L('t-staffopen0002', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-mgropen000001'), L('t-mgropen000001', 'manager', 'owner'));
+      await setDoc(doc(f, 'team_links/t-expired00001'), L('t-expired00001', 'staff', 'mgr', { createdAt: new Date(T - 20 * DAY).toISOString(), expiresMs: T - 6 * DAY }));
+      await setDoc(doc(f, 'team_links/t-cancelme0001'), L('t-cancelme0001', 'staff', 'mgr'));
+      await setDoc(doc(f, 'team_links/t-forblocked01'), L('t-forblocked01', 'staff', 'mgr'));
+    });
+    const owner = db('owner'), mgr = db('mgr'), staff = db('staff'), guest = db('guest'), guest2 = db('guest2'), blockedg = db('blockedg'), vend = db('vend');
+    const fresh = db('fresh'), fresh2 = db('fresh2'), fresh3 = db('fresh3'), fresh4 = db('fresh4'), anon = env.unauthenticatedContext().firestore();
+
+    // --- who may create which role ---
+    await ok(setDoc(doc(mgr, 'team_links/t-newstaff00001'), L('t-newstaff00001', 'staff', 'mgr')), 'Q27 manager creates a volunteer link');
+    await no(setDoc(doc(mgr, 'team_links/t-newmgr0000001'), L('t-newmgr0000001', 'manager', 'mgr')), 'Q27 a manager cannot create a manager link');
+    await no(setDoc(doc(mgr, 'team_links/t-newowner00001'), L('t-newowner00001', 'owner', 'mgr')), 'Q27 a manager cannot create an owner link');
+    await ok(setDoc(doc(owner, 'team_links/t-newmgr0000002'), L('t-newmgr0000002', 'manager', 'owner')), 'Q27 owner creates a manager link');
+    await ok(setDoc(doc(owner, 'team_links/t-newowner00002'), L('t-newowner00002', 'owner', 'owner')), 'Q27 owner creates an owner link');
+    await no(setDoc(doc(staff, 'team_links/t-bystaff000001'), L('t-bystaff000001', 'staff', 'staff')), 'Q27 a volunteer cannot create a link');
+    await no(setDoc(doc(guest, 'team_links/t-byguest000001'), L('t-byguest000001', 'staff', 'guest')), 'Q27 a guest cannot create a link');
+    await no(setDoc(doc(anon, 'team_links/t-byanon0000001'), L('t-byanon0000001', 'staff', 'mgr')), 'Q27 signed out cannot create a link');
+    await no(setDoc(doc(mgr, 'team_links/t-usedalready1'), L('t-usedalready1', 'staff', 'mgr', { usedBy: 'mgr', usedAt: now, active: false })), 'Q27 a link is created unused');
+    await no(setDoc(doc(mgr, 'team_links/t-toolong00001'), L('t-toolong00001', 'staff', 'mgr', { expiresMs: T + 40 * DAY })), 'Q27 a link lives at most 15 days');
+    await no(setDoc(doc(mgr, 'team_links/t-pastdue00001'), L('t-pastdue00001', 'staff', 'mgr', { expiresMs: T - DAY })), 'Q27 a link is created unexpired');
+    await no(setDoc(doc(mgr, 'team_links/abc-wrongcode'), L('abc-wrongcode', 'staff', 'mgr')), 'Q27 link code shape');
+    await no(setDoc(doc(mgr, 'team_links/t-otheractor01'), L('t-otheractor01', 'staff', 'owner')), 'Q27 createdBy is the writer');
+    await no(updateDoc(doc(mgr, 'team_links/t-staffopen0002'), { role: 'manager' }), 'Q27 a manager cannot turn a link into a manager link');
+    await no(updateDoc(doc(mgr, 'team_links/t-expired00001'), { expiresMs: T + 10 * DAY }), 'Q27 nobody extends an expired link');
+    await ok(getDoc(doc(fresh, 'team_links/t-staffopen0001')), 'Q27 the person opening the link reads it');
+    await no(getDoc(doc(anon, 'team_links/t-staffopen0001')), 'Q27 signed out does not read a link');
+    await no(getDocs(collection(fresh, 'team_links')), 'Q27 only managers list links');
+    await ok(getDocs(collection(mgr, 'team_links')), 'Q27 managers list links');
+
+    // --- nobody raises their own role without a link ---
+    await no(setDoc(doc(fresh, 'users/fresh'), P('fresh', 'staff')), 'Q27 no self-created volunteer without a link');
+    await no(updateDoc(doc(guest, 'users/guest'), { role: 'staff', updatedAt: now }), 'Q27 a guest cannot raise their own role');
+    await no(updateDoc(doc(guest, 'users/guest'), { role: 'staff', teamLink: 't-staffopen0001', updatedAt: now }), 'Q27 naming a link without using it up');
+    await no(updateDoc(doc(guest, 'team_links/t-staffopen0001'), { usedBy: 'guest', usedAt: now, active: false }), 'Q27 using up a link without taking the role');
+    await no(updateDoc(doc(guest, 'users/guest'), { phone: '054-000-0421', role: 'staff', updatedAt: now }), 'Q27 matching the phone on the link gives nothing');
+
+    // --- claim: new account (profile + link + counter in one commit) ---
+    const claimNew = (u, uid, code, role, useLink = true, value = 11) => {
+      const b = writeBatch(u);
+      b.set(doc(u, `users/${uid}`), { ...P(uid, role), customerNumber: value, teamLink: code });
+      b.update(doc(u, 'counters/users'), { value });
+      if (useLink) b.update(doc(u, `team_links/${code}`), { usedBy: uid, usedAt: now, active: false });
+      return b.commit();
+    };
+    await no(claimNew(fresh, 'fresh', 't-staffopen0001', 'manager'), 'Q27 claim must take the link\'s role, not a higher one');
+    await no(claimNew(fresh, 'fresh', 't-expired00001', 'staff'), 'Q27 an expired link is refused');
+    await no(claimNew(fresh4, 'fresh4', 't-staffopen0002', 'staff', false), 'Q27 a volunteer profile without using the link');
+    await ok(claimNew(fresh, 'fresh', 't-staffopen0001', 'staff'), 'Q27 new account claims a volunteer link');
+    await ok(getDoc(doc(fresh, 'users/fresh')), 'Q27 the new volunteer has the profile');
+    await no(claimNew(fresh2, 'fresh2', 't-staffopen0001', 'staff', true, 12), 'Q27 the same link twice (new account)');
+    await ok(setDoc(doc(fresh2, 'users/fresh2'), P('fresh2', 'guest', { customerNumber: 12 })), 'Q27 the refused person still joins as a guest');
+
+    // --- claim: existing guest ---
+    const claimGuest = (u, uid, code, role) => {
+      const b = writeBatch(u);
+      b.update(doc(u, `users/${uid}`), { role, teamLink: code, updatedAt: now });
+      b.update(doc(u, `team_links/${code}`), { usedBy: uid, usedAt: now, active: false });
+      return b.commit();
+    };
+    await no(claimGuest(guest, 'guest', 't-staffopen0001', 'staff'), 'Q27 the same link twice (guest)');
+    await ok(claimGuest(guest, 'guest', 't-mgropen000001', 'manager'), 'Q27 a guest claims a manager link from an owner');
+    await no(claimGuest(guest2, 'guest2', 't-mgropen000001', 'manager'), 'Q27 a second account cannot claim a used link');
+    await no(claimGuest(guest2, 'guest2', 't-expired00001', 'staff'), 'Q27 a guest cannot claim an expired link');
+    await no(claimGuest(staff, 'staff', 't-staffopen0002', 'staff'), 'Q27 a team account does not claim a link');
+    await no(claimGuest(vend, 'vend', 't-staffopen0002', 'staff'), 'Q27 a vendor account does not claim a link');
+    await no(claimGuest(blockedg, 'blockedg', 't-forblocked01', 'staff'), 'Q27 a blocked guest cannot claim');
+
+    // --- cancel ---
+    await no(deleteDoc(doc(staff, 'team_links/t-cancelme0001')), 'Q27 a volunteer cannot cancel a link');
+    await ok(deleteDoc(doc(mgr, 'team_links/t-cancelme0001')), 'Q27 manager cancels a link');
+    await no(claimGuest(guest2, 'guest2', 't-cancelme0001', 'staff'), 'Q27 a cancelled link cannot be claimed (guest)');
+    await no(claimNew(fresh3, 'fresh3', 't-cancelme0001', 'staff', true, 13), 'Q27 a cancelled link cannot be claimed (new account)');
+    await ok(setDoc(doc(mgr, 'team_links/t-cancelme0001'), L('t-cancelme0001', 'staff', 'mgr')), 'Q27 undo of a cancel puts the same link back');
+    await ok(claimGuest(guest2, 'guest2', 't-staffopen0002', 'staff'), 'Q27 another open link still works');
+  } finally {
+    await env.cleanup();
+  }
+  console.log(`PASS check — Q27 team link rules: ${(v2n - n0) - (v2fail - f0)} of ${v2n - n0} passed`);
 }
 console.log(`PASS check — v2 rules: ${v2n-v2fail} of ${v2n} passed`);
 if(v2fail) throw new Error(`v2 rules: ${v2fail} failed`);

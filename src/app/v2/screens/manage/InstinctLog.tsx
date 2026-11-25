@@ -1,28 +1,24 @@
-// The assistant log ("יומן אינסטינקט"), owners only: every request an API key made (api_log, written by the API Worker),
-// as "<key name> <verb>: <operation>", grouped by day, with a key filter, reads / actions / failures, search, and a sheet
-// with the full request (what was sent, what came back, which records it touched).
+// Q20 the assistant log ("יומן אינסטינקט"), owners only: every request an API key made (api_log, written by the API Worker),
+// in Hebrew sentences grouped by day and by whom the key acts for ("היום · בשם בני"), the subject on the meta line, and a
+// failure tagged "לא הצליח" with a plain-Hebrew reason (rule 12: never an operation key or an error code on screen).
+// Tapping a row opens the record itself; when there is none (a read, a delete), a short Hebrew summary. The raw fields
+// (operation, code, what was sent and what came back) stay in the table view and the export behind ⋯.
+// Search and the key filter are not pictured on Q20; they stay, the key filter as a Q16 dropdown (tidy-plan rows 127, 128).
 import { useMemo, useState } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen } from '../../core';
-import { Avatar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, PageTitle, SearchField, Sheet, Tag, TopBar } from '../../kit';
-import { dayName, ddmm, daysFromToday, hhmm, keyOf } from '../../format';
+import { AppScreen, go } from '../../core';
+import { Button, Chip, ChipRow, DetailList, DetailRow, Dropdown, EmptyState, Icon, MoreMenu, PageTitle, SearchField, Sheet, Tag, TopBar } from '../../kit';
+import { tableCell, useTableView } from '../../patterns';
+import { dayName, ddmm, daysFromToday, firstName, hhmm, keyOf } from '../../format';
 import { useList } from '../../../db';
-import { lnk, ExcelButton, Loading } from './shared';
+import { instinctLine, instinctTarget, type ApiLogEntry } from '../../data/manage';
+import { lnk, Loading } from './shared';
 
-export type ApiLogEntry = {
-  id: string; at: string; credential: string; keyLabel: string;
-  actor: { id: string; role: string; uid: string; name: string };
-  kind: 'read' | 'write'; op: string; opHe: string; verb: string;
-  method: string; path: string; query: string; body: string; result: string; count: number | null;
-  refs: { col: string; id: string }[]; status: number; ok: boolean; code: string; message: string;
-  replayed: boolean; idempotencyKey: string; ms: number;
-};
+export type { ApiLogEntry };
 
-type Show = 'actions' | 'all' | 'reads' | 'failed';
-const SHOW: { v: Show; l: string }[] = [{ v: 'actions', l: 'פעולות' }, { v: 'all', l: 'הכל' }, { v: 'reads', l: 'קריאות' }, { v: 'failed', l: 'נכשלו' }];
+type Show = 'actions' | 'failed' | 'reads' | 'all';
 const PAGE = 50;
 const dayLabel = (key: string) => { const d = daysFromToday(key); return d === 0 ? 'היום' : d === -1 ? 'אתמול' : `${dayName(key)} ${ddmm(key)}`; };
-const pretty = (s: string) => { try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; } };
 
 export function InstinctLogScreen({ ctx }: ScreenProps) {
   const owner = ctx.role === 'owner';
@@ -33,18 +29,33 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
   const [shown, setShown] = useState(PAGE);
   const [open, setOpen] = useState<ApiLogEntry | null>(null);
   const keys = useMemo(() => [...new Map(items.map((e) => [e.credential, e.keyLabel])).entries()], [items]);
+  const lines = useMemo(() => new Map(items.map((e) => [e.id, instinctLine(e)])), [items]);
+  const byKey = items.filter((e) => !key || e.credential === key);
+  const writes = byKey.filter((e) => e.kind === 'write' && e.ok).length, failed = byKey.filter((e) => !e.ok).length;
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     return items
+      // Q20: "שינויים" lists every change, a failed one too with its Hebrew reason; its count is the changes that went through
       .filter((e) => (show === 'actions' ? e.kind === 'write' : show === 'reads' ? e.kind === 'read' : show === 'failed' ? !e.ok : true))
       .filter((e) => !key || e.credential === key)
-      .filter((e) => !t || `${e.keyLabel} ${e.verb} ${e.opHe} ${e.op} ${e.body} ${e.code}`.toLowerCase().includes(t));
-  }, [items, show, key, q]);
-  const days = useMemo(() => {
-    const m = new Map<string, ApiLogEntry[]>();
-    for (const e of rows.slice(0, shown)) { const k = keyOf(e.at); m.set(k, [...(m.get(k) || []), e]); }
-    return [...m.entries()];
+      .filter((e) => { if (!t) return true; const l = lines.get(e.id)!; return `${e.keyLabel} ${e.actor.name} ${l.title} ${l.meta} ${e.opHe}`.toLowerCase().includes(t); });
+  }, [items, show, key, q, lines]);
+  // one card per day and per person the key acts for
+  const groups = useMemo(() => {
+    const m = new Map<string, { day: string; who: string; list: ApiLogEntry[] }>();
+    for (const e of rows.slice(0, shown)) {
+      const day = keyOf(e.at), who = firstName(e.actor.name || '');
+      const k = `${day}|${who}`;
+      if (!m.has(k)) m.set(k, { day, who, list: [] });
+      m.get(k)!.list.push(e);
+    }
+    return [...m.values()];
   }, [rows, shown]);
+  const table = useTableView({
+    title: 'יומן אינסטינקט', filename: 'יומן אינסטינקט.csv',
+    headers: ['מתי', 'מפתח', 'בשם', 'מה קרה', 'פרטים', 'שם הפעולה', 'הצליח', 'קוד', 'הודעה', 'מה נשלח', 'מה חזר', 'רשומות', 'מזהה בקשה'],
+    rows: () => rows.map((e) => { const l = lines.get(e.id)!; return [tableCell.time(e.at), e.keyLabel, e.actor.name, l.title, l.meta, e.op, e.ok ? 'כן' : 'לא', e.code, e.message, e.body, e.result, e.refs.map((r) => `${r.col}/${r.id}`).join(' '), e.id]; }),
+  });
   const back = { label: 'ניהול', path: '/manage' };
   if (!owner) return (
     <AppScreen variant="detail">
@@ -52,66 +63,64 @@ export function InstinctLogScreen({ ctx }: ScreenProps) {
       <EmptyState variant="fill" icon="blocked" title="רק לבעלים" text="יומן אינסטינקט פתוח רק לבעלי החווה." />
     </AppScreen>
   );
+  if (table.active) return table.screen;
   if (loading && !items.length) return <Loading back={back} />;
-  const excel = (
-    <ExcelButton filename="יומן אינסטינקט.csv" headers={['מתי', 'מפתח', 'פעולה', 'מה', 'שם הפעולה', 'הצליח', 'שגיאה', 'מה נשלח']}
-      rows={() => rows.map((e) => [e.at, e.keyLabel, e.verb, e.opHe, e.op, e.ok ? 'כן' : 'לא', e.code, e.body])} />
-  );
+  const pick = (e: ApiLogEntry) => { const to = instinctTarget(e); if (to) go(to); else setOpen(e); };
+  const chip = (v: Show, l: string, n?: number) => <Chip key={v} selected={show === v} onClick={() => { setShow(v); setShown(PAGE); }}>{n ? `${l} · ${n}` : l}</Chip>;
+  const sel = open ? lines.get(open.id)! : null;
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: back.label, ...lnk(back.path) }} end={excel} />
-      <PageTitle>יומן אינסטינקט</PageTitle>
-      <SearchField label="חיפוש: פעולה, מפתח או ערך" placeholder="חיפוש: פעולה, מפתח או ערך" value={q} onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} />
+      <TopBar back={{ label: back.label, ...lnk(back.path) }} end={<MoreMenu title="יומן אינסטינקט" items={table.items} />} />
+      <div className="k-titleblock">
+        <PageTitle>יומן אינסטינקט</PageTitle>
+        <span className="k-titleblock__sub">מה העוזר האישי עשה בשמך באפליקציה</span>
+      </div>
       <ChipRow label="מה להציג">
-        {SHOW.map((f) => <Chip key={f.v} selected={show === f.v} onClick={() => { setShow(f.v); setShown(PAGE); }}>{f.l}</Chip>)}
+        {chip('actions', 'שינויים', writes)}
+        {chip('failed', 'לא הצליחו', failed)}
+        {chip('reads', 'קריאות')}
+        {chip('all', 'הכל')}
       </ChipRow>
+      <SearchField label="חיפוש ביומן" placeholder="חיפוש ביומן" value={q} onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} />
       {keys.length > 1 && (
-        <ChipRow label="מפתח">
-          <Chip selected={!key} onClick={() => { setKey(''); setShown(PAGE); }}>כל המפתחות</Chip>
-          {keys.map(([id, label]) => <Chip key={id} selected={key === id} onClick={() => { setKey(id); setShown(PAGE); }}>{label}</Chip>)}
-        </ChipRow>
+        <Dropdown label="מפתח" value={key} onChange={(v) => { setKey(v); setShown(PAGE); }}
+          options={[{ value: '', label: 'כל המפתחות' }, ...keys.map(([id, label]) => ({ value: id, label }))]} />
       )}
-      {days.map(([day, list]) => (
-        <section key={day} className="k-card manage-feed" aria-label={dayLabel(day)}>
-          <h2 className="manage-feed__day">{dayLabel(day)}</h2>
+      {groups.map((g) => (
+        <section key={`${g.day}|${g.who}`} className="k-card manage-feed" aria-label={dayLabel(g.day)}>
+          <h2 className="manage-feed__day">{dayLabel(g.day)}{g.who ? ` · בשם ${g.who}` : ''}</h2>
           <ul className="k-list">
-            {list.map((e, i) => (
-              <li key={e.id} className="manage-feed__item">
-                <span className="manage-feed__time" dir="ltr">{hhmm(e.at)}</span>
-                <span className="manage-feed__rail">
-                  <Avatar name={e.actor.name || e.keyLabel} />
-                  <span className={i === list.length - 1 ? 'manage-feed__line manage-feed__line--end' : 'manage-feed__line'} />
-                </span>
-                <button type="button" className="manage-feed__body instinct-log__row" onClick={() => setOpen(e)} aria-label={`${e.keyLabel} ${e.verb}: ${e.opHe || e.op}. פרטים`}>
-                  <span className="manage-feed__title">{e.keyLabel} {e.ok ? e.verb : `ניסה ו${e.verb === 'קרא' ? 'לא הצליח לקרוא' : 'נכשל'}`}</span>
-                  <span className="manage-feed__meta">{e.opHe || e.op}{e.kind === 'read' && e.count !== null ? ` · ${e.count} רשומות` : ''}</span>
-                  {(!e.ok || e.replayed) && <span className="instinct-log__tags">{!e.ok && <Tag tone="urgent">{e.code || 'נכשל'}</Tag>}{e.replayed && <Tag>חזרה על בקשה</Tag>}</span>}
-                </button>
-              </li>
-            ))}
+            {g.list.map((e) => {
+              const l = lines.get(e.id)!;
+              return (
+                <li key={e.id} className="manage-feed__item manage-feed__item--hit">
+                  <button type="button" className="manage-feed__hit" onClick={() => pick(e)}>
+                    <span className="manage-feed__time" dir="ltr">{hhmm(e.at)}</span>
+                    <span className="instinct-log__icon" aria-hidden="true"><Icon name="robot" size={20} /></span>
+                    <span className="manage-feed__body">
+                      <span className="manage-feed__title">{l.title}{l.failed && <Tag tone="urgent">לא הצליח</Tag>}</span>
+                      <span className="manage-feed__meta">{[e.keyLabel, l.meta].filter(Boolean).join(' · ')}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ))}
       {rows.length > shown && <Button variant="outline" className="manage-more" onClick={() => setShown((n) => n + PAGE)}>עוד</Button>}
       {!rows.length && <EmptyState variant="fill" icon="search" title={q ? 'לא נמצא' : 'אין עדיין רישומים'} text={q ? 'נסו מילה אחרת או סינון אחר.' : 'כל מה שאינסטינקט עושה דרך ה-API נרשם כאן, עם שם המפתח.'} />}
-      <Sheet open={!!open} onClose={() => setOpen(null)} title={open ? `${open.keyLabel} ${open.verb}` : ''}>
-        {open && (
-          <div className="instinct-log__sheet">
-            <DetailList>
-              <DetailRow term="פעולה">{open.opHe || open.op}</DetailRow>
-              <DetailRow term="שם בקטלוג"><span dir="ltr">{open.op}</span></DetailRow>
-              <DetailRow term="מתי">{`${ddmm(keyOf(open.at))} ${hhmm(open.at)}`}</DetailRow>
-              <DetailRow term="מפתח">{open.keyLabel}</DetailRow>
-              <DetailRow term="מזהה מפתח"><span dir="ltr">{open.credential}</span></DetailRow>
-              <DetailRow term="פועל בשם">{open.actor.name || open.actor.id}</DetailRow>
-              <DetailRow term="תוצאה">{open.ok ? `הצליח (${open.status})` : <>{`נכשל: ${open.message.split(': ')[0]}`}<br /><span dir="ltr">{`${open.status} ${open.code} · ${open.message.split(': ').slice(1).join(': ')}`}</span></>}</DetailRow>
-              {open.refs.length > 0 && <DetailRow term="רשומות"><span dir="ltr">{open.refs.map((r) => `${r.col}/${r.id}`).join('\n')}</span></DetailRow>}
-              <DetailRow term="מזהה בקשה"><span dir="ltr">{open.id}</span></DetailRow>
-            </DetailList>
-            {open.query && <><h3 className="instinct-log__h">פרמטרים</h3><pre className="instinct-log__pre" dir="ltr">{decodeURIComponent(open.query)}</pre></>}
-            {open.body && open.body !== '{}' && <><h3 className="instinct-log__h">מה נשלח</h3><pre className="instinct-log__pre" dir="ltr">{pretty(open.body)}</pre></>}
-            {open.result && <><h3 className="instinct-log__h">מה חזר</h3><pre className="instinct-log__pre" dir="ltr">{pretty(open.result)}</pre></>}
-          </div>
+      {rows.length > 0 && <p className="k-note">לחיצה על שורה פותחת את הדבר עצמו. רק בעלים רואים את היומן.</p>}
+      <Sheet open={!!open} onClose={() => setOpen(null)} title={sel?.title || ''}>
+        {open && sel && (
+          <DetailList>
+            {sel.meta && <DetailRow term={sel.failed ? 'למה' : 'על מה'}>{sel.meta}</DetailRow>}
+            <DetailRow term="מתי">{`${dayLabel(keyOf(open.at))} ${hhmm(open.at)}`}</DetailRow>
+            <DetailRow term="מפתח">{open.keyLabel}</DetailRow>
+            <DetailRow term="בשם">{open.actor.name || '—'}</DetailRow>
+            <DetailRow term="תוצאה">{open.ok ? 'הצליח' : <Tag tone="urgent">לא הצליח</Tag>}</DetailRow>
+            {open.kind === 'write' && open.refs.length > 0 && <DetailRow term="רשומות">{open.refs.length === 1 ? 'רשומה אחת' : `${open.refs.length} רשומות`}</DetailRow>}
+          </DetailList>
         )}
       </Sheet>
     </AppScreen>

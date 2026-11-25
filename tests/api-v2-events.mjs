@@ -171,7 +171,7 @@ try {
     check((await acts(eventId)).some((a) => a.text === 'מוצר עודכן: קפה · 14 ₪'), 'activity "מוצר עודכן: קפה · 14 ₪"');
     const nActs = (await acts(eventId)).length;
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: tea, active: false }), 'saveProduct active=false');
-    check((await acts(eventId)).length === nActs, 'the availability toggle writes no activity (as the app)');
+    check((await acts(eventId)).length === nActs + 1, 'the availability toggle writes activity');
     ok(await w(MGR, 'events.saveProduct', { eventId, productId: coffee, unit: '' }), 'unit "" removes it');
     check(!('unit' in (await docOf(`events/${eventId}/products/${coffee}`))), 'the unit field is gone');
     check((await w(STAFF, 'events.saveProduct', { eventId, name: 'x', price: 1 })).status === 403, 'staff cannot change products');
@@ -238,6 +238,19 @@ try {
     check(sl.status === 200 && sl.json.data.items.length === 2, 'staff read eventStaffing.list');
     ok(await w(MGR, 'events.removeFromStation', { eventId, station: 'kitchen', uid: 'syn-staff2' }), 'removeFromStation');
     check((await docOf(`events/${eventId}/staffing/kitchen`)).people.length === 0 && (await acts(eventId)).some((x) => x.text === 'ערב חנוכה: יואב כהן הוסר/ה ממטבח'), 'removed, with its activity line');
+    const draft = await w(MGR, 'events.create', { title: 'INSTINCT AUDIT station', start: '2026-12-15T10:00', end: '2026-12-15T11:00', published: false, open: false });
+    const draftId = draft.json.data.eventId;
+    check(draft.status === 201 && (await docOf('events/' + draftId)).published === false, 'station fixture is unpublished');
+    const self = { eventId: draftId, station: 'gate', uid: 'syn-mgr' };
+    ok(await w(MGR, 'events.assignStation', self), 'a manager assigns themself to a station');
+    check((await w(MGR, 'events.assignStation', self)).status === 400, 'a second assignment to the same station is refused');
+    const selfNotes = (await listCol('users/syn-mgr/notifications')).filter((n) => n.refId === draftId && n.kind === 'event');
+    const selfJobs = (await where('push_jobs', 'refId', draftId)).filter((j) => j.kind === 'event' && j.to.includes('syn-mgr'));
+    check(selfNotes.length === 1 && selfNotes[0].readAt === null && selfJobs.length === 1 && selfJobs[0].to.join() === 'syn-mgr', 'one unread station assignment copy and one job to self');
+    await w(MGR, 'events.delete', { eventId: draftId });
+    const records = [`events/${draftId}/staffing/gate`, ...selfNotes.map((n) => `users/syn-mgr/notifications/${n.id}`), ...selfJobs.map((j) => `push_jobs/${j.id}`)];
+    for (const path of records) await fetch(`${DOCS}/${path}`, { method: 'DELETE', headers: admin });
+    check((await Promise.all([...records, 'events/' + draftId].map(docOf))).every((d) => d === null), 'station fixture, notification and push job are gone');
   }
 
   section('guests and payments (M5, N12, V5)');
@@ -524,7 +537,7 @@ try {
   section('vendors.removePerson: the removed person loses access, the others keep theirs');
   {
     const { assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
-    const { doc, getDoc, getDocs, setDoc, collection, query, where: fwhere } = require('firebase/firestore');
+    const { doc, getDoc, getDocs, setDoc, collection, query, where: fwhere, writeBatch } = require('firebase/firestore');
     const sv = 'syn-rp-v', sname = 'שמן זית בדיקה';
     const row = (name, role, code, uid) => ({ name, role, entered: true, code, ...(uid ? { uid } : {}) });
     await seed('vendors/' + sv, { name: sname, phone: '0506666666', product: 'שמן', sells: 'שמן', external: true, notes: '', note: '', needs: [], events: [eventId], inviteNext: false, createdAt: now, updatedAt: now, people: [
@@ -561,6 +574,64 @@ try {
     const rc = await w(MGR, 'vendors.removePerson', { vendorId: sv, code: 'rphelperccc1' });
     const uc = await docOf('users/syn-rp-c');
     check(rc.status === 200 && rc.json.data.accessRemoved === false && uc.role === 'vendor' && uc.vendorId === 'syn-elsewhere', 'an account linked to another stall since is left alone', [rc.json?.data, uc]);
+
+    const add = async (name) => {
+      const res = await w(MGR, 'vendors.addPerson', { vendorId: sv, name, role: 'helper' });
+      ok(res, 'create a synthetic helper link');
+      return res.json.data.code;
+    };
+    const adopt = (account, uid, invite, createdBy = 'syn-mgr') => {
+      const b = writeBatch(account);
+      b.update(doc(account, 'users', uid), { role: 'vendor', vendorId: sv, helper: true, inviteCode: invite, addedBy: createdBy, updatedAt: now });
+      b.update(doc(account, 'vendor_invites', invite), { active: false, usedBy: uid, usedAt: now });
+      return b.commit();
+    };
+    const old = await add('קישור ישן');
+    await adopt(B, 'syn-rp-b', old);
+    const later = await add('קישור חדש');
+    await adopt(B, 'syn-rp-b', later);
+    ok(await w(MGR, 'vendors.removePerson', { vendorId: sv, code: old }), 'remove an old link at the same stall');
+    check((await docOf('users/syn-rp-b')).inviteCode === later && await passes(reads(B)), 'older row removal keeps access through a newer same-stall invite');
+
+    const failedBody = { vendorId: sv, code: later };
+    const retryKey = randomUUID();
+    const removal = (fault) => api('POST', '/v1/actions/vendors.removePerson', { ...MGR, body: failedBody, idem: retryKey, headers: { ...MGR.headers, 'x-test-fault': fault } });
+    const unsent = await removal('commit-lost');
+    check(code(unsent) === 'OUTCOME_UNKNOWN' && (await docOf('users/syn-rp-b')).role === 'vendor'
+      && (await docOf('vendors/' + sv)).people.some((p) => p.code === later) && !(await docOf('activity/' + later)), 'before an uncommitted write all three documents and the journal stay unchanged');
+    const lost = await removal('commit-timeout');
+    ok(lost, 'lost acknowledgement finds the committed removal');
+    const retried = await w(MGR, 'vendors.removePerson', failedBody, retryKey);
+    check(retried.json?.data?.replayed === true && (await docOf('users/syn-rp-b')).role === 'guest'
+      && (await acts(sv)).filter((a) => a.id === later).length === 1, 'replaying a lost response does not write a second journal entry');
+    check((await w(MGR, 'vendors.removePerson', failedBody)).json?.data?.alreadyRemoved === true, 'same resolved row already removed under a new request key');
+
+    const keep = (await docOf('vendors/' + sv)).people;
+    await seed('vendors/' + sv, { ...(await docOf('vendors/' + sv)), people: [...keep,
+      { name: 'ישן עם חשבון', role: 'helper', uid: 'syn-rp-b', entered: true },
+      { name: 'ישן בלי חשבון', role: 'helper', entered: true },
+      row('חסר מסמך קישור', 'helper', 'missing-test1'),
+    ] });
+    for (const selector of [{ name: 'ישן עם חשבון' }, { name: 'ישן בלי חשבון' }, { code: 'missing-test1' }]) {
+      const res = await w(MGR, 'vendors.removePerson', { vendorId: sv, ...selector });
+      check(code(res) === 'VALIDATION_FAILED' && (await docOf('vendors/' + sv)).people.length === keep.length + 3, 'missing or unverifiable identity leaves the list intact');
+    }
+    const next = await add('הזמנה חוזרת');
+    await adopt(B, 'syn-rp-b', next);
+    check(await passes(reads(B)), 'removed account uses a fresh invite');
+    const anotherStall = await w(MGR, 'vendors.removePerson', { vendorId: 'syn-legacy-v', code: next });
+    check(code(anotherStall) === 'NOT_FOUND' && await passes(reads(B)), 'code from another stall cannot be used for removal');
+    check(code(await w(STAFF, 'vendors.removePerson', { vendorId: sv, code: next })) === 'FORBIDDEN', 'staff credentials may not remove a vendor helper');
+
+    await person('syn-claim-race', 'חשבון בדיקה', 'guest');
+    const racing = await add('מרוץ הרשמה');
+    const Race = as('syn-claim-race');
+    const [claim, remove] = await Promise.allSettled([
+      adopt(Race, 'syn-claim-race', racing),
+      w(MGR, 'vendors.removePerson', { vendorId: sv, code: racing }),
+    ]);
+    check(remove.status === 'fulfilled' && remove.value.status === 200 && await refused(reads(Race)), 'the concurrent API removal leaves the claimant without stall access', { claimed: claim.status, removal: remove.status === 'fulfilled' ? remove.value.status : 'failed' });
+
   }
 
   section('vendors.delete: the whole stall');

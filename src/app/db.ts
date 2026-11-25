@@ -7,6 +7,7 @@ import {
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { readOnlyLock } from './switches';
 import { demoOnly, demoItems, demoDoc, demoSet, demoUpdate, demoDelete, isDemoId, newDemoId, useDemo, useDemoVersion, takeRefusal, getDemoStates } from './demo/store';
 import { now } from './clock';
 
@@ -63,6 +64,25 @@ export function useList<T extends Row>(path: string, spec: Spec, enabled = true)
     return fs;
   }, [fs, local, path, specKey, enabled, v]);
 }
+/**
+ * The owners' switches (settings/switches). A copy from the phone's offline store may be hours old, so maintenance and
+ * read-only count only once the server confirms them: a phone in the field never stays locked after the owners turn
+ * them off, and an offline phone is not locked by a switch it cannot check.
+ */
+export function useSwitchesSnapshot<T extends Row & { maintenance?: boolean; readOnly?: boolean }>(): { item: T | null; loading: boolean } {
+  const demo = useDemo();
+  const [st, setSt] = useState<{ item: T | null; loading: boolean }>({ item: null, loading: !demo.on });
+  useEffect(() => {
+    if (demo.on) { setSt({ item: null, loading: false }); return; }
+    return onSnapshot(doc(db, 'settings/switches'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists()) { setSt({ item: null, loading: false }); return; }
+      const d = { id: snap.id, ...(snap.data() as DocumentData) } as unknown as T;
+      setSt({ item: snap.metadata.fromCache ? { ...d, maintenance: false, readOnly: false } : d, loading: false });
+    }, () => setSt({ item: null, loading: false }));
+  }, [demo.on]);
+  return st;
+}
+
 export function useDoc<T extends Row>(path: string, enabled = true): { item: T | null; loading: boolean; error?: string } {
   const demo = useDemo(); const v = useDemoVersion();
   const local = demo.on;
@@ -108,14 +128,14 @@ const setSync = (next: Partial<SyncState>) => { sync = { ...sync, ...next }; syn
 export const useSync = () => useSyncExternalStore((l) => { syncListeners.add(l); return () => syncListeners.delete(l); }, () => sync);
 export const syncState = () => sync;
 let failureId = 0;
-function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<void> {
+function settle(p: Promise<unknown>, quiet = false, wait = false): Promise<boolean> {
   setSync({ pending: sync.pending + 1 });
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     let answered = false;
     // `wait`: maintenance work that must know the server stored it; it resolves only on the server's answer
-    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(); }, navigator.onLine ? 1500 : 0);
+    const timer = wait ? undefined : setTimeout(() => { answered = true; resolve(false); }, navigator.onLine ? 1500 : 0);
     p.then(
-      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(); },
+      () => { clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) }); if (!answered) resolve(true); },
       (e) => {
         clearTimeout(timer); setSync({ pending: Math.max(0, sync.pending - 1) });
         const err = new Error(readError(e));
@@ -161,6 +181,9 @@ function applyLocal(cur: Record<string, unknown>, patch: Record<string, unknown>
 const isDemoRef = (col: string, id: string) => isDemoId(id) || col.split('/').some(isDemoId);
 function real(col: string, id: string) {
   if (isDemoRef(col, id)) throw new Error('זה פריט לדוגמה. הוא לא נשמר בשרת.');
+  // the owners turned on read-only from the console (switches.ts): nothing reaches Firestore, owners excepted
+  const lock = readOnlyLock();
+  if (lock) throw new Error(lock);
   return doc(db, col, id);
 }
 export const newId = (col: string) => (demoOnly() ? newDemoId(col) : doc(collection(db, col)).id);
@@ -178,12 +201,12 @@ export const write = {
   async remove(col: string, id: string, o: WriteOpts = {}) { if (demoOnly()) return demoDelete(col, id); await settle(deleteDoc(real(col, id)), o.quiet); },
   /** Several sets/updates that should land together. */
   async batch(ops: { op: 'set' | 'update' | 'remove'; col: string; id: string; data?: Record<string, unknown> }[], o: WriteOpts = {}) {
-    if (!ops.length) return;
-    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return; }
+    if (!ops.length) return true;
+    if (demoOnly()) { for (const x of ops) x.op === 'set' ? demoSet(x.col, x.id, x.data!) : x.op === 'update' ? demoSet(x.col, x.id, applyLocal(demoDoc(`${x.col}/${x.id}`) || {}, x.data!)) : demoDelete(x.col, x.id); return true; }
     const refs = ops.map((x) => real(x.col, x.id)); // throws before anything is queued if one of them is a demo id
     const b = writeBatch(db);
     ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], x.data!) : x.op === 'update' ? b.update(refs[i], toFirestore(x.data!)) : b.delete(refs[i]); });
-    await settle(b.commit(), o.quiet, o.wait);
+    return settle(b.commit(), o.quiet, o.wait);
   },
 };
 
@@ -195,11 +218,14 @@ export type Tx = {
   get<T extends Row>(col: string, id: string): Promise<(T & { id: string }) | null>;
   set(col: string, id: string, data: Record<string, unknown>): void;
   update(col: string, id: string, patch: Record<string, unknown>): void;
+  remove(col: string, id: string): void;
 };
 export type TransactOpts = {
   /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
    *  this phone as an ordinary queued write, as when offline, instead of failing. A server that answers still refuses a second entry. */
   queue?: boolean;
+  /** Never use cached data or queue mutations for this transaction. Its caller handles the server error. */
+  serverOnly?: boolean;
 };
 /** How long a queued-on-failure transaction waits for the server before it saves on the phone (tests shorten it). */
 export const txTiming = { waitMs: 4000 };
@@ -212,6 +238,8 @@ class Abandoned extends Error {}
  *  so it runs on the cached copy as an ordinary write; the rules refuse a late conflicting write and the shell shows X1.
  *  `queue`: the same when the server cannot be reached in time (TransactOpts). */
 export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = {}): Promise<T> {
+  const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || getDemoStates().offline;
+  if (o.serverOnly && offline) throw new ConflictError('אין חיבור לאינטרנט. נסו שוב אחרי החיבור.');
   if (demoOnly()) {
     if (takeRefusal()) throw new ConflictError();
     const ops: (() => void)[] = [];
@@ -219,11 +247,12 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
       get: async (col, id) => (demoDoc(`${col}/${id}`) as never) || null,
       set: (col, id, data) => ops.push(() => demoSet(col, id, applyLocal({}, data))),
       update: (col, id, patch) => ops.push(() => demoSet(col, id, applyLocal(demoDoc(`${col}/${id}`) || {}, patch))),
+      remove: (col, id) => ops.push(() => demoDelete(col, id)),
     });
     ops.forEach((o) => o());
     return out;
   }
-  if (!navigator.onLine || getDemoStates().offline) return queued(fn);
+  if (offline) return queued(fn);
   setSync({ pending: sync.pending + 1 });
   let abandoned = false, committing = false;
   const attempt = runTransaction(db, async (t) => {
@@ -232,6 +261,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
       get: async (col, id) => { const snap = await t.get(real(col, id)); return snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as never) : null; },
       set: (col, id, data) => ops.push((tt) => tt.set(real(col, id), toFirestore(data))),
       update: (col, id, patch) => ops.push((tt) => tt.update(real(col, id), toFirestore(patch))),
+      remove: (col, id) => ops.push((tt) => tt.delete(real(col, id))),
     });
     if (abandoned) throw new Abandoned();
     committing = true; // from here the attempt may still land after the phone gave up waiting
@@ -239,7 +269,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     return out;
   });
   try {
-    if (!o.queue) return await attempt;
+    if (o.serverOnly || !o.queue) return await attempt;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), txTiming.waitMs); });
     const first = await Promise.race([attempt.then((v) => ({ v })), late]).finally(() => clearTimeout(timer));
@@ -247,7 +277,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     abandoned = true;
     return await queued(fn, committing ? attempt : undefined);
   } catch (e) {
-    if (isConflict(e)) throw e;
+    if (isConflict(e) || o.serverOnly) throw e;
     if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn); }
     throw new Error(readError(e));
   } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
@@ -256,22 +286,28 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
  *  `attempt`: the transaction this replaces, when its commit was already on the way. If it still landed, the batch repeats it
  *  and the rules refuse the repeat (the scan id is fixed per entry), so that refusal is not a failure the shell should show. */
 async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>): Promise<T> {
-  const ops: { op: 'set' | 'update'; col: string; id: string; data: Record<string, unknown> }[] = [];
+  const ops: Parameters<typeof write.batch>[0] = [];
   const cache = new Map<string, unknown>();
   const out = await fn({
     get: async (col, id) => { const k = `${col}/${id}`; if (!cache.has(k)) cache.set(k, await readCached(col, id)); return cache.get(k) as never; },
     set: (col, id, data) => ops.push({ op: 'set', col, id, data }),
     update: (col, id, patch) => ops.push({ op: 'update', col, id, data: patch }),
+    remove: (col, id) => ops.push({ op: 'remove', col, id }),
   });
   if (!ops.length) return out;
   const refs = ops.map((x) => real(x.col, x.id));
   const b = writeBatch(db);
-  ops.forEach((x, i) => { x.op === 'set' ? b.set(refs[i], toFirestore(x.data)) : b.update(refs[i], toFirestore(x.data)); });
+  ops.forEach((x, i) => {
+    if (x.op === 'remove') b.delete(refs[i]);
+    else if (x.op === 'set') b.set(refs[i], toFirestore(x.data!));
+    else b.update(refs[i], toFirestore(x.data!));
+  });
   const commit = b.commit();
   await settle(attempt ? commit.catch(async (e) => { if (await attempt.then(() => true, () => false)) return; throw e; }) : commit);
   return out;
 }
 async function readCached(col: string, id: string): Promise<Row | null> {
   const { getDocFromCache } = await import('firebase/firestore');
-  try { const snap = await getDocFromCache(real(col, id)); return snap.exists() ? { id: snap.id, ...(snap.data() as DocumentData) } : null; } catch { return null; }
+  // a plain read of the phone's copy: read-only (real() refuses) must not make a queued change see "not found"
+  try { const snap = await getDocFromCache(doc(db, col, id)); return snap.exists() ? { id: snap.id, ...(snap.data() as DocumentData) } : null; } catch { return null; }
 }

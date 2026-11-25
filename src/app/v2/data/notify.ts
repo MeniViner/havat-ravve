@@ -2,6 +2,7 @@
 // notify() writes users/{uid}/notifications/{id} for each recipient and one push_jobs/{id} the Worker drains (docs/push-design.md).
 // Offline-first: batched writes, nothing waits for the server. The in-app notification is the source of truth;
 // the push is a best-effort copy for the lock screen (the Worker skips people who turned it off).
+import { notificationTargets, type SendReceipt } from '../../../../shared/message-activity';
 import { write, newId } from '../../db';
 import { nowIso } from '../../clock';
 import type { Actor, PushJob, UserNotification, UserNotificationKind } from '../../types';
@@ -29,27 +30,35 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…'
 /** Firestore takes at most 500 writes per batch. */
 const CHUNK = 450;
 
-export async function notify(uids: string[], n: NotifySpec): Promise<void> {
-  const to = [...new Set(uids.filter(Boolean))].filter((u) => u !== n.by?.uid);
-  if (!to.length) return;
+export async function notify(uids: string[], n: NotifySpec, changes: Parameters<typeof write.batch>[0] = []): Promise<SendReceipt & { pending: boolean }> {
+  const to = notificationTargets(uids);
   const createdAt = nowIso();
   const link = appLink(n.link);
-  const ops: Parameters<typeof write.batch>[0] = [];
+  const ops = [...changes];
   for (const uid of to) {
     const col = `users/${uid}/notifications`;
     const id = n.id || newId(col);
     const doc: UserNotification = { id, kind: n.kind, title: clip(n.title, 120), sub: clip(n.sub || '', 240), link, refId: n.refId || '', ...(n.action ? { action: n.action } : {}), ...(n.by ? { by: n.by } : {}), createdAt, readAt: null };
     ops.push({ op: 'set', col, id, data: doc as unknown as Record<string, unknown> });
   }
-  if (n.push !== false && n.by) {
-    // one job per send; `to` is the list of uids, the Worker looks up each person's devices and preferences
+  if (n.by && n.push !== false) {
     for (let i = 0; i < to.length; i += 200) {
       const id = newId('push_jobs');
       const job: PushJobDoc = { id, kind: n.kind, title: clip(n.title, 80), body: clip(n.sub || '', 180), link, to: to.slice(i, i + 200), createdBy: n.by, createdAt, sentAt: null, urgent: !!n.urgent, tag: n.tag || id, refId: n.refId || '' };
       ops.push({ op: 'set', col: 'push_jobs', id, data: job as unknown as Record<string, unknown> });
     }
   }
-  for (let i = 0; i < ops.length; i += CHUNK) await write.batch(ops.slice(i, i + CHUNK));
+  const receipt = { accepted: true, created: 0, queued: 0, pending: false };
+  for (let i = 0; i < ops.length; i += CHUNK) {
+    const batch = ops.slice(i, i + CHUNK);
+    if (!await write.batch(batch)) {
+      receipt.pending = true;
+      continue;
+    }
+    receipt.created += batch.filter((op) => /^users\/[^/]+\/notifications$/.test(op.col)).length;
+    receipt.queued += batch.filter((op) => op.col === 'push_jobs').length;
+  }
+  return receipt;
 }
 
 /** Marks some of my notifications read (C1 on open, B4 "קראתי"). */

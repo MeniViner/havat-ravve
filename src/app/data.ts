@@ -1,7 +1,7 @@
 // Data access for events, tickets, visits, donations, stalls, settings, notifications and calendar.
-import { useList, useDoc, write, newId, push, pull, inc, serverNow } from './db';
+import { useList, useDoc, useSwitchesSnapshot, write, newId, push, pull, inc, serverNow } from './db';
 import { nowIso } from './firebase';
-import { logActivity } from './activity';
+import { activityOp, logActivity } from './activity';
 import type {
   Actor, FarmEvent, Ticket, Visit, VisitStatus, Donation, Vendor, EventVendor, Product, Tab, TabItem, TabStatus, Settings,
   AppNotification, NotificationType, CalendarItem, CalendarKind, Profile, PaymentStatus, ReceiptPreference,
@@ -29,6 +29,9 @@ export function useSettings() {
   const { item, loading, error } = useDoc<Settings & { id: string }>('settings/app', true);
   return { settings: { ...DEFAULT_SETTINGS, ...item, payment: { ...DEFAULT_SETTINGS.payment, ...item?.payment }, templates: { ...DEFAULT_SETTINGS.templates, ...item?.templates }, contact: { ...DEFAULT_SETTINGS.contact, ...item?.contact } }, loading, error };
 }
+
+/** The owners' switches from the console (switches.ts); written only by the Worker. */
+export const useSwitchesDoc = () => useSwitchesSnapshot<{ id: string; maintenance?: boolean; maintenanceText?: string; registrationClosed?: boolean; readOnly?: boolean }>();
 
 /** Merge a section of settings, including when the document has never been saved. */
 export async function saveSettingsPart(actor: Actor, patch: Partial<Settings>, what = 'ההגדרות עודכנו') {
@@ -297,10 +300,11 @@ export async function claimTabPaid(tab: Tab) {
 /** An order has one confirmation, recorded on each of its paid tickets together. */
 export async function markPaymentConfirmation(actor: Actor, collection: 'tickets' | 'donations' | 'tabs', ids: string[]) {
   const at = nowIso();
-  await write.batch(ids.map((id) => ({
-    op: 'update', col: collection, id,
-    data: { paymentConfirmation: { by: actor, at }, updatedAt: at },
-  })));
+  if (!ids.length) return;
+  await write.batch([
+    ...ids.map((id) => ({ op: 'update' as const, col: collection, id, data: { paymentConfirmation: { by: actor, at }, updatedAt: at } })),
+    activityOp(actor, 'inbox', ids[0], 'saved', 'תיעוד שליחת אישור תשלום'),
+  ]);
 }
 
 // ---------- notifications (manager queue) ----------
@@ -309,7 +313,10 @@ export const useHandledNotifications = (enabled: boolean) => useList<AppNotifica
 export function notify(type: NotificationType, title: string, text: string, link: string, refId: string) {
   return write.set('notifications', newId('notifications'), { type, title, text, link, refId, createdAt: nowIso(), handled: false, handledBy: null, handledAt: null });
 }
-export const handleNotification = (n: AppNotification, actor: Actor, handled = true) => write.update('notifications', n.id, handled ? { handled: true, handledBy: actor, handledAt: nowIso() } : { handled: false, handledBy: null, handledAt: null });
+export const handleNotification = (n: AppNotification, actor: Actor, handled = true) => write.batch([
+  { op: 'update', col: 'notifications', id: n.id, data: handled ? { handled: true, handledBy: actor, handledAt: nowIso() } : { handled: false, handledBy: null, handledAt: null } },
+  activityOp(actor, 'inbox', n.id, 'edited', handled ? 'פריט סומן כטופל' : 'פריט חזר לטיפול'),
+]);
 /** Closes every open notification that points at a record (after the manager acted on it). */
 export async function handleNotificationsFor(open: AppNotification[], refId: string, actor: Actor) {
   const now = nowIso();

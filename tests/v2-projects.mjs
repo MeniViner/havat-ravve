@@ -209,5 +209,12 @@ assert.equal(m.demoDoc(`projects/${pid}`).title, 'לול חדש לתרנגולו
 const added = await data.addStep(beni, pid, steps(pid), 'לבנות מדף');
 assert.equal(steps(pid).at(-1).id, added);
 
+const activity = m.demoItems('activity').filter((row) => row.kind === 'project' && row.refId === pid);
+assert.ok(activity.some((row) => row.action === 'created') && activity.some((row) => row.action === 'done'));
+assert.ok(activity.every((row) => !row.text.includes('מצאתי מקום')), 'step update content stays out of the activity feed');
+await data.deleteProject(beni.actor, m.demoDoc(`projects/${pid}`), steps(pid));
+assert.equal(m.demoDoc(`projects/${pid}`), null);
+assert.ok(m.demoItems('activity').some((row) => row.kind === 'project' && row.refId === pid && row.action === 'deleted'));
+
 assert.deepEqual(globalThis.__calls.filter((c) => !['collection', 'doc', 'query', 'where', 'orderBy', 'limit', 'documentId'].includes(c)), [], 'demo: no Firestore call');
 console.log('PASS: projects data actions on the demo store (create, take/release with conflicts, updates, split, done/reopen, save with conflict)');

@@ -1,10 +1,10 @@
 // T3 (task), C3 (task with links), C4 (who the task is on) and C6 (done with a photo).
 import { useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
-import { AppScreen, go, mapsUrl, useExternal, useToast } from '../../core';
+import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../core';
 import {
   TopBar, PageTitle, FormHeader, Button, DetailList, DetailRow, Card, SectionHeader, SectionTitle, Stack, History, BottomBar,
-  Avatar, IconTile, Icon, SearchField, RadioList, RadioRow, ListCard, Field, EmptyState, Tag, Inline, TextAreaField,
+  Avatar, IconTile, Icon, SearchField, RadioList, RadioRow, ListCard, Field, EmptyState, Tag, Inline, TextAreaField, MoreMenu,
 } from '../../kit';
 import { back, href as appHref } from '../../../router';
 import { useClockVersion, now } from '../../../clock';
@@ -16,7 +16,7 @@ import type { Actor, Task } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, useTasksAt, useRootTasks, usePresenceToday, timeline, dueLong, requesterOf, releaseTask, assignTask,
   setTaskPhoto, doneWithPhoto, presenceOf, loadText, isForToday, setDone, setDoneDetails, isRoutine, routineTime, canEditTask,
-  canAssignTo, canMoveOthers, gwA,
+  canAssignTo, canMoveOthers, canDeleteTask, deleteTaskV2, gwA,
 } from '../../data/tasks';
 import { to, useFail, useTaskActions, usePhotoPicker } from './shared';
 import './tasks.css';
@@ -28,6 +28,18 @@ const Missing = ({ backTo, label }: { backTo: string; label: string }) => (
   </AppScreen>
 );
 const Loading = () => <AppScreen variant="detail"><div /></AppScreen>;
+
+/** ⋯ → "מחיקה" → Q8 (rule 6). A recurring day's instance: only today's is deleted. */
+export function deleteItem(t: Task, allowed: boolean, onConfirm: () => unknown) {
+  return {
+    label: 'מחיקה', icon: 'trash' as const, tone: 'danger' as const, hidden: !allowed,
+    confirm: {
+      title: 'למחוק את המשימה?',
+      text: t.templateId ? `רק המשימה של היום תימחק. "${t.title}" תמשיך לחזור בימים הבאים.` : `"${t.title}" תימחק מהרשימה של כולם.`,
+      onConfirm,
+    },
+  };
+}
 
 /** "בני גוטמן · אתמול 08:15" within two days, "· לפני 3 ימים" before that. */
 const askedWhen = (iso: string) => (!iso ? '' : daysFromToday(iso) >= -1 ? dayTime(iso) : ago(iso));
@@ -46,6 +58,7 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   // after done (old T3): add or replace the photo of what was done, add or edit the note
   const donePhoto = usePhotoPicker((p) => { if (t) setDoneDetails(ctx.actor, t, { donePhoto: p }).then(() => toast.show({ text: 'התמונה נשמרה' })).catch(fail); });
   const [note, setNote] = useState<string | null>(null);
+  const remove = useRemove();
   if (!t) return r.loading ? <Loading /> : <Missing backTo="/tasks" label="משימות" />;
 
   const uid = ctx.user.uid;
@@ -53,10 +66,17 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   const mine = t.assignee?.uid === uid;
   const req = requesterOf(t);
   const lines = timeline(t, acts.items, dayTime, (u) => ctx.team.find((p) => p.uid === u));
+  // the small-additions table: a note or photo added after done is a line in the timeline
+  const history: ReactNode[] = [
+    ...lines,
+    ...(t.done && t.doneNote ? [<span key="dn" className="tasks-tl-note">{`נכתב: ${t.doneNote}`}</span>] : []),
+    ...(t.done && t.donePhoto ? [<img key="dp" className="tasks-tl-photo" src={t.donePhoto} alt={`תמונה מהביצוע: ${t.title}`} />] : []),
+  ];
   const routine = isRoutine(t);
   const time = routineTime(t, ctx.templates);
+  // the small-additions table: the tags sit beside the title as kit tags
   const headTags = [t.urgent && <Tag key="u" tone="urgent">דחוף</Tag>, routine && <Tag key="r">שגרה יומית</Tag>, t.managersOnly && <Tag key="m" tone="warm">מנהלים בלבד</Tag>].filter(Boolean);
-  // a manager or the creator may put a free task on anyone (C4 offers only what the rules allow)
+  // a manager or the creator may put a free task on anyone (C4 offers only what the rules allow, "אני" included)
   const moveBtn = <Button variant="outline" style={{ padding: '0 12px' }} {...to(`/tasks/${t.id}/assign`)}>להעביר</Button>;
   const saveNote = async () => {
     try { await setDoneDetails(ctx.actor, t, { doneNote: note || '' }); setNote(null); toast.show({ text: 'נשמר' }); } catch (e) { fail(e); }
@@ -67,13 +87,15 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   if (t.done) who = t.assignee ? (mine ? 'עליך' : t.assignee.name) : 'פנויה';
   else if (mine) { who = 'עליך'; whoAction = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => releaseTask(ctx.actor, t, ctx.manager).catch(fail)}>לשחרר</Button>; }
   else if (!t.assignee) {
-    who = 'פנויה';
-    const takeBtn = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => a.take(t)}>לקחת</Button>;
-    whoAction = canMoveOthers(t, uid, ctx.manager) ? <Inline gap={6}>{takeBtn}{moveBtn}</Inline> : takeBtn;
+    // rule 4 (plan row 35): "לקחת" is the row's one button; whoever may hand it to someone else opens C4 from "פנויה"
+    who = canMoveOthers(t, uid, ctx.manager)
+      ? <a className="tasks-who" aria-label="פנויה. להעביר למישהו" {...to(`/tasks/${t.id}/assign`)}>פנויה<span className="tasks-who__chev" aria-hidden="true"><Icon name="chevron" size={18} /></span></a>
+      : 'פנויה';
+    whoAction = <Button variant="outline" style={{ padding: '0 12px' }} onClick={() => a.take(t)}>לקחת</Button>;
   }
   else {
     who = <a className="tasks-who" {...to(`/people/${t.assignee.uid}`)}><Avatar name={t.assignee.name} size={28} />{t.assignee.name}</a>;
-    whoAction = canMoveOthers(t, uid, ctx.manager) ? <Button variant="outline" {...to(`/tasks/${t.id}/assign`)}>להעביר</Button> : undefined;
+    whoAction = canMoveOthers(t, uid, ctx.manager) ? moveBtn : undefined;
   }
 
   const bar = t.done ? (
@@ -90,10 +112,16 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   return (
     <AppScreen variant="detail" gap={linked ? 10 : 12} bar={bar}>
       {photo.input}
+      {/* rule 5: back and one control. "עריכה" for a manager or the creator (delete is behind ⋯ in the edit form);
+          a routine instance cannot be edited, so whoever may delete today's instance gets ⋯ here instead */}
       <TopBar back={{ label: 'משימות', onClick: (e) => { e.preventDefault(); back('/tasks'); }, href: appHref('/tasks') }}
-        end={canEditTask(t, uid, ctx.manager) ? <Button variant="outline" icon="edit" iconSize={16} {...to(`/tasks/${t.id}/edit`)}>עריכה</Button> : undefined} />
-      {headTags.length > 0 && <div className="tasks-headtags">{headTags}</div>}
-      <PageTitle size="detail">{t.title}</PageTitle>
+        end={canEditTask(t, uid, ctx.manager)
+          ? <Button variant="outline" icon="edit" iconSize={16} {...to(`/tasks/${t.id}/edit`)}>עריכה</Button>
+          : <MoreMenu title="משימה" items={[deleteItem(t, canDeleteTask(t, uid, ctx.manager),() => remove(() => deleteTaskV2(ctx.actor, t, ctx.templates), { text: 'המשימה נמחקה', after: () => go('/tasks', true) }))]} />} />
+      <div className="tasks-titlerow">
+        <PageTitle size="detail">{t.title}</PageTitle>
+        {headTags}
+      </div>
       <DetailList className={linked ? "tasks-dl-linked" : undefined}>
         <DetailRow term="על מי" action={whoAction}>{who}</DetailRow>
         {t.location && !linked && <DetailRow term="איפה" action={navBtn}>{t.location.placeName || 'נקודה על המפה'}</DetailRow>}
@@ -101,14 +129,12 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
         {!routine && req.name && <DetailRow term={gwA(req, "ביקש", "ביקשה", (u) => ctx.team.find((p) => p.uid === u))}>{`${req.name} · ${askedWhen(t.createdAt)}`}</DetailRow>}
         {t.note && <DetailRow term="הערה" plain>{t.note}</DetailRow>}
         {t.done && <DetailRow term="בוצע">{[t.doneBy ? firstName(t.doneBy.name) : '', t.doneAt ? dayTime(t.doneAt) : ''].filter(Boolean).join(' · ')}</DetailRow>}
-        {t.done && t.doneNote && <DetailRow term="נכתב" plain>{t.doneNote}</DetailRow>}
       </DetailList>
-      {t.done && t.donePhoto && <img className="tasks-photo-thumb" src={t.donePhoto} alt={`תמונה מהביצוע: ${t.title}`} />}
       {t.done && donePhoto.input}
       {t.done && (note === null ? (
         <Inline gap={8}>
-          <Button variant="outline" size="tall" grow icon="camera" iconSize={18} disabled={donePhoto.busy} onClick={() => donePhoto.pick(true)}>{t.donePhoto ? 'להחליף תמונה' : 'להוסיף תמונה'}</Button>
-          <Button variant="outline" size="tall" grow onClick={() => setNote(t.doneNote || '')}>{t.doneNote ? 'לערוך הערה' : 'להוסיף הערה'}</Button>
+          <Button variant="dashed" size="tall" grow icon="camera" iconSize={18} disabled={donePhoto.busy} onClick={() => donePhoto.pick(true)}>{t.donePhoto ? 'להחליף תמונה' : 'להוסיף תמונה'}</Button>
+          <Button variant="dashed" size="tall" grow onClick={() => setNote(t.doneNote || '')}>{t.doneNote ? 'לערוך הערה' : 'להוסיף הערה'}</Button>
         </Inline>
       ) : (
         <Stack gap={8}>
@@ -133,10 +159,10 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
       )}
       {linked && !t.done && <Button variant="dashed" size="tall" icon="plus" iconSize={18} {...to(`/new?kind=shopping&task=${t.id}`)}>צריך לקנות משהו בשביל זה</Button>}
       {!linked && !t.photo && !t.done && <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={photo.busy} onClick={() => photo.pick(true)}>הוספת תמונה למשימה</Button>}
-      {lines.length > 0 && (
+      {history.length > 0 && (
         <Stack gap={4} as="section">
           <SectionTitle>מה קרה עד עכשיו</SectionTitle>
-          <History items={lines} />
+          <History items={history} />
         </Stack>
       )}
     </AppScreen>

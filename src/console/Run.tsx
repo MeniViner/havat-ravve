@@ -1,0 +1,246 @@
+// הרצת פעולה: any of the API's operations, as the signed-in owner, without a key. The form is built from the operation's
+// own description in the catalog (the same one the server validates with), so it is always the current list. A change
+// asks first, and every run is written to the assistant log under the console's name.
+import { useMemo, useRef, useState } from 'react';
+import { Button, Card, ConfirmSheet, EmptyState, Field, ListCard, Row, Segmented, Tag } from '../app/v2/kit';
+import { outHref, Section, useLoad } from './shared';
+import { nowMs } from '../app/clock';
+import { sec } from './Speed';
+import { fieldLabel } from './labels';
+import { errorText, source, type CatalogOp, type CatalogParam, type OpResult } from './source';
+import { useRest, useWide } from './desk/route';
+import { RunDesk } from './desk/RunDesk';
+import { appPath, shape, undoOf, type Names, type Undo } from './desk/runOps';
+import { Fact } from './desk/desk';
+
+type Values = Record<string, string>;
+// date and time get the browser's own picker, so no format hint for them (it would not match what the picker shows)
+const TYPE_HINT: Record<string, string> = { datetime: 'YYYY-MM-DDTHH:mm, שעון ישראל', uid: 'מזהה של אדם', id: 'מזהה', email: 'כתובת מייל', stringList: 'כמה ערכים, מופרדים בפסיק', intList: 'מספרים, מופרדים בפסיק' };
+
+/** The fields of an operation: its path ids first, then the query (a read) or the body (a change). */
+const fieldsOf = (op: CatalogOp): [string, CatalogParam, 'path' | 'query' | 'body'][] => [
+  ...Object.entries(op.pathParams || {}).map(([k, p]) => [k, p, 'path'] as [string, CatalogParam, 'path']),
+  ...Object.entries((op.method === 'GET' ? op.params : op.body) || {}).map(([k, p]) => [k, p, op.method === 'GET' ? 'query' : 'body'] as [string, CatalogParam, 'query' | 'body']),
+];
+
+/** A field's name in Hebrew: the catalog's own words, else our field names, else as the server calls it. */
+const heName = (k: string, p?: CatalogParam) => p?.he || fieldLabel(k) || k;
+
+/** A value from the form in the type the server expects (empty: left out). */
+function typed(p: CatalogParam, raw: string): unknown {
+  const v = raw.trim();
+  if (!v) return undefined;
+  if (p.type === 'bool') return v === 'true';
+  if (p.type === 'int' || p.type === 'number') return Number(v);
+  if (p.type === 'stringList') return v.split(',').map((x) => x.trim()).filter(Boolean);
+  if (p.type === 'intList') return v.split(',').map((x) => Number(x.trim())).filter((x) => Number.isFinite(x));
+  return v;
+}
+
+/** Why a run failed, in Hebrew, and the field it is about. */
+export type OpFailure = { ok?: boolean; error?: { code?: string; he?: string; message?: string; details?: { field?: string } } } | null;
+export type Ran = OpResult & { at: number; sent: Record<string, unknown>; undo: Undo | null; undone: boolean };
+
+/**
+ * Running an operation and undoing it, for both layouts. The server does a write once per key: a run whose outcome is not
+ * known (no answer, or a server error) is sent again with the same key while nothing in the form changed.
+ */
+export function useOpRun(op: CatalogOp, ops: CatalogOp[], notify: (t: string, tone?: 'info' | 'alert') => void) {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<Ran | null>(null);
+  const [lost, setLost] = useState('');
+  const open = useRef<{ what: string; key: string } | null>(null);
+  const run = async (path: string, body: Record<string, unknown>) => {
+    const what = path + JSON.stringify(body);
+    if (open.current?.what !== what) open.current = { what, key: crypto.randomUUID() };
+    setBusy(true); setLost('');
+    try {
+      const r = await source.runOp(op.method, path, op.method === 'POST' ? body : undefined, op.method === 'POST' ? open.current.key : undefined);
+      if (r.status < 500) open.current = null;
+      const ok = r.status < 300;
+      setRes({ ...r, at: nowMs(), sent: body, undo: ok ? undoOf(op, body, r.json, ops) : null, undone: false });
+      return ok;
+    } catch (e) { setRes(null); setLost(errorText(e)); notify(errorText(e), 'alert'); return false; }
+    finally { setBusy(false); }
+  };
+  const undo = async () => {
+    if (!res?.undo) return;
+    const u = res.undo;
+    const by = ops.find((o) => o.name === u.op);
+    try {
+      const r = await source.runOp('POST', by?.path || `/v1/actions/${u.op}`, u.body);
+      if (r.status >= 300) { notify((r.json as OpFailure)?.error?.he || 'הביטול לא הצליח', 'alert'); return; }
+      setRes((x) => (x && x.undo === u ? { ...x, undone: true } : x));
+      notify('הפעולה בוטלה');
+    } catch (e) { notify(errorText(e), 'alert'); }
+  };
+  return { busy, res, lost, run, undo };
+}
+
+export function RunScreen({ notify }: { notify: (t: string, tone?: 'info' | 'alert') => void }) {
+  const cat = useLoad(() => source.catalog());
+  const wide = useWide();
+  if (wide) return <RunDesk cat={cat} notify={notify} />;
+  return <RunPhone cat={cat} notify={notify} />;
+}
+export type CatalogLoad = { data: CatalogOp[] | null; error: string | null; loading: boolean; reload: () => void };
+
+function RunPhone({ cat, notify }: { cat: CatalogLoad; notify: (t: string, tone?: 'info' | 'alert') => void }) {
+  const [q, setQ] = useState('');
+  const [rest, setRest] = useRest('run');
+  const pick = cat.data?.find((o) => o.name === rest[0]) || null;
+  const setPick = (o: CatalogOp) => setRest([o.name]);
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const ops = cat.data || [];
+    return t ? ops.filter((o) => o.name.toLowerCase().includes(t) || o.he.includes(q.trim())) : ops;
+  }, [cat.data, q]);
+  return (
+    <>
+      <div className="c-title">
+        <div>
+          <h1 className="c-h1">הרצת פעולה</h1>
+          <p className="c-sub">כל פעולה של ה־API, בשמכם, בלי מפתח. מה שמשנה נתונים שואל קודם, וכל הרצה נרשמת ביומן.</p>
+        </div>
+      </div>
+      {cat.error && <Card pad="md" className="c-error">לא הצלחנו לקרוא את רשימת הפעולות. {cat.error}</Card>}
+      {cat.loading && !cat.data && <p className="c-soft">טוען…</p>}
+      {cat.data && (
+        <div className="c-run">
+          <div className="c-stack c-stack--sm">
+            <Field label="חיפוש פעולה" labelHidden placeholder={`חיפוש בין ${cat.data.length} פעולות: משימה, קניות, tasks…`} value={q} onChange={(e) => setQ(e.target.value)} />
+            {shown.length ? (
+              <ListCard className="c-run__list">
+                {shown.slice(0, 60).map((o) => (
+                  <Row key={o.name} title={o.he} meta={<span className="k-ltr" dir="ltr">{o.name}</span>} className={pick?.name === o.name ? 'c-row-on' : undefined}
+                    tags={o.kind === 'write' ? <Tag tone="warm">משנה</Tag> : <Tag tone="neutral">קריאה</Tag>} onClick={() => setPick(o)} />
+                ))}
+              </ListCard>
+            ) : <EmptyState variant="card" icon="search" title="לא נמצאה פעולה" text="נסו מילה אחרת, בעברית או באנגלית." />}
+          </div>
+          <div>{pick ? <OpForm key={pick.name} op={pick} ops={cat.data} notify={notify} /> : <Card pad="lg" className="c-flat c-soft">בחרו פעולה מהרשימה.</Card>}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const NO_NAMES: Names = new Map();
+function OpForm({ op, ops, notify }: { op: CatalogOp; ops: CatalogOp[]; notify: (t: string, tone?: 'info' | 'alert') => void }) {
+  const fields = fieldsOf(op);
+  const [vals, setVals] = useState<Values>(() => Object.fromEntries(fields.map(([k, p]) => [k, p.default !== undefined && p.type !== 'bool' ? String(p.default) : ''])));
+  const [ask, setAsk] = useState(false);
+  const { busy, res, run, undo } = useOpRun(op, ops, notify);
+  const [askUndo, setAskUndo] = useState(false);
+  const missing = fields.filter(([k, p]) => p.required && !vals[k]?.trim()).map(([k, p]) => heName(k, p));
+  const build = () => {
+    let path = op.path;
+    const query = new URLSearchParams();
+    const body: Record<string, unknown> = {};
+    for (const [k, p, where] of fields) {
+      const v = typed(p, vals[k] || '');
+      if (v === undefined) continue;
+      if (where === 'path') path = path.replace(`{${k}}`, encodeURIComponent(String(v)));
+      else if (where === 'query') query.set(k, Array.isArray(v) ? v.join(',') : String(v));
+      else body[k] = v;
+    }
+    return { path: path + (query.toString() ? '?' + query : ''), body };
+  };
+  const go = async () => {
+    setAsk(false);
+    const { path, body } = build();
+    if ((await run(path, body)) && op.kind === 'write') notify('הפעולה בוצעה');
+  };
+  const set = (k: string, v: string) => setVals((x) => ({ ...x, [k]: v }));
+  const j = res?.json as OpFailure;
+  const ok = !!res && res.status < 300;
+  const errField = j?.error?.details?.field;
+  const errLine = j?.error ? `${j.error.he || 'השרת לא קיבל את הבקשה'}${errField ? `: ${heName(errField, fields.find(([k]) => k === errField)?.[1])}` : ''}` : 'השרת לא קיבל את הבקשה';
+  const told = res && ok ? shape(op, res.json, NO_NAMES) : null;
+  const link = res && ok && !res.undone ? appPath(op, res.json) : null;
+  const raw = res ? JSON.stringify(res.json, null, 2) : '';
+  return (
+    <div className="c-stack c-stack--sm">
+      <Card pad="lg" className="c-stack c-stack--sm">
+        <div>
+          <p className="c-card-title">{op.he}</p>
+          <p className="c-note">{op.kind === 'write' ? 'משנה נתונים של החווה.' : 'רק קוראת, לא משנה כלום.'}</p>
+          <details className="c-tech">
+            <summary>פרטים טכניים</summary>
+            <p><bdi dir="ltr">{op.name}</bdi></p>
+            <p><bdi dir="ltr">{op.method} {op.path}</bdi> · הרשאה: <bdi dir="ltr">{op.requiredScope}</bdi></p>
+          </details>
+        </div>
+        {fields.length ? fields.map(([k, p]) => <ParamField key={k} name={k} p={p} value={vals[k] || ''} onChange={(v) => set(k, v)} />) : <p className="c-note">לפעולה הזאת אין שדות.</p>}
+        {!!op.notes?.length && <details className="c-notes"><summary>הערות לפעולה</summary><ul dir="ltr">{op.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></details>}
+        <Button size="lg" block disabled={busy || missing.length > 0} onClick={() => (op.kind === 'write' ? setAsk(true) : go())}>
+          {busy ? 'מריץ…' : missing.length ? `${missing.length === 1 ? 'חסר שדה חובה' : 'חסרים שדות חובה'}: ${missing.join(', ')}` : op.kind === 'write' ? 'הרצה (משנה נתונים)' : 'הרצה'}
+        </Button>
+      </Card>
+      {res && (
+        <Section title="התשובה">
+          <Card pad="lg" className="c-stack c-stack--sm">
+            <p className="c-card-title">
+              {ok ? <Tag tone="paid">הצליחה</Tag> : <Tag tone="urgent">נכשלה</Tag>}{' '}
+              {ok ? (op.kind === 'write' ? 'הפעולה בוצעה.' : 'התשובה הגיעה.') : errLine}
+            </p>
+            <p className="c-note">לקח {sec(res.ms)}.{told?.note ? ` ${told.note}` : ''}{told?.list ? ` התקבלו ${told.list.items.length} רשומות.` : ''}</p>
+            {!!told?.rows.length && <div>{told.rows.map((r) => <Fact key={r.key} label={r.label}>{r.mono ? <bdi className="c-raw" dir="ltr">{r.value}</bdi> : r.value}</Fact>)}</div>}
+            {(link || res.undo) && (
+              <div className="c-actions">
+                {link && <a className="c-link" href={outHref(link)} target="_blank" rel="noreferrer">לפתוח באפליקציה</a>}
+                {res.undone ? <span className="c-soft">הפעולה בוטלה.</span> : res.undo && <button type="button" className="d-act" onClick={() => setAskUndo(true)}>לבטל את הפעולה</button>}
+              </div>
+            )}
+            <details className="c-tech">
+              <summary>התשובה המלאה (פרטים טכניים)</summary>
+              <p><bdi dir="ltr">HTTP {res.status}</bdi>{j?.error?.code && <> · <bdi dir="ltr">{j.error.code}</bdi></>}{j?.error?.message && <> · <bdi dir="ltr">{j.error.message}</bdi></>}</p>
+              <pre className="c-json" dir="ltr">{raw}</pre>
+              <div><Button variant="neutral" icon="file" onClick={() => navigator.clipboard?.writeText(raw).then(() => notify('הועתק'), () => {})}>העתקה</Button></div>
+            </details>
+          </Card>
+        </Section>
+      )}
+      {askUndo && res?.undo && (
+        <ConfirmSheet open title="לבטל את הפעולה?" text={`${res.undo.text} גם הביטול נרשם ביומן.`} confirmLabel="כן, לבטל" cancelLabel="חזרה" onClose={() => setAskUndo(false)} onConfirm={async () => { await undo(); setAskUndo(false); }} />
+      )}
+      {ask && (
+        <ConfirmSheet open title="להריץ את הפעולה?" text={`"${op.he}" תשנה נתונים אמיתיים של החווה, ותירשם ביומן בשם הקונסולה.`} confirmLabel="כן, להריץ"
+          cancelLabel="חזרה" onClose={() => setAsk(false)} onConfirm={go} />
+      )}
+    </div>
+  );
+}
+
+function ParamField({ name, p, value, onChange }: { name: string; p: CatalogParam; value: string; onChange: (v: string) => void }) {
+  // Hebrew first; the server's name small after it, for whoever reads the technical details
+  const he = heName(name, p);
+  const label = <>{he}{p.required ? ' *' : ''}{he !== name && <> <bdi className="c-raw" dir="ltr">{name}</bdi></>}</>;
+  if (p.type === 'bool') {
+    return (
+      <div className="c-param">
+        <span className="c-param__label">{label}</span>
+        <Segmented mode="radio" label={he} value={value || 'unset'} onChange={(v) => onChange(v === 'unset' ? '' : v)}
+          options={[{ value: 'unset', label: p.default !== undefined ? `כרגיל (${p.default ? 'כן' : 'לא'})` : 'לא לשלוח' }, { value: 'true', label: 'כן' }, { value: 'false', label: 'לא' }]} />
+      </div>
+    );
+  }
+  if (p.type === 'enum' && p.values) {
+    return (
+      <label className="c-param">
+        <span className="c-param__label">{label}</span>
+        <select className="c-select" value={value} onChange={(e) => onChange(e.target.value)} dir="ltr">
+          <option value="">{p.required ? 'לבחור…' : 'לא לשלוח'}</option>
+          {p.values.map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </label>
+    );
+  }
+  const type = p.type === 'date' ? 'date' : p.type === 'time' ? 'time' : p.type === 'int' || p.type === 'number' ? 'number' : 'text';
+  const hint = [TYPE_HINT[p.type], p.type === 'int' || p.type === 'number' ? `${p.min} עד ${p.max}` : p.max && p.type === 'string' ? `עד ${p.max} תווים` : ''].filter(Boolean).join(' · ');
+  return (
+    <div className="c-param">
+      <Field label={label} hint={hint || undefined} type={type} value={value} onChange={(e) => onChange(e.target.value)} ltr={p.type !== 'string'} />
+    </div>
+  );
+}

@@ -1,7 +1,8 @@
-// System area (L6, C12, C13, A1, A2, C2, C9, C10, C8, X2, Z1, Z3): the pure helpers (periods, role words, photo source,
+// System area (Q18 profile replacing L6 / C12, C13, A1, A2, C2, C9, C10 once after C9 and no install strip, C8, X2, Z1, Z3): the pure helpers (periods, role words, photo source,
 // birth date, suspended date, search with role filtering) and the profile writes, run against the demo store with
 // Firestore stubbed out. Writes must stay in demo and touch only the person's own fields.
 //   node tests/v2-system.mjs
+//   node tests/v2-system.mjs --base=http://localhost:5236   (also checks the Q18 placement in the running demo app)
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
@@ -184,22 +185,29 @@ assert.equal(m.demoDoc('users/demo-u-yoav').fields.shirt, 'L', 'a draft without 
 await sys.markWelcomed('demo-u-yoav', { displayName: 'יואב פרץ', phone: '052-1234567', fields: { ...m.demoDoc('users/demo-u-yoav').fields, how: 'אתר ' } });
 assert.deepEqual({ shirt: m.demoDoc('users/demo-u-yoav').fields.shirt, how: m.demoDoc('users/demo-u-yoav').fields.how }, { shirt: 'L', how: 'אתר' }, 'C9 /welcome writes the answers');
 
-// ---------- install banner (the old shell's rules) ----------
-const base = { installed: false, seenBefore: true, depth: 0, dismissedUntil: 0, now: 1000, prompt: true, ios: false, route: '/tasks' };
-assert.equal(sys.installBannerShown(base), true);
-assert.equal(sys.installBannerShown({ ...base, installed: true }), false, 'not once installed');
-assert.equal(sys.installBannerShown({ ...base, route: '/install' }), false, 'not on /install');
-assert.equal(sys.installBannerShown({ ...base, seenBefore: false }), false, 'not on the first screen of a first visit');
-assert.equal(sys.installBannerShown({ ...base, seenBefore: false, depth: 1 }), true, 'after moving on in a first visit');
-assert.equal(sys.installBannerShown({ ...base, dismissedUntil: 2000 }), false, 'not while dismissed');
-assert.equal(sys.installBannerShown({ ...base, prompt: false }), false, 'nothing to offer on a browser without a prompt');
-assert.equal(sys.installBannerShown({ ...base, prompt: false, ios: true }), true, 'iPhone gets the Safari steps');
-const until = sys.snoozeInstall(1000);
-assert.equal(until, 1000 + 14 * 86400_000, 'two weeks');
-assert.equal(localStorage.getItem('farm-app-install-dismissed-until'), String(until), 'the old banner key');
-assert.equal(sys.installDismissedUntil(), until);
-sys.markInstallSeen();
-assert.equal(localStorage.getItem('farm-app-install-seen'), 'yes');
+// ---------- install: no strip anywhere; C10 offered once, right after the first entry (needs-design decision 1) ----------
+assert.equal(sys.installBannerShown, undefined, 'the install banner is gone');
+assert.equal(sys.installOfferDue({ demo: false, installed: false, offered: false }), true, 'a first entry on this device gets C10');
+assert.equal(sys.installOfferDue({ demo: true, installed: false, offered: false }), false, 'not in demo');
+assert.equal(sys.installOfferDue({ demo: false, installed: true, offered: false }), false, 'not when the app already runs installed');
+assert.equal(sys.installOfferDue({ demo: false, installed: false, offered: true }), false, 'only once');
+globalThis.matchMedia = () => ({ matches: false });
+localStorage.removeItem('farm-install-offered');
+assert.equal(sys.afterFirstEntry(true), '/tasks', 'demo: C9 goes straight into the app');
+assert.equal(sys.installOffered(), false, 'demo does not use up the offer');
+assert.equal(sys.afterFirstEntry(false), '/install?first=1', 'C9 is followed by C10');
+assert.equal(localStorage.getItem('farm-install-offered'), 'yes', 'remembered on this device');
+assert.equal(sys.afterFirstEntry(false), '/tasks', 'then never again');
+localStorage.removeItem('farm-install-offered'); localStorage.setItem('farm-app-installed', 'yes');
+assert.equal(sys.afterFirstEntry(false), '/tasks', 'installed already: no C10');
+localStorage.removeItem('farm-app-installed');
+{ // no screen renders an install strip: nothing in the app source builds one any more
+  const fs = await import('node:fs'); const path = await import('node:path');
+  const files = []; const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const x = path.join(d, f.name); if (f.isDirectory()) walk(x); else if (/\.(tsx?|css)$/.test(f.name)) files.push(x); } };
+  walk('src/app');
+  const hits = files.filter((f) => /useInstallBanner|InstallBanner|install-banner|system-installbar|aria-label="התקנה למסך הבית"/.test(fs.readFileSync(f, 'utf8')));
+  assert.deepEqual(hits, [], 'no install strip or banner left in the app');
+}
 
 // ---------- seed slice ----------
 const tasks = m.demoItems('tasks');
@@ -208,4 +216,182 @@ assert.equal(m.demoDoc('users/demo-u-yossi').log.at(-1).text, 'מצב: נחסם'
 assert.equal(sys.suspendedAt(m.demoDoc('users/demo-u-yossi')), '2026-11-18T09:15:00.000Z', 'X2 says 18.11');
 
 assert.deepEqual(globalThis.__calls.filter((c) => /Doc|Batch|Transaction|get/.test(c)), [], 'nothing reached Firestore');
+
+// ---------- Q18 placement in the running app (demo), only with a dev server: --base=http://localhost:52xx or BASE= ----------
+const BASE = (process.argv.find((a) => a.startsWith('--base=')) || '').slice(7) || process.env.BASE || '';
+if (BASE) {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch();
+  const open = async (persona, path) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+    await ctx.addInitScript((p) => { if (sessionStorage.getItem('__vc')) return; sessionStorage.setItem('__vc', '1'); localStorage.clear(); localStorage.setItem('farm-demo', JSON.stringify({ on: true, persona: p, scenario: 'regular' })); }, persona);
+    const page = await ctx.newPage(); page.setDefaultTimeout(4000);
+    const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (x) => { if (x.type() === 'error') errors.push(x.text()); });
+    await page.goto(`${BASE}/app${path}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+    return { ctx, page, errors, text: async () => page.locator('body').innerText() };
+  };
+  for (const persona of ['owner', 'staff']) {
+    const s = await open(persona, '/me');
+    const t = await s.text();
+    assert.equal(await s.page.locator('.k-topbar .k-ulink').filter({ hasText: 'עריכת פרטים' }).count(), 1, `${persona} Q18: "עריכת פרטים" is the underlined link in the top bar`);
+    assert.equal(await s.page.getByRole('button', { name: 'עריכה', exact: true }).count(), 0, `${persona} Q18: no outlined "עריכה" on the profile`);
+    assert.ok(!t.includes('איך שמעתם עלינו?'), `${persona} Q18: registration answers are not listed on /me`);
+    assert.ok(!t.includes('מחיקת החשבון'), `${persona} Q18: account deletion is not on /me`);
+    const foot = await s.page.locator('.system-foot').innerText();
+    assert.ok(foot.includes('יציאה מהחשבון') && foot.includes('האתר של החווה') && foot.includes('תנאי שימוש'), `${persona} Q18: website and terms are quiet links beside sign-out`);
+    assert.equal(await s.page.locator('.k-list').filter({ hasText: 'האתר של החווה' }).count(), 0, `${persona} Q18: the website is not a row`);
+    assert.ok(t.includes(persona === 'owner' ? 'לראות את האפליקציה כמו מתנדב' : 'פנייה למנהלים') && t.includes('התקנה למסך הבית') && t.includes('הכרטיסים שלי כאורח'), `${persona} Q18: the designed rows stay`);
+    await s.page.locator('.k-ulink').filter({ hasText: 'עריכת פרטים' }).click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/me\/edit$/, `${persona}: "עריכת פרטים" opens /me/edit`);
+    const e = await s.text();
+    assert.ok(e.includes('איך שמעתם עלינו?') && e.includes('יישוב *'), `${persona} C13: the registration questions are edited in /me/edit`);
+    assert.ok(e.includes('מחיקת החשבון'), `${persona} C13: account deletion sits at the bottom of /me/edit`);
+    assert.deepEqual(s.errors, [], `${persona}: no page errors`);
+    await s.ctx.close();
+  }
+  { // a team invitee (C9) answers the same questions on first entry
+    const s = await open('new', '/');
+    const t = await s.text();
+    // rule 8: a required question stays in the form; the optional ones wait in "עוד פרטים"
+    assert.ok(t.includes('ברוך הבא לצוות') && t.includes('יישוב *') && !t.includes('איך שמעתם עלינו?'), 'C9: required questions in the form, optional ones folded');
+    await s.page.locator('.k-moredetails__head').click(); await s.page.waitForTimeout(200);
+    assert.ok((await s.text()).includes('איך שמעתם עלינו?'), 'C9: a team invitee answers the optional questions under "עוד פרטים"');
+    assert.deepEqual(s.errors, [], 'C9: no page errors');
+    await s.ctx.close();
+  }
+  { // W4: "הדגמה בכניסה ראשונה" from Q19 (owners only), the four switches at their defaults, a switch saves and Q19 says so
+    const s = await open('owner', '/manage/settings');
+    const row = s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' });
+    assert.equal(await row.count(), 1, 'W4: one row on Q19 for the owner');
+    assert.ok((await row.innerText()).includes('אורחים, מתנדבים ומנהלים'), 'W4: Q19 meta names who sees it');
+    assert.equal(await s.page.locator('.k-card', { hasText: 'מנהלים ומערכת' }).locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).count(), 1, 'W4: in "מנהלים ומערכת"');
+    await row.click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/manage\/settings\/demo$/, 'W4: the row opens /manage/settings/demo');
+    const sw = (name) => s.page.getByRole('switch', { name, exact: true });
+    assert.deepEqual(await Promise.all(['אורחים', 'מתנדבים', 'מנהלים', 'בעלי דוכנים'].map((n) => sw(n).getAttribute('aria-checked'))), ['true', 'true', 'true', 'false'], 'W4: defaults');
+    await sw('מתנדבים').click(); await s.page.waitForTimeout(300);
+    assert.equal(await sw('מתנדבים').getAttribute('aria-checked'), 'false', 'W4: the switch saves at once');
+    assert.ok((await s.text()).includes('לראות את ההדגמה בעצמי'), 'W4: the row to the demo');
+    await s.page.getByText('הגדרות', { exact: true }).first().click(); await s.page.waitForTimeout(400);
+    assert.ok((await s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).innerText()).includes('אורחים ומנהלים'), 'W4: Q19 follows the change');
+    await s.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).click(); await s.page.waitForTimeout(300);
+    await s.page.locator('.k-row', { hasText: 'לראות את ההדגמה בעצמי' }).click(); await s.page.waitForTimeout(500);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/demo$/, 'W4: "לראות את ההדגמה בעצמי" opens the persona chooser');
+    assert.deepEqual(s.errors, [], 'W4: no page errors');
+    await s.ctx.close();
+    const m = await open('manager', '/manage/settings');
+    assert.equal(await m.page.locator('.k-row', { hasText: 'הדגמה בכניסה ראשונה' }).count(), 0, 'W4: a manager has no row');
+    await m.page.goto(`${BASE}/app/manage/settings/demo`, { waitUntil: 'networkidle' }); await m.page.waitForTimeout(300);
+    assert.equal(await m.page.getByRole('switch', { name: 'אורחים', exact: true }).count(), 0, 'W4: a manager cannot open the switches');
+    await m.ctx.close();
+  }
+  { // decision 10 (U15, U16): a guest opens a visit request and a donation from the account, marks the donation paid, cancels the request
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+    await ctx.addInitScript(() => { if (sessionStorage.getItem('__vc')) return; sessionStorage.setItem('__vc', '1'); localStorage.clear(); localStorage.setItem('farm-demo', JSON.stringify({ on: true, persona: 'guest', scenario: 'eventDay' })); });
+    const page = await ctx.newPage(); page.setDefaultTimeout(4000);
+    const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (x) => { if (x.type() === 'error') errors.push(x.text()); });
+    const text = () => page.locator('body').innerText();
+    const fromAccount = async (title) => { // the row on U7, or under "הכל · N" when it is not in the first four
+      await page.goto(`${BASE}/app/me/account`, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+      const row = page.locator('.k-row').filter({ hasText: title });
+      if (!(await row.count())) { await page.getByRole('button', { name: /^הכל/ }).click(); await page.waitForTimeout(300); }
+      await page.locator('.k-row').filter({ hasText: title }).first().click(); await page.waitForTimeout(400);
+    };
+    await fromAccount('ביקור ·');
+    assert.match(new URL(page.url()).pathname, /\/app\/me\/visits\/demo-vi-michal$/, 'U15: the visit row opens the request');
+    let t = await text();
+    for (const w of ['בקשת ביקור', 'מחכה לתשובה', '8 אנשים', 'כתבת', 'הבקשה נשלחה', 'החווה חוזרת אליך', 'הביקור נקבע', 'וואטסאפ לחווה', 'ביטול הבקשה']) assert.ok(t.includes(w), `U15 shows "${w}"`);
+    await page.getByRole('button', { name: 'עוד פעולות' }).click(); await page.waitForTimeout(300);
+    assert.deepEqual(await page.locator('.k-actionsheet .k-action__label').allInnerTexts(), ['ביטול הבקשה'], 'U15: cancel and nothing else in ⋯');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await fromAccount('תרומה · 180');
+    assert.match(new URL(page.url()).pathname, /\/app\/me\/donations\/demo-d-michal$/, 'U16: the donation row opens the donation');
+    t = await text();
+    for (const w of ['ממתין לתשלום', 'לזכר יוסף ברק', 'ביקשת · תישלח אחרי האישור', 'נשאר לשלם', 'תרומה, מיכל ברק']) assert.ok(t.includes(w), `U16 shows "${w}"`);
+    await page.getByRole('button', { name: 'העברתי את התשלום' }).click();
+    await page.getByText('המנהלים יאשרו את ההעברה').first().waitFor();
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(300);
+    t = await text();
+    assert.ok(t.includes('סימנת שהעברת · מחכה לאישור') && !t.includes('העברתי את התשלום'), 'U16: marked paid, kept after reload, the button is gone');
+    await fromAccount('ביקור ·');
+    await page.locator('.guest-actions').getByRole('button', { name: 'ביטול הבקשה' }).click(); await page.waitForTimeout(300);
+    await page.locator('.k-sheet').getByRole('button', { name: 'ביטול הבקשה' }).click();
+    await page.getByText('הבקשה בוטלה').first().waitFor();
+    t = await text();
+    assert.ok(t.includes('בוטל') && (await page.getByRole('button', { name: 'עוד פעולות' }).count()) === 0 && (await page.locator('.guest-steps').count()) === 0, 'U15: the cancelled request has no status line and no cancel');
+    assert.deepEqual(errors, [], 'U15/U16: no page errors');
+    await ctx.close();
+  }
+  { // decision 11: one row at the bottom of a team member's tickets leads to their own "מה יש לי בחווה"
+    const s = await open('staff', '/me/tickets');
+    const last = s.page.locator('.k-list').last();
+    assert.ok((await last.innerText()).includes('מה יש לי בחווה'), 'decision 11: the row sits at the bottom of the tickets page');
+    await last.locator('.k-row').filter({ hasText: 'מה יש לי בחווה' }).click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/me\/items$/, 'decision 11: the row opens /me/items');
+    assert.ok((await s.text()).includes('הכרטיסים שלי'), 'decision 11: the list goes back to the tickets');
+    assert.deepEqual(s.errors, [], 'decision 11: no page errors');
+    await s.ctx.close();
+  }
+  { // the demo C9: "כניסה לאפליקציה" goes straight into the app (no C10 in demo)
+    const s = await open('new', '/');
+    await s.page.getByLabel('השם שלך בעברית').fill('נגה שמיר'); await s.page.getByLabel('טלפון').fill('052-444-5566');
+    for (const q of await s.page.locator('select').all()) await q.selectOption({ index: 1 }).catch(() => {});
+    for (const f of await s.page.getByLabel('יישוב *').all()) await f.fill('טנא');
+    await s.page.getByRole('button', { name: 'כניסה לאפליקציה' }).click(); await s.page.waitForTimeout(800);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/tasks$/, 'demo C9: on to the app, without C10');
+    await s.ctx.close();
+  }
+  { // C10 as the step after C9 (?first=1): "אחר כך" goes on into the app; from the profile row it is the guide, "אחר כך" goes back
+    const s = await open('staff', '/install?first=1');
+    assert.ok((await s.text()).includes('להוסיף למסך הבית'), 'C10 opens as its own screen');
+    await s.page.getByRole('button', { name: 'אחר כך' }).click(); await s.page.waitForTimeout(500);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/tasks$/, 'C10 after C9: "אחר כך" goes on to the app');
+    await s.page.goto(`${BASE}/app/me`, { waitUntil: 'networkidle' }); await s.page.waitForTimeout(300);
+    await s.page.getByText('התקנה למסך הבית').click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/install$/, 'Q18 "התקנה למסך הבית" opens C10');
+    await s.page.getByRole('button', { name: 'אחר כך' }).click(); await s.page.waitForTimeout(400);
+    assert.match(new URL(s.page.url()).pathname, /\/app\/me$/, 'from the profile, "אחר כך" goes back');
+    assert.deepEqual(s.errors, [], 'C10: no page errors');
+    await s.ctx.close();
+  }
+  { // no install strip on any screen: the team, vendor and guest roots in demo, and the signed-out guest shell outside demo on
+    // an iPhone that has opened the app before (where the old banner showed from the second page on)
+    const strip = (pg) => pg.locator('aside[aria-label="התקנה למסך הבית"], .system-installbar, .install-banner').count();
+    for (const [persona, paths] of [['owner', ['/tasks', '/shopping', '/farm', '/manage', '/me']], ['staff', ['/tasks', '/farm', '/me']], ['vendor', ['/vendor', '/vendor/stall']], ['guest', ['/', '/me', '/me/account']]]) {
+      const s = await open(persona, paths[0]);
+      for (const path of paths) {
+        await s.page.evaluate((p) => { history.pushState({ i: (history.state?.i || 0) + 1 }, '', '/app' + p); dispatchEvent(new PopStateEvent('popstate')); }, path); await s.page.waitForTimeout(300);
+        assert.equal(await strip(s.page), 0, `${persona} ${path}: no install strip`);
+      }
+      await s.ctx.close();
+    }
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block',
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
+    // outside demo: ?emulator and every non-localhost request aborted, so nothing reaches the real Firebase project
+    await ctx.route((u) => !['localhost', '127.0.0.1'].includes(u.hostname), (r) => r.abort());
+    await ctx.addInitScript(() => { localStorage.setItem('farm-app-install-seen', 'yes'); localStorage.removeItem('farm-demo'); });
+    const page = await ctx.newPage(); page.setDefaultTimeout(4000);
+    await page.goto(`${BASE}/app/?emulator`, { waitUntil: 'load' }); await page.waitForTimeout(1500);
+    assert.ok((await page.locator('.k-bottomnav, nav').count()) > 0, 'the signed-out guest shell is on screen');
+    for (const path of ['/visit', '/donate', '/me/account']) {
+      await page.evaluate((p) => { history.pushState({ i: (history.state?.i || 0) + 1 }, '', '/app' + p); dispatchEvent(new PopStateEvent('popstate')); }, path); await page.waitForTimeout(400);
+      assert.equal(await strip(page), 0, `signed-out guest ${path}: no install strip`);
+    }
+    await ctx.close();
+  }
+  { // G5 (needs-design decision 12): a pending manager link sent by phone is one more row, with the quiet "ביטול" of Q27
+    const s = await open('owner', '/manage/settings/managers');
+    const row = s.page.locator('.k-row', { hasText: '052-000-0315' });
+    assert.equal(await row.count(), 1, 'G5 lists the phone link');
+    assert.ok((await row.innerText()).includes('מנהל · לפי טלפון · הקישור נשלח היום'), 'G5 phone link meta');
+    assert.ok(!(await s.text()).includes('052-000-0421'), 'the volunteer link is not on G5 (owners and managers only)');
+    await row.getByRole('button', { name: 'ביטול' }).click(); await s.page.waitForTimeout(500);
+    assert.equal(await row.count(), 0, 'G5 "ביטול" cancels the link');
+    assert.ok((await s.text()).includes('הקישור בוטל'), 'the cancel toast, with undo');
+    assert.deepEqual(s.errors, [], 'G5: no page errors');
+    await s.ctx.close();
+  }
+  await browser.close();
+  console.log('v2-system: Q18 placement, C10 and the absent install strip checked in the app');
+}
 console.log('v2-system: all passed');

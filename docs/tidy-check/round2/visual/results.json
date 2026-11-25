@@ -1,0 +1,222 @@
+{
+ "W1-InboxMessage": {
+  "id": "W1-InboxMessage",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/inbox/demo-n-contact",
+  "steps": "",
+  "diff": 0.035,
+  "errors": [],
+  "at": "2026-11-23T18:40:31.578Z"
+ },
+ "W2-InboxStallRequest": {
+  "id": "W2-InboxStallRequest",
+  "persona": "manager",
+  "scenario": "eventDay",
+  "route": "/manage/inbox/stall/demo-e-festival/demo-vr-raz-power",
+  "steps": "",
+  "diff": 0.031,
+  "errors": [],
+  "at": "2026-11-23T18:40:33.063Z"
+ },
+ "W3-VendorPool": {
+  "id": "W3-VendorPool",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/vendors",
+  "steps": "",
+  "diff": 0.015,
+  "errors": [],
+  "at": "2026-11-23T18:40:34.549Z"
+ },
+ "W3-VendorPoolMore": {
+  "id": "W3-VendorPoolMore",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/vendors",
+  "steps": "button:עוד פעולות",
+  "diff": null,
+  "errors": [],
+  "at": "2026-11-23T18:40:36.614Z"
+ },
+ "W3-VendorPoolTable": {
+  "id": "W3-VendorPoolTable",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/vendors/table",
+  "steps": "",
+  "diff": null,
+  "errors": [],
+  "at": "2026-11-23T18:40:37.734Z"
+ },
+ "W4-DemoFirstVisit": {
+  "id": "W4-DemoFirstVisit",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/settings/demo",
+  "steps": "",
+  "diff": 0.019,
+  "errors": [],
+  "at": "2026-11-23T18:40:39.193Z"
+ },
+ "U15-GuestVisitStatus": {
+  "id": "U15-GuestVisitStatus",
+  "persona": "guest",
+  "scenario": "eventDay",
+  "route": "/me/visits/demo-vi-michal",
+  "steps": "",
+  "diff": 0.051,
+  "errors": [],
+  "at": "2026-11-23T18:40:40.675Z"
+ },
+ "U16-GuestDonation": {
+  "id": "U16-GuestDonation",
+  "persona": "guest",
+  "scenario": "eventDay",
+  "route": "/me/donations/demo-d-michal",
+  "steps": "",
+  "diff": 0.056,
+  "errors": [],
+  "at": "2026-11-23T18:40:42.155Z"
+ },
+ "Q4-Donations": {
+  "id": "Q4-Donations",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/donations",
+  "steps": "",
+  "diff": 0.078,
+  "errors": [],
+  "at": "2026-11-23T18:40:43.625Z"
+ },
+ "Q4-DonationsTwo": {
+  "id": "Q4-DonationsTwo",
+  "persona": "manager",
+  "scenario": "afterEvent",
+  "route": "/manage/donations",
+  "steps": "",
+  "diff": null,
+  "errors": [],
+  "at": "2026-11-23T18:40:44.741Z"
+ },
+ "Q14-Reports": {
+  "id": "Q14-Reports",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/reports",
+  "steps": "",
+  "diff": 0.035,
+  "errors": [],
+  "at": "2026-11-23T18:40:46.237Z"
+ },
+ "Q14-ReportsTasks": {
+  "id": "Q14-ReportsTasks",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/reports/tasks",
+  "steps": "",
+  "diff": null,
+  "errors": [],
+  "at": "2026-11-23T18:40:47.351Z"
+ },
+ "Q18-Profile": {
+  "id": "Q18-Profile",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/me",
+  "steps": "",
+  "diff": 0.007,
+  "errors": [],
+  "at": "2026-11-23T18:40:48.818Z"
+ },
+ "Q19-Settings": {
+  "id": "Q19-Settings",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/settings",
+  "steps": "",
+  "diff": 0.071,
+  "errors": [],
+  "at": "2026-11-23T18:40:50.298Z"
+ },
+ "U7-GuestAccount": {
+  "id": "U7-GuestAccount",
+  "persona": "guest",
+  "scenario": "regular",
+  "route": "/me/account",
+  "steps": "",
+  "diff": 0.083,
+  "errors": [],
+  "at": "2026-11-23T18:40:51.784Z"
+ },
+ "Y2-Scans": {
+  "id": "Y2-Scans",
+  "persona": "manager",
+  "scenario": "eventDay",
+  "route": "/manage/events/demo-e-festival/live/scans",
+  "steps": "",
+  "diff": 0.051,
+  "errors": [],
+  "at": "2026-11-23T18:40:53.346Z"
+ },
+ "Y2-ScansReturned": {
+  "id": "Y2-ScansReturned",
+  "persona": "manager",
+  "scenario": "eventDay",
+  "route": "/manage/events/demo-e-festival/live/scans",
+  "steps": "click:יצאו וחזרו",
+  "diff": null,
+  "errors": [],
+  "at": "2026-11-23T18:40:55.441Z"
+ },
+ "C10-Install": {
+  "id": "C10-Install",
+  "persona": "staff",
+  "scenario": "regular",
+  "route": "/install?first=1",
+  "steps": "",
+  "diff": 0.001,
+  "errors": [],
+  "at": "2026-11-23T18:40:56.921Z"
+ },
+ "G5-Managers": {
+  "id": "G5-Managers",
+  "persona": "owner",
+  "scenario": "regular",
+  "route": "/manage/settings/managers",
+  "steps": "",
+  "diff": 0.028,
+  "errors": [],
+  "at": "2026-11-23T18:40:58.398Z"
+ },
+ "M2-Inbox": {
+  "id": "M2-Inbox",
+  "persona": "manager",
+  "scenario": "regular",
+  "route": "/manage/inbox",
+  "steps": "",
+  "diff": 0.007,
+  "errors": [],
+  "at": "2026-11-23T18:40:59.866Z"
+ },
+ "V7-VendorsDay": {
+  "id": "V7-VendorsDay",
+  "persona": "manager",
+  "scenario": "eventDay",
+  "route": "/manage/events/demo-e-festival/vendors/today",
+  "steps": "",
+  "diff": 0.038,
+  "errors": [],
+  "at": "2026-11-23T18:41:01.301Z"
+ },
+ "D6-DayLive": {
+  "id": "D6-DayLive",
+  "persona": "vendor",
+  "scenario": "eventDay",
+  "route": "/vendor",
+  "steps": "click:הגעתי לחווה; wait:6500",
+  "diff": 0.003,
+  "errors": [],
+  "at": "2026-11-23T18:41:10.541Z"
+ }
+}

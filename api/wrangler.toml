@@ -34,7 +34,7 @@ BREVO_DAILY_LIMIT = "290"
 binding = "CF_VERSION_METADATA"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "1-59/5 * * * *", "2-59/5 * * * *"]
 
 # Shares the Google access token between isolates, so a token is signed about once an hour, not per request.
 [[kv_namespaces]]
@@ -57,6 +57,13 @@ simple = { limit = 240, period = 60 }
 [[ratelimits]]
 name = "AUTH_LIMITER"
 namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
+# The public visit counter (/v1/hit, src/traffic.ts): one key for everyone, so a flood of beacons cannot spend the
+# farm's free Firestore writes. With the daily cap in traffic.ts this bounds the counter to a small share of the quota.
+[[ratelimits]]
+name = "HIT_LIMITER"
+namespace_id = "1003"
 simple = { limit = 30, period = 60 }
 
 [observability]

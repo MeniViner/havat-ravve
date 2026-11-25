@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import net from 'node:net';
 import fs from 'node:fs';
+import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -216,19 +217,19 @@ try {
     const jobs0 = (await pushJobs()).length;
     const key = randomUUID();
     const s = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
-    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 4, 'broadcasts.send → 201, 5 recipients, 4 notified (not the sender)', s.json);
+    check(s.status === 201 && s.json.data.recipientCount === 5 && s.json.data.notified === 5 && s.json.data.accepted && s.json.data.created === 5 && s.json.data.queued === 1 && s.json.data.pushState === 'off', 'broadcasts.send → 201, five copies and one queued job while push is off', s.json);
     bAll = s.json.data.broadcastId;
     const b = await docOf('broadcasts/' + bAll);
     check(sameKeys(b, ['id', 'text', 'audience', 'urgent', 'by', 'createdAt', 'recipients', 'recipientCount', 'resentAt']) && b.id === bAll && b.urgent === true && b.by.uid === 'syn-mgr' && b.resentAt === null && b.recipientCount === b.recipients.length,
       'stored exactly as sendBroadcast() writes it', b);
     const own = await docOf(`broadcasts/${bAll}/reads/syn-mgr`);
-    check(own && own.at === b.createdAt && own.seenAt === b.createdAt && own.uid === 'syn-mgr', 'the sender\'s own read receipt');
+    check(!own, 'the sender has no automatic read receipt');
     const n = await docOf(`users/syn-staff/notifications/b_${bAll}`);
     check(n && sameKeys(n, ['id', 'kind', 'title', 'sub', 'link', 'refId', 'by', 'createdAt', 'readAt']) && n.kind === 'broadcast' && n.title === 'הודעה ממנהלת' && n.sub === 'מחר מתחילים ב־7' && n.link === '/tasks' && n.refId === bAll && n.readAt === null, 'each recipient: notification b_<id> as notify() writes it', n);
-    check(!(await docOf(`users/syn-mgr/notifications/b_${bAll}`)), 'the sender is not notified');
+    check((await docOf(`users/syn-mgr/notifications/b_${bAll}`))?.readAt === null, 'sender starts unread');
     const jobs = (await pushJobs()).filter((j) => j.refId === bAll);
-    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
-      'one push job for the phones (urgent, tagged b_<id>, sender excluded)', jobs[0]);
+    check((await pushJobs()).length === jobs0 + 1 && jobs[0].kind === 'broadcast' && jobs[0].urgent === true && jobs[0].tag === 'b_' + bAll && jobs[0].to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff,syn-staff2,synthetic-owner' && jobs[0].sentAt === null && jobs[0].createdBy.uid === 'syn-mgr',
+      'one push job for the phones (urgent, tagged b_<id>, sender included)', jobs[0]);
     const again = await w(MGR, 'broadcasts.send', { text: 'מחר מתחילים ב־7', audience: 'all', urgent: true }, key);
     check(again.json.data.replayed === true && again.json.data.broadcastId === bAll && (await listCol('broadcasts')).length === 1 && (await pushJobs()).length === jobs0 + 1, 'replay: same broadcast, no second send');
     const v = await w(MGR, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
@@ -245,16 +246,16 @@ try {
     await seed(`broadcasts/${bAll}/reads/syn-staff`, { id: 'syn-staff', uid: 'syn-staff', name: 'רונית לוי', at: now, seenAt: now });
     await seed(`broadcasts/${bAll}/reads/syn-staff2`, { id: 'syn-staff2', uid: 'syn-staff2', name: 'יואב כהן', seenAt: now });
     const rd = await r(MGR, `/v1/broadcasts/${bAll}/reads`);
-    check(rd.status === 200 && rd.json.data.items.length === 3 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
+    check(rd.status === 200 && rd.json.data.items.length === 2 && rd.json.data.items.some((x) => x.uid === 'syn-staff2' && !x.at), 'broadcastReads.list: who read and who only saw it', rd.json);
     check((await r(STAFF, `/v1/broadcasts/${bAll}/reads`)).status === 403, 'staff cannot list read receipts');
 
     // resend: only the people without a read receipt; their notification comes back as new
     await fetch(`${DOCS}/users/syn-staff2/notifications/b_${bAll}?updateMask.fieldPaths=readAt`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { readAt: enc(now) } }) });
     const jobs1 = (await pushJobs()).length;
     const rs = await w(MGR, 'broadcasts.resend', { broadcastId: bAll });
-    check(rs.status === 200 && rs.json.data.notified === 3 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 3 unread people notified', rs.json);
+    check(rs.status === 200 && rs.json.data.notified === 4 && rs.json.data.created === 4 && rs.json.data.queued === 1 && (await docOf('broadcasts/' + bAll)).resentAt, 'broadcasts.resend: resentAt set, 4 unread people notified', rs.json);
     const newJob = (await pushJobs()).filter((j) => j.refId === bAll).find((j) => !j.to.includes('syn-staff'));
-    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
+    check((await pushJobs()).length === jobs1 + 1 && newJob && newJob.to.sort().join() === 'syn-mgr,syn-owner-acct,syn-staff2,synthetic-owner', 'the reader is skipped', newJob);
     check((await docOf(`users/syn-staff2/notifications/b_${bAll}`)).readAt === null, 'their notification is new again (same id)');
     check((await w(STAFF, 'broadcasts.resend', { broadcastId: bAll })).status === 403, 'staff cannot resend');
     check((await w(MGR, 'broadcasts.delete', { broadcastId: bTeam })).status === 403, 'a manager cannot delete a broadcast (owner only)');
@@ -279,10 +280,10 @@ try {
     check((await w(MGR, 'notifications.send', { uids: ['syn-staff2'], title: 'x', link: 'https://evil.example' })).status === 400, 'a link outside the app → 400');
     check((await w(MGR, 'notifications.send', { uids: ['syn-blocked'], title: 'x', link: '/tasks' })).status === 400, 'a blocked person → 400');
     const jobs0 = (await pushJobs()).length;
-    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
+    const ns = await w(MGR, 'notifications.send', { uids: ['syn-staff', 'syn-staff2', 'syn-mgr', 'syn-mgr'], title: 'לבדוק את המשאבה', sub: 'היא מרעישה', link: '/farm' });
     const nid = ns.json.data?.notificationId;
     const nd = await docOf(`users/syn-staff/notifications/${nid}`);
-    check(ns.status === 201 && ns.json.data.notified === 2 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && !(await docOf(`users/syn-mgr/notifications/${nid}`)) && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, never to the sender', ns.json);
+    check(ns.status === 201 && ns.json.data.notified === 3 && ns.json.data.accepted && ns.json.data.created === 3 && ns.json.data.queued === 1 && nd.kind === 'system' && nd.title === 'לבדוק את המשאבה' && nd.link === '/farm' && nd.by.uid === 'syn-mgr' && (await docOf(`users/syn-mgr/notifications/${nid}`))?.readAt === null && (await pushJobs()).length === jobs0 + 1, 'notifications.send: kind system, push job, includes the selected sender', ns.json);
   }
 
   section('people');
@@ -584,8 +585,17 @@ try {
     await seed('users/syn-staff2', { ...(await docOf('users/syn-staff2')), displayName: 'שם ששונה אחרי הגיבוי' });
     const one = await api('GET', `/v1/console/backups/${day}/doc?path=users/syn-staff2`, C(own));
     check(one.status === 200 && one.json.data.then.displayName === 'יואב כהן' && one.json.data.now.displayName === 'שם ששונה אחרי הגיבוי', 'one document: then and now side by side', one.json?.data && { then: one.json.data.then.displayName, now: one.json.data.now?.displayName });
-    const rsb = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: ['users/syn-staff2', 'users/not-there'] } });
-    check(rsb.status === 200 && rsb.json.data.restored === 1 && rsb.json.data.missing === 1 && (await docOf('users/syn-staff2')).displayName === 'יואב כהן', 'restore from the backup writes it back as it was', rsb.json);
+    // a person who still exists is changed in the people screen, never overwritten by a restore (role, status)
+    const rsp = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: ['users/syn-staff2', 'users/not-there'] } });
+    check(rsp.status === 200 && rsp.json.data.restored === 0 && rsp.json.data.missing === 1 && rsp.json.data.skippedPeople?.includes('users/syn-staff2') && (await docOf('users/syn-staff2')).displayName === 'שם ששונה אחרי הגיבוי', 'restore never overwrites a person who still exists', rsp.json);
+    await seed('users/syn-staff2', { ...(await docOf('users/syn-staff2')), displayName: 'יואב כהן' });
+    // any other record comes back as it was, and what was there goes to the recycle bin first
+    const other = rows.find((d) => /\/documents\/(tasks|places|shopping|events)\/[^/]+$/.test(d.name) && d.fields.title?.stringValue);
+    const otherPath = other.name.slice(other.name.indexOf('/documents/') + 11);
+    const was = other.fields.title.stringValue;
+    await seed(otherPath, { ...(await docOf(otherPath)), title: 'כותרת ששונתה אחרי הגיבוי' });
+    const rsb = await api('POST', `/v1/console/backups/${day}/restore`, { ...C(own), body: { paths: [otherPath] } });
+    check(rsb.status === 200 && rsb.json.data.restored === 1 && rsb.json.data.keptInTrash === 1 && (await docOf(otherPath)).title === was, 'restore from the backup writes it back as it was, the current version kept in the recycle bin', rsb.json);
     const LB = await (async () => { for (let i = 0; i < 30; i++) { const d = await docOf('api_log/' + rsb.json.meta.requestId); if (d) return d; await new Promise((res) => setTimeout(res, 100)); } return null; })();
     check(LB && LB.op === 'console.backups.restore' && LB.verb === 'שחזר' && LB.keyLabel === 'קונסולה · נועה', 'a restore is logged as the console', LB && { op: LB.op, verb: LB.verb });
     check((await api('GET', '/v1/console/backups/2020-01-01/download', C(own))).status === 404, 'a day without a backup → 404');
@@ -607,20 +617,281 @@ try {
     const ta = await api('POST', '/v1/console/monitor/test-alert', C(own));
     const inbox = await fetch(`${DOCS}/users/${own.localId}/notifications?pageSize=50`, { headers: admin }).then((x) => x.json());
     const note = (inbox.documents || []).map((d) => d.fields).find((f) => f.title?.stringValue === 'בדיקת התראות מהשרת');
-    check(ta.status === 200 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
+    check(ta.status === 200 && ta.json.data.accepted && ta.json.data.created === 1 && ta.json.data.queued === 0 && ta.json.data.push === false && note && note.link.stringValue === '/admin' && note.kind.stringValue === 'system' && note.by.mapValue.fields.name.stringValue === 'השרת', 'a test alert lands in the owner\'s inbox in the app, from "השרת", linking to the console', note && { link: note.link, kind: note.kind });
     await api('POST', '/v1/console/monitor/alerts', { ...C(own), body: { push: true } });
+    const queuedTest = await api('POST', '/v1/console/monitor/test-alert', C(own));
+    check(queuedTest.status === 200 && queuedTest.json.data.accepted && queuedTest.json.data.created === 1
+      && queuedTest.json.data.queued === 1 && queuedTest.json.data.pushState === 'off' && !('delivered' in queuedTest.json.data),
+    'the test alert reports its job and the server’s actual off state');
+    check(mon0.json.data.pushState === 'off' && mon0.json.data.alertsAvailable === true, 'monitor includes the actual server push state');
     const sec = await api('GET', '/v1/console/security?days=7', C(own));
     const secItems = sec.json?.data?.items || [];
     check(sec.status === 200 && secItems.some((e) => e.kind === 'refused' && e.what && e.detail) && secItems.some((e) => e.kind === 'console' && e.what === 'כניסה לקונסולה') && secItems.some((e) => e.kind === 'console' && e.what === 'הגדרות התראות'), 'security log: refused requests, console sign-ins and console changes', secItems.slice(0, 6));
     check(secItems.every((e, i) => i === 0 || secItems[i - 1].at >= e.at), 'security log: newest first');
     check((await api('GET', '/v1/console/security', C(mgr))).status === 403, 'a manager cannot read the security log');
+
+    // ---------- the data browser: collections, records, history, careful edits, delete to the bin, CSV ----------
+    const cols = await api('GET', '/v1/console/data', C(own));
+    const colOf = (g) => cols.json?.data?.items?.find((c) => c.group === g);
+    check(cols.status === 200 && colOf('users')?.count >= 10 && colOf('users').readOnly === true && colOf('places')?.readOnly === false && cols.json.data.backupDate === day, 'data: every collection with a live count; people and logs are read-only', cols.json?.data?.items?.slice(0, 4));
+    check((await api('GET', '/v1/console/data', C(mgr))).status === 403, 'a manager cannot browse the data');
+    const pDat = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
+    const pg = await api('GET', '/v1/console/data/docs?collection=places', C(own));
+    check(pg.status === 200 && pg.json.data.items.some((d) => d.path === `places/${pDat}` && d.title === 'מקום לדפדוף'), 'data: a page of records with titles', pg.json?.data?.items?.length);
+    const dv = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check(dv.status === 200 && dv.json.data.fields.name === 'מקום לדפדוף' && dv.json.data.types.name === 'string' && dv.json.data.types.lat === 'double' && dv.json.data.updateTime && dv.json.data.readOnly === false, 'data: one record with field types and updateTime', dv.json?.data?.types);
+    check((await api('GET', '/v1/console/data/doc?path=places/nope-nope', C(own))).status === 404, 'data: a missing record → 404');
+    check((await api('GET', `/v1/console/data/doc?path=${encodeURIComponent('../etc')}`, C(own))).status === 400, 'data: a bad path → 400');
+    const ed = await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'מקום ששמו תוקן' }, updateTime: dv.json.data.updateTime } });
+    check(ed.status === 200 && ed.json.data.before.name === 'מקום לדפדוף' && (await docOf(`places/${pDat}`)).name === 'מקום ששמו תוקן', 'edit: a text field changes, and the answer keeps what it was', ed.json);
+    const LE = await (async () => { for (let i = 0; i < 30; i++) { const x = await docOf('api_log/' + ed.json.meta.requestId); if (x) return x; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(LE && LE.op === 'console.data.edit' && LE.result.includes('מקום לדפדוף') && LE.keyLabel === 'קונסולה · נועה', 'edit: logged as the console, with the value before', LE && { op: LE.op });
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { name: 'שוב' }, updateTime: dv.json.data.updateTime } })).status === 409, 'edit: an old updateTime → 409, nothing overwritten');
+    const dv2 = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { lat: 'north' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a number field refuses text');
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: `places/${pDat}`, set: { brandNew: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 400, 'edit: a field the record does not have → 400');
+    // The browser edits legacy templates that have no updatedAt. The normal API must reject the earlier version twice.
+    const legacyPath = 'task_templates/instinct-audit-legacy';
+    await seed(legacyPath, { title: 'INSTINCT AUDIT template', active: true });
+    const tplBefore = await api('GET', '/v1/console/data/doc?path=' + legacyPath, C(own));
+    const tplEdit = await api('POST', '/v1/console/data/edit', { ...C(own), body: {
+      path: legacyPath, set: { title: 'INSTINCT AUDIT changed in console' }, updateTime: tplBefore.json.data.updateTime,
+    } });
+    const version = (await docOf(legacyPath)).updatedAt;
+    check(tplEdit.status === 200 && typeof version === 'string', 'console edit adds a version to an older template');
+    for (const title of ['INSTINCT AUDIT stale template 1', 'INSTINCT AUDIT stale template 2']) {
+      const stale = await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', title, ifUpdatedAt: '' });
+      check(stale.status === 409 && stale.json.error.code === 'STALE_WRITE' && stale.json.error.details.currentUpdatedAt === version,
+        'templates.update rejects each stale request');
+    }
+    check((await docOf(legacyPath)).title === 'INSTINCT AUDIT changed in console', 'stale attempts leave the template intact');
+    ok(await w(MGR, 'templates.update', { templateId: 'instinct-audit-legacy', active: false, ifUpdatedAt: version }), 'current version works');
+    await w(MGR, 'templates.delete', { templateId: 'instinct-audit-legacy' });
+    check(!(await docOf(legacyPath)), 'legacy template fixture is gone');
+    const uv = await api('GET', '/v1/console/data/doc?path=users/syn-staff2', C(own));
+    check((await api('POST', '/v1/console/data/edit', { ...C(own), body: { path: 'users/syn-staff2', set: { role: 'owner' }, updateTime: uv.json.data.updateTime } })).status === 403 && (await docOf('users/syn-staff2')).role !== 'owner', 'edit: people cannot be edited here (role stays)');
+    check((await api('POST', '/v1/console/data/edit', { ...C(mgr), body: { path: `places/${pDat}`, set: { name: 'x' }, updateTime: dv2.json.data.updateTime } })).status === 403, 'a manager cannot edit records');
+    const hist = await api('GET', `/v1/console/data/history?path=users/syn-staff2&days=7`, C(own));
+    check(hist.status === 200 && hist.json.data.versions.length >= 1 && hist.json.data.versions[0].fields?.displayName === 'יואב כהן' && hist.json.data.days >= 1 && hist.json.data.now, 'history: the version in tonight\'s backup, next to now', hist.json?.data && { versions: hist.json.data.versions.length, days: hist.json.data.days });
+    const dDel = await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: `places/${pDat}`, updateTime: dv2.json.data.updateTime } });
+    const binNow = (await api('GET', '/v1/console/trash', C(own))).json.data.items.find((t) => t.path === `places/${pDat}`);
+    check(dDel.status === 200 && !(await docOf(`places/${pDat}`)) && binNow && binNow.by === 'קונסולה · נועה', 'delete: the record is gone and waits in the recycle bin', binNow);
+    check((await api('POST', '/v1/console/data/delete', { ...C(own), body: { path: 'api_log/' + ed.json.meta.requestId, updateTime: 'x' } })).status === 403, 'delete: the logs cannot be deleted');
+    const csv = await fetch(BASE + '/v1/console/data/export?collection=users', { headers: { authorization: 'Bearer ' + own.idToken } });
+    const csvBytes = new Uint8Array(await csv.arrayBuffer());
+    const csvText = new TextDecoder().decode(csvBytes); // the decoder drops the BOM
+    check(csv.status === 200 && csvBytes[0] === 0xEF && csvBytes[1] === 0xBB && csvBytes[2] === 0xBF && /attachment; filename="havat-ravve-users-/.test(csv.headers.get('content-disposition') || '') && csvText.startsWith('id,') && csvText.includes('מנהלת בדיקה'), 'export: a CSV for Excel (BOM, header, Hebrew)', csvText.slice(0, 120));
+    const LX = await (async () => { for (let i = 0; i < 30; i++) { const r = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.data.export' } } }, limit: 1 } }) }).then((x) => x.json()); if (r[0]?.document) return r[0].document; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(!!LX, 'export: always logged (data leaving the server)');
+
+    // ---------- statistics, money, events ----------
+    const nowIso = new Date().toISOString();
+    await seed('donations/stat-paid', { uid: 'syn-staff', name: 'תורם בדיקה', amount: 250, label: 'תרומה', paymentStatus: 'paid', paymentConfirmation: { at: nowIso, by: { uid: 'syn-own', name: 'נועה' } }, createdAt: nowIso, updatedAt: nowIso });
+    await seed('donations/stat-claimed', { uid: 'syn-staff2', name: 'תורמת שנייה', amount: 100, label: 'תרומה', paymentStatus: 'claimed', createdAt: nowIso, updatedAt: nowIso });
+    const st = await api('GET', '/v1/console/stats?days=30', C(own));
+    const sd = st.json?.data;
+    check(st.status === 200 && sd.days === 30 && sd.farm.people.total >= 10 && sd.farm.activity.days.length === 30 && sd.farm.activity.weekday.length === 7 && typeof sd.farm.tasks.done === 'number', 'stats: the farm over 30 days (people, tasks, a column per day, weekdays)', sd && { people: sd.farm.people.total, tasks: sd.farm.tasks });
+    check(sd && sd.money.received.donations >= 250 && sd.money.months.length === 12 && sd.money.debts.some((d) => d.id === 'stat-claimed' && d.claimed && d.amount === 100) && sd.money.debts[0].claimed === true && sd.money.waiting.claimed >= 100, 'money: what came in, and a claimed payment waits first for an owner', sd?.money && { received: sd.money.received, debts: sd.money.debts.slice(0, 3) });
+    check(Array.isArray(sd?.events) && sd.events.every((e) => typeof e.tickets === 'number' && typeof e.paid === 'number' && e.paid <= e.tickets), 'events: each event as tickets → paid → came in', sd?.events?.slice(0, 2));
+    check((await api('GET', '/v1/console/stats?days=5', C(own))).status === 400, 'stats: only a week, a month, 3 months or a year');
+    check((await api('GET', '/v1/console/stats', C(mgr))).status === 403, 'a manager cannot read the money report');
+
+    // ---------- switches, the send queue, scheduled jobs, cleanup ----------
+    const sw0 = await api('GET', '/v1/console/switches', C(own));
+    check(sw0.status === 200 && sw0.json.data.switches.readOnly === false && sw0.json.data.switches.keysStopped === false && sw0.json.data.server.email.on === false, 'switches: all off to begin with, and what the server is set up for', sw0.json?.data);
+    check((await api('GET', '/v1/console/switches', C(mgr))).status === 403, 'a manager cannot see the switches');
+    check((await api('POST', '/v1/console/switches', { ...C(own), body: { nope: true } })).status === 400 && (await api('POST', '/v1/console/switches', { ...C(own), body: { readOnly: 'yes' } })).status === 400, 'switches: an unknown switch or a value that is not true/false → 400');
+    const swK = await api('POST', '/v1/console/switches', { ...C(own), body: { keysStopped: true } });
+    const keyRefused = await r(MGR, '/v1/tasks');
+    check(swK.status === 200 && keyRefused.status === 403 && keyRefused.json?.error?.details?.switch === 'keysStopped', 'keys stopped: every API key is refused at once', keyRefused.json?.error);
+    check((await api('GET', '/v1/console/api/tasks', C(own))).status === 200, 'keys stopped: the console itself keeps working');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { keysStopped: false, readOnly: true, maintenance: true, maintenanceText: 'שיפוץ קטן', registrationClosed: true } });
+    const roRead = await r(MGR, '/v1/tasks');
+    const roWrite = await w(MGR, 'tasks.create', { title: 'משימה בזמן קריאה בלבד' });
+    check(roRead.status === 200 && roWrite.status === 403 && roWrite.json?.error?.details?.switch === 'readOnly', 'read-only: keys may read but not write', roWrite.json?.error);
+    const appSw = await docOf('settings/switches');
+    check(appSw && appSw.readOnly === true && appSw.maintenance === true && appSw.maintenanceText === 'שיפוץ קטן' && appSw.registrationClosed === true && !('keysStopped' in appSw), 'the app\'s copy (settings/switches): maintenance, its message, registration and read-only only', appSw);
+    const LSW = await (async () => { for (let i = 0; i < 30; i++) { const q = await fetch(`${DOCS}:runQuery`, { method: 'POST', headers: admin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'api_log' }], where: { fieldFilter: { field: { fieldPath: 'op' }, op: 'EQUAL', value: { stringValue: 'console.switches.set' } } }, limit: 5 } }) }).then((x) => x.json()); if (q.filter((x) => x.document).length >= 2) return q; await new Promise((res) => setTimeout(res, 100)); } return null; })();
+    check(!!LSW, 'every switch change is in the log (and so in the security log)');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { readOnly: false, maintenance: false, registrationClosed: false } });
+    check((await w(MGR, 'tasks.create', { title: 'משימה אחרי קריאה בלבד' })).status < 300 && (await docOf('settings/switches')).readOnly === false, 'read-only off: writes work again, and the app\'s copy says so');
+
+    await seed('email_outbox/donation_qtest', { kind: 'donation', refId: 'stat-claimed', uid: 'syn-staff2', status: 'failed', reason: 'invalid_address', attempts: 1, to: 'nobody@synthetic.invalid', createdAt: nowIso, updatedAt: nowIso, nextAt: null });
+    await seed('push_jobs/pj-qtest', { kind: 'system', title: 'בדיקת תור', body: 'x', link: '/', to: ['syn-staff'], createdBy: { uid: 'syn-mgr', name: 'מנהלת בדיקה' }, createdAt: nowIso, sentAt: null, urgent: false, tag: 'pj-qtest', refId: '' });
+    const qu = await api('GET', '/v1/console/queue', C(own));
+    const qe = qu.json?.data?.emails?.find((e) => e.id === 'donation_qtest');
+    check(qu.status === 200 && qe && qe.who === 'תורמת שנייה' && qe.status === 'failed' && !JSON.stringify(qu.json.data).includes('nobody@synthetic.invalid') && qu.json.data.pushes.some((p) => p.id === 'pj-qtest' && p.to === 1), 'queue: a failed email with the name on the payment (never the address), and a waiting push', qe);
+    const rt = await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: { updateTime: qe.updateTime } });
+    const afterRt = await docOf('email_outbox/donation_qtest');
+    check(rt.status === 200 && afterRt.status === 'queued' && afterRt.attempts === 0 && afterRt.retriedBy === 'נועה בעלים', 'queue: send again puts it back as a fresh first attempt', afterRt);
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: { updateTime: qe.updateTime } })).status === 409, 'queue: an old updateTime → 409');
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/cancel', { ...C(own), body: {} })).status === 200 && (await docOf('email_outbox/donation_qtest')).status === 'cancelled', 'queue: cancel an email');
+    check((await api('POST', '/v1/console/queue/email/donation_qtest/retry', { ...C(own), body: {} })).status === 400, 'queue: a cancelled email cannot be sent again from here');
+    const pc = await api('POST', '/v1/console/queue/push/pj-qtest/cancel', { ...C(own), body: {} });
+    const pj = await docOf('push_jobs/pj-qtest');
+    check(pc.status === 200 && pj.sentAt && pj.result === 'cancelled', 'queue: cancel a phone push (marked as gone, never sent)', pj);
+    check((await api('POST', '/v1/console/queue/push/pj-qtest/cancel', { ...C(mgr), body: {} })).status === 403, 'a manager cannot touch the queue');
+    const pv = await api('GET', '/v1/console/queue/preview', C(own));
+    check(pv.status === 200 && pv.json.data.text.includes('דנה לוי') && pv.json.data.html.includes('<p'), 'queue: the payment email as a guest gets it, with sample values', pv.json?.data?.text);
+
+    const old = '2020-01-01T00:00:00.000Z';
+    await seed('api_idempotency/old-idem-1', { createdAt: old, operation: 'x' });
+    await seed('api_failures/old-failure-1', { at: old, code: 'INTERNAL' });
+    const jb = await api('GET', '/v1/console/jobs', C(own));
+    const due = Object.fromEntries((jb.json?.data?.cleanup?.items || []).map((i) => [i.collection, i.due]));
+    check(jb.status === 200 && jb.json.data.jobs.length === 6 && jb.json.data.jobs.find((j) => j.id === 'accounts').canRun === false && due.api_idempotency >= 1 && due.api_failures >= 1, 'jobs: each scheduled job, and what cleanup would take', due);
+    const c1 = await api('POST', '/v1/console/jobs/cleanup/run', { ...C(own), body: {} });
+    const c2 = await api('POST', '/v1/console/jobs/cleanup/run', { ...C(own), body: {} });
+    const jb2 = await api('GET', '/v1/console/jobs', C(own));
+    const arch = Object.fromEntries((jb2.json?.data?.archive?.collections || []).map((c) => [c.collection, c.files]));
+    check(c1.status === 200 && c2.status === 200 && !(await docOf('api_idempotency/old-idem-1')) && !(await docOf('api_failures/old-failure-1')) && arch.api_idempotency >= 1 && arch.api_failures >= 1, 'cleanup: old records go to the R2 archive first, then out of Firestore', { arch, c2: c2.json?.data });
+    check(!!(await docOf('users/syn-staff')) && jb2.json.data.jobs.find((j) => j.id === 'cleanup').last?.by === 'נועה בעלים', 'cleanup: the farm\'s own data stays, and the run is remembered with who pressed it');
+    check((await api('POST', '/v1/console/jobs/email/run', { ...C(own), body: {} })).status === 200 && (await api('POST', '/v1/console/jobs/accounts/run', { ...C(own), body: {} })).status === 400, 'jobs: run email now; account deletion cannot be run by hand');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: true } });
+    check((await api('POST', '/v1/console/jobs/push/run', { ...C(own), body: {} })).status === 400 && (await api('GET', '/v1/console/jobs', C(own))).json.data.jobs.find((j) => j.id === 'push').paused === true, 'jobs: a paused job shows as paused and does not run by hand');
+    await api('POST', '/v1/console/switches', { ...C(own), body: { pushPaused: false } });
+
+    // ---------- site visits and app usage (traffic.ts): public beacons, counters only ----------
+    const hitP = (body, origin = 'http://localhost:5173') => fetch(BASE + '/v1/hit', { method: 'POST', headers: { 'content-type': 'text/plain;charset=UTF-8', ...(origin ? { origin } : {}) }, body: typeof body === 'string' ? body : JSON.stringify(body) }).then((x) => x.status);
+    const statsDay = () => docOf('site_stats/' + todayIL);
+    const s1 = await hitP({ t: 'view', page: 'home', source: 'google', device: 'mobile', newToday: true, returning: false, name: 'should not be kept' });
+    const d1 = await statsDay();
+    check(s1 === 204 && d1?.hits === 1 && d1.site.views === 1 && d1.site.page.home === 1 && d1.site.source.google === 1 && d1.site.device.mobile === 1 && d1.site.visitors === 1 && !JSON.stringify(d1).includes('should not'), 'hit: a site visit adds to today\'s counters, nothing else is kept', d1);
+    const hourKeys = Object.keys(d1?.site?.hour || {});
+    check(hourKeys.length === 1 && /^h([01]\d|2[0-3])$/.test(hourKeys[0]), 'hit: the hour of the visit, Israel time', hourKeys);
+    await hitP({ t: 'leave', sections: ['story', 'visit', 'bogus', 'story'], clicks: ['waze', 'phone', 'javascript:alert(1)'], depth: 'd75', time: 't60' });
+    const d2 = await statsDay();
+    check(d2.site.section.story === 1 && d2.site.section.visit === 1 && !('bogus' in d2.site.section) && d2.site.click.waze === 1 && d2.site.click.phone === 1 && Object.keys(d2.site.click).length === 2 && d2.site.depth.d75 === 1 && d2.site.time.t60 === 1, 'hit: sections, clicks, depth and time, only names on the list, each once per visit', d2.site);
+    await hitP({ t: 'view', app: true, device: 'installed', role: 'staff', newToday: true, returning: true });
+    await hitP({ t: 'leave', app: true, screens: { tasks: 3, shopping: 999, evil: 5, home: -2 } });
+    const d3 = await statsDay();
+    check(d3.app.opens === 1 && d3.app.visitors === 1 && d3.app.returning === 1 && d3.app.role.staff === 1 && d3.app.device.installed === 1 && d3.app.screen.tasks === 3 && d3.app.screen.shopping === 50 && !('evil' in d3.app.screen) && !('home' in d3.app.screen), 'hit: app opens and screens, capped per beacon, unknown screens dropped', d3.app);
+    const hitsBefore = (await statsDay()).hits;
+    const foreign = await hitP({ t: 'view', page: 'home' }, 'https://evil.example');
+    const previewHit = await hitP({ t: 'view', page: 'home' }, 'https://havat-ravve--pr-9-abc.web.app');
+    const broken = await hitP('{not json');
+    const huge = await hitP({ t: 'view', pad: 'x'.repeat(3000) });
+    const wrongT = await hitP({ t: 'delete' });
+    check([foreign, previewHit, broken, huge, wrongT].every((s) => s === 204) && (await statsDay()).hits === hitsBefore, 'hit: another site, a preview channel, broken or huge bodies all answer 204 and write nothing');
+    check((await fetch(BASE + '/v1/hit')).status === 405 && (await fetch(BASE + '/v1/hit', { method: 'OPTIONS', headers: { origin: 'http://localhost:5173' } })).status === 204, 'hit: only POST (and the CORS preflight)');
+    const trf = await api('GET', '/v1/console/traffic?days=7', C(own));
+    const tv = trf.json?.data;
+    check(trf.status === 200 && tv.perDay.length === 7 && tv.today.day === todayIL && tv.totals.views === 1 && tv.totals.visitors === 1 && tv.totals.opens === 1 && tv.totals.users === 1 && tv.site.sources[0]?.key === 'google' && tv.site.sections.some((x) => x.key === 'story') && tv.app.screens[0]?.key === 'shopping' && tv.site.hours.length === 24, 'traffic: the console\'s view of the week', tv);
+    check((await api('GET', '/v1/console/traffic?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/traffic', C(mgr))).status === 403, 'traffic: a week, a month or 3 months; owners only');
+    await seed('site_stats/' + todayIL, { hits: 5999, site: { views: 3 } });
+    await hitP({ t: 'view', page: 'home' });
+    await hitP({ t: 'view', page: 'home' });
+    const cappedDay = await statsDay();
+    const tcap = (await api('GET', '/v1/console/traffic?days=7', C(own))).json?.data;
+    check(cappedDay.hits === 6000 && cappedDay.site.views === 4 && tcap.today.capped === true, 'hit: the daily cap stops counting for the day (the free writes stay for the farm)', cappedDay);
+
+    // ---------- limited keys (keys.ts scopes): only part of what the person may do ----------
+    const ro = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'קריאה בלבד', actor: 'user:syn-mgr', scopes: ['tasks:read', 'shopping:read', 'people:read', 'overview:read'] } });
+    const roKey = ro.json?.data?.key, roId = ro.json?.data?.id;
+    const roTask = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'לא אמור להיווצר' } });
+    check(ro.status === 201 && (await api('GET', '/v1/tasks', { key: roKey })).status === 200 && (await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: roKey })).status === 200 && roTask.status === 403 && roTask.json?.error?.details?.requiredScope === 'tasks:create', 'a read-only key reads, and cannot write', roTask.json?.error);
+    const roListed = (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === roId);
+    check(JSON.stringify(roListed?.scopes) === JSON.stringify(['overview:read', 'people:read', 'shopping:read', 'tasks:read']) && (await api('GET', '/v1/console/keys', C(own))).json.data.items.find((k) => k.id === newId)?.scopes === null, 'the list says what each key may do (null: everything its person may)', roListed?.scopes);
+    const sh = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'רק קניות', actor: 'user:syn-staff', scopes: ['shopping:read', 'shopping:write', 'people:read'] } });
+    const shKey = sh.json?.data?.key, shId = sh.json?.data?.id;
+    const shAdd = await api('POST', '/v1/actions/shopping.add', { key: shKey, idem: randomUUID(), body: { title: 'חציר' } });
+    check(shAdd.status >= 200 && shAdd.status < 300 && (await api('GET', '/v1/tasks', { key: shKey })).status === 403, 'a shopping-only key adds to shopping, and cannot read tasks', shAdd.json?.error);
+    check((await api('GET', '/v1/people?q=' + encodeURIComponent('רונית'), { key: shKey })).status === 403, 'a key never gets more than its person\'s role (staff has no people:read)');
+    check((await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: ['root:all'] } })).status === 400 && (await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'x', actor: 'user:syn-mgr', scopes: [] } })).status === 400, 'unknown scopes or an empty list → 400');
+    const widen = await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: null } });
+    const roTask2 = await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'עכשיו מותר' } });
+    check(widen.status === 200 && roTask2.status >= 200 && roTask2.status < 300, 'scopes: null gives the key back everything its person may do', roTask2.json?.error);
+    await api('POST', `/v1/console/keys/${roId}/scopes`, { ...C(own), body: { scopes: ['tasks:read'] } });
+    check((await api('POST', '/v1/actions/tasks.create', { key: roKey, idem: randomUUID(), body: { title: 'שוב אסור' } })).status === 403 && (await api('POST', `/v1/console/keys/${shId}/scopes`, { ...C(mgr), body: { scopes: null } })).status === 403, 'scopes can be narrowed again; a manager cannot change them');
+
+    {
+      // Use the same preset the console saves, with a real synthetic staff profile.
+      const { outputFiles } = await build({ entryPoints: ['api/src/presets.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+      const { PRESETS } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+      const volunteer = await api('POST', '/v1/console/keys', { ...C(own), body: { label: 'אינסטינקט רונית', actor: 'user:syn-staff', scopes: PRESETS.volunteer } });
+      const vk = { key: volunteer.json.data.key };
+      const deniedDonation = await r(vk, '/v1/donations');
+      check(deniedDonation.status === 403 && deniedDonation.json.error.details.requiredScope === 'donations:read'
+        && (await r(OWNER, '/v1/donations')).status === 200, 'volunteer donations forbidden with requiredScope; unrestricted owner can read');
+      const ownTask = await w(vk, 'tasks.create', { title: 'משימת מתנדבת' });
+      ok(ownTask, 'the volunteer can create a task');
+      check((await w(vk, 'tasks.delete', { taskId: ownTask.json.data.taskId })).json.error.details.requiredScope === 'tasks:delete', 'the volunteer cannot delete their own task');
+      const added = await w(vk, 'shopping.add', { title: 'קניות מתנדבת' });
+      ok(added, 'the volunteer can add a shopping item');
+      check((await w(vk, 'shopping.delete', { itemId: added.json.data.itemId })).json.error.details.requiredScope === 'shopping:delete', 'the volunteer cannot delete shopping items');
+      const noticeLog = await logOf(deniedDonation.json.meta.requestId);
+      check(noticeLog?.keyLabel === 'אינסטינקט רונית' && noticeLog.actor.uid === 'syn-staff', 'a refused volunteer request appears under the key label');
+      const badScope = await api('POST', `/v1/console/keys/${volunteer.json.data.id}/scopes`, { ...C(own), body: { scopes: ['invented:scope'] } });
+      check(badScope.status === 400 && badScope.json.error.message.includes('invented:scope'), 'scope validation names the unknown scope');
+
+      const limited = await api('POST', '/v1/console/keys', { ...C(own), body: {
+        label: 'צוות בלבד', actor: 'user:syn-mgr', scopes: ['notify:team', 'broadcasts:write', 'presence:write'],
+      } });
+      const lk = { key: limited.json.data.key };
+      const day = addDays(todayIL, 18);
+      ok(await w(lk, 'presence.save', { dates: [day] }), 'an own-presence scope can save the manager’s own dates');
+      const otherPresence = await w(lk, 'presence.save', { dates: [day], uid: 'syn-staff2' });
+      check(otherPresence.status === 403 && otherPresence.json.error.details.requiredScope === 'presence:write:any', 'a limited manager cannot register another person');
+      const urgent = await w(lk, 'broadcasts.send', { text: 'דחוף', audience: 'all', urgent: true });
+      check(urgent.status === 403 && urgent.json.error.details.requiredScope === 'broadcasts:urgent', 'a normal broadcast grant does not allow urgent broadcasts');
+      const out = await w(lk, 'broadcasts.send', { text: 'לדוכנים', audience: 'vendors' });
+      check(out.status === 403 && out.json.error.details.requiredScope === 'notify:all', 'team-only scope denies broadcasts to external audiences');
+      const outsideNotice = await w(lk, 'notifications.send', { title: 'פרטי', link: '/farm', uids: ['syn-guest'] });
+      check(outsideNotice.status === 403 && outsideNotice.json.error.details.requiredScope === 'notify:all', 'team-only scope denies personal notifications to external recipients');
+
+      const toSelf = { title: 'private-acceptance-title', sub: 'private-acceptance-body', link: '/farm', uids: ['syn-mgr'] };
+      const sentToMe = await w(lk, 'notifications.send', toSelf);
+      const mineId = sentToMe.json.data.notificationId;
+      const others = await w(lk, 'notifications.send', { ...toSelf, uids: ['syn-staff'], includeSelf: true, push: false });
+      check(others.json.data.created === 1 && others.json.data.queued === 0 &&
+        !(await docOf(`users/syn-mgr/notifications/${others.json.data.notificationId}`)), 'a legacy flag adds no recipient');
+      const legacy = await w(lk, 'notifications.send', { ...toSelf, includeSelf: false, push: false });
+      check(legacy.json.data.created === 1 && legacy.json.data.queued === 0 &&
+        !!(await docOf(`users/syn-mgr/notifications/${legacy.json.data.notificationId}`)), 'a legacy false flag does not exclude the sender');
+      const mine = await docOf(`users/syn-mgr/notifications/${mineId}`);
+      check(sentToMe.status === 201 && sentToMe.json.data.notified === 1 && mine?.readAt === null
+        && (await pushJobs()).some((job) => job.to.join() === 'syn-mgr'), 'a self-only notification is unread and queued for push');
+      const privateLog = await logOf(sentToMe.json.meta.requestId);
+      check(privateLog?.body === '' && privateLog.refs.length === 0 && privateLog.result === JSON.stringify({ notified: 1, accepted: true, created: 1, queued: 1 }), 'owner audit keeps sender and count with no personal content or recipient refs');
+      const row = await docOf('notification_activity/' + mineId);
+      check(row?.by.uid === 'syn-mgr' && row.notificationKind === 'system' && row.recipientCount === 1
+        && row.accepted === true && row.created === 1 && row.queued === 1 && Number.isFinite(Date.parse(row.at))
+        && sameKeys(row, ['kind', 'notificationKind', 'refId', 'action', 'by', 'at', 'recipientCount', 'accepted', 'created', 'queued']),
+      'one owner-only journal row contains metadata only', row);
+      check(!(await listCol('activity')).some((row) => JSON.stringify(row).includes('private-acceptance-')), 'personal notification data is absent from team activity');
+
+      const sameKey = randomUUID();
+      const body = { text: 'הודעת קבלה לצוות', audience: 'all', includeSelf: true };
+      const sent = await w(lk, 'broadcasts.send', body, sameKey);
+      const bid = sent.json.data.broadcastId;
+      check(sent.status === 201 && sent.json.data.notified === sent.json.data.recipientCount
+        && (await docOf(`users/syn-mgr/notifications/b_${bid}`))?.readAt === null
+        && !(await docOf(`broadcasts/${bid}/reads/syn-mgr`))
+        && (await pushJobs()).some((job) => job.refId === bid && job.to.includes('syn-mgr')), 'a selected sender reaches their bell and push queue without a read receipt');
+      const replay = await w(lk, 'broadcasts.send', { ...body, includeSelf: false }, sameKey);
+      check(replay.json.data.replayed && (await where('activity', 'refId', bid)).filter((row) => row.action === 'message_sent').length === 1, 'changing the ignored legacy flag still replays the same send and activity row');
+      ok(await w(lk, 'broadcasts.resend', { broadcastId: bid }), 'resends a normal team broadcast');
+      ok(await w(OWNER, 'broadcasts.delete', { broadcastId: bid }), 'owner deletes the broadcast');
+      const feed = await r(STAFF, '/v1/activity?kind=message&refId=' + bid);
+      const byAction = new Map(feed.json.data.items.map((row) => [row.action, row]));
+      check(byAction.get('message_sent')?.text.includes(body.text) && byAction.has('message_resent')
+        && byAction.get('message_deleted')?.refId === bid, 'send, resend and deletion are visible in volunteer activity, with the deleted id');
+    }
+
+    // ---------- speed (speed.ts): from the assistant log's own timings ----------
+    const sp = await api('GET', '/v1/console/speed?days=7', C(own));
+    const spd = sp.json?.data;
+    check(sp.status === 200 && spd.total.count > 0 && spd.total.p95 >= spd.total.p50 && spd.ops.length > 0 && spd.ops.every((o) => o.count > 0 && o.max >= o.p95) && spd.perDay.length === 7 && Array.isArray(spd.cron.jobs), 'speed: per operation and per day, from the log', spd?.total);
+    const cat = await api('GET', '/v1/console/catalog', C(own));
+    check(cat.status === 200 && cat.json.data.operations.length > 50 && cat.json.data.operations.some((o) => o.name === 'tasks.create' && o.body?.title?.required) && (await api('GET', '/v1/console/catalog', C(mgr))).status === 403, 'catalog: every operation with its fields, for the console\'s "run any operation"');
+    check((await api('GET', '/v1/console/speed?days=5', C(own))).status === 400 && (await api('GET', '/v1/console/speed', C(mgr))).status === 403, 'speed: a day, a week or a month; owners only');
   }
 
   section('the app\'s Rules accept what the API wrote');
   {
-    const { initializeTestEnvironment, assertSucceeds } = require('@firebase/rules-unit-testing');
+    const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
     require('firebase/compat/firestore');
-    const { doc, setDoc, getDocs, collection } = require('firebase/firestore');
+    const { doc, setDoc, getDoc, getDocs, collection, query, where: filter } = require('firebase/firestore');
     rulesEnv = await initializeTestEnvironment({ projectId: PROJECT, firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') } });
     const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
     const as = (uid) => rulesEnv.authenticatedContext(uid, claims(uid + '@synthetic.invalid')).firestore();
@@ -640,7 +911,20 @@ try {
     const { id: _j, ...jobData } = job;
     await tryIt('push job (manager)', setDoc(doc(mgr, 'push_jobs', 'copyjob'), { ...jobData, id: 'copyjob' }));
     await tryIt('settings/app rewritten unchanged by a manager', setDoc(doc(mgr, 'settings', 'app'), await docOf('settings/app')));
-    check(tries.length === 7 && tries.every(Boolean), `the app's Rules accept every shape (${tries.filter(Boolean).length}/7)`);
+    await tryIt('a manager can queue their own broadcast push', setDoc(doc(mgr, 'push_jobs', 'copyjob-self'), {
+      ...jobData, id: 'copyjob-self', to: ['syn-mgr'], includeSelf: true,
+    }));
+    await assertFails(setDoc(doc(staff, 'push_jobs', 'copyjob-self-staff'), {
+      ...jobData, id: 'copyjob-self-staff', to: ['syn-staff'], includeSelf: true, createdBy: { uid: 'syn-staff', name: 'רונית' },
+    }));
+    const account = doc(staff, 'account_activity', 'copy-private');
+    await tryIt('personal metadata can be written by the profile owner', setDoc(account, { uid: 'syn-staff', action: 'push_changed', at: now }));
+    await assertFails(getDoc(doc(mgr, 'account_activity', 'copy-private')));
+    await assertFails(getDoc(account));
+    await tryIt('owner can read private account activity', getDoc(doc(as('synthetic-owner'), 'account_activity', 'copy-private')));
+    await tryIt('the staff rules allow the team feed', getDocs(query(collection(staff, 'activity'),
+      filter('kind', 'in', ['task', 'shopping', 'event', 'ticket', 'tab', 'place', 'message', 'calendar']))));
+    check(tries.length === 11 && tries.every(Boolean), `the app's Rules accept the write and visibility shapes (${tries.filter(Boolean).length}/11)`);
   }
 } catch (e) {
   failures++;

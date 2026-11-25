@@ -1,6 +1,6 @@
 // The v2 shell for staff, managers, owners and vendors: role navigation, the event-day tab, demo strip (Z2), offline strip (C8),
 // refused-write toast (X1), toasts, redirects from old routes, and the centred 390-480 column on wide screens.
-// The guest side keeps the legacy shell (App.tsx at src/app) and is not touched here.
+// The guest side has its own shell (screens/guest); a team member reaches guest pages through legacy.teamFallback.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
@@ -18,9 +18,8 @@ import type { V2Ctx, V2Role } from './ctx';
 import { TEAM_ROUTES, VENDOR_ROUTES, VENDOR_LEGACY, resolve, redirectOf, type NavTab } from './routes';
 import { V2Provider, ToastProvider, useToast, ChromeProvider, AppScreen } from './core';
 import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
-import { DemoSheet, useInstallBanner } from './screens/system';
-import { useRootTasks } from './data/tasks';
-import { useUrgentOpenCount } from './data/shopping';
+import { DemoSheet } from './screens/system';
+import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
 import { useVendorRequests } from './data/manage';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
@@ -54,12 +53,12 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
   // a write the server refused after the screen moved on (X1)
   useEffect(() => { if (sync.failure) toast.refused(sync.failure.text.startsWith('לא נשמר') ? sync.failure.text : `לא נשמר. ${sync.failure.text}`); }, [sync.failure?.id]);
   const pending = demo.on && states.offline ? Math.max(3, sync.pending) : sync.pending;
-  // the old shell's automatic install invitation (two weeks after "סגירה"; never on /install or in the demo)
-  const install = useInstallBanner();
-  const top = (demo.on || offline || install) ? <>
+  // the owners turned on read-only from the console (switches.ts): say so, before anyone tries to change something
+  const locked = useAppSwitches().locked && !demo.on;
+  const top = (demo.on || offline || locked) ? <>
+    {locked && <Strip icon="blocked">{READ_ONLY_TEXT}</Strip>}
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
-    {install}
   </> : null;
   const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   const route = useRoute();
@@ -115,17 +114,16 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const allowed = !hit || ((!hit.route.manager || ctx.manager) && (!hit.route.owner || ctx.owner));
   useEffect(() => { if (hit && !allowed) navigate('/tasks', true); }, [hit, allowed]);
 
-  // nav badges (old shell): my open tasks, urgent shopping, and for managers what waits in "לטיפול" (the manage root's count)
-  const myOpen = useRootTasks(ctx).items.filter((t) => !t.done && t.assignee?.uid === user.uid).length;
-  const urgent = useUrgentOpenCount();
+  // nav badges (RULES.md rule 11): a red count only on ניהול (what waits in "לטיפול", the manage root's count). Not on משימות,
+  // קניות or החווה; the bell carries the personal count in each root header.
   const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
-  const badges: Partial<Record<NavItem['key'], number>> = { tasks: myOpen, shopping: urgent, manage: ctx.manager ? inbox : 0 };
+  const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings }) ?? <legacy.NotFound />}</AppScreen>;
+  else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <AppScreen variant="plain" noNav><legacy.NotFound /></AppScreen>;
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 
@@ -143,7 +141,7 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
   const nav = [TEAM_NAV.vendorEvents, TEAM_NAV.vendorStall];
   let screen: ReactNode = null;
   if (!redirect && hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
-  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = <AppScreen variant="plain" noNav>{legacy.teamFallback(route, { user, profile, settings })}</AppScreen>;
+  else if (!redirect && VENDOR_LEGACY.includes(route)) screen = legacy.teamFallback(route, { user, profile, settings });
   return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
 }
 
@@ -155,7 +153,10 @@ export function V2Root(props: { user: Session; profile: Profile; settings: Setti
 /** First visits in demo, for the real account only (the demo personas never see it). */
 function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
   const demo = useDemo(); const toast = useToast();
-  if (demo.on) return null;
+  // C10 right after the first entry comes first: the first-visit demo starts once it is answered ("אחר כך" or installing)
+  const route = useRoute(); const search = useSearch();
+  const firstInstall = route === '/install' && new URLSearchParams(search).get('first') === '1';
+  if (demo.on || firstInstall) return null;
   return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
 }
 export { canManage };

@@ -21,6 +21,8 @@ export type Env = {
   /** Shares the Google access token between isolates (production only; the emulator path never uses it). */
   TOKEN_KV?: KV;
   AUTH_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  /** The public visit counter (traffic.ts): a few beacons a minute per location, so a flood cannot spend the write quota. */
+  HIT_LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };
   /** Must equal FIRESTORE_PROJECT_ID to serve a production project. Meni approved havat-ravve on 2026-11-12. */
   PRODUCTION_APPROVED?: string;
   /** Automatic payment-confirmation email (email.ts). Off unless "true" and both Brevo secrets are set. */
@@ -53,6 +55,8 @@ export type Env = {
   RESEND_API_URL?: string;
   /** Sends a day through Brevo before going straight to Resend (Brevo free plan: 300 a day). Default 290. */
   BREVO_DAILY_LIMIT?: string;
+  /** Set only inside a cron run (meter.ts): fetch that counts itself. */
+  FETCH?: typeof fetch;
 };
 
 /** Production projects. Served only when PRODUCTION_APPROVED names the same project (an explicit, approved step). */
@@ -124,7 +128,7 @@ let inflight: { email: string; p: Promise<{ token: string; source: TokenSource }
  * isolates in KV (signing RS256 costs most of a request's CPU budget, and at low traffic almost every
  * request lands on a new isolate), and only then a fresh signature, which is shared through KV for the next.
  */
-async function googleToken(saJson: string, tokenUrl: string, kv?: KV): Promise<{ token: string; source: TokenSource }> {
+async function googleToken(saJson: string, tokenUrl: string, kv?: KV, f: typeof fetch = fetch): Promise<{ token: string; source: TokenSource }> {
   let sa: ServiceAccount;
   if (saCache?.json === saJson) sa = saCache.sa;
   else {
@@ -134,12 +138,12 @@ async function googleToken(saJson: string, tokenUrl: string, kv?: KV): Promise<{
   }
   if (tokenCache && tokenCache.email === sa.client_email && Date.now() < tokenCache.expiresAt) return { token: tokenCache.token, source: 'cache' };
   if (inflight?.email === sa.client_email) return inflight.p;
-  const p = viaKv(sa, tokenUrl, kv).finally(() => { if (inflight?.p === p) inflight = null; });
+  const p = viaKv(sa, tokenUrl, kv, f).finally(() => { if (inflight?.p === p) inflight = null; });
   inflight = { email: sa.client_email, p };
   return p;
 }
 
-async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ token: string; source: TokenSource }> {
+async function viaKv(sa: ServiceAccount, tokenUrl: string, kv: KV | undefined, f: typeof fetch): Promise<{ token: string; source: TokenSource }> {
   // v2: the token also carries the Identity Toolkit scope (account deletion), so older cached tokens are not reused
   const key = 'gtoken2:' + sa.client_email;
   if (kv) {
@@ -148,7 +152,7 @@ async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ t
       if (hit && hit.expiresAt - Date.now() > 120_000) { tokenCache = { email: sa.client_email, token: hit.token, expiresAt: hit.expiresAt - 60_000 }; return { token: hit.token, source: 'shared' }; }
     } catch { /* KV unavailable: sign */ }
   }
-  const t = await signAndExchange(sa, tokenUrl);
+  const t = await signAndExchange(sa, tokenUrl, f);
   if (kv && tokenCache) {
     const ttl = Math.floor((tokenCache.expiresAt - Date.now()) / 1000);
     if (ttl > 180) await kv.put(key, JSON.stringify({ token: t.token, expiresAt: tokenCache.expiresAt }), { expirationTtl: ttl }).catch(() => {});
@@ -157,8 +161,8 @@ async function viaKv(sa: ServiceAccount, tokenUrl: string, kv?: KV): Promise<{ t
 }
 
 const DATA_SCOPE = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit';
-async function signAndExchange(sa: ServiceAccount, tokenUrl: string): Promise<{ token: string; source: TokenSource }> {
-  const t = await exchange(sa, tokenUrl, DATA_SCOPE);
+async function signAndExchange(sa: ServiceAccount, tokenUrl: string, f: typeof fetch): Promise<{ token: string; source: TokenSource }> {
+  const t = await exchange(sa, tokenUrl, DATA_SCOPE, f);
   tokenCache = { email: sa.client_email, token: t.token, expiresAt: t.expiresAt };
   return { token: t.token, source: 'fresh' };
 }
@@ -179,14 +183,14 @@ export async function monitoringToken(env: Env): Promise<string | null> {
     const hit = JSON.parse((await env.TOKEN_KV?.get(key)) || 'null') as { token: string; expiresAt: number } | null;
     if (hit && hit.expiresAt - Date.now() > 120_000) { monCache = { email: sa.client_email, ...hit }; return hit.token; }
   } catch { /* sign */ }
-  const t = await exchange(sa, 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/auth/monitoring.read');
+  const t = await exchange(sa, 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/auth/monitoring.read', env.FETCH || fetch);
   monCache = { email: sa.client_email, ...t };
   const ttl = Math.floor((t.expiresAt - Date.now()) / 1000);
   if (ttl > 180) await env.TOKEN_KV?.put(key, JSON.stringify(t), { expirationTtl: ttl }).catch(() => {});
   return t.token;
 }
 
-async function exchange(sa: ServiceAccount, tokenUrl: string, scope: string): Promise<{ token: string; expiresAt: number }> {
+async function exchange(sa: ServiceAccount, tokenUrl: string, scope: string, f: typeof fetch): Promise<{ token: string; expiresAt: number }> {
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64urlJson({ alg: 'RS256', typ: 'JWT', ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) }) + '.' +
     b64urlJson({ iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
@@ -195,7 +199,7 @@ async function exchange(sa: ServiceAccount, tokenUrl: string, scope: string): Pr
 
   let res: Response;
   try {
-    res = await fetch(tokenUrl, {
+    res = await f(tokenUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + assertion,
@@ -242,11 +246,11 @@ export class Firestore {
     if (this.emulator) {
       // In test mode the real signing + exchange path runs against a mock token endpoint, so it is
       // exercised end to end; the emulator itself still gets the "owner" bypass token.
-      if (this.testMode && this.env.GCP_SERVICE_ACCOUNT && this.env.GOOGLE_TOKEN_URL) this.noteToken((await googleToken(this.env.GCP_SERVICE_ACCOUNT, this.env.GOOGLE_TOKEN_URL)).source);
+      if (this.testMode && this.env.GCP_SERVICE_ACCOUNT && this.env.GOOGLE_TOKEN_URL) this.noteToken((await googleToken(this.env.GCP_SERVICE_ACCOUNT, this.env.GOOGLE_TOKEN_URL, undefined, this.env.FETCH || fetch)).source);
       else this.noteToken('emulator');
       return 'Bearer owner';
     }
-    const t = await googleToken(this.env.GCP_SERVICE_ACCOUNT!, 'https://oauth2.googleapis.com/token', this.env.TOKEN_KV);
+    const t = await googleToken(this.env.GCP_SERVICE_ACCOUNT!, 'https://oauth2.googleapis.com/token', this.env.TOKEN_KV, this.env.FETCH || fetch);
     this.noteToken(t.source);
     return 'Bearer ' + t.token;
   }
@@ -260,7 +264,7 @@ export class Firestore {
     if (this.fault('quota')) throw new FsError(429, 'RESOURCE_EXHAUSTED', 'simulated quota exhaustion');
     let res: Response;
     try {
-      res = await fetch(this.base + path, {
+      res = await (this.env.FETCH || fetch)(this.base + path, {
         method,
         headers: { authorization: await this.authorization(), ...(body ? { 'content-type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
@@ -313,10 +317,10 @@ export class Firestore {
     }
   }
 
-  /** Reads several documents of one collection in one round trip (missing ones are left out). */
-  async getMany(col: string, ids: string[]): Promise<Doc[]> {
+  /** Reads several documents of one collection in one round trip (missing ones are left out); `mask`: only these fields. */
+  async getMany(col: string, ids: string[], mask?: string[]): Promise<Doc[]> {
     if (!ids.length) return [];
-    const rows = await this.call<{ found?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', ':batchGet', { documents: ids.map((id) => this.name(col, id)) });
+    const rows = await this.call<{ found?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', ':batchGet', { documents: ids.map((id) => this.name(col, id)), ...(mask ? { mask: { fieldPaths: mask } } : {}) });
     return rows.filter((r) => r.found).map((r) => toDoc(r.found!));
   }
 
@@ -336,10 +340,11 @@ export class Firestore {
     if (this.fault('commit-lost')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated commit that never arrived');
     // the recycle bin (backup.ts): what a request deletes is read just before, and kept once the commit succeeds
     const doomed = this.trash ? writes.map((w) => w.delete).filter((n): n is string => typeof n === 'string' && this.trash!.keep(n)) : [];
-    const before = doomed.length ? await this.rawGet(doomed).catch(() => [] as RawDoc[]) : [];
+    // a delete that cannot be read first is refused: it would skip the recycle bin without anyone knowing
+    const before = doomed.length ? await this.rawGet(doomed) : [];
     const r = await this.call('POST', ':commit', { writes, ...(transaction ? { transaction } : {}) }, 10000, this.fault('commit-body-lost'));
     if (this.fault('commit-timeout')) throw new FsError(0, 'DEADLINE_EXCEEDED', 'simulated lost commit acknowledgement');
-    if (before.length) await this.trash!.put(before).catch(() => {});
+    if (before.length) await this.trash!.put(before).catch((e) => console.log(JSON.stringify({ trashFailed: before.length, error: String(e).slice(0, 160) })));
     return r;
   }
 
@@ -347,10 +352,23 @@ export class Firestore {
   trash: { keep(name: string): boolean; put(docs: RawDoc[]): Promise<void> } | null = null;
 
   /** Documents by full resource name, as the REST API returns them (missing ones are left out). */
-  async rawGet(names: string[]): Promise<RawDoc[]> {
+  async rawGet(names: string[], mask?: string[], compact = false): Promise<RawDoc[]> {
     if (!names.length) return [];
-    const rows = await this.call<{ found?: RawDoc }[]>('POST', ':batchGet', { documents: names });
+    const rows = await this.call<{ found?: RawDoc }[]>('POST', ':batchGet' + (compact ? '?prettyPrint=false' : ''), { documents: names, ...(mask ? { mask: { fieldPaths: mask } } : {}) });
     return rows.filter((r) => r.found).map((r) => r.found!);
+  }
+
+  /** The collections directly under a document ("events/e1"), or the top-level ones (''). */
+  async listCollectionIds(parent = ''): Promise<string[]> {
+    const out: string[] = [];
+    let pageToken: string | undefined;
+    for (let i = 0; i < 10; i++) {
+      const r = await this.call<{ collectionIds?: string[]; nextPageToken?: string }>('POST', (parent ? '/' + parent : '') + ':listCollectionIds', { pageSize: 300, ...(pageToken ? { pageToken } : {}) });
+      out.push(...(r.collectionIds || []));
+      if (!r.nextPageToken) break;
+      pageToken = r.nextPageToken;
+    }
+    return out.sort();
   }
 
   /** A query's documents as the REST API returns them. */
@@ -360,8 +378,8 @@ export class Firestore {
   }
 
   /** Runs a query. `parent` is a document path ("events/abc") for a subcollection query. */
-  async query(structuredQuery: Record<string, unknown>, parent = ''): Promise<Doc[]> {
-    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery });
+  async query(structuredQuery: Record<string, unknown>, parent = '', transaction?: string): Promise<Doc[]> {
+    const rows = await this.call<{ document?: { name: string; fields?: Record<string, V>; updateTime?: string } }[]>('POST', (parent ? '/' + parent : '') + ':runQuery', { structuredQuery, ...(transaction ? { transaction } : {}) });
     return rows.filter((r) => r.document).map((r) => toDoc(r.document!));
   }
 

@@ -5,7 +5,7 @@ import { isFemale as sharedIsFemale } from '../gender';
 import { useMemo } from 'react';
 import { useList, useDoc, write, newId } from '../../db';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
-import { logActivity, useActivityFor } from '../../activity';
+import { activityOp, logActivity, useActivityFor } from '../../activity';
 import { useDemo, useDemoStates } from '../../demo/store';
 import { notify } from './notify';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
@@ -83,11 +83,9 @@ export function suggestions(history: ShoppingItem[], open: ShoppingItem[], c: Sh
 }
 
 // ---------- trips ----------
-/** A trip left open longer than this is over (someone forgot to press "סיימתי"). */
-export const TRIP_MAX_HOURS = 8;
-export const isTripOpen = (t: ShoppingTrip, now = nowMs()) => !t.closedAt && now - new Date(t.startedAt).getTime() < TRIP_MAX_HOURS * 3600_000;
-export const activeTripOf = (trips: ShoppingTrip[], uid: string, now = nowMs()) =>
-  trips.filter((t) => t.by?.uid === uid && isTripOpen(t, now)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
+export const isTripOpen = (t: ShoppingTrip) => !t.closedAt;
+export const activeTripOf = (trips: ShoppingTrip[], uid: string) =>
+  trips.filter((t) => t.by?.uid === uid && isTripOpen(t)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] || null;
 export const lastClosedTripOf = (trips: ShoppingTrip[], uid: string) =>
   trips.filter((t) => t.by?.uid === uid && !!t.closedAt).sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || ''))[0] || null;
 /** Added by someone else after the trip started (S6 "נוסף עכשיו", S7 "דנה הוסיפה בזמן הקנייה"). */
@@ -196,13 +194,13 @@ export function useUrgentOpenCount(enabled = true) {
 }
 export const useShopItem = (id: string) => useDoc<ShoppingItem>('shopping/' + (id || '_'), !!id);
 export const useItemActivity = (id: string) => useActivityFor('shopping', id);
-/** The latest trips (a handful a week): enough to find mine and the one just closed. */
-export const useTrips = (enabled = true) => useList<ShoppingTrip>('shopping_trips', { orderBy: [['startedAt', 'desc']], limit: 20 }, enabled);
+/** Include older trips so an unclosed one is available to resume. */
+export const useMyTrips = (uid: string) => useList<ShoppingTrip>('shopping_trips', { where: [['by.uid', '==', uid]] }, !!uid);
 export const useTrip = (id: string) => useDoc<ShoppingTrip>('shopping_trips/' + (id || '_'), !!id);
 
 // ---------- writes ----------
 const qtyPart = (q: string) => (q ? ' · ' + q : '');
-/** Team members to tell (C1 + push): active staff, managers and owners. notify() leaves out the sender. */
+/** Team members to tell (C1 + push): active staff, managers and owners. */
 export const teamUids = (team: Profile[]) => team.filter((p) => p.status === 'active' && ['staff', 'manager', 'owner'].includes(p.role)).map((p) => p.uid);
 
 export type NewShopItem = { title: string; qty?: string; note?: string; link?: string; category: ShoppingCategory; urgent?: boolean; photo?: string; taskId?: string };
@@ -238,7 +236,7 @@ export async function setItemMissing(actor: Actor, item: ShoppingItem, trip: Sho
   await write.update('shopping', item.id, missing
     ? { notAvailable: true, notAvailableAt: now, tripId: trip.id, updatedAt: now }
     : { notAvailable: false, notAvailableAt: null, updatedAt: now });
-  if (missing) logActivity(actor, 'shopping', item.id, 'unavailable', `${item.title}${qtyPart(item.qty)}`);
+  logActivity(actor, 'shopping', item.id, missing ? 'unavailable' : 'edited', missing ? `${item.title}${qtyPart(item.qty)}` : 'בוטל סימון פריט שלא היה במלאי');
 }
 export async function setItemQty(item: ShoppingItem, qty: string) {
   await write.update('shopping', item.id, { qty: qty.slice(0, 40), updatedAt: nowIso() });
@@ -261,32 +259,40 @@ export const againShopItem = (actor: Actor, item: ShoppingItem) =>
   addShopItem(actor, { title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category });
 
 /** "אני בסופר, מתחילים": resumes my open trip, or opens one and tells the team (C1 "יואב יוצא לסופר עכשיו" + push). */
-export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[]): Promise<string> {
+export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[]) {
   const mine = activeTripOf(trips, actor.uid);
-  if (mine) return mine.id;
+  if (mine) return { tripId: mine.id, list: mine.list, resumed: true };
   const now = nowIso();
   const id = newId('shopping_trips');
-  const ops: Parameters<typeof write.batch>[0] = trips.filter((t) => t.by?.uid === actor.uid && !t.closedAt).map((t) => ({ op: 'update' as const, col: 'shopping_trips', id: t.id, data: { closedAt: now } }));
   const trip: ShoppingTrip = { id, by: actor, list, startedAt: now, closedAt: null, bought: [], missing: [] };
-  ops.push({ op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> });
-  await write.batch(ops);
   const name = first(actor.name);
-  void notify(teamUids(team), {
+  await notify(teamUids(team), {
     kind: 'trip', title: `${name} ${g(actor.name, 'יוצא', 'יוצאת')} ל${listLabel(list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' }, by: actor,
-  });
-  return id;
+  }, [
+    { op: 'set', col: 'shopping_trips', id, data: trip as unknown as Record<string, unknown> },
+    activityOp(actor, 'shopping', id, 'opened', 'קנייה'),
+  ]);
+  return { tripId: id, list, resumed: false };
 }
 /** "סיימתי לקנות": closes the trip with what was bought and what was missing, and tells the team (C1, no push). */
 export async function closeTrip(actor: Actor, trip: ShoppingTrip, view: TripView, team: Profile[]) {
   const bought = view.bought.map((i) => i.id); const missing = view.missing.map((i) => i.id);
-  await write.update('shopping_trips', trip.id, { closedAt: nowIso(), bought, missing });
+  await write.batch([
+    { op: 'update', col: 'shopping_trips', id: trip.id, data: { closedAt: nowIso(), bought, missing } },
+    activityOp(actor, 'shopping', trip.id, 'closed', 'קנייה'),
+  ]);
   void notify(teamUids(team), {
     kind: 'trip', title: `הקנייה ב${listLabel(trip.list)} נסגרה`, sub: tripSummary(bought.length, view.missing.map((i) => i.title)),
     link: `/shopping/trip/done?id=${trip.id}`, refId: trip.id, by: actor, push: false,
   });
 }
 /** A manager deletes a trip (from S7). The items keep what happened to them: bought stays bought. */
-export const deleteTrip = (trip: ShoppingTrip) => write.remove('shopping_trips', trip.id);
+export const deleteTrip = (actor: Actor, trip: ShoppingTrip) => write.batch([
+  { op: 'remove', col: 'shopping_trips', id: trip.id }, activityOp(actor, 'shopping', trip.id, 'deleted', 'קנייה'),
+]);
 /** S7 "טעות? לחזור לקנייה". */
-export const reopenTrip = (trip: ShoppingTrip) => write.update('shopping_trips', trip.id, { closedAt: null });
+export const reopenTrip = (actor: Actor, trip: ShoppingTrip) => write.batch([
+  { op: 'update', col: 'shopping_trips', id: trip.id, data: { closedAt: null } },
+  activityOp(actor, 'shopping', trip.id, 'reopened', 'קנייה'),
+]);

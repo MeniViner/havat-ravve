@@ -204,7 +204,7 @@ def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמד
       ...notifyWrites(c.fs, [who.uid], { kind: 'event', title: `${ev.data.title}: ${st.title}`, sub: `${dayShort(ev.data.start)}${h}`, link: `/farm/events/${ev.id}`, refId: ev.id, by: c.me })],
     refs: [{ col: st.col, id: c.input.station }],
   };
-}, ['The person gets a notification in the app and a push (not when you assign yourself), as in the app.']);
+}, ['Adds one in-app notification and queues a phone push for the assignee, including a self-assignment.']);
 // updateStationPerson()
 def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS }, async (c) => {
   const ev = await eventFor(c, c.input.eventId);

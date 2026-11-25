@@ -1,4 +1,6 @@
-// F2-Month and F3-Day (plus the week view the segmented control offers): presence marks, event and visit dots, the day's items.
+// Q30-Calendar (F2-Month with a 'היום' button beside the month arrows) and F3-Day (plus the week view the segmented control
+// offers): presence marks, event and visit dots, the day's items. The owners / volunteers legend is in the day view only, one
+// line under the hour axis (RULES small additions); the month view keeps only its own bar / dot legend (Q30).
 import { useMemo } from 'react';
 import { AppScreen, go } from '../../core';
 import { navigate, useParam } from '../../../router';
@@ -22,7 +24,7 @@ const AXIS_TICKS = ['06', '09', '12', '15', '18'];
 /** Where a calendar item opens: an event (F6), a visit (managers), an editable item (C11, managers), or nothing. */
 export function itemTarget(ctx: V2Ctx, it: CalItem, date: string): string | null {
   if (it.kind === 'event' && it.refId) return `/farm/events/${encodeURIComponent(it.refId)}`;
-  if (it.kind === 'visit') return ctx.manager && it.refId ? `/manage/visits/${encodeURIComponent(it.refId)}` : null;
+  if (it.kind === 'visit' && it.refId) return ctx.manager ? `/manage/visits/${encodeURIComponent(it.refId)}` : null;
   if (ctx.manager) return `/farm/calendar/${encodeURIComponent(it.id)}/edit?date=${date}`;
   return null;
 }
@@ -72,7 +74,7 @@ function MonthView({ ctx, date, set, header, seg }: ViewProps) {
       <div className="farm-titlerow">
         <h1 className="farm-h1">{MONTHS[month - 1]} {date.slice(0, 4)}</h1>
         <Arrows prevLabel="החודש הקודם" nextLabel="החודש הבא" prev={() => set('month', shiftMonth(date, -1))} next={() => set('month', shiftMonth(date, 1))}
-          onToday={holdsToday('month', date, ctx.today) ? undefined : () => set('month', ctx.today)} />
+          onToday={() => set('month', ctx.today)} />
       </div>
       {seg}
       <section className="farm-card farm-month">

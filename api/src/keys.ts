@@ -5,7 +5,7 @@
 // seconds, so a revoke takes effect within about a minute and a half everywhere.
 import { ApiError, invalid } from './http';
 import type { Env } from './firestore';
-import { type CredentialDef, credentials } from './auth';
+import { ALL_SCOPES, type CredentialDef, credentialScopes, credentials } from './auth';
 import { sha256hex } from './util';
 
 const KV_KEY = 'api-keys:v1';
@@ -29,7 +29,20 @@ async function save(env: Env, keys: CredentialDef[]) {
 export type KeyView = {
   id: string; label: string; actors: string[]; status: 'active' | 'revoked' | 'expired'; expiresAt: string | null;
   rotating: boolean; previousUntil: string | null; source: 'console' | 'secret'; createdAt: string | null; createdBy: string | null; updatedAt: string | null;
+  /** null: everything the person's role allows; else only these. */
+  scopes: string[] | null;
 };
+
+/** A limited key's scopes, checked: null (the role's) or a non-empty list of known scopes. */
+export function scopesOf(v: unknown): string[] | null {
+  if (v === null || v === undefined || v === 'all') return null;
+  if (!Array.isArray(v) || !v.length || v.length > ALL_SCOPES.length) throw invalid('scopes', 'null for everything the person may do, or a list of scopes');
+  for (const item of v) {
+    if (typeof item !== 'string') throw invalid('scopes', 'each scope must be a string');
+    if (!(ALL_SCOPES as readonly string[]).includes(item)) throw invalid('scopes', `no such scope: ${item.slice(0, 80)}`);
+  }
+  return [...new Set(v as string[])].sort();
+}
 
 /** Every key the server accepts, without hashes. */
 export async function listKeys(env: Env): Promise<KeyView[]> {
@@ -44,6 +57,7 @@ export async function listKeys(env: Env): Promise<KeyView[]> {
     expiresAt: k.expiresAt || null,
     rotating: !!k.previousSha256 && Date.parse(k.previousUntil || '') > now, previousUntil: k.previousUntil || null,
     source: fromConsole.has(k.id) ? 'console' : 'secret', createdAt: k.createdAt || null, createdBy: k.createdBy || null, updatedAt: k.updatedAt || null,
+    scopes: credentialScopes(k),
   }));
 }
 
@@ -63,7 +77,7 @@ async function editable(env: Env, id: string): Promise<{ all: CredentialDef[]; k
   return { all, key };
 }
 
-export async function createKey(env: Env, input: { id?: string; label: string; actor: string; expiresAt?: string | null }, by: string) {
+export async function createKey(env: Env, input: { id?: string; label: string; actor: string; expiresAt?: string | null; scopes?: unknown }, by: string) {
   const label = String(input.label || '').trim();
   if (!label || label.length > 60) throw invalid('label', 'a name of 1 to 60 characters');
   if (!/^user:[A-Za-z0-9_-]{1,128}$/.test(input.actor)) throw invalid('actor', 'the person the key acts as (user:<uid>)');
@@ -73,9 +87,10 @@ export async function createKey(env: Env, input: { id?: string; label: string; a
   const taken = new Set([...all, ...credentials(env.API_CREDENTIALS, [])].map((k) => k.id));
   for (let n = 2; taken.has(unique); n++) unique = `${id}-${n}`;
   if (input.expiresAt && !(Date.parse(input.expiresAt) > Date.now())) throw invalid('expiresAt', 'must be in the future');
+  const scopes = scopesOf(input.scopes);
   const key = newKey();
   const now = new Date().toISOString();
-  all.push({ id: unique, sha256: await sha256hex(key), actors: [input.actor], label, createdAt: now, createdBy: by, updatedAt: now, ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}) });
+  all.push({ id: unique, sha256: await sha256hex(key), actors: [input.actor], label, createdAt: now, createdBy: by, updatedAt: now, ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}), ...(scopes ? { scopes, scopeVersion: 2 } : {}) });
   await save(env, all);
   return { id: unique, key };
 }
@@ -94,6 +109,11 @@ export async function changeKey(env: Env, id: string, action: string, input: Rec
     const at = input.expiresAt ? String(input.expiresAt) : '';
     if (at && !(Date.parse(at) > 0)) throw invalid('expiresAt', 'an ISO date');
     if (at) key.expiresAt = at; else delete key.expiresAt;
+  } else if (action === 'scopes') {
+    // what the key may do: everything its person may (null), or only part of it
+    const scopes = scopesOf(input.scopes);
+    if (scopes) { key.scopes = scopes; key.scopeVersion = 2; }
+    else { delete key.scopes; delete key.scopeVersion; }
   } else if (action === 'rotate') {
     // the old key keeps working for the grace period (0 to 72 hours), so the assistant can switch without a gap
     const hours = Math.max(0, Math.min(72, Number(input.graceHours ?? 24)));

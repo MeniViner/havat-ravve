@@ -3,13 +3,14 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, IconButton, Tag, Chip, ChipRow, Hero, HeroNumber, Bar, LiveStatus, Dot, IconTile,
-  StatRow, StatTile, DetailList, DetailRow, Quote, BottomBar, FormHeader, TextLink, Sheet, Field, EmptyState, Card, Icon, Overline,
+  StatRow, StatTile, DetailList, DetailRow, Quote, BottomBar, FormHeader, TextLink, Sheet, Field, EmptyState, Card, Icon, Overline, MoreMenu,
 } from '../../kit';
+import { tableCell, useTableView } from '../../patterns';
 import { AppScreen, useToast, useExternal, waUrl, telUrl } from '../../core';
 import { hhmm, ddmm, dayName, money, firstName } from '../../format';
 import { now, nowMs, nowIso } from '../../../clock';
 import { navigate } from '../../../router';
-import { downloadCsv, fillTemplate, hasTabPurchases } from '../../../data';
+import { fillTemplate, hasTabPurchases } from '../../../data';
 import { isConflict } from '../../../db';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
@@ -150,7 +151,8 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   );
 }
 
-type ScanFilter = 'all' | 'gate' | 'later' | 'rejected';
+type ScanFilter = 'all' | 'gate' | 'later' | 'returned' | 'rejected';
+const SCAN_WORD: Record<ScanV2['result'], string> = { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' };
 /** Y2: every scan, newest first. */
 export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const { id, event, loading } = useRouteEvent(ctx, params);
@@ -161,16 +163,24 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
   const counters = useCounters(id);
   const [filter, setFilter] = useState<ScanFilter>((params.filter as ScanFilter) || 'all');
   const [query, setQuery] = useState('');
+  // Q9 / rule 5: the table view and the CSV are ⋯ items, not a top-bar "אקסל"
+  const table = useTableView({
+    title: 'סריקות', filter: event?.title, filename: `סריקות-${event?.title || ''}.csv`, headers: ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
+    rows: () => scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', SCAN_WORD[s.result], s.meta, s.amount ? tableCell.money(s.amount) : '', s.by?.name || '']),
+  });
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
+  if (table.active) return table.screen;
   const c = countersOr(counters.item, counters.loading || tickets.loading, tickets.items);
-  const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all' || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : true));
+  // "יצאו וחזרו" (needs-design decision 7, moved here from the event summary): valid tickets scanned in more than once,
+  // as logic.exitedReturned counts them. The chip filters the log to those tickets' scans.
+  const returnedIds = new Set(tickets.items.filter((t) => t.status === 'valid' && (t.entries || 0) > 1).map((t) => t.id));
+  const base = filter === 'rejected' ? rejected.items : scans.items.filter((s) => filter === 'all'
+    || (filter === 'gate' ? s.result === 'paidAtGate' : filter === 'later' ? s.result === 'payLater' : filter === 'returned' ? s.result !== 'rejected' && returnedIds.has(s.ticketId) : true));
   const text = query.trim().toLowerCase(), d = digits(query);
   const shown = text ? base.filter((s) => s.name.toLowerCase().includes(text) || (d.length >= 4 && digits(s.phone || '').includes(d))) : base;
-  const excel = () => downloadCsv(`סריקות-${event.title}.csv`, ['שעה', 'שם', 'טלפון', 'תוצאה', 'פרטים', 'סכום', 'סרק'],
-    scans.items.map((s) => [hhmm(s.at), s.name, s.phone || '', { ok: 'נכנס', paidAtGate: 'שילם בשער', payLater: 'ישלם אחר כך', rejected: 'נדחה' }[s.result], s.meta, s.amount || '', s.by?.name || '']));
   return (
     <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} end={<Button variant="outline" icon="download" iconSize={18} onClick={excel}>אקסל</Button>} />
+      <TopBar back={{ label: 'האירוע חי', ...to(liveBack(id)) }} end={<MoreMenu title="סריקות" items={table.items} />} />
       <PageTitle>סריקות · {c?.scans ?? scans.items.length}</PageTitle>
       <SearchField label="שם או טלפון" value={query} active={!!query} onChange={(ev) => setQuery(ev.target.value)} />
       <ChipRow label="סינון סריקות">
@@ -178,6 +188,7 @@ export function ScansScreen({ ctx, params }: ScreenProps): ReactNode {
         <Chip selected={filter === 'gate'} onClick={() => setFilter('gate')}>בשער · {c?.paidAtGate ?? 0}</Chip>
         <Chip selected={filter === 'later'} onClick={() => setFilter('later')}>אחר כך · {c?.payLater ?? 0}</Chip>
         <Chip selected={filter === 'rejected'} onClick={() => setFilter('rejected')}>נדחו · {rejected.items.length}</Chip>
+        <Chip selected={filter === 'returned'} onClick={() => setFilter('returned')}>יצאו וחזרו · {returnedIds.size}</Chip>
       </ChipRow>
       {shown.length ? (
         <ListCard>

@@ -1,14 +1,17 @@
-// N1 visit requests and N2 one request.
+// N1 visit requests and N2 one request. Tidy round: table view and export behind ⋯ on the list (small additions row 7);
+// on a request, "לא מתאים" (for an approved visit), the change history and the delete live behind ⋯ (rules 5, 6).
+// Visit types are edited in Settings only (the old link at the bottom of N1 duplicated Q19's row).
 import { useState } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, useToast, waUrl, telUrl } from '../../core';
-import { BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, IconButton, ListCard, PageTitle, Quote, Row, Tag, TopBar, ConfirmSheet } from '../../kit';
+import { BottomBar, Button, Chip, ChipRow, DetailList, DetailRow, EmptyState, Field, IconButton, ListCard, MoreMenu, PageTitle, Quote, Row, Tag, TopBar, type ActionItem } from '../../kit';
+import { tableCell, useTableView } from '../../patterns';
 import { agoLong, dayName, ddmm, dayTime, longDate, firstName } from '../../format';
 import { contactPhoneOk } from '../../../data';
 import { useActivityFor, ACTION_LABELS } from '../../../activity';
 import { VISIT_LABELS, type Visit, type CalendarItem } from '../../../types';
 import { useVisits, useVisit, useCalendar, useNotifications, visitBuckets, timeFromNote, gw, decide, fillTemplate, useRun, deleteVisit } from '../../data/manage';
-import { lnk, ExcelButton, Loading, NotFound, PlainLink } from './shared';
+import { lnk, HistorySheet, Loading, NotFound } from './shared';
 
 // ---------- N1 ----------
 type VFilter = 'new' | 'all' | 'approved' | 'rejected';
@@ -17,6 +20,11 @@ export function VisitsScreen({ ctx }: ScreenProps) {
   const { items, loading } = useVisits(true);
   const [filter, setFilter] = useState<VFilter>('all');
   const b = visitBuckets(items, ctx.today);
+  const table = useTableView({
+    title: 'ביקורים', filename: 'ביקורים.csv', headers: ['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת'],
+    rows: () => items.map((v) => [tableCell.date(v.date), v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || '']),
+  });
+  if (table.active) return table.screen;
   const freshRow = (v: Visit) => <Row key={v.id} minHeight={58} {...lnk(`/manage/visits/${v.id}`)} title={`${v.name} · ${v.people} אנשים`} tags={<Tag tone="waiting">חדש</Tag>} meta={`${when(v)} · ${v.type}`} />;
   const dateRow = (v: Visit) => <Row key={v.id} minHeight={58} {...lnk(`/manage/visits/${v.id}`)} title={`${v.name} · ${v.people}`} meta={[when(v), timeFromNote(v.managerNote), v.type].filter(Boolean).join(' · ')} />;
   if (loading && !items.length) return <Loading back={{ label: 'ניהול', path: '/manage' }} />;
@@ -27,10 +35,7 @@ export function VisitsScreen({ ctx }: ScreenProps) {
   const empty = !showFresh && !showApproved && !showPast && !showRejected;
   return (
     <AppScreen variant="detail">
-      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={
-        <ExcelButton filename="ביקורים.csv" headers={['תאריך', 'מי', 'טלפון', 'אנשים', 'סוג', 'מצב', 'הערה', 'מטפל/ת']}
-          rows={() => items.map((v) => [v.date, v.name, v.phone, v.people, v.type, VISIT_LABELS[v.status], v.managerNote, v.handledBy?.name || ''])} />
-      } />
+      <TopBar back={{ label: 'ניהול', ...lnk('/manage') }} end={<MoreMenu title="ביקורים" items={table.items} />} />
       <PageTitle>ביקורים</PageTitle>
       <ChipRow label="סינון">
         <Chip selected={filter === 'new'} onClick={() => setFilter('new')}>{b.fresh.length ? `חדשים · ${b.fresh.length}` : 'חדשים'}</Chip>
@@ -43,7 +48,6 @@ export function VisitsScreen({ ctx }: ScreenProps) {
       {showPast && <ListCard title="עברו">{b.past.map(dateRow)}</ListCard>}
       {showRejected && <ListCard title="נדחו או בוטלו">{b.rejected.map((v) => <Row key={v.id} minHeight={58} {...lnk(`/manage/visits/${v.id}`)} title={`${v.name} · ${v.people}`} meta={[when(v), v.managerNote || v.type].filter(Boolean).join(' · ')} />)}</ListCard>}
       {empty && <EmptyState variant="fill" icon="pin" title={filter === 'new' ? 'אין בקשות חדשות' : filter === 'rejected' ? 'לא נדחה אף ביקור' : 'אין ביקורים קרובים'} text="בקשות ביקור מגיעות מהאתר ומחכות כאן לתשובה." />}
-      <PlainLink path="/manage/settings/visit-types" meta={ctx.settings.visitTypes.join(', ')}>סוגי ביקור</PlainLink>
     </AppScreen>
   );
 }
@@ -55,10 +59,10 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
   const sameDay = useCalendar(!!v, v?.date || '2000-01-01', v?.date || '2000-01-01').items;
   const open = useNotifications(true).items;
   const [note, setNote] = useState<string | null>(null);
+  const [history, setHistory] = useState(false);
   const run = useRun();
   const toast = useToast();
   const ext = useExternal();
-  const [askDelete, setAskDelete] = useState(false);
   const remove = useRemove();
   const log = useActivityFor('visit', params.id).items;
   if (loading) return <Loading back={{ label: 'ביקורים', path: '/manage/visits' }} />;
@@ -83,9 +87,18 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
   const bar = v.status === 'approved'
     ? <BottomBar>{n !== v.managerNote ? <Button size="bar" grow onClick={() => decideAs('approved')}>שמירת ההערה</Button> : <Button size="bar" grow variant="outline" icon="message" onClick={() => ext(waUrl(phone, message))} disabled={!contactPhoneOk(phone)}>הודעת אישור בוואטסאפ</Button>}<Button size="bar" variant="secondary" onClick={() => decideAs('cancelled')}>ביטול הביקור</Button></BottomBar>
     : <BottomBar><Button size="bar" grow onClick={() => decideAs('approved')}>אישור ליומן</Button>{v.status === 'new' && <Button size="bar" variant="secondary" onClick={() => decideAs('rejected')}>לא מתאים</Button>}</BottomBar>;
+  const actions: ActionItem[] = [
+    { label: 'לא מתאים', icon: 'close', meta: 'הביקור יוצא מהיומן', hidden: v.status !== 'approved', onSelect: () => decideAs('rejected') },
+    { label: 'היסטוריית שינויים', icon: 'clock', onSelect: () => setHistory(true) },
+    { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
+      title: 'למחוק את הבקשה?',
+      text: `הבקשה של ${v.name} תימחק${v.status === 'approved' ? ', וגם הביקור ביומן' : ''}. ${gw(contact, 'הוא לא יקבל', 'היא לא תקבל')} על זה הודעה. המחיקה נרשמת בפעילות, ואי אפשר לבטל אותה.`,
+      onConfirm: () => remove(() => deleteVisit(ctx.actor, v, open), { text: 'הבקשה נמחקה', after: () => go('/manage/visits', true) }),
+    } },
+  ];
   return (
     <AppScreen variant="detail" bar={bar}>
-      <TopBar back={{ label: 'ביקורים', ...lnk('/manage/visits') }} end={<Button variant="quiet" onClick={() => setAskDelete(true)}>מחיקה</Button>} />
+      <TopBar back={{ label: 'ביקורים', ...lnk('/manage/visits') }} end={<MoreMenu title="ביקור" items={actions} />} />
       <div className="manage-titled">
         <span className="k-meta">{over}</span>
         <PageTitle size="detail" className="k-h1--detail-tight">{v.name}</PageTitle>
@@ -110,14 +123,10 @@ export function VisitScreen({ ctx, params }: ScreenProps) {
       </ListCard>
       <Field label="שעה והערה לאורח" value={n} onChange={(e) => setNote(e.target.value)} placeholder="נפגשים בשער ב־10:00"
         hint={v.status === 'approved' && n !== v.managerNote ? 'שעה שכותבים כאן נכנסת גם ליומן.' : undefined} />
-      {v.status === 'approved' && <div><Button variant="quiet" onClick={() => decideAs('rejected')}>לא מתאים</Button></div>}
-      <ListCard title="היסטוריה">
-        {log.map((a) => <Row key={a.id} minHeight={50} title={<span style={{ fontWeight: 500 }}>{ACTION_LABELS[a.action] || a.action} · {firstName(a.by.name)}</span>} meta={`${a.text} · ${dayTime(a.at)}`} />)}
-        <Row minHeight={50} title={<span style={{ fontWeight: 500 }}>הבקשה הוגשה מהאתר</span>} meta={dayTime(v.createdAt)} />
-      </ListCard>
-      <ConfirmSheet open={askDelete} onClose={() => setAskDelete(false)} title="למחוק את הבקשה?"
-        text={`הבקשה של ${v.name} תימחק${v.status === 'approved' ? ', וגם הביקור ביומן' : ''}. ${gw(contact, 'הוא לא יקבל', 'היא לא תקבל')} על זה הודעה.`} confirmLabel="מחיקה"
-        onConfirm={() => remove(() => deleteVisit(ctx.actor, v, open), { text: 'הבקשה נמחקה', after: () => go('/manage/visits', true) })} />
+      <HistorySheet open={history} onClose={() => setHistory(false)} title="היסטוריית שינויים" lines={[
+        ...log.map((a) => ({ key: a.id, title: `${ACTION_LABELS[a.action] || a.action} · ${firstName(a.by.name)}`, meta: `${a.text} · ${dayTime(a.at)}` })),
+        { key: 'created', title: 'הבקשה הוגשה מהאתר', meta: dayTime(v.createdAt) },
+      ]} />
     </AppScreen>
   );
 }

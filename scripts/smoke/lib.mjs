@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import { ACCOUNTS, idpSignIn } from '../smoke-seed.mjs';
 
 export const BASE = process.env.BASE || 'http://localhost:5173';
-export const SHOTS = 'docs/smoke/redesign/shots';
+export const SHOTS = process.env.SHOTS || 'docs/smoke/tidy/shots';
 const API_KEY = JSON.parse(fs.readFileSync('site.config.json', 'utf8')).firebase.apiKey;
 const LOCAL = new Set(['localhost', '127.0.0.1']);
 
@@ -70,6 +70,10 @@ export async function session(who, opts = {}) {
   if (who) {
     const r = await idpSignIn(who);
     account = { key: who, uid: r.localId, ...ACCOUNTS[who] };
+    // the first-visit demo (PR #24) would open every account in demo at its own role: mark it as already answered on this
+    // browser, as for a returning person, so the session works on the real (emulator) data. src/app/demo/intro.ts STAGE().
+    // opts.firstVisit: leave it unmarked, as for a new account on this browser (item 13, W4)
+    if (!opts.firstVisit) await ctx.addInitScript((k) => { try { localStorage.setItem(k, 'done'); } catch { /* */ } }, 'farm-demo-intro:' + r.localId);
     const now = Date.now();
     const user = { uid: r.localId, email: ACCOUNTS[who].email, emailVerified: true, displayName: ACCOUNTS[who].name, isAnonymous: false, photoURL: null, phoneNumber: null, tenantId: null,
       providerData: [{ providerId: 'google.com', uid: 'smoke-' + who, displayName: ACCOUNTS[who].name, email: ACCOUNTS[who].email, phoneNumber: null, photoURL: null }],

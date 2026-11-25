@@ -2,6 +2,7 @@
 import { isFemale as sharedIsFemale } from '../../gender';
 // so tests/v2-manage.mjs can check it without a browser. "today" is always passed in (YYYY-MM-DD from clock.ts).
 import type { Activity, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, RegistrationField } from '../../../types';
+export * from './instinct';
 
 // ---------- money and periods ----------
 export const isPaid = (s: string) => s === 'paid' || s === 'paid_onsite';
@@ -174,10 +175,11 @@ export function allowedRoles(me: { owner: boolean; uid: string }, target: Pick<P
 }
 /** Blocking: never yourself; owners anyone; managers only guests (old screen and rules). */
 export const canBlock = (me: { owner: boolean; uid: string }, target: Pick<Profile, 'uid' | 'role'>) => me.uid !== target.uid && (me.owner || target.role === 'guest');
-/** N13: a manager may pre-assign only volunteers; owners also managers and owners (role_invites rule). */
-/** "אורח" removes an address that was set up in advance (the person comes in as a guest), as the old invite page did. */
-export type InviteRole = 'guest' | 'staff' | 'manager' | 'owner';
-export const inviteRolesFor = (owner: boolean): InviteRole[] => (owner ? ['guest', 'staff', 'manager', 'owner'] : ['guest', 'staff']);
+/** Q27: a manager may add ahead only volunteers; owners also managers and owners (role_invites and team_links rules).
+ *  No "אורח": anyone who signs in is a guest, and the old "אורח" choice only removed an address set up in advance, which is
+ *  "ביטול" on its row in the pending list. */
+export type InviteRole = 'staff' | 'manager' | 'owner';
+export const inviteRolesFor = (owner: boolean): InviteRole[] => (owner ? ['staff', 'manager', 'owner'] : ['staff']);
 export const emailOk = (e: string) => /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(e.trim());
 
 export const isTeam = (p: Pick<Profile, 'role' | 'status'>) => (p.role === 'staff' || p.role === 'manager' || p.role === 'owner') && p.status === 'active';
@@ -198,12 +200,14 @@ export function letterGroups<T extends { displayName: string }>(people: T[]) {
 }
 
 // ---------- activity (N14) ----------
-export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings';
+export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings' | 'messages';
 export function activityGroup(kind: Activity['kind']): Exclude<ActivityFilter, 'all'> | 'other' {
   if (kind === 'ticket' || kind === 'tab' || kind === 'donation') return 'money';
   if (kind === 'user' || kind === 'visit') return 'people';
   if (kind === 'task' || kind === 'task_private' || kind === 'shopping' || kind === 'place') return 'tasks';
-  if (kind === 'event') return 'events';
+  if (kind === 'event' || kind === 'calendar' || kind === 'calendar_private') return 'events';
+  if (kind === 'message') return 'messages';
+  if (kind === 'project') return 'tasks';
   return 'other';
 }
 /** Does an activity line belong under this chip? Shopping and settings have chips of their own (tasks ≠ shopping). */
@@ -265,6 +269,10 @@ const VERBS: Record<string, Verb> = {
 };
 /** Same action, other meaning on another kind: a vendor invited to an event, a ticket stopped at the gate. */
 const KIND_VERBS: Record<string, Verb> = {
+  'message:personal_notification_created': { m: 'יצר התראה אישית', f: 'יצרה התראה אישית', join: ':' },
+  'message:message_sent': { m: 'שלח הודעה', f: 'שלחה הודעה', join: ':' },
+  'message:message_resent': { m: 'שלח שוב הודעה', f: 'שלחה שוב הודעה', join: ':' },
+  'message:message_deleted': { m: 'מחק הודעה', f: 'מחקה הודעה', join: ':' },
   'event:invited': { m: 'הזמין', f: 'הזמינה', join: ':' },
   'event:added': { m: 'הוסיף', f: 'הוסיפה', join: ':' },
   'event:removed': { m: 'הסיר', f: 'הסירה', join: ':' },
@@ -272,7 +280,7 @@ const KIND_VERBS: Record<string, Verb> = {
 };
 /** Role labels in older texts carry both forms ("מתנדב/ת"): keep the one that fits the person. */
 const roleFor = (label: string, name: string) => label.replace(/\/ת$/, isFemale(name) ? 'ת' : '');
-const KIND_WORD: Record<string, string> = { task: 'משימות', task_private: 'משימות מנהלים', shopping: 'קניות', event: 'אירועים', ticket: 'כרטיסים', tab: 'דוכן', place: 'מקומות', visit: 'ביקורים', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות' };
+const KIND_WORD: Record<string, string> = { task: 'משימות', task_private: 'משימות מנהלים', shopping: 'קניות', event: 'אירועים', ticket: 'כרטיסים', tab: 'דוכן', place: 'מקומות', visit: 'ביקורים', donation: 'תרומה', user: 'אנשים', settings: 'הגדרות', project: 'פרויקט', inbox: 'לטיפול', calendar: 'יומן', calendar_private: 'יומן מנהלים' };
 /**
  * One feed line: "בני אישר תשלום: 150 ₪ · רוני לוי" + meta "פסטיבל הסתיו · 3 כרטיסים".
  * Team members appear by first name, guests by full name. The text's first segment goes in the line, the rest is the meta
@@ -351,6 +359,8 @@ export function settingsLines(s: Settings & { donationOptions?: { custom?: boole
     payments: pay,
     amounts,
     types: `${s.visitTypes.length} סוגים`,
+    /** Q19 "סוגי ביקור ושאלות הרשמה" */
+    typesQuestions: `${s.visitTypes.length} סוגים · ${s.registrationFields.length} שאלות`,
     questions: s.registrationFields.length ? s.registrationFields.map((f) => f.label.replace(/[?؟]/g, '').trim().split(/\s+/).slice(0, 2).join(' ')).join(', ') : 'אין שאלות נוספות',
     messages: 'אישור ביקור, תודה, תזכורת חוב',
     contact: s.contact?.phone || s.contact?.whatsapp || 'לא הוגדר',

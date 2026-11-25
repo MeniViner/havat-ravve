@@ -18,6 +18,8 @@ export const BACKUPS = 'backups/';
 export const TRASH = 'trash/';
 const STATE_KEY = 'console:backup-state';
 const LAST_KEY = 'console:backup-last';
+/** Every finished backup's manifest, newest first: the console's list in one KV read, not one R2 read per day. */
+const INDEX_KEY = 'console:backup-index';
 const PAGE = 300;
 const KEEP_DAYS = 30;
 const KEEP_MONTHS = 12;
@@ -77,6 +79,8 @@ export type Manifest = { date: string; startedAt: string; finishedAt: string; do
 async function readJson<T>(env: Env, key: string): Promise<T | null> {
   try { return JSON.parse((await env.TOKEN_KV?.get(key)) || 'null') as T | null; } catch { return null; }
 }
+/** The newest finished backup (one KV read). */
+export const lastBackup = (env: Env) => readJson<Manifest>(env, LAST_KEY);
 
 /**
  * One step of the backup: called by every cron run (does nothing before 03:00, or once today's backup is done) and by
@@ -94,7 +98,8 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
       if (ilHour() < 3) return null;
       if ((await readJson<Manifest>(env, LAST_KEY))?.date === today) return null;
     }
-    await removePrefix(b, `${BACKUPS}${today}/`);
+    // today's folder is not emptied first: parts are rewritten in place and any left over are removed at the end, so a
+    // second backup the same day ("גיבוי עכשיו") never leaves the day without a whole backup to restore from
     st = { date: today, startedAt: new Date().toISOString(), cursor: null, part: 0, docs: 0, bytes: 0, collections: {}, by: opts.by || 'cron' };
   }
   const fs = new Firestore(env);
@@ -126,29 +131,56 @@ export async function runBackup(env: Env, opts: { force?: boolean; by?: string }
   await b.put(`${BACKUPS}${st.date}/manifest.json`, JSON.stringify(manifest), { httpMetadata: { contentType: 'application/json' } });
   await env.TOKEN_KV.put(LAST_KEY, JSON.stringify(manifest));
   await env.TOKEN_KV.delete?.(STATE_KEY);
-  const pruned = await prune(b).catch(() => 0);
+  // parts from an earlier run of the same day that this run did not reach
+  const extra = (await b.list({ prefix: `${BACKUPS}${st.date}/part-`, limit: 1000 })).objects.map((o) => o.key)
+    .filter((k) => Number(/part-(\d+)/.exec(k)?.[1] || 0) > st!.part);
+  if (extra.length) await b.delete(extra);
+  const index = [manifest, ...(await readIndex(env, b)).filter((m) => m.date !== manifest.date)];
+  const pruned = await prune(b, index).catch(() => 0);
+  const kept = new Set(await prefixes(b, BACKUPS).catch(() => index.map((m) => m.date)));
+  await env.TOKEN_KV.put(INDEX_KEY, JSON.stringify(index.filter((m) => kept.has(m.date))));
   return { cron: 'backup', done: true, date: st.date, docs: st.docs, parts: st.part, bytes: st.bytes, pruned };
 }
 
-/** Keeps the last 30 days and the first of each month for a year; the recycle bin keeps 30 days. */
-async function prune(b: R2): Promise<number> {
+/**
+ * Keeps the last 30 finished backups and the first finished backup of each month for a year. A folder without a manifest
+ * (a run abandoned long ago) goes after two days; today's is never touched here.
+ */
+async function prune(b: R2, index: Manifest[]): Promise<number> {
+  const done = new Set(index.map((m) => m.date));
   const days = (await prefixes(b, BACKUPS)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse();
-  const keep = new Set(days.slice(0, KEEP_DAYS));
-  for (const d of days.filter((x) => x.endsWith('-01')).slice(0, KEEP_MONTHS)) keep.add(d);
+  const complete = days.filter((d) => done.has(d));
+  const keep = new Set(complete.slice(0, KEEP_DAYS));
+  const firstOfMonth = new Map<string, string>();
+  for (const d of [...complete].reverse()) if (!firstOfMonth.has(d.slice(0, 7))) firstOfMonth.set(d.slice(0, 7), d);
+  for (const d of [...firstOfMonth.values()].sort().reverse().slice(0, KEEP_MONTHS)) keep.add(d);
+  const recent = ilDate(new Date(Date.now() - 2 * 86400_000));
   let n = 0;
-  for (const d of days) if (!keep.has(d)) { await removePrefix(b, `${BACKUPS}${d}/`); n++; }
+  for (const d of days) {
+    if (keep.has(d) || (!done.has(d) && d >= recent)) continue;
+    await removePrefix(b, `${BACKUPS}${d}/`); n++;
+  }
+  // the recycle bin keeps 30 days
   const cut = ilDate(new Date(Date.now() - TRASH_DAYS * 86400_000));
   for (const d of await prefixes(b, TRASH)) if (d < cut) { await removePrefix(b, `${TRASH}${d}/`); n++; }
   return n;
 }
 
-export async function listBackups(env: Env) {
-  const b = bucket(env);
-  const days = (await prefixes(b, BACKUPS)).sort().reverse();
+/** The manifests of the finished backups, newest first: from KV, built once from R2 when missing. */
+async function readIndex(env: Env, b: R2): Promise<Manifest[]> {
+  const cached = await readJson<Manifest[]>(env, INDEX_KEY);
+  if (cached) return cached;
+  const days = (await prefixes(b, BACKUPS)).sort().reverse().slice(0, 45);
   const items = (await Promise.all(days.map(async (d) => {
     const m = await b.get(`${BACKUPS}${d}/manifest.json`);
     return m ? (JSON.parse(await m.text()) as Manifest) : null;
   }))).filter((m): m is Manifest => !!m);
+  if (items.length) await env.TOKEN_KV?.put(INDEX_KEY, JSON.stringify(items));
+  return items;
+}
+
+export async function listBackups(env: Env) {
+  const items = await readIndex(env, bucket(env));
   const running = await readJson<State>(env, STATE_KEY);
   return { items, running: running ? { date: running.date, docs: running.docs, startedAt: running.startedAt } : null };
 }
@@ -209,9 +241,18 @@ export async function restoreFromBackup(env: Env, date: string, paths: string[],
   const want = new Set(paths);
   const docs = await docsOf(bucket(env), date, (p) => want.has(p));
   if (!docs.length) throw new ApiError('NOT_FOUND', 'none of those documents are in this backup');
-  const writes: Write[] = docs.map((d) => ({ update: { name: d.name, fields: d.fields || {} } }));
+  // what is there now goes to the recycle bin first (30 days), so a restore can itself be undone
+  const now: RawDoc[] = [];
+  for (let i = 0; i < docs.length; i += 100) now.push(...await fs.rawGet(docs.slice(i, i + 100).map((d) => d.name)));
+  const current = new Map(now.map((d) => [d.name, d]));
+  // a person's profile (role, status) is changed in the people screen: a restore only brings back one that is gone
+  const people = docs.filter((d) => lastCollection(pathOf(d.name)) === 'users' && current.has(d.name));
+  const todo = docs.filter((d) => !people.includes(d));
+  const keep = todo.map((d) => current.get(d.name)).filter((d): d is RawDoc => !!d);
+  if (keep.length && fs.trash) await fs.trash.put(keep);
+  const writes: Write[] = todo.map((d) => ({ update: { name: d.name, fields: d.fields || {} } }));
   for (let i = 0; i < writes.length; i += 400) await fs.commit(writes.slice(i, i + 400));
-  return { restored: docs.length, missing: paths.length - docs.length, paths: docs.map((d) => pathOf(d.name)) };
+  return { restored: todo.length, missing: paths.length - docs.length, skippedPeople: people.map((d) => pathOf(d.name)), keptInTrash: keep.length, paths: todo.map((d) => pathOf(d.name)) };
 }
 
 // ---------- the recycle bin ----------

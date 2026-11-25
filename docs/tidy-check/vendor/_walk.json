@@ -1,0 +1,446 @@
+{
+ "role": "vendor",
+ "results": [
+  {
+   "nn": "01",
+   "route": "/vendor",
+   "scenario": "regular",
+   "shots": [
+    "01-vendor.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor",
+   "title": "האירועים",
+   "rootLen": {
+    "design": "D3-Home",
+    "app": 778,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   },
+   "rowNav": "/vendor/stall"
+  },
+  {
+   "nn": "02",
+   "route": "/vendor/invite/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "02-vendor-invite-e-festival.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/invite/demo-e-festival",
+   "title": "רז, רוצים אותך בפסטיבל הסתיו"
+  },
+  {
+   "nn": "03",
+   "route": "/vendor/events/demo-e-festival/needs",
+   "scenario": "regular",
+   "shots": [
+    "03-vendor-events-e-festival-needs.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/events/demo-e-festival/needs",
+   "title": "מה צריך בדוכן"
+  },
+  {
+   "nn": "04",
+   "route": "/vendor/events/demo-e-festival",
+   "scenario": "regular",
+   "shots": [
+    "04-vendor-events-e-festival.jpg",
+    "04-vendor-events-e-festival-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "[row sheet] button.k-action__btn \"התקשרות 052-000-0007\" 3 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/events/demo-e-festival",
+   "title": "פסטיבל הסתיו",
+   "rowSheet": [
+    "וואטסאפ",
+    "וואטסאפ",
+    "התקשרות 052-000-0007",
+    "התקשרות"
+   ]
+  },
+  {
+   "nn": "05",
+   "route": "/vendor/stall",
+   "scenario": "regular",
+   "shots": [
+    "05-vendor-stall.jpg",
+    "05-vendor-stall-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-btn \"לצרף עוזר\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/stall",
+   "title": "הדוכן שלי",
+   "rowSheet": [
+    "שליחת הקישור שוב 052-000-0472",
+    "שליחת הקישור שוב",
+    "הסרה מהדוכן",
+    "הסרה מהדוכן"
+   ]
+  },
+  {
+   "nn": "06",
+   "route": "/vendor/stall/helpers/new",
+   "scenario": "regular",
+   "shots": [
+    "06-vendor-stall-helpers-new.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "Google"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/stall/helpers/new",
+   "title": "לצרף עוזר לדוכן"
+  },
+  {
+   "nn": "07",
+   "route": "/notifications",
+   "scenario": "regular",
+   "shots": [
+    "07-notifications.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"מה לקבל\""
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/notifications",
+   "title": "התראות"
+  },
+  {
+   "nn": "08",
+   "route": "/me",
+   "scenario": "regular",
+   "shots": [
+    "08-me.jpg",
+    "08-me-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "backlink-loose",
+     "what": "text link in top bar: \"עריכת פרטים\""
+    },
+    {
+     "rule": "english",
+     "what": "raz.cheese@gmail.com"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me",
+   "title": "חזרה עריכת פרטים רכ רז כהן בעל דוכן · מאוקטובר 2026 טלפון 052-000-0471",
+   "rowSheet": [
+    "להפעיל"
+   ]
+  },
+  {
+   "nn": "09",
+   "route": "/me/edit",
+   "scenario": "regular",
+   "shots": [
+    "09-me-edit.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "raz.cheese@gmail.com, Google"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת החשבון\" (k-btn)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/edit",
+   "title": "הפרטים שלי"
+  },
+  {
+   "nn": "10",
+   "route": "/me/photo",
+   "scenario": "regular",
+   "shots": [
+    "10-me-photo.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "Google"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/me/photo",
+   "title": "תמונת פרופיל"
+  },
+  {
+   "nn": "11",
+   "route": "/install",
+   "scenario": "regular",
+   "shots": [
+    "11-install.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "iPhone, Android, Safari"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/install",
+   "title": "להוסיף למסך הבית"
+  },
+  {
+   "nn": "12",
+   "route": "/terms",
+   "scenario": "regular",
+   "shots": [
+    "12-terms.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "havat-ravve.web.app., Google, Firebase:, Cloudflare:, Brevo:, HTTPS"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת חשבון\" (guest-inlinelink)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/terms",
+   "title": "תנאי שימוש ופרטיות"
+  },
+  {
+   "nn": "13",
+   "route": "/contact",
+   "scenario": "regular",
+   "shots": [
+    "13-contact.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/contact",
+   "title": "פנייה לחווה"
+  },
+  {
+   "nn": "14",
+   "route": "/delete-account",
+   "scenario": "regular",
+   "shots": [
+    "14-delete-account.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "english",
+     "what": "raz.cheese@gmail.com, Google"
+    },
+    {
+     "rule": "delete-outside-more",
+     "what": "\"מחיקת החשבון\" (k-btn)"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/delete-account",
+   "title": "מחיקת החשבון"
+  },
+  {
+   "nn": "15",
+   "route": "/tasks",
+   "scenario": "regular",
+   "shots": [
+    "15-tasks.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor",
+   "title": "האירועים",
+   "rowNav": "/vendor/stall"
+  },
+  {
+   "nn": "16",
+   "route": "/vendor",
+   "scenario": "eventDay",
+   "shots": [
+    "16-vendor.eventDay.jpg",
+    "16-vendor.eventDay-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "[row sheet] button.k-action__btn \"התקשרות 052-000-0007\" 3 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor",
+   "title": "היום האירוע",
+   "rootLen": {
+    "design": "D5-Day",
+    "app": 777,
+    "appClient": 777,
+    "designScroll": 777,
+    "designClient": 777
+   },
+   "rowSheet": [
+    "וואטסאפ",
+    "וואטסאפ",
+    "התקשרות 052-000-0007",
+    "התקשרות"
+   ]
+  },
+  {
+   "nn": "17",
+   "route": "/vendor/stall",
+   "scenario": "eventDay",
+   "shots": [
+    "17-vendor-stall.eventDay.jpg",
+    "17-vendor-stall.eventDay-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-btn \"לצרף עוזר\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/stall",
+   "title": "הדוכן שלי",
+   "rowSheet": [
+    "שליחת הקישור שוב 052-000-0472",
+    "שליחת הקישור שוב",
+    "הסרה מהדוכן",
+    "הסרה מהדוכן"
+   ]
+  },
+  {
+   "nn": "18",
+   "route": "/vendor/events/demo-e-festival",
+   "scenario": "eventDay",
+   "shots": [
+    "18-vendor-events-e-festival.eventDay.jpg",
+    "18-vendor-events-e-festival.eventDay-row.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    },
+    {
+     "rule": "title-wrap",
+     "what": "[row sheet] button.k-action__btn \"התקשרות 052-000-0007\" 3 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/events/demo-e-festival",
+   "title": "פסטיבל הסתיו",
+   "rowSheet": [
+    "וואטסאפ",
+    "וואטסאפ",
+    "התקשרות 052-000-0007",
+    "התקשרות"
+   ]
+  },
+  {
+   "nn": "19",
+   "route": "/vendor",
+   "scenario": "afterEvent",
+   "shots": [
+    "19-vendor.afterEvent.jpg"
+   ],
+   "findings": [
+    {
+     "rule": "title-wrap",
+     "what": "button.k-nav__item \"הדוכן שלי\" 2 lines for 2 words"
+    }
+   ],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor",
+   "title": "האירועים",
+   "rowNav": "/vendor/events/demo-e-festival/summary"
+  },
+  {
+   "nn": "20",
+   "route": "/vendor/events/demo-e-festival/summary",
+   "scenario": "afterEvent",
+   "shots": [
+    "20-vendor-events-e-festival-summary.afterEvent.jpg"
+   ],
+   "findings": [],
+   "errors": [],
+   "notes": [],
+   "finalUrl": "/vendor/events/demo-e-festival/summary",
+   "title": "תודה, רז"
+  }
+ ],
+ "unvisitedLinks": []
+}

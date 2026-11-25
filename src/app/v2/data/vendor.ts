@@ -6,7 +6,8 @@ import { useMemo } from 'react';
 import { useDoc, useList, write, newId, push, pull, transact, ConflictError } from '../../db';
 import { isFemale } from '../gender';
 import { nowIso, nowMs, todayKey } from '../../clock';
-import { logActivity } from '../../activity';
+import { activityOp, logActivity } from '../../activity';
+import { demoOnly } from '../../demo/store';
 import { fillTemplate } from '../../data';
 import { notify } from './notify';
 import { hhmm, ddmm, dayName, keyOf } from '../format';
@@ -181,6 +182,7 @@ const managersOf = (info: VendorInfo | null, rec: EventVendorDoc | null) => [...
 export async function declineInvite(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: EventVendorDoc | null, info: VendorInfo | null) {
   const at = nowIso();
   await write.update(`events/${e.id}/vendors`, v.id, { status: 'declined', confirmed: false, answeredAt: at, updatedAt: at });
+  await logActivity(ctx.actor, 'event', v.id, 'edited', 'דוכן דחה הזמנה', { eventId: e.id });
   await notify(managersOf(info, rec), { kind: 'vendor', title: `${v.name} ${g(v.fem, 'לא מגיע', 'לא מגיעה')} ל${e.title}`, sub: ctx.actor.name, link: `/manage/events/${e.id}/vendors`, refId: v.id, by: ctx.actor, push: false });
 }
 
@@ -193,13 +195,17 @@ export async function confirmWithNeeds(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, r
     { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { status: 'confirmed', confirmed: true, answeredAt: at, sells: f.sells.trim(), needs: f.needs, people: f.people, withVehicle: f.withVehicle, vehicle: f.withVehicle ? 'רכב לפריקה' : '', note: f.note.trim(), updatedAt: at } },
     { op: 'update', col: 'vendors', id: v.id, data: { sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, ...(f.note.trim() ? { note: f.note.trim() } : {}), updatedAt: at } },
   ]);
+  await logActivity(ctx.actor, 'event', v.id, 'edited', 'דוכן עדכן הגעה וצרכים', { eventId: e.id });
   await notify(managersOf(info, rec), { kind: 'vendor', title: was === 'confirmed' ? `${v.name} ${g(v.fem, 'עדכן', 'עדכנה')} את מה שצריך בדוכן` : `${v.name} ${g(v.fem, 'אישר', 'אישרה')} הגעה ל${e.title}`, sub: needsText(f.needs) || ctx.actor.name, link: `/manage/events/${e.id}/vendors`, refId: v.id, by: ctx.actor, push: false });
 }
 
 /** D5 "הגעתי לחווה" (vendor or helper). */
 export async function checkIn(ctx: V2Ctx, eid: string, vid: string) {
   const at = nowIso();
-  await write.update(`events/${eid}/vendors`, vid, { arrivedAt: at, arrivedBy: ctx.actor.uid, updatedAt: at });
+  await write.batch([
+    { op: 'update', col: `events/${eid}/vendors`, id: vid, data: { arrivedAt: at, arrivedBy: ctx.actor.uid, updatedAt: at } },
+    activityOp(ctx.actor, 'event', vid, 'saved', 'דוכן הגיע לחווה', { eventId: eid }),
+  ]);
 }
 export const markGuidelinesRead = (eid: string, vid: string) => write.update(`events/${eid}/vendors`, vid, { guidelinesReadAt: nowIso() }, { quiet: true });
 
@@ -207,7 +213,10 @@ export const markGuidelinesRead = (eid: string, vid: string) => write.update(`ev
 export async function createRequest(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: EventVendorDoc | null, info: VendorInfo | null, kind: RequestKind) {
   const col = `events/${e.id}/vendor_requests`; const id = newId(col); const text = REQUEST_LABELS[kind];
   const doc: VendorRequestDoc = { id, eventId: e.id, vendorId: v.id, vendorName: v.name, kind, text, by: ctx.actor, createdAt: nowIso(), takenBy: null, closedAt: null, closedBy: null };
-  await write.set(col, id, doc as unknown as Record<string, unknown>);
+  await write.batch([
+    { op: 'set', col, id, data: doc as unknown as Record<string, unknown> },
+    activityOp(ctx.actor, 'event', id, 'created', 'בקשה מדוכן', { eventId: e.id }),
+  ]);
   await notify(managersOf(info, rec), { kind: 'vendor', title: `${v.name}: ${text}`, sub: rec?.spot ? `דוכן ${rec.spot} · ${ctx.actor.name}` : ctx.actor.name, link: `/manage/events/${e.id}/vendors/today`, refId: id, by: ctx.actor });
   return id;
 }
@@ -217,8 +226,19 @@ export async function closeRequest(ctx: V2Ctx, eid: string, rid: string, notifyU
     const r = await tx.get<VendorRequestDoc>(`events/${eid}/vendor_requests`, rid);
     if (!r || r.closedAt) throw new ConflictError('לא נשמר. הבקשה כבר נסגרה.');
     tx.update(`events/${eid}/vendor_requests`, rid, { closedAt: nowIso(), closedBy: ctx.actor });
+    const log = activityOp(ctx.actor, 'event', rid, 'closed', 'בקשה מדוכן', { eventId: eid });
+    tx.set(log.col, log.id, log.data);
   });
-  if (notifyUid && notifyUid !== ctx.actor.uid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
+  if (notifyUid) await notify([notifyUid], { kind: 'vendor', title: 'הבקשה שלך טופלה', sub: ctx.actor.name, link: '/vendor', refId: rid, by: ctx.actor });
+}
+/** W2 "אני על זה": the team member who handles the request (takenBy + takenAt). The vendor reads it on D6 ("נועה בדרך אליך").
+ *  A closed request is not taken; taking it from someone else is allowed (the latest one is the one on the way). */
+export async function takeRequest(ctx: V2Ctx, eid: string, rid: string) {
+  await transact(async (tx) => {
+    const r = await tx.get<VendorRequestDoc>(`events/${eid}/vendor_requests`, rid);
+    if (!r || r.closedAt) throw new ConflictError('לא נשמר. הבקשה כבר נסגרה.');
+    tx.update(`events/${eid}/vendor_requests`, rid, { takenBy: ctx.actor, takenAt: nowIso() });
+  });
 }
 
 /** D9 "שליחה לחווה". */
@@ -227,17 +247,23 @@ export async function saveFeedback(ctx: V2Ctx, e: FarmEvent, v: VendorDoc, rec: 
   await write.batch([
     { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { feedback: { rating: f.rating, text: f.text.trim(), inviteNext: f.inviteNext, at }, updatedAt: at } },
     { op: 'update', col: 'vendors', id: v.id, data: { inviteNext: f.inviteNext, updatedAt: at } },
+    activityOp(ctx.actor, 'event', v.id, 'saved', 'משוב מדוכן', { eventId: e.id }),
   ]);
   await notify(managersOf(info, rec), { kind: 'vendor', title: `משוב מ${v.name}: ${RATING_LABELS[f.rating] || ''}`, sub: f.text.trim().slice(0, 120), link: `/manage/vendors/${v.id}`, refId: v.id, by: ctx.actor, push: false });
 }
 export const RATING_LABELS: Record<number, string> = { 5: 'מצוין', 3: 'בסדר', 1: 'פחות' };
 /** D10 "להזמין אותי לאירוע הבא". */
-export const setInviteNext = (vid: string, on: boolean) => write.update('vendors', vid, { inviteNext: on, updatedAt: nowIso() });
+export const setInviteNext = (actor: Actor, vid: string, on: boolean) => write.batch([
+  { op: 'update', col: 'vendors', id: vid, data: { inviteNext: on, updatedAt: nowIso() } },
+  activityOp(actor, 'event', vid, 'saved', 'העדפת הזמנה לדוכן'),
+]);
 
 /** D7 "עריכה": the stall details the vendor owns. */
 export type StallForm = { name: string; sells: string; phone: string; needs: VendorNeed[]; note: string; photo?: string };
-export const saveStall = (vid: string, f: StallForm) =>
-  write.update('vendors', vid, { name: f.name.trim(), sells: f.sells.trim(), product: f.sells.trim(), phone: f.phone.trim(), needs: f.needs, note: f.note.trim(), ...(f.photo !== undefined ? { photo: f.photo } : {}), updatedAt: nowIso() });
+export const saveStall = (actor: Actor, vid: string, f: StallForm) => write.batch([
+  { op: 'update', col: 'vendors', id: vid, data: { name: f.name.trim(), sells: f.sells.trim(), product: f.sells.trim(), phone: f.phone.trim(), needs: f.needs, note: f.note.trim(), ...(f.photo !== undefined ? { photo: f.photo } : {}), updatedAt: nowIso() } },
+  activityOp(actor, 'event', vid, 'edited', 'פרטי דוכן'),
+]);
 
 /** D8 (vendor) and V6 "לקשר עוד מישהו" (manager): an access invite plus a row in the stall's people. Returns the WhatsApp text and link. */
 export async function addPerson(ctx: V2Ctx, v: VendorDoc, p: { name: string; phone: string; role: 'owner' | 'helper'; fem?: boolean }) {
@@ -247,6 +273,7 @@ export async function addPerson(ctx: V2Ctx, v: VendorDoc, p: { name: string; pho
   await write.batch([
     { op: 'set', col: 'vendor_invites', id: code, data: invite as unknown as Record<string, unknown> },
     { op: 'update', col: 'vendors', id: v.id, data: { people: push(person), updatedAt: at } },
+    activityOp(ctx.actor, 'event', v.id, 'added', 'גישה לדוכן'),
   ]);
   return { code, link: inviteLink('', code), text: helperText(v, p.name, inviteLink('', code), p.role) };
 }
@@ -254,24 +281,49 @@ export const helperText = (v: VendorDoc, name: string, link: string, role: 'owne
   role === 'owner'
     ? `שלום ${first(name)}, זה הקישור לאפליקציה של חוות רווה בשביל ${v.name}: ${link} נכנסים עם חשבון Google.`
     : `שלום ${first(name)}, צירפתי אותך לדוכן ${v.name} באפליקציה של חוות רווה. נכנסים כאן עם חשבון Google: ${link}`;
-/** Removes a helper from the stall and closes their invite (D7 sheet). Access comes from the helper's profile, not from the
- *  people list, so an account that already signed in goes back to guest as well (as V6 does); the account itself stays. */
-export async function removePerson(v: VendorDoc, p: VendorPerson) {
+/** D7 resolves only the requested link. The owner never reads another person's profile. */
+export async function removePerson(actor: Actor, v: VendorDoc, p: VendorPerson) {
+  const code = p.code;
+  if (p.role !== 'helper' || !code || !/^[a-z0-9-]{8,40}$/.test(code)) {
+    throw new ConflictError('לקישור הישן חסר מידע. פנו לחווה כדי להסיר את הגישה.');
+  }
+  const receipt = activityOp(actor, 'event', v.id, 'removed', 'גישה לדוכן');
   const at = nowIso();
-  const people = (v.people || []).filter((x) => !(x.code ? x.code === p.code : x.name === p.name && x.role === p.role));
-  const ops: Parameters<typeof write.batch>[0] = [{ op: 'update', col: 'vendors', id: v.id, data: { people, updatedAt: at } }];
-  if (p.code) ops.push({ op: 'update', col: 'vendor_invites', id: p.code, data: { active: false } });
-  await write.batch(ops);
-  if (p.role !== 'helper') return;
-  const uid = p.uid || (p.code ? await claimedBy(p.code) : '');
-  // The rules allow this only while the profile is still a helper of this stall (users: helperRevoke). A refusal means the
-  // account has no access here anymore (already a guest, or linked elsewhere since), so there is nothing to undo.
-  if (uid) await write.update('users', uid, { role: 'guest', updatedAt: at }, { quiet: true }).catch(() => {});
-}
-/** The account that used an access link, read from the invite (the D7 list may not have loaded the invites yet). */
-async function claimedBy(code: string) {
-  try { return await transact(async (tx) => (await tx.get<VendorInviteDoc>('vendor_invites', code))?.usedBy || ''); }
-  catch { return ''; }
+  const demo = demoOnly();
+  const remove = (revoke: boolean) => transact(async (tx) => {
+    const current = await tx.get<VendorDoc>('vendors', v.id);
+    const invite = await tx.get<VendorInviteDoc>('vendor_invites', code);
+    if (!current || !invite || invite.code !== code || invite.vendorId !== v.id || invite.role !== 'helper'
+      || (invite.usedBy !== null && (typeof invite.usedBy !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(invite.usedBy)))) {
+      throw new ConflictError('לא הצלחנו לבדוק את הקישור. נסו שוב או פנו לחווה.');
+    }
+    const logged = await tx.get<{ refId: string; action: string }>('activity', code);
+    const people = current.people || [];
+    const matches = people.filter((x) => x.code === code);
+    if (!matches.length && logged?.refId === v.id && logged.action === 'removed' && !invite.active) return;
+    const row = matches[0];
+    if (logged || matches.length !== 1 || row.role !== 'helper' || (row.uid && invite.usedBy && row.uid !== invite.usedBy)) {
+      throw new ConflictError('לא הצלחנו לזהות את הקישור. פנו לחווה כדי להסיר את הגישה.');
+    }
+    const uid = invite.usedBy || row.uid;
+    if (uid && !/^[A-Za-z0-9_-]{1,128}$/.test(uid)) throw new ConflictError('לא הצלחנו לזהות את החשבון. פנו לחווה כדי להסיר את הגישה.');
+    const profile = demo && uid ? await tx.get<Profile & { inviteCode?: string }>('users', uid) : null;
+    const demoLinked = profile?.role === 'vendor' && profile.helper && profile.vendorId === v.id && profile.inviteCode === code;
+    tx.update('vendors', v.id, { people: people.filter((x) => x.code !== code), updatedAt: at });
+    tx.update('vendor_invites', code, { active: false });
+    if (uid && (demo ? demoLinked : revoke)) tx.update('users', uid, { role: 'guest', updatedAt: at });
+    tx.set(receipt.col, code, receipt.data);
+  }, { serverOnly: true });
+  if (demo) return remove(true);
+  try {
+    await remove(true);
+  } catch (e) {
+    // A claimed account may have moved on to another link. Rules permit a row-only retry only
+    // after checking the current private profile, and refuse it if this link still grants access.
+    const error = (e as { code?: string }).code;
+    if (error !== 'permission-denied' && error !== 'not-found') throw e;
+    await remove(false);
+  }
 }
 
 // ---------- manager actions (V1, V2, V6, N8, V7) ----------
@@ -282,7 +334,10 @@ export async function savePoolVendor(ctx: V2Ctx, f: PoolForm, existing?: VendorD
   const data = { name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, notes: '', external: f.external, fem: f.fem, updatedAt: at };
   const priv = { notes: f.notes.trim(), updatedAt: at };
   if (existing) {
-    await write.batch([{ op: 'update', col: 'vendors', id: existing.id, data }, { op: 'set', col: `vendors/${existing.id}/private`, id: 'main', data: priv }]);
+    await write.batch([
+      { op: 'update', col: 'vendors', id: existing.id, data }, { op: 'set', col: `vendors/${existing.id}/private`, id: 'main', data: priv },
+      activityOp(ctx.actor, 'event', existing.id, 'edited', 'פרטי דוכן במאגר'),
+    ]);
     return existing.id;
   }
   const id = newId('vendors');
@@ -332,7 +387,7 @@ export async function inviteToEvent(ctx: V2Ctx, v: VendorDoc, e: FarmEvent, info
   ops.push({ op: 'update', col: 'vendors', id: v.id, data: vendorPatch });
   await write.batch(ops);
   await ensureVendorInfo(ctx, e, info);
-  if (!existing) logActivity(ctx.actor, 'event', e.id, 'invited', `${v.name} הוזמן לדוכן`, { eventId: e.id });
+  await logActivity(ctx.actor, 'event', e.id, existing ? 'edited' : 'invited', existing ? 'הזמנה לדוכן' : `${v.name} הוזמן לדוכן`, { eventId: e.id });
   const enteredOwner = owner(v)?.entered;
   return { text: inviteText(ctx, v, e, enteredOwner ? undefined : code) };
 }
@@ -343,7 +398,10 @@ export function inviteText(ctx: V2Ctx, v: VendorDoc, e: FarmEvent, code?: string
 /** N8 "תזכורת": stamps the reminder and returns the WhatsApp text: the saved "הזמנת בעל דוכן" message when the farm wrote one
  *  (the old "הזמנה שוב" sent it), otherwise the short reminder. */
 export async function remindVendor(ctx: V2Ctx, v: VendorDoc, e: FarmEvent) {
-  await write.update(`events/${e.id}/vendors`, v.id, { remindedAt: nowIso() }, { quiet: true });
+  await write.batch([
+    { op: 'update', col: `events/${e.id}/vendors`, id: v.id, data: { remindedAt: nowIso() } },
+    activityOp(ctx.actor, 'event', e.id, 'saved', 'תזכורת לבעל דוכן', { eventId: e.id }),
+  ], { quiet: true });
   const code = owner(v)?.entered ? undefined : owner(v)?.code;
   if (ctx.settings.templates.vendorInvite?.trim()) return inviteText(ctx, v, e, code);
   return `שלום ${first(v.contact || v.name)}, מזכירים: ${e.title} ב־${dayShort(e.start)}. מגיעים? אפשר לענות כאן: ${inviteLink(e.id, code)}`;
@@ -353,6 +411,12 @@ export async function confirmForVendor(ctx: V2Ctx, eventId: string, rec: EventVe
   const at = nowIso();
   await write.update(`events/${eventId}/vendors`, rec.id, { status: 'confirmed', confirmed: true, answeredAt: at, updatedAt: at });
   logActivity(ctx.actor, 'event', eventId, 'edited', `${rec.name}: אישרו הגעה`, { eventId });
+}
+/** Q11 "לא מגיע הפעם": a manager records a no that came by phone or WhatsApp. */
+export async function declineForVendor(ctx: V2Ctx, eventId: string, rec: EventVendorDoc, fem?: boolean) {
+  const at = nowIso();
+  await write.update(`events/${eventId}/vendors`, rec.id, { status: 'declined', confirmed: false, answeredAt: at, updatedAt: at });
+  logActivity(ctx.actor, 'event', eventId, 'edited', `${rec.name}: ${g(fem, 'לא מגיע', 'לא מגיעה')} הפעם`, { eventId });
 }
 /** N8 "להזמין את מי שהיה ב...": invites in one batch everyone from a previous event who is not invited yet. */
 export async function inviteMany(ctx: V2Ctx, vendors: VendorDoc[], e: FarmEvent, info: VendorInfo | null) {
@@ -438,6 +502,8 @@ export async function claimVendorInvite(user: Session, code: string, details?: {
       });
     }
     tx.update('vendor_invites', code, { usedBy: user.uid, usedAt: at, active: false });
+    const log = activityOp({ uid: user.uid, name: (me?.displayName || details?.displayName || inv.name).slice(0, 80) }, 'user', inv.vendorId, 'joined', 'קישור לדוכן התקבל');
+    tx.set(log.col, log.id, log.data);
     return inv.vendorId;
   });
   forgetVendorInvite();

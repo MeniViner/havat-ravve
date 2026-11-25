@@ -73,7 +73,7 @@ function Empty({ ctx, v, past }: { ctx: V2Ctx; v: VendorDoc; past: Bundle[] }) {
   const [on, setOn] = useState(!!v.inviteNext);
   const flip = async (next: boolean) => {
     setOn(next);
-    try { await setInviteNext(v.id, next); toast.show({ text: next ? 'החווה תראה שאתם רוצים להגיע לאירוע הבא' : 'עודכן. לא נזמין אוטומטית', check: next }); }
+    try { await setInviteNext(ctx.actor, v.id, next); toast.show({ text: next ? 'החווה תראה שאתם רוצים להגיע לאירוע הבא' : 'עודכן. לא נזמין אוטומטית', check: next }); }
     catch (e) { setOn(!next); toast.refused(isConflict(e) ? undefined : `לא נשמר. ${(e as Error).message}`); }
   };
   return (
