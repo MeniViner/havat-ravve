@@ -104,7 +104,7 @@ export async function readGroups(env: Env): Promise<GroupState[]> {
 }
 
 /** The jobs' names, as the console lists them. */
-export const JOB_HE: Record<string, string> = { email: 'מיילים על תשלומים', push: 'התראות לטלפון', monitor: 'בדיקת האתר והמכסה', backup: 'גיבוי לילי', cleanup: 'ניקוי רשומות ישנות', accounts: 'מחיקת חשבונות' };
+export const JOB_HE: Record<string, string> = { email: 'מיילים על תשלומים', push: 'התראות לטלפון', monitor: 'בדיקת האתר והמכסה', backupRetention: 'ניקוי גיבויים ישנים', backup: 'גיבוי לילי', cleanup: 'ניקוי רשומות ישנות', accounts: 'מחיקת חשבונות' };
 /** A job's error in a few plain words (the technical one stays in the job's own last result). */
 export function whyHe(error: unknown): string {
   const e = String(error ?? '');
@@ -225,7 +225,7 @@ async function r2Size(env: Env): Promise<number | null> {
     if (!page.truncated) return total;
     cursor = page.cursor;
   }
-  return total;
+  return null; // a partial scan is not the size of the bucket
 }
 const n = (v: number | null) => (v === null ? '—' : v.toLocaleString('he-IL'));
 const pct = (v: number) => `${Math.round(v * 100)}%`;

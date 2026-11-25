@@ -21,7 +21,7 @@ import { CRON_GROUPS, type CronGroup, type JobRun, type MonitorState, addRound, 
 import { meter } from './meter';
 import { guardKeys, readSwitches, runCleanup } from './control';
 import { storedKeys } from './keys';
-import { runBackup, trashFor } from './backup';
+import { pruneBackups, runBackup, trashFor } from './backup';
 import { handleHit } from './traffic';
 
 const MAX_BODY = 16 * 1024;
@@ -230,8 +230,8 @@ export default {
   async scheduled(event: { cron?: string; scheduledTime?: number } | undefined, bindings: Env) {
     const started = Date.now();
     // what this run spends of the free plan's 50 subrequests, for the rounds strip on the jobs screen
-    const { env, used } = meter(bindings);
     const group = cronGroup(event);
+    const { env, used } = meter(bindings, group === 'upkeep' ? 49 : 50);
     console.log(JSON.stringify({ cron: 'run', group, trigger: event?.cron || null }));
     // the owners' switches (control.ts): a paused job skips its turn
     const sw = await readSwitches(env, true);
@@ -289,8 +289,13 @@ export default {
     cronGap(mon, prev.at, started);
     backupTurn(mon, ran.backup);
     // this round's line, with what the send and people runs left (two KV reads); it goes into the same one KV write
-    const round = roundOf(ran, await readGroups(env), started, used() + 1);
+    const groups = await readGroups(env);
+    // Retention uses at most 10 subrequests. Keep one more for the final KV write.
+    if (!sw.backupPaused && used() <= 39 && new Date(event?.scheduledTime ?? started).getUTCMinutes() < 5) {
+      await step('backupRetention', () => pruneBackups(env));
+    }
+    const round = roundOf(ran, groups, started, used() + 1);
     // the console's "last cron run": when it ran, how long it took, what it watched, each upkeep job's last result (one KV write)
-    await recordCron(env, { ...mon, rounds: addRound(mon.rounds, round), jobs: { ...(prev.jobs || {}), ...ran }, wallMs: Date.now() - started }).catch(() => {});
+    await recordCron(bindings, { ...mon, rounds: addRound(mon.rounds, round), jobs: { ...(prev.jobs || {}), ...ran }, wallMs: Date.now() - started }).catch(() => {});
   },
 };
