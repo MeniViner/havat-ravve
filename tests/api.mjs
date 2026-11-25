@@ -1804,14 +1804,19 @@ section('console: the morning check, events, rounds and the broadcast pause (dir
     // the morning check, its week and the daily summary
     {
       for (const d of (await (await fetch(`${DOCS}/api_failures?pageSize=300`, { headers: admin })).json()).documents || []) await fetch(`http://${EMU}/v1/${d.name}`, { method: 'DELETE', headers: admin });
-      const good = { 'console:backup-last': JSON.stringify({ date: ilDay(), docs: 5, finishedAt: t }) };
+      const lastBackup = { date: ilDay(), docs: 0, bytes: 0, parts: 0, finishedAt: t };
+      const good = { 'console:backup-last': JSON.stringify(lastBackup) };
+      const backupEnv = { FILE_BUCKET: {
+        get: async (key) => key === `backups/${lastBackup.date}/manifest.json` ? new Response(JSON.stringify(lastBackup)) : null,
+        list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+      } };
       const site = { checks: [{ at: t, ok: true, ms: 1, status: 200 }], downSince: null, incidents: [] };
       const f = new M.firestore.Firestore(envOf(makeKv()));
-      const quietEnv = envOf(makeKv(good)); const stQ = { uptime: site, at: t };
+      const quietEnv = envOf(makeKv(good), backupEnv); const stQ = { uptime: site, at: t };
       const n0 = (await notes()).length;
       await monitor.morningStep(quietEnv, f, stQ, new Date());
       check(stQ.health.worst !== 'bad' && (await notes()).length === n0, 'all well, daily off → nothing is sent', stQ.health.items.map((i) => i.id + ':' + i.state));
-      const env = envOf(makeKv({ ...good, 'console:alerts': JSON.stringify({ daily: true }) })); const st = { uptime: site, at: t };
+      const env = envOf(makeKv({ ...good, 'console:alerts': JSON.stringify({ daily: true }) }), backupEnv); const st = { uptime: site, at: t };
       await monitor.morningStep(env, f, st, new Date());
       const list = await notes();
       check(list.length === n0 + 1 && list.some((x) => x.title.startsWith('סיכום הבוקר')), 'all well, daily on → the summary reaches the owner', list.map((x) => x.title));
@@ -1822,7 +1827,7 @@ section('console: the morning check, events, rounds and the broadcast pause (dir
       check(st.week.length === 8 && st.week[7].date === ilDay() && st.week.every((x, i, a) => !i || x.date > a[i - 1].date), 'the week keeps eight mornings, oldest first');
       // too many failures, no backup
       for (let i = 0; i < 25; i++) await seed('api_failures', 'cs-f-' + i, { at: new Date().toISOString(), status: 500 });
-      const bad = envOf(makeKv({ 'console:alerts': JSON.stringify({ daily: true }) })); const stB = { uptime: site, at: t };
+      const bad = envOf(makeKv({ 'console:alerts': JSON.stringify({ daily: true }) }), backupEnv); const stB = { uptime: site, at: t };
       await monitor.morningStep(bad, f, stB, new Date());
       const evs = monitor.eventsView(stB);
       check(evs.some((e) => e.kind === 'failures' && e.he === '25 תקלות שרת ביממה אחת' && e.alerted) && evs.some((e) => e.kind === 'backup' && e.alerted) && evs.length === 2, 'over the threshold and no backup → two events, and the owners were told', evs);
