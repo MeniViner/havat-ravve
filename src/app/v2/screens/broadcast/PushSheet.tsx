@@ -48,7 +48,7 @@ export function DevicePushRow({ profile, readOnly = false }: { profile: Profile;
   const action = s === 'on'
     ? <Toggle checked label="התראות לטלפון" onChange={turnOff} disabled={busy || readOnly} />
     : s === 'ask' ? <Button variant="outline" onClick={turnOn} disabled={busy || readOnly}>{busy ? 'מפעילים…' : 'להפעיל'}</Button>
-    : s === 'needs-install' ? <Button variant="outline" onClick={() => go('/install')}>איך מוסיפים</Button>
+    : s === 'needs-install' ? <Button variant="outline" onClick={() => go('/install?notifications=1')}>איך מוסיפים</Button>
     : s === 'denied' && isNativeAndroid ? <Button variant="outline" onClick={() => void openAndroidNotificationSettings().catch(() => toast.refused('לא הצלחנו לפתוח את הגדרות המכשיר.'))}>הגדרות Android</Button>
     : s === 'android-off' || s === 'native-ios' ? <Button variant="outline" onClick={() => openSitePage('/app/me/account?notifications=1')}>הגדרה באתר</Button>
     : undefined;

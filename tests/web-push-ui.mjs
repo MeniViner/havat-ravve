@@ -75,14 +75,15 @@ await new Promise((resolve) => server.listen(0, 'localhost', resolve));
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch();
 
-async function setup({ ios = false } = {}) {
+async function setup({ ios = false, installed = false } = {}) {
   const context = await browser.newContext({
     viewport: { width: ios ? 375 : 1440, height: 900 }, serviceWorkers: 'block',
     ...(ios ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Version/17.0 Mobile Safari/604.1' } : {}),
   });
   const origins = new Set([base, 'http://' + fsHost, 'http://' + authHost]);
   await context.route('**/*', (route) => origins.has(new URL(route.request().url()).origin) ? route.continue() : route.abort());
-  await context.addInitScript(({ endpoint }) => {
+  await context.addInitScript(({ endpoint, installed }) => {
+    Object.defineProperty(navigator, 'standalone', { value: installed });
     let permission = 'default';
     let sub;
     window.permissionPrompts = 0;
@@ -113,8 +114,9 @@ async function setup({ ios = false } = {}) {
       getRegistration: { value: async () => reg },
       ready: { value: Promise.resolve(reg) },
     });
-  }, { endpoint });
+  }, { endpoint, installed });
   const page = await context.newPage();
+  page.on('pageerror', (error) => console.error(error.message));
   return { context, page };
 }
 
@@ -142,7 +144,9 @@ try {
   };
   await write('users/' + uid, person);
   await write('settings/push', { mode: 'webpush', vapidPublicKey });
-  await page.getByRole('button', { name: 'להפעיל', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'להפעיל', exact: true }).waitFor({ timeout: 8000 }).catch(async (error) => {
+    console.error(page.url(), (await page.locator('body').innerText()).slice(0, 400)); throw error;
+  });
   assert.equal(await page.evaluate(() => window.permissionPrompts), 0);
   await page.getByRole('button', { name: 'להפעיל', exact: true }).click();
   await page.getByText('פעיל במכשיר הזה.', { exact: false }).waitFor();
@@ -161,7 +165,17 @@ try {
   assert.equal(await iphone.page.evaluate(() => window.permissionPrompts), 0);
   await iphone.page.getByRole('button', { name: 'איך מוסיפים' }).click();
   await iphone.page.getByRole('heading', { name: 'להוסיף למסך הבית' }).waitFor();
+  assert.equal(new URL(iphone.page.url()).searchParams.get('notifications'), '1');
   await iphone.context.close();
+  const installedIphone = await setup({ ios: true, installed: true });
+  await installedIphone.page.goto(base + '/app/me/account?notifications=1');
+  await installedIphone.page.getByText(/כדי לקבל התראות מהחווה במכשיר/).waitFor();
+  await installedIphone.page.evaluate(() => window.testSignIn());
+  await installedIphone.page.getByRole('button', { name: 'להפעיל', exact: true }).click();
+  await installedIphone.page.getByText('פעיל במכשיר הזה.', { exact: false }).waitFor();
+  assert.equal(await installedIphone.page.evaluate(() => window.permissionPrompts), 1);
+  assert.deepEqual(await readDevices(), [endpoint + '-other', endpoint]);
+  await installedIphone.context.close();
   console.log('PASS: website link, guest sign-in, tap-only permission, server-confirmed registration, per-device off, iPhone installation guidance.');
 } finally {
   await browser.close();
