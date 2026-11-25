@@ -40,7 +40,7 @@
 .guest-shortcut__body b { font-size: 16px; }
 .guest-shortcut__body span { font-size: 14px; color: var(--soft); }
 
-.guest-datebox--pine { background: var(--action); color: #FFFFFF; }
+.guest-datebox--pine { background: var(--action-fill); color: #FFFFFF; }
 .guest-datebox--pine .k-datebox__month { color: rgba(255, 255, 255, .85); }
 
 .guest-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -70,7 +70,7 @@
 .guest-stepcard__meta { font-size: 14px; color: var(--soft); }
 .guest-stepcard .k-stepper__btn { border-width: 1px; }
 
-.guest-total { background: var(--selected); color: #FFFFFF; border-radius: 12px; padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.guest-total { background: var(--selected-fill); color: #FFFFFF; border-radius: 12px; padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .guest-total__amount { font-size: 34px; line-height: 1; }
 .guest-total__meta { font-size: 15px; color: rgba(255, 255, 255, .9); }
 
@@ -91,18 +91,18 @@
 }
 .guest-cal__day:disabled { color: var(--line-strong); cursor: default; }
 .guest-cal__day--today { border-color: var(--line-strong); }
-.guest-cal__day--on { background: var(--selected); border-color: var(--selected); color: #FFFFFF; font-weight: 700; }
+.guest-cal__day--on { background: var(--selected-fill); border-color: var(--selected); color: #FFFFFF; font-weight: 700; }
 .v2 .guest-cal__day:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
 
 /* ---------- U4 ---------- */
 .guest-checkhead { display: flex; flex-direction: column; gap: 4px; }
-.guest-checkhead__mark { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--selected); color: #FFFFFF; }
+.guest-checkhead__mark { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--selected-fill); color: #FFFFFF; }
 
 /* the pay block (U4, U6, U9, U10) */
 .guest-pay { overflow: hidden; }
 .guest-pay__head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 14px; background: var(--amber); color: var(--ink); }
 .guest-pay--claimed .guest-pay__head { background: var(--bg); }
-.guest-pay--paid .guest-pay__head { background: var(--green); color: #FFFFFF; }
+.guest-pay--paid .guest-pay__head { background: var(--green-fill); color: #FFFFFF; }
 .guest-pay__label { font-size: 16px; }
 .guest-pay__amount { font-size: 24px; }
 .guest-pay__dl { margin: 0; }
@@ -113,7 +113,7 @@
 
 /* ---------- the ticket card (U5, U6) ---------- */
 .guest-ticket { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
-.guest-ticket__head { background: var(--selected); color: #FFFFFF; padding: 12px 14px; display: flex; flex-direction: column; }
+.guest-ticket__head { background: var(--selected-fill); color: #FFFFFF; padding: 12px 14px; display: flex; flex-direction: column; }
 .guest-ticket__title { font-size: 20px; }
 .guest-ticket__when { font-size: 14px; color: rgba(255, 255, 255, .9); }
 .guest-ticket__body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -123,11 +123,11 @@
 .guest-ticket__nav { display: flex; align-items: center; justify-content: space-between; }
 .guest-ticket__count { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .guest-ticket__strip { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 10px 14px; font-size: 15px; font-weight: 700; }
-.guest-ticket__strip--green { background: var(--green); color: #FFFFFF; }
+.guest-ticket__strip--green { background: var(--green-fill); color: #FFFFFF; }
 .guest-ticket__strip--amber { background: var(--amber); color: var(--ink); padding-block: 8px; padding-inline: 14px 8px; }
-.guest-ticket__strip--red { background: var(--red); color: #FFFFFF; }
+.guest-ticket__strip--red { background: var(--red-fill); color: #FFFFFF; }
 .guest-ticket__striptext { flex: 1; }
-.guest-ticket__pay { flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--ink); color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.guest-ticket__pay { flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--ink-fill); color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
 .guest-ticket--cancelled .guest-qr { opacity: .35; }
 .v2 .guest-ticket__pay:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; box-shadow: 0 0 0 4px var(--ink); }
 
@@ -154,7 +154,7 @@
 /* ---------- U12 ---------- */
 .guest-signin { display: flex; flex-direction: column; }
 .guest-signin__main { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 8px 0 24px; }
-.guest-signin__mark { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 12px; background: var(--action); color: #FFFFFF; }
+.guest-signin__mark { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 12px; background: var(--action-fill); color: #FFFFFF; }
 .guest-signin__title { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; }
 .guest-signin__text { margin: 0; font-size: 17px; line-height: 1.5; color: var(--soft); }
 .guest-signin__fine { font-size: 14px; line-height: 1.5; color: var(--soft); }
@@ -186,7 +186,7 @@
   flex: none; width: 24px; height: 24px; margin-top: 12px; box-sizing: border-box; border-radius: 50%;
   background: var(--surface); border: 2px solid var(--line-strong); color: #FFFFFF; display: flex; align-items: center; justify-content: center;
 }
-.guest-step--done .guest-step__dot { background: var(--selected); border-color: var(--selected); }
+.guest-step--done .guest-step__dot { background: var(--selected-fill); border-color: var(--selected); }
 .guest-step__line { flex: 1; width: 2px; background: var(--line); }
 .guest-step:last-child .guest-step__line { display: none; }
 .guest-step__body { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 0; }

@@ -6,7 +6,7 @@
 /* D1: farm mark + name */
 .vendor-farm { display: flex; align-items: center; justify-content: space-between; }
 .vendor-farm__name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
-.vendor-farm__logo { width: 32px; height: 32px; border-radius: 8px; background: var(--action); color: #FFFFFF; display: flex; align-items: center; justify-content: center; }
+.vendor-farm__logo { width: 32px; height: 32px; border-radius: 8px; background: var(--action-fill); color: #FFFFFF; display: flex; align-items: center; justify-content: center; }
 .vendor-titles { display: flex; flex-direction: column; gap: 2px; }
 .vendor-titles__over { font-size: 14px; color: var(--soft); }
 .vendor-h1-28 { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; }
@@ -22,7 +22,7 @@
 .vendor-count__unit { font-size: 13px; color: rgba(255, 255, 255, .85); }
 .vendor-hero .k-tag { align-self: flex-start; margin-top: 4px; }
 .vendor-hero__checkin {
-  height: 64px; border: 0; border-radius: 8px; background: #FFFFFF; color: var(--selected); font: inherit; font-size: 20px; font-weight: 700;
+  height: 64px; border: 0; border-radius: 8px; background: #FFFFFF; color: var(--selected-fill); font: inherit; font-size: 20px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
 }
 .vendor-hero__checkin:disabled { opacity: .7; }

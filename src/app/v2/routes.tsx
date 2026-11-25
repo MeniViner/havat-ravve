@@ -13,6 +13,7 @@ import * as events from './screens/events';
 import * as vendor from './screens/vendor';
 import * as broadcast from './screens/broadcast';
 import * as system from './screens/system';
+import { AppearanceScreen } from './screens/system/appearance';
 
 export type NavTab = 'tasks' | 'shopping' | 'farm' | 'manage' | 'event' | 'vendorEvents' | 'vendorStall' | null;
 type Screen = (p: ScreenProps) => ReactNode;
@@ -72,6 +73,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/install', system.InstallScreen, null, 'page'),
   R('/offline', system.OfflineScreen, null, 'tab'),
   R('/me', system.ProfileScreen, null, 'tab'),
+  R('/me/appearance', () => <AppearanceScreen />, null),
   R('/me/edit', system.ProfileEdit, null, 'page'),
   R('/me/photo', system.PhotoSource, null, 'page'),
   R('/me/photo/crop', system.PhotoCrop, null, 'page'),
@@ -141,6 +143,7 @@ export const VENDOR_ROUTES: Route[] = [
   R('/vendor/stall', vendor.VendorStall, 'vendorStall', 'tab'),
   R('/notifications', broadcast.NotificationsScreen, null, 'tab'),
   R('/me', system.ProfileScreen, null, 'tab'),
+  R('/me/appearance', () => <AppearanceScreen />, null),
   R('/me/edit', system.ProfileEdit, null, 'page'),
   R('/me/photo', system.PhotoSource, null, 'page'),
   R('/me/photo/crop', system.PhotoCrop, null, 'page'),

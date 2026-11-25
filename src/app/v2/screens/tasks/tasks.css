@@ -20,7 +20,7 @@
 .tasks-photo-thumb { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 
 /* C6 photo box */
-.tasks-shot { height: 330px; border-radius: 12px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--soft); font-size: 15px; overflow: hidden; box-sizing: border-box; }
+.tasks-shot { height: 330px; border-radius: 12px; background: var(--photo-ph); border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--soft); font-size: 15px; overflow: hidden; box-sizing: border-box; }
 .tasks-shot img { width: 100%; height: 100%; object-fit: cover; }
 .tasks-c6-title { font-size: 17px; font-weight: 600; }
 
@@ -33,7 +33,7 @@
 .tasks-hrow__meta { font-size: 14px; color: var(--soft); }
 
 /* C7 day end */
-.tasks-dayhero { background: var(--selected); color: #FFFFFF; border-radius: 12px; padding: 20px 16px; display: flex; flex-direction: column; gap: 4px; }
+.tasks-dayhero { background: var(--selected-fill); color: #FFFFFF; border-radius: 12px; padding: 20px 16px; display: flex; flex-direction: column; gap: 4px; }
 .tasks-dayhero__date { font-size: 15px; color: rgba(255, 255, 255, .85); }
 .tasks-dayhero__line { display: flex; align-items: baseline; gap: 10px; }
 .tasks-dayhero__num { font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -76,7 +76,7 @@
 .tasks-place__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tasks-place__title { font-size: 16px; font-weight: 600; line-height: 1.3; }
 .tasks-place__chev { display: flex; color: var(--soft); }
-.tasks-map { height: 170px; border-radius: 8px; background: #E4E7EA; border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--soft); font-size: 14px; box-sizing: border-box; overflow: hidden; position: relative; text-decoration: none; }
+.tasks-map { height: 170px; border-radius: 8px; background: var(--photo-ph); border: 1px dashed var(--line-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--soft); font-size: 14px; box-sizing: border-box; overflow: hidden; position: relative; text-decoration: none; }
 .tasks-map img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .tasks-btnrow { display: flex; gap: 8px; }
 /* B4: while the broadcast card shows, the hero follows it directly (no progress line) */
