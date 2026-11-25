@@ -47,7 +47,7 @@ The role `vendor` is new. `activeRole()` returns it, while `isStaff()` and `isMa
 | `notes` | string, legacy | **always `''` from now on.** The team's notes moved to `private/main` |
 | `createdAt`, `updatedAt` | ISO | |
 
-`people` is for display only. Access comes from `users/{uid}.vendorId`, so editing `people` grants nothing. `entered` is worked out from the invite (`usedBy`) as well.
+`people` displays the links. In D7 and `vendors.removePerson`, deleting one link updates the stall, closes the invite and records the action in one server transaction. If an account still uses that invite, the same transaction returns it to `guest`. Removing an old link leaves a newer one in place. A row without a verifiable invite code requires manual review. Access removal never looks up an account by name. V6 removes access for the whole stall.
 
 ### `vendors/{vid}/private/main` (new, managers only)
 
@@ -96,7 +96,7 @@ The role `vendor` is new. `activeRole()` returns it, while `isStaff()` and `isMa
   - a manager: owner or helper invites (V2/N8 invite, V6 "לקשר עוד מישהו")
   - an owner: helper invites only, for their own stall (D8)
 - **Reading:** anyone signed in with Google can get a single invite by its code. This is what D1 shows before the claim. Listing is for managers, and for the stall's owner on their own stall (D3/D7).
-- **Revoking:** sets `active: false`. A manager revokes any invite; an owner revokes a helper's invite (D7 "הסרה").
+- **Revoking:** sets `active: false`. A manager can close any invite. A stall owner closes a helper's invite as part of the D7 removal transaction.
 
 ### `events/{eid}/counters/live`
 
@@ -180,6 +180,8 @@ These seven blocks are now in `firestore.rules`. The cases in the table at the e
 
 `managerEdit()` stays as it is. Setting a vendor back to `guest` is how V6 "הסרת הגישה" removes access. A manager cannot set the role to `vendor`: only a claim can.
 
+`helperRevoke()` allows D7 to change only the helper's `role` and `updatedAt`. It requires the exact current link for this account to be removed from the stall and closed in the same write. The stall rule also requires a removal activity entry. The app reads the invite on the server and can retry the whole transaction after a failed response. The stall owner can read the removal entry for that link without seeing the helper's profile.
+
 **`rules:events-read`.** Replaces `allow read: if resource.data.published == true || isStaff();` inside `match /events/{id}`:
 
 ```rules:events-read
@@ -227,38 +229,7 @@ These seven blocks are now in `firestore.rules`. The cases in the table at the e
    }
 ```
 
-**`rules:vendors`.** Replaces the top-level `match /vendors/{id} { ... }` block. It adds the managers-only notes and the access invites:
-
-```rules:vendors
-  match /vendors/{id} {
-   function poolShape(){return incoming().keys().hasOnly(['name','phone','product','external','notes','createdAt','updatedAt','contact','sells','needs','note','photo','events','people','inviteNext','fem']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().phone, 25) && str(incoming().get('product', ''), 300) && str(incoming().get('sells', ''), 300) && str(incoming().get('contact', ''), 80) && incoming().get('external', true) is bool && incoming().get('fem', false) is bool && str(incoming().get('notes', ''), 2000) && str(incoming().get('note', ''), 1000) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && incoming().get('events', []) is list && incoming().get('events', []).size() <= 300 && incoming().get('people', []) is list && incoming().get('people', []).size() <= 12 && photoOk(incoming().get('photo', '')) && incoming().get('inviteNext', false) is bool;}
-   // D2, D7, D9, D10: the owner edits what the farm shows about the stall, never the farm's fields
-   function ownerEdit(){return changed().hasOnly(['name','phone','product','sells','needs','note','photo','inviteNext','updatedAt']) && vendorOwner(id);}
-   // D8 adds a helper, D7 removes one (display only: access comes from users/{uid}.vendorId)
-   function ownerPeople(){return changed().hasOnly(['people','updatedAt']) && vendorOwner(id);}
-   allow get: if isStaff() || vendorPerson(id);
-   allow list: if isStaff();
-   allow create: if isManager() && poolShape();
-   allow update: if poolShape() && (ownerEdit() || ownerPeople() || isManager());
-   allow delete: if isManager();
-   // the team's notes about a vendor (V2 "הערות לצוות"): never readable by the vendor
-   match /private/{doc} {
-    allow read: if isManager();
-    allow write: if isManager() && doc == 'main' && (request.method == 'delete' || (incoming().keys().hasOnly(['notes','updatedAt']) && str(incoming().notes, 2000)));
-   }
-  }
-  // access links (V2/N8 invite, V6, D8): the code is the secret; claiming one makes a vendor profile (users rules)
-  match /vendor_invites/{code} {
-   function vInviteShape(){return incoming().keys().hasOnly(['code','vendorId','vendorName','role','name','phone','fem','active','usedBy','usedAt','createdBy','createdAt']) && incoming().code == code && code.matches('[a-z0-9-]{8,40}') && str(incoming().vendorId, 60) && incoming().vendorId.size() > 0 && str(incoming().vendorName, 200) && incoming().role in ['owner','helper'] && str(incoming().name, 80) && incoming().name.size() >= 1 && str(incoming().phone, 25) && incoming().get('fem', false) is bool && incoming().active is bool && isoTime(incoming().createdAt);}
-   allow get: if google();
-   allow list: if isManager() || vendorOwner(resource.data.vendorId);
-   allow create: if vInviteShape() && actorOk(incoming().createdBy) && incoming().active == true && incoming().usedBy == null && incoming().usedAt == null && (isManager() || (vendorOwner(incoming().vendorId) && incoming().role == 'helper'));
-   allow update: if vInviteShape()
-     && ((changed().hasOnly(['active']) && incoming().active == false && (isManager() || (vendorOwner(resource.data.vendorId) && resource.data.role == 'helper')))
-      || (google() && resource.data.active == true && resource.data.usedBy == null && changed().hasOnly(['usedBy','usedAt','active']) && incoming().usedBy == uid() && incoming().active == false && isoTime(incoming().usedAt) && getAfter(userPath()).data.get('inviteCode', '') == code && getAfter(userPath()).data.role == 'vendor'));
-   allow delete: if isManager();
-  }
-```
+**`rules:vendors`.** The current implementation is in [firestore.rules](../../firestore.rules). D8 appends one helper row and creates its invite in the same write. D7 removes one helper row, closes its invite and records the action in the same write. The profile also goes back to `guest` when the account currently uses that exact invite.
 
 What stays unchanged:
 
@@ -312,6 +283,14 @@ Set-up data:
 | 23 | new account | the same with a used invite, a wrong `vendorId`, or without using the invite | deny |
 | 24 | guest | claim (update to `vendor`) with an unused invite | allow |
 | 25 | staff | claim | deny |
-| 26 | raz | revoke tamar's invite | allow; raz revoking an owner invite denied |
+| 26 | raz | close a helper's invite separately | deny; closing requires the helper removal transaction |
 | 27 | manager | set raz back to `guest` (V6) | allow; then raz reads `vendors/v-raz` denied |
 | 28 | raz | get `users/tamar` | deny |
+| 29 | raz | remove a helper (D7): close the invite, remove the row, set the profile to `guest` and log the removal together | allow; the helper then reads the stall, its requests and the live count denied, creates a request denied; raz and the other helper keep theirs |
+| 30 | raz | set another stall's helper, a co-owner, or the helper's other fields | deny; a helper cannot remove anyone |
+
+## Review older missing stall links
+
+`node scripts/vendor-access-audit.mjs --project=<project>` produces a read-only JSON report by account and stall ID. Add `--cleanup` for a dry run or `--cleanup --apply` for an authorized cleanup. Against the emulator set `FIRESTORE_EMULATOR_HOST` to the local address. For a remote report set `ACCESS_TOKEN` to an authorized Firestore access token. Keep the report private.
+
+The cleanup considers only helpers with a closed invite that matches their current account and stall. It checks the current profile, stall and invite together before changing the role to `guest`. A matching row by UID or invite code preserves access. A missing or conflicting identity, an unidentifiable row, or an owner with a missing row requires manual review. Nothing is matched by name.
