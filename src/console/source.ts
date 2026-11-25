@@ -65,8 +65,8 @@ export type DataCollection = { group: string; count: number | null; backupCount:
 /** fields: the record's simple fields (text, number, yes/no, a person's name), for the table's columns (a newer Worker). */
 export type DataDocRow = { path: string; id: string; title: string; updateTime: string | null; fields?: Record<string, unknown> };
 export type DataDoc = { path: string; id: string; group: string; title: string; fields: Record<string, unknown>; types: Record<string, string>; createTime: string | null; updateTime: string | null; subcollections: string[]; readOnly: boolean };
-export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; changed: string[] };
-export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number };
+export type DocVersion = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; unavailable?: boolean; changed: string[] };
+export type DocHistory = { path: string; now: { updateTime: string | null; fields: Record<string, unknown> } | null; versions: DocVersion[]; activity: { at: string; text: string; by: string; action: string; via: string }[]; days: number; truncated?: boolean };
 
 export type Debt = { kind: 'ticket' | 'donation' | 'tab'; id: string; who: string; what: string; amount: number; since: string; claimed: boolean };
 export type EventFunnel = { id: string; title: string; start: string; capacity: number; price: number; published: boolean; open: boolean; orders: number; tickets: number; cancelled: number; paid: number; entered: number; ticketMoney: number; stallMoney: number; stallOpen: number; upcoming: boolean };
@@ -245,7 +245,8 @@ async function download(path: string, filename: string) {
   const res = await fetch(apiBase() + '/v1/console' + path, { headers: { authorization: 'Bearer ' + (await token()) } }).catch(() => null);
   if (!res) throw new ConsoleError('NETWORK', 'no connection to the server', 'אין חיבור לשרת');
   if (!res.ok) { const j = await res.json().catch(() => null); throw new ConsoleError(j?.error?.code || 'HTTP_' + res.status, j?.error?.message || res.statusText, j?.error?.he || ''); }
-  const url = URL.createObjectURL(await res.blob());
+  const file = await res.blob().catch(() => { throw new ConsoleError('NETWORK', 'incomplete backup download', 'ההורדה לא הושלמה. אפשר לנסות שוב.'); });
+  const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);

@@ -9,7 +9,7 @@
 import { nextUpdatedAt } from './core';
 import { ApiError, invalid } from './http';
 import { type Env, Firestore, FsError, type RawDoc, type V, dec, decFields, enc } from './firestore';
-import { BACKUPS, groupOf, lastBackup, listBackups, pathOf, titleOf } from './backup';
+import { backupHistory, groupOf, lastBackup, pathOf, titleOf } from './backup';
 
 const GROUP_RE = /^[A-Za-z0-9_]{1,100}(\/\*\/[A-Za-z0-9_]{1,100}){0,4}$/;
 // ids may hold Hebrew and punctuation, never what changes a URL (? # %) and never . or .. on their own
@@ -112,44 +112,19 @@ export async function docView(fs: Firestore, path: string) {
 export async function history(env: Env, fs: Firestore, path: string, days = 7) {
   checkPath(path);
   const name = `${fs.root}/${path}`;
-  const needle = `"name":${JSON.stringify(name)}`;
-  const b = env.FILE_BUCKET;
-  const seen: { date: string; doc: RawDoc | null }[] = [];
-  let truncated = false;
-  // days 0: the activity lines only, no backup is read
-  if (b && days > 0) {
-    // finished backups only (a half-done one would say the record was gone), and at most 40 R2 reads: the free plan
-    // allows 50 subrequests per request, so a long range stops early and says so
-    const finished = (await listBackups(env)).items;
-    let reads = 0;
-    for (const m of finished.slice(0, Math.min(30, Math.max(1, days)))) {
-      const date = m.date;
-      if (reads + m.parts > 40) { truncated = true; break; }
-      const parts = Array.from({ length: m.parts }, (_, i) => `${BACKUPS}${date}/part-${String(i + 1).padStart(4, '0')}.ndjson`);
-      let doc: RawDoc | null = null;
-      for (const k of parts) {
-        reads++;
-        const o = await b.get(k);
-        if (!o) continue;
-        const text = await o.text();
-        const i = text.indexOf(needle);
-        if (i < 0) continue;
-        const start = text.lastIndexOf('\n', i) + 1;
-        const end = text.indexOf('\n', i);
-        doc = JSON.parse(text.slice(start, end < 0 ? undefined : end)) as RawDoc;
-        break;
-      }
-      seen.push({ date, doc });
-    }
-  }
+  const { seen, truncated } = await backupHistory(env, name, Math.min(30, Math.max(0, days)));
   const [now] = await fs.rawGet([name]);
   // one entry per version: the newest backup that had it, and how far back it goes
-  type Version = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean };
+  type Version = { updateTime: string | null; from: string; to: string; fields: Record<string, unknown> | null; gone?: boolean; unavailable?: boolean };
   const versions: Version[] = [];
   for (const s of seen) {
+    if (s.unavailable) {
+      versions.push({ updateTime: null, from: s.date, to: s.date, fields: null, unavailable: true });
+      continue;
+    }
     const ut = s.doc?.updateTime || null;
     const prev = versions[versions.length - 1];
-    if (prev && prev.updateTime === ut && !!prev.fields === !!s.doc) { prev.from = s.date; continue; }
+    if (prev && !prev.unavailable && prev.updateTime === ut && !!prev.fields === !!s.doc) { prev.from = s.date; continue; }
     versions.push({ updateTime: ut, from: s.date, to: s.date, fields: s.doc ? decFields(s.doc.fields || {}) : null, ...(s.doc ? {} : { gone: true }) });
   }
   const changes = versions.map((v, i) => {
@@ -166,7 +141,7 @@ export async function history(env: Env, fs: Firestore, path: string, days = 7) {
     activity = rows.map((r) => ({ at: String(r.data.at || ''), text: String(r.data.text || ''), action: String(r.data.action || ''), by: String((r.data.by as { name?: string } | undefined)?.name || ''), via: String((r.data.via as { label?: string } | undefined)?.label || '') }))
       .sort((a, c) => (a.at < c.at ? 1 : -1)).slice(0, 40);
   } catch { /* no activity index or none */ }
-  return { path, now: now ? { updateTime: now.updateTime || null, fields: decFields(now.fields || {}) } : null, versions: changes, activity, days: seen.length, truncated };
+  return { path, now: now ? { updateTime: now.updateTime || null, fields: decFields(now.fields || {}) } : null, versions: changes, activity, days: seen.filter((s) => !s.unavailable).length, truncated };
 }
 
 /** Changes simple fields of a document (text, number, yes/no, empty), only if nobody changed it since `updateTime`. */
