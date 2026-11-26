@@ -19,7 +19,7 @@ import { DevicePushRow } from '../broadcast/PushSheet';
 import { registrationQuestions, answerOf, answersFor, missingAnswers } from '../../data/system';
 import { RegistrationQuestions } from '../system/fields';
 import { gw } from '../../gender';
-import { signOutEverywhere } from '../system/profile';
+import { AccountDemoRow, AccountFooter, signOutEverywhere } from '../system/profile';
 import type { Broadcast, Donation, Profile, ReceiptPreference, Tab, Visit } from '../../../types';
 import {
   type GuestCtx, type Order, type Status, actorOf, paths, useMine, useEvents, useSignIn, orderTag, donationTag, tabTag, visitTag, orderState, dayShort,
@@ -131,15 +131,12 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
         <Row leading={<IconTile icon="megaphone" />} title="הודעות מהחווה" meta={msgs.length ? `${msgs.length === 1 ? 'הודעה אחת' : `${msgs.length} הודעות`} · האחרונה ${relDayWord(msgs[0].createdAt)}` : 'אין הודעות עדיין'} onClick={() => go('/me/messages')} />
         <Row leading={<IconTile icon="bell" />} title="התראות ועדכונים" meta="התראות במכשיר ועדכונים על אירועים" onClick={() => navigate('/me/account?notifications=1', false, true)} />
         <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
+        <AccountDemoRow />
         {canChooseReceipt(p) && <Row leading={<IconTile icon="message" />} title="אישור תשלום" meta={method ? `נשלח אליי ב${RECEIPT_WORD[method]}` : 'עוד לא בחרת לאן'} onClick={() => setSheet('receipt')} />}
         <Row leading={<IconTile icon="phone" />} title="פנייה לחווה" onClick={() => go('/contact')} />
+        <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" onClick={() => go('/install')} />
       </ListCard>
-      <div className="guest-foot">
-        <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
-        <Button variant="quiet" onClick={() => go('/install')}>התקנה</Button>
-        <Button variant="quiet" href="/">האתר</Button>
-        <Button variant="quiet" onClick={() => go('/terms')}>תנאים</Button>
-      </div>
+      <AccountFooter onSignOut={() => signOutEverywhere(demo.on, p)} />
       <NotifySheet open={notifications} onClose={() => navigate('/me/account', true, true)} p={p} />
       <PickerSheet open={sheet === 'receipt'} onClose={() => setSheet(null)} title="אישור תשלום" sub="לאן לשלוח לי אישור כשהמנהלים מאשרים תשלום"
         options={receiptMethods(p).map((m) => ({ value: m, label: RECEIPT_WORD[m], meta: <span dir="ltr">{receiptDestination(p, m)}</span> }))} value={method} onChange={(m) => void chooseReceipt(m)} />
