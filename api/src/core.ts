@@ -155,3 +155,20 @@ export async function whereEq(fs: Firestore, col: string, filters: Record<string
   const fl = Object.entries(filters).map(([f, v]) => ({ fieldFilter: { field: { fieldPath: f }, op: 'EQUAL', value: enc(v) } }));
   return fs.query({ from: [{ collectionId: col }], ...(fl.length ? { where: fl.length === 1 ? fl[0] : { compositeFilter: { op: 'AND', filters: fl } } } : {}), limit });
 }
+
+/** Ordinary place removal keeps references from past work, schedules and entrances valid. */
+export async function placeIsReferenced(fs: Firestore, id: string, transaction?: string) {
+  const references = [
+    ['tasks', 'location.placeId', 'EQUAL'],
+    ['task_templates', 'placeId', 'EQUAL'],
+    ['farmTrails', 'placeIds', 'ARRAY_CONTAINS'],
+  ];
+  for (const [collectionId, fieldPath, op] of references) {
+    const rows = await fs.query({
+      from: [{collectionId}], select: {fields: [{fieldPath: '__name__'}]},
+      where: {fieldFilter: {field: {fieldPath}, op, value: enc(id)}}, limit: 1,
+    }, '', transaction);
+    if (rows.length) return true;
+  }
+  return false;
+}

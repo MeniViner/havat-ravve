@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
+import { flush, scopeOf } from '../survey/local';
 import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
 import { useAllEvents, useNotifications } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
@@ -87,6 +88,13 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   const manager = canManage(profile, user.email); const owner = isOwner(profile, user.email);
   const viewAsStaff = manager && viewAsStaffOn();
   const role: V2Role = viewAsStaff ? 'staff' : owner ? 'owner' : manager ? 'manager' : 'staff';
+  const surveyScope = scopeOf(user.uid);
+  useEffect(() => {
+    if (!owner || viewAsStaff) return;
+    const retry = () => { void flush(surveyScope).catch(() => {}); };
+    retry(); window.addEventListener('online',retry);
+    return () => window.removeEventListener('online',retry);
+  },[owner,viewAsStaff,surveyScope]);
   const cmsEditor = useCmsEditor(user, manager);
   const actor = useMemo(() => actorOf(user, profile), [user.uid, profile.displayName]);
   const today = todayKey();
@@ -101,7 +109,8 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
     materializeToday(templates.items, instances.items, actor, today, places.items);
   }, [today, templates.items, templates.loading, instances.loading, instances.items.length, instances.error, actor, places.items.length]);
 
-  const base: TeamCtx = { user, actor, profile, manager: manager && !viewAsStaff, owner: owner && !viewAsStaff, cmsEditor, settings, places: places.items, templates: templates.items, team: team.items, peopleByUid };
+  const visiblePlaces = useMemo(() => places.items.filter(p => !p.archived), [places.items]);
+  const base: TeamCtx = { user, actor, profile, manager: manager && !viewAsStaff, owner: owner && !viewAsStaff, cmsEditor, settings, places: visiblePlaces, placesLoading: places.loading, placesError: places.error, templates: templates.items, team: team.items, peopleByUid };
   const ctx: V2Ctx = { ...base, role, vendorId: '', helper: false, today, eventToday, crew, viewAsStaff };
 
   // one-time move of private-task history for managers (kept from the old shell)

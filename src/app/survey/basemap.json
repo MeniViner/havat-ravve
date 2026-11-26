@@ -1,0 +1,5 @@
+{
+  "tiles": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "credit": "© OpenStreetMap contributors",
+  "creditUrl": "https://www.openstreetmap.org/copyright"
+}

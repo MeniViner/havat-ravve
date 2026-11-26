@@ -88,6 +88,11 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
   ]} />;
   let screen = guestScreen(route, ctx);
   if (!screen && route === '/install') screen = <InstallScreen ctx={null as never} params={{}} />;
+  if (!screen && route === '/farm/map') {
+    screen = ctx.user
+      ? <AppScreen variant="detail"><TopBar className="guest-pull" back={{ label: 'בית', onClick: () => navigate('/') }} /><EmptyState variant="fill" icon="pin" title="מפת החווה זמינה לבעלים" /></AppScreen>
+      : <SignInPage ctx={ctx} next="/farm/map" />;
+  }
   if (!screen && isCalendarRoute(route)) screen = (
     <AppScreen variant="detail"><TopBar className="guest-pull" back={{ label: 'בית', onClick: () => navigate('/') }} /><EmptyState variant="fill" icon="calendar" title="היומן זמין לצוות החווה" /></AppScreen>
   );

@@ -6,7 +6,7 @@
 // text, a number, yes/no or nothing; never the logs, and never people (they have their own screen, where a role change
 // does everything it must). Each edit and delete carries the updateTime the owner saw, so it never overwrites a newer
 // change, and the log keeps what each field was before.
-import { nextUpdatedAt } from './core';
+import { nextUpdatedAt, placeIsReferenced } from './core';
 import { ApiError, invalid } from './http';
 import { type Env, Firestore, FsError, type RawDoc, type V, dec, decFields, enc } from './firestore';
 import { backupHistory, groupOf, lastBackup, pathOf, titleOf } from './backup';
@@ -15,6 +15,7 @@ const GROUP_RE = /^[A-Za-z0-9_]{1,100}(\/\*\/[A-Za-z0-9_]{1,100}){0,4}$/;
 // ids may hold Hebrew and punctuation, never what changes a URL (? # %) and never . or .. on their own
 const PATH_RE = /^[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}(\/[A-Za-z0-9_]{1,100}\/[^/\s?#%]{1,300}){0,4}$/;
 const READ_ONLY = new Set(['api_log', 'api_failures', 'api_idempotency', 'account_activity', 'notification_activity', 'users']);
+const surveyPath = (path: string) => ['farmTrails', 'surveyRecordings'].includes(path.split('/')[0]);
 const PAGE = 200;
 /** Fields that hold a person, a place or a confirmation when filled: never set to plain text from the browser. */
 const OBJECT_FIELDS = new Set(['assignee', 'doneBy', 'by', 'createdBy', 'updatedBy', 'claimedBy', 'place', 'location', 'paymentConfirmation', 'owner', 'vendor']);
@@ -42,7 +43,7 @@ export async function collections(env: Env, fs: Firestore) {
     try { return [c, await fs.count({ from: [{ collectionId: c }] })] as const; } catch { return [c, null] as const; }
   })));
   const groups = [...new Set([...top, ...Object.keys(backup)])];
-  const items = groups.map((g) => ({ group: g, count: g in live ? live[g] : null, backupCount: backup[g] ?? null, readOnly: READ_ONLY.has(g.split('/*/').pop()!) }));
+  const items = groups.map((g) => ({ group: g, count: g in live ? live[g] : null, backupCount: backup[g] ?? null, readOnly: surveyPath(g) || READ_ONLY.has(g.split('/*/').pop()!) }));
   items.sort((a, b) => (b.count ?? b.backupCount ?? 0) - (a.count ?? a.backupCount ?? 0));
   return { items, backupDate };
 }
@@ -104,7 +105,7 @@ export async function docView(fs: Firestore, path: string) {
     fields: decFields(fields), types: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, typeOf(v)])),
     createTime: d.createTime || null, updateTime: d.updateTime || null,
     subcollections: await fs.listCollectionIds(path).catch(() => [] as string[]),
-    readOnly: READ_ONLY.has(lastCol(path)),
+    readOnly: surveyPath(path) || READ_ONLY.has(lastCol(path)),
   };
 }
 
@@ -148,6 +149,7 @@ export async function history(env: Env, fs: Firestore, path: string, days = 7) {
 export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
   for (const k of Object.keys(body)) if (!['path', 'set', 'updateTime'].includes(k)) throw invalid(k, `unknown field ${k}`);
   const path = checkPath(String(body.path || ''));
+  if (surveyPath(path)) throw new ApiError('FORBIDDEN', 'הקלטות המקור נשמרות, ואת השביל אפשר לערוך במסך המפה.');
   if (READ_ONLY.has(lastCol(path))) throw new ApiError('FORBIDDEN', lastCol(path) === 'users' ? 'people are edited in the people screen' : 'the logs cannot be edited');
   const set = body.set as Record<string, unknown>;
   if (!set || typeof set !== 'object' || Array.isArray(set) || !Object.keys(set).length || Object.keys(set).length > 30) throw invalid('set', '{ field: value } with 1 to 30 fields');
@@ -155,6 +157,10 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
   const [d] = await fs.rawGet([`${fs.root}/${path}`]);
   if (!d) throw new ApiError('NOT_FOUND', 'no such document');
   if (d.updateTime !== body.updateTime) throw new ApiError('STALE_WRITE', 'the document changed since it was read', { currentUpdateTime: d.updateTime ?? null });
+  const place = /^places\/[^/]+$/.test(path);
+  if (place && ('source' in set || 'measuredAt' in set)) {
+    throw invalid('set', 'מידע על מקור המדידה נשמר דרך מפת החווה.');
+  }
   const fields = d.fields || {};
   const before: Record<string, unknown> = {};
   const next: Record<string, V> = {};
@@ -169,6 +175,17 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
     if (!['string', 'integer', 'double', 'boolean', 'null'].includes(t) || !ok) throw invalid('set.' + k, `this field holds ${t}; only text, numbers, yes/no or empty can be set here`);
     before[k] = dec(cur);
     next[k] = enc(v);
+  }
+  if (place) {
+    const moved = (['lat','lng'] as const).some(key => key in set && set[key] !== before[key]);
+    for (const [key, limit] of [['lat',90],['lng',180]] as const) {
+      if (key in set && !(typeof set[key] === 'number' && Math.abs(set[key]) <= limit)) throw invalid('set.' + key, 'a valid coordinate');
+    }
+    if (moved) {
+      for (const key of ['source','measuredAt','accuracy']) {
+        if (key in fields && !(key in set)) { before[key] = dec(fields[key]); next[key] = enc(null); }
+      }
+    }
   }
   // the record's own "last changed" moves too, so a client working from an older read sees the change (core.ts fresh)
   const version = fields.updatedAt ? dec(fields.updatedAt) : undefined;
@@ -185,19 +202,26 @@ export async function editDoc(fs: Firestore, body: Record<string, unknown>) {
     throw e;
   }
   const [after] = await fs.rawGet([d.name]);
-  return { path, before, after: Object.fromEntries(Object.keys(set).map((k) => [k, dec(next[k])])), updateTime: after?.updateTime || null };
+  return { path, before, after: Object.fromEntries(Object.keys(before).map((k) => [k, dec(next[k])])), updateTime: after?.updateTime || null };
 }
 
 /** Deletes a document (kept in the recycle bin for 30 days), only if nobody changed it since `updateTime`. */
 export async function deleteDoc(fs: Firestore, body: Record<string, unknown>) {
   for (const k of Object.keys(body)) if (!['path', 'updateTime'].includes(k)) throw invalid(k, `unknown field ${k}`);
   const path = checkPath(String(body.path || ''));
+  if (surveyPath(path)) throw new ApiError('FORBIDDEN', 'הקלטות המקור נשמרות, ואת השביל אפשר לערוך במסך המפה.');
   if (READ_ONLY.has(lastCol(path))) throw new ApiError('FORBIDDEN', lastCol(path) === 'users' ? 'people are removed in the people screen' : 'the logs cannot be deleted');
   if (typeof body.updateTime !== 'string') throw invalid('updateTime', 'the updateTime of the document as it was read');
   const name = `${fs.root}/${path}`;
+  const placeId = /^places\/([^/]+)$/.exec(path)?.[1];
+  const tx = placeId ? await fs.begin() : undefined;
   try {
-    await fs.commit([{ delete: name, currentDocument: { updateTime: body.updateTime } }]);
+    if (placeId && await placeIsReferenced(fs,placeId,tx)) {
+      throw new ApiError('VALIDATION_FAILED','המקום מקושר למשימות או לכניסה. אפשר להעביר אותו לארכיון מפרטי המקום.');
+    }
+    await fs.commit([{ delete: name, currentDocument: { updateTime: body.updateTime } }],tx);
   } catch (e) {
+    if (tx) await fs.rollback(tx).catch(() => {});
     if (e instanceof FsError && (e.status === 'FAILED_PRECONDITION' || e.status === 'NOT_FOUND')) throw new ApiError('STALE_WRITE', 'the document changed or was deleted since it was read');
     throw e;
   }

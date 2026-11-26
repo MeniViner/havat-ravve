@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node tests/core.mjs && node tests/demo.mjs && node tests/demo-intro.mjs && node tests/console-delivery.mjs && node tests/console-scopes.mjs && node tests/backup.mjs",
+    "test": "node tests/core.mjs && node tests/demo.mjs && node tests/demo-intro.mjs && node tests/console-delivery.mjs && node tests/console-scopes.mjs && node tests/backup.mjs && node --experimental-strip-types tests/survey-model.mjs",
     "deploy": "npm run build && firebase deploy --only hosting,firestore --project havat-ravve",
     "emulators": "npm run build && firebase emulators:start --project demo-havat-ravve",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs && node tests/vendor-access-audit.mjs\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs && node tests/vendor-access-audit.mjs && node tests/survey-rules.mjs\"",
     "test:api": "firebase emulators:exec --only firestore,auth --project demo-havat-ravve \"node tests/api.mjs && node tests/api-v2-tasks.mjs && node tests/api-v2-events.mjs && node tests/api-v2-farm.mjs\"",
     "test:api:remote": "node tests/api-remote.mjs",
     "play:check": "node scripts/play-check.mjs",
@@ -17,8 +17,12 @@
     "seed": "FIRESTORE_EMULATOR_HOST=localhost:8080 node tests/seed.mjs havat-ravve"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.0",
+    "@capacitor/core": "8.6.2",
     "firebase": "^12.0.0",
+    "idb": "^7.1.1",
     "jsqr": "^1.4.0",
+    "leaflet": "^1.9.4",
     "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -26,6 +30,7 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
     "@fontsource/ibm-plex-sans-hebrew": "^5.3.0",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",

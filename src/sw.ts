@@ -2,7 +2,7 @@
 export {};
 const worker = globalThis as unknown as ServiceWorkerGlobalScope;
 const CACHE='havat-ravve-__BUILD_ID__',OFFLINE='/offline.html',APP='/app.html';
-const PRECACHE=[OFFLINE,APP,'/app.js','/app.css','/app.webmanifest','/assets/app-icon-192.png','/assets/app-icon-512.png','/assets/rava-logo.png','/assets/heebo-hebrew.woff2','/assets/heebo-latin.woff2','/assets/frank-ruhl-libre-hebrew.woff2','/assets/frank-ruhl-libre-latin.woff2'];
+const PRECACHE=[OFFLINE,APP,'/assets/leaflet/leaflet.css','/app.js','/app.css','/app.webmanifest','/assets/app-icon-192.png','/assets/app-icon-512.png','/assets/rava-logo.png','/assets/heebo-hebrew.woff2','/assets/heebo-latin.woff2','/assets/frank-ruhl-libre-hebrew.woff2','/assets/frank-ruhl-libre-latin.woff2'];
 const isApp=(p:string)=>p==='/app'||p.startsWith('/app/');
 worker.addEventListener('install',e=>{worker.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(PRECACHE)));});
 worker.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith('havat-ravve-')&&k!==CACHE)await caches.delete(k);await worker.clients.claim();})()));

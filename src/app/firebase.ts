@@ -49,7 +49,12 @@ export async function signIn() {
 }
 
 export async function signOutUser() {
-  await signOut(getAppAuth());
+  const auth = getAppAuth();
+  if (auth.currentUser) {
+    const { disconnectSurvey } = await import('./survey/native');
+    await disconnectSurvey(auth.currentUser.uid);
+  }
+  await signOut(auth);
 }
 
 export function isGoogleUser(user: User | null) {

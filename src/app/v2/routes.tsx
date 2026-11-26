@@ -7,6 +7,7 @@ import * as tasks from './screens/tasks';
 import * as projects from './screens/projects';
 import * as shopping from './screens/shopping';
 import * as farm from './screens/farm';
+import { FarmSurvey } from './screens/farm/FarmSurvey';
 import * as eventday from './screens/eventday';
 import * as manage from './screens/manage';
 import * as events from './screens/events';
@@ -52,6 +53,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/shopping/:id', shopping.ShopItemScreen, 'shopping', 'page'),
   // Farm tab
   R('/farm', farm.FarmRoot, 'farm', 'tab'),
+  R('/farm/map', FarmSurvey, 'farm', 'tab', { owner: true }),
   R('/farm/calendar', farm.CalendarScreen, 'farm', 'tab'),
   R('/farm/calendar/new', farm.CalItemForm, 'farm', 'page'),
   R('/farm/calendar/:id/edit', farm.CalItemForm, 'farm', 'page'),

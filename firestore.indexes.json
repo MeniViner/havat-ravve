@@ -944,6 +944,7 @@
       "collectionGroup": "places",
       "fieldPath": "photo",
       "indexes": []
-    }
+    },
+    {"collectionGroup":"chunks","fieldPath":"points","indexes":[]}
   ]
 }
