@@ -203,13 +203,14 @@ try {
   await ev(
     'Array.from(document.querySelectorAll("summary")).find(s=>s.innerText.includes("כניסות וחיבורים")).click()'
   );
-  const pid = place.name.split('/').at(-1);
-  await ev(
-    '(()=>{const s=Array.from(document.querySelectorAll("select")).find(s=>Array.from(s.options).some(o=>o.value==="place:' +
-      pid +
-      '"));s.value="place:' +
-      pid +
-      '";s.dispatchEvent(new Event("change",{bubbles:true}));})()'
+  const placeOption = JSON.stringify('place:' + place.name.split('/').at(-1));
+  await wait(
+    '(() => { const select = [...document.querySelectorAll("select")].find(s => [...s.options].some(o => o.value === ' +
+      placeOption +
+      ')); if (!select) return false; select.value = ' +
+      placeOption +
+      '; select.dispatchEvent(new Event("change", {bubbles:true})); return true; })()',
+    35000
   );
   await click('אישור החיבור בשטח');
   await wait(text('כניסות וחיבורים (1)'));
