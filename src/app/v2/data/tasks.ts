@@ -57,6 +57,10 @@ export function normalizeTask(raw: Partial<Task> & { id: string }): Task {
 
 /** Recurring instances get the template's place and default person when the instance itself has none (display only). */
 export function withTemplateDefaults(t: Task, templates: Template[], places: Place[]): Task {
+  if (!t.done && t.location?.placeId) {
+    const place = places.find(p => p.id === t.location!.placeId);
+    if (place) t = { ...t, location: { ...t.location, lat: place.lat, lng: place.lng, placeName: place.name } };
+  }
   if (!t.templateId) return t;
   const tpl = templates.find((x) => x.id === t.templateId);
   if (!tpl) return t;
@@ -670,13 +674,17 @@ export async function createPlace(actor: Actor, name: string, pos: { lat: number
 export async function savePlace(actor: Actor, p: PlaceV2, data: { name: string; lat: number; lng: number; accuracy?: number; photo?: string }) {
   const patch: Record<string, unknown> = { name: data.name.trim(), lat: data.lat, lng: data.lng };
   if (data.accuracy !== undefined && data.accuracy !== p.accuracy) patch.accuracy = data.accuracy;
+  if (p.source && (p.lat !== data.lat || p.lng !== data.lng)) {
+    patch.source = null;
+    patch.measuredAt = null;
+  }
   if (data.photo !== undefined && data.photo !== (p.photo || '')) patch.photo = data.photo;
   await write.update('places', p.id, patch);
   logActivity(actor, 'place', p.id, 'edited', data.name.trim());
 }
 export async function removePlace(actor: Actor, p: PlaceV2) {
-  await write.remove('places', p.id);
-  logActivity(actor, 'place', p.id, 'deleted', p.name);
+  await write.update('places', p.id, { archived: true });
+  logActivity(actor, 'place', p.id, 'archived', p.name);
 }
 
 export { daysFromToday };

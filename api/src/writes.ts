@@ -6,7 +6,7 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq, placeIsReferenced,
 } from './core';
 import { autoId } from './util';
 import { notifyWrites } from './notify';
@@ -86,6 +86,7 @@ function ownsTask(c: Ctx, t: { data: Record<string, unknown> }) {
 }
 async function placeLocation(c: Ctx, placeId: string) {
   const p = await mustGet(c.fs, 'places', placeId, c.tx, 'place');
+  if (p.data.archived) throw invalid('placeId','this place was archived');
   return { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
 }
 
@@ -182,7 +183,7 @@ def('templates.create', 'templates:write', 'יצירת משימה קבועה (ח
   const data: Record<string, unknown> = { title: c.input.title, note: c.input.note || '', days: daysToSave(c.input.days || []), time: c.input.time || '', active: c.input.active ?? true, managersOnly, updatedAt: now };
   // new fields only when they carry a value, so a template without them keeps the old shape
   if (c.input.assignee) data.assignee = managersOnly ? null : await teamMember(c.fs, c.input.assignee, 'assignee', c.tx);
-  if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); data.placeId = c.input.placeId; }
+  if (c.input.placeId) { await placeLocation(c, c.input.placeId); data.placeId = c.input.placeId; }
   Object.assign(data, { createdBy: c.me, createdAt: now });
   return { status: 201, writes: [c.fs.create('task_templates', id, data)], refs: [{ col: 'task_templates', id, expected: { title: data.title, days: data.days, active: data.active } }], data: { templateId: id } };
 }, TEMPLATE_NOTES);
@@ -197,7 +198,7 @@ def('templates.update', 'templates:write', 'עדכון משימה קבועה', {
   if (c.input.assignee) patch.assignee = managersOnly ? null : await teamMember(c.fs, c.input.assignee, 'assignee', c.tx);
   else if ('assignee' in t.data && (c.input.clearAssignee || (managersOnly && t.data.assignee))) patch.assignee = null;
   if (c.input.placeId && c.input.clearPlace) throw invalid('clearPlace', 'send placeId or clearPlace, not both');
-  if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); patch.placeId = c.input.placeId; }
+  if (c.input.placeId) { await placeLocation(c, c.input.placeId); patch.placeId = c.input.placeId; }
   else if (c.input.clearPlace && 'placeId' in t.data) patch.placeId = '';
   needSome(patch);
   return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
@@ -254,6 +255,9 @@ def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, ד�
   const patch: Record<string, unknown> = given(c.input, ['name', 'lat', 'lng']);
   if (c.input.accuracy !== null && c.input.accuracy !== undefined && c.input.accuracy !== p.data.accuracy) patch.accuracy = c.input.accuracy;
   if (c.input.photo !== null && c.input.photo !== undefined) { const ph = storedPhoto('photo', c.input.photo, true); if (ph !== (p.data.photo || '')) patch.photo = ph; }
+  const moved = ['lat','lng'].some(key => key in patch && patch[key] !== p.data[key]);
+  if (moved && p.data.source) Object.assign(patch, {source: null, measuredAt: null});
+  if (moved && c.input.accuracy == null && p.data.accuracy != null) patch.accuracy = null;
   needSome(patch);
   // the read-back shows a photo as hasPhoto
   const { photo: newPhoto, ...shown } = patch;
@@ -264,6 +268,10 @@ def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, ד�
 def('places.delete', 'places:write', 'מחיקת מקום (רק מנהל)', { placeId: req() }, async (c) => {
   if (!isManager(c.caller)) throw forbidden('only managers can delete a place');
   const p = await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place');
+  if (await placeIsReferenced(c.fs,p.id,c.tx)) {
+    return {writes:[c.fs.patch('places',p.id,{archived:true},p.updateTime),activity(c.fs,c.me,'place',p.id,'archived',String(p.data.name))],
+      refs:[{col:'places',id:p.id,expected:{archived:true}}],data:{archived:true}};
+  }
   return { writes: [c.fs.remove('places', p.id, p.updateTime), activity(c.fs, c.me, 'place', p.id, 'deleted', String(p.data.name))], refs: [{ col: 'places', id: p.id, gone: true }], data: { deleted: project('places', p.id, p.data) } };
 }, ['Destructive: confirm with the user first. Managers only.']);
 

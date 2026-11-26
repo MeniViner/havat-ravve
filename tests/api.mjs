@@ -690,7 +690,13 @@ try {
     ok(await w(MGR, 'events.removeVendor', { eventId, vendorId }), 'events.removeVendor');
     ok(await w(MGR, 'calendar.delete', { itemId }), 'calendar.delete');
     ok(await w(MGR, 'templates.delete', { templateId: tpm.json.data.templateId }), 'templates.delete');
-    ok(await w(MGR, 'places.delete', { placeId }), 'places.delete');
+    // A saved entrance remains a stable reference even after its place is archived.
+    await seed('farmTrails','syn-place-entrance',{placeIds:[placeId]});
+    const archived = await w(MGR, 'places.delete', { placeId });
+    ok(archived, 'places.delete');
+    check(archived.json.data.archived && (await docOf('places/' + placeId)).archived, 'deleting a referenced place archives its original ID');
+    const newAtArchive = await create(KEYS.users, {title:'מקום בארכיון',placeId},randomUUID(),{'x-actor-id':'user:syn-ronit'});
+    check(newAtArchive.status === 400 || newAtArchive.status === 422, 'new tasks cannot select an archived place',newAtArchive.status);
 
     // every document the API wrote passes the app's own Rules: a manager rewrites it unchanged
     const { assertSucceeds } = require('@firebase/rules-unit-testing');

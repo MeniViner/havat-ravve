@@ -271,7 +271,7 @@ export async function createTask(fs: Firestore, caller: Caller, body: Record<str
     let location: Record<string, unknown> | null = null;
     if (input.placeId) {
       const p = await fs.get('places', input.placeId, tx);
-      if (!p) throw invalid('placeId', 'no such place');
+      if (!p || p.data.archived) throw invalid('placeId', 'place does not exist or was archived');
       location = { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
     }
     if (input.eventId && !(await fs.get('events', input.eventId, tx))) throw invalid('eventId', 'no such event');

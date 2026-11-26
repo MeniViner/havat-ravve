@@ -2,6 +2,8 @@
 
 The Android application uses Capacitor and loads its interface, icons and fonts from the installed package. Android 1.0.5 and later can also receive signed WebView assets over the air. Native changes, permissions and plugins still ship through Google Play. Firebase provides online sign-in and shared data. Firestore persists previously synced data and queues supported writes locally. A new install needs a connection to sign in and download shared records.
 
+The owner farm map and native walking recorder ship in 1.0.6 (8). See the [field guide and device validation](./farm-survey.md).
+
 ## Build and sign
 
 - Package `com.menis10tec.havatravve` must stay the same for Play updates. Increment `versionCode` and set `versionName` in `android/app/build.gradle` for each release.

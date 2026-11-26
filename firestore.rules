@@ -272,11 +272,50 @@ service cloud.firestore {
   }
   // L3, L4: anyone on the team saves a place where they stand and names it; only managers delete one
   match /places/{id} {
-   function placeExtras(){return photoOk(incoming().get('photo', '')) && incoming().get('accuracy', 0) is number;}
+   function coordinates(p){return p.lat is number && p.lat >= -90 && p.lat <= 90 && p.lng is number && p.lng >= -180 && p.lng <= 180;}
+   function placeExtras(){let p=incoming(); let a=p.get('accuracy',null); return photoOk(p.get('photo','')) && (a == null || (a is number && a >= 0)) && coordinates(p)
+     && str(p.name,120) && p.name.size()>0 && ((p.get('source',null) == null && p.get('measuredAt',null) == null) || (p.source in ['gps','manual'] && p.measuredAt is int && p.measuredAt > 0));}
    allow read: if isStaff();
-   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && actorOk(incoming().createdBy) && str(incoming().createdAt, 40) && placeExtras();
-   allow update: if isStaff() && changed().hasOnly(['name','lat','lng','photo','accuracy']) && str(incoming().name, 120) && incoming().name.size() >= 1 && incoming().lat is number && incoming().lng is number && placeExtras();
-   allow delete: if isManager();
+   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt'])
+     && (!incoming().keys().hasAny(['source','measuredAt']) || isOwner()) && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
+   allow update: if isStaff() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt'])
+     && (isOwner() || (!changed().hasAny(['source','measuredAt']) && (!changed().hasAny(['lat','lng']) || resource.data.get('source',null) == null))
+       || (changed().hasAny(['lat','lng']) && incoming().get('source',null) == null && incoming().get('measuredAt',null) == null));
+   allow update: if isManager() && changed().hasOnly(['archived']) && incoming().archived is bool;
+  }
+  // Each immutable chunk is bounded well below a Firestore document. Retries write identical content.
+  function chunkShape(){let d=incoming();return d.keys().hasOnly(['writer','index','points']) && d.writer==uid() && d.index is int && d.index>=0 && d.points is list && d.points.size()>0 && d.points.size()<=128
+    && d.points[0].lat is number && d.points[0].lat >= -90 && d.points[0].lat <= 90 && d.points[0].lng is number && d.points[0].lng >= -180 && d.points[0].lng <= 180;}
+  match /surveyRecordings/{sid} {
+   allow read: if isOwner();
+   allow create: if isOwner() && incoming().keys().hasOnly(['ownerUid','started','count','lastAt','chunks']) && incoming().ownerUid==uid() && incoming().started is int
+     && incoming().count is int && incoming().count>=0 && incoming().chunks is int && incoming().count <= incoming().chunks * 128 && incoming().count > (incoming().chunks - 1) * 128 && (incoming().lastAt==null || incoming().lastAt is int);
+   allow update: if isOwner() && resource.data==incoming() && incoming().ownerUid==uid();
+   match /chunks/{index} {
+    allow read: if isOwner();
+    allow create: if isOwner() && chunkShape();
+    allow update: if isOwner() && incoming()==resource.data && incoming().writer==uid();
+   }
+  }
+  match /farmTrails/{tid} {
+   function trailShape(){let d=incoming();return d.keys().hasOnly(['name','ownerUid','recordingId','revision','geometry','status','modes','connections','count','chunks','updatedAt','placeIds'])
+     && str(d.name,120) && d.name.size()>0 && str(d.recordingId,80) && str(d.revision,80) && str(d.geometry,80)
+     && d.status in ['draft','confirmed'] && d.modes is list && d.modes.size()<=3 && d.modes.hasOnly(['walk','bike','vehicle']) && d.connections is list && d.connections.size()<=32
+     && d.get('placeIds',[]) is list && d.get('placeIds',[]).size()<=32 && d.count is int && d.count>=0 && d.chunks is int && d.count <= d.chunks * 128 && d.count > (d.chunks - 1) * 128 && d.updatedAt is int
+     && (d.status=='draft' || (d.modes.size()>0 && d.count>=2));}
+   allow read: if isOwner();
+   allow create: if isOwner() && trailShape() && incoming().ownerUid==uid();
+   allow update: if isOwner() && trailShape() && incoming().ownerUid==resource.data.ownerUid && incoming().recordingId==resource.data.recordingId;
+   match /revisions/{rev} {
+    allow read: if isOwner();
+    allow create: if isOwner() && incoming().keys().hasOnly(['revision','at']) && incoming().revision==rev && incoming().at is int
+      && getAfter(/databases/$(database)/documents/farmTrails/$(tid)).data.revision==rev;
+   }
+   match /versions/{geometry}/chunks/{index} {
+    allow read: if isOwner();
+    allow create: if isOwner() && chunkShape();
+    allow update: if isOwner() && incoming()==resource.data && incoming().writer==uid();
+   }
   }
   // P1-P6: manager projects. Nobody below a manager reads or writes any of it
   match /projects/{pid} {
