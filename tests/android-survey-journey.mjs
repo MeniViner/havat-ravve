@@ -91,7 +91,11 @@ try {
   await shot('01-farm');
   await ev('Array.from(document.querySelectorAll("a")).find(a=>a.textContent.includes("מפת החווה")).click()');
   await wait(text('מדריך הסקר'));
-  await wait('Object.keys(localStorage).some(k=>k.startsWith("farm-survey-auth:"))');
+  const ownerReady = 'Object.keys(localStorage).some(k=>k.startsWith("farm-survey-auth:"))';
+  const exitDemo = findBtn('מעבר לחשבון שלי לסקר שטח');
+  await wait('(' + ownerReady + ') || !!(' + exitDemo + ')');
+  if (await ev('!!(' + exitDemo + ')')) await click('מעבר לחשבון שלי לסקר שטח');
+  await wait(ownerReady);
   await delay(450);
   if (!adb('shell', 'dumpsys', 'package', app).includes('ACCESS_FINE_LOCATION: granted=true')) {
     await click('לאפשר גישה למיקום');

@@ -400,6 +400,20 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
           {list ? 'מפה' : 'חיפוש ורשימה'}
         </Button>
       </header>
+      {demoOnly() && (
+        <section className="survey-panel">
+          <h2>מפת הדגמה</h2>
+          <p>כאן מוצגים מקומות לדוגמה. למדידה ולשמירה במפת החווה, עברו לחשבון שלכם.</p>
+          <Button
+            onClick={() => {
+              setDemo({ on: false });
+              go('/farm/map', true);
+            }}
+          >
+            מעבר לחשבון שלי לסקר שטח
+          </Button>
+        </section>
+      )}
       {guide && (
         <section className="survey-panel">
           <h2>סקר החווה</h2>
@@ -801,17 +815,6 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
                 ? 'הקלטת הליכה זמינה באפליקציית Android אחרי כניסה לחשבון הבעלים.'
                 : 'להקלטה בזמן נעילת המסך, פתחו את המפה באפליקציית Android של החווה.'}
             </p>
-          )}
-          {demoOnly() && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDemo({ on: false });
-                go('/farm/map', true);
-              }}
-            >
-              מעבר לחשבון שלי לסקר שטח
-            </Button>
           )}
           {native && !gps.status.notifications && (
             <Button variant="quiet" onClick={() => act(() => gps.settings('notifications'))}>
