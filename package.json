@@ -7,7 +7,7 @@
     "test": "node tests/core.mjs && node tests/demo.mjs && node tests/demo-intro.mjs && node tests/console-delivery.mjs && node tests/console-scopes.mjs && node tests/backup.mjs",
     "deploy": "npm run build && firebase deploy --only hosting,firestore --project havat-ravve",
     "emulators": "npm run build && firebase emulators:start --project demo-havat-ravve",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-havat-ravve \"node tests/rules.mjs && node tests/rules-app.mjs && node tests/vendor-access-audit.mjs\"",
     "test:api": "firebase emulators:exec --only firestore,auth --project demo-havat-ravve \"node tests/api.mjs && node tests/api-v2-tasks.mjs && node tests/api-v2-events.mjs && node tests/api-v2-farm.mjs\"",
     "test:api:remote": "node tests/api-remote.mjs",
     "play:check": "node scripts/play-check.mjs",

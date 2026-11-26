@@ -2,7 +2,7 @@
 // בית · הכרטיסים שלי · החשבון שלי) and its routes. A team member opens the same screens from the team app
 // (`guestScreen(route, { team: true })`, src/app/v2/App.tsx): their tickets are at /me/tickets and their /me is the team profile.
 import { useEffect, useState, type ReactNode } from 'react';
-import { useRoute, match, navigate, param } from '../../../router';
+import { useRoute, match, navigate, param, useParam } from '../../../router';
 import { useSync } from '../../../db';
 import { useOnline, isOwner, canManage } from '../../../store';
 import { leaveDemoTarget } from '../../../demo/intro';
@@ -13,6 +13,7 @@ import type { Session } from '../../../firebase';
 import { ToastProvider, useToast, ChromeProvider, AppScreen } from '../../core';
 import { BottomNav, DemoStrip, Strip, EmptyState, Button, TopBar } from '../../kit';
 import { DemoSheet, InstallScreen } from '../system';
+import { AppearanceScreen } from '../system/appearance';
 import { Guard } from '../../../guard';
 import { V2DemoStrip } from '../../DemoChrome';
 import { DemoIntro } from '../../DemoIntro';
@@ -47,6 +48,7 @@ export function guestScreen(route: string, ctx: GuestCtx): ReactNode | null {
   if ((m = match(route, '/me/donations/:id'))) return <DonationPage {...p} id={m.id} />;
   if ((m = match(route, '/me/stall/:id'))) return <StallPage {...p} id={m.id} />;
   if (!ctx.team && route === '/me/account') return <AccountPage {...p} />;
+  if (!ctx.team && route === '/me/appearance') return ctx.profile ? <AppearanceScreen parent="/me/account" /> : <AccountPage {...p} />;
   if (!ctx.team && route === '/me/edit') return <EditPage {...p} />;
   if (!ctx.team && route === '/me/messages') return <MessagesPage {...p} />;
   if (route === '/visit') return <VisitForm {...p} />;
@@ -66,6 +68,7 @@ const isCalendarRoute = (route: string) => /^(?:\/manage)?\/calendar(?:\/|$)/.te
 
 function Shell({ ctx }: { ctx: GuestCtx }) {
   useClockVersion();
+  const notificationSetup = useParam('notifications') === '1';
   const route = useRoute(); const demo = useDemo(); const states = useDemoStates(); const online = useOnline(); const sync = useSync(); const toast = useToast();
   const [sheet, setSheet] = useState(false);
   const offline = !online || (demo.on && states.offline);
@@ -98,7 +101,7 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
         </AppScreen>
       )}>{screen}</Guard>
       {demo.on && <DemoSheet open={sheet} onClose={() => setSheet(false)} />}
-      {ctx.user && ctx.profile && !demo.on && <DemoIntro shell="guest" profile={ctx.profile} owner={isOwner(ctx.profile, ctx.user.email)} manager={canManage(ctx.profile, ctx.user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />}
+      {ctx.user && ctx.profile && !demo.on && !notificationSetup && <DemoIntro shell="guest" profile={ctx.profile} owner={isOwner(ctx.profile, ctx.user.email)} manager={canManage(ctx.profile, ctx.user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />}
     </ChromeProvider>
   );
 }

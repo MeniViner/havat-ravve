@@ -7,7 +7,7 @@
 .eventday-entry {
   display: flex; align-items: center; gap: 16px; min-height: 108px; padding: 0 20px; border-radius: 12px; text-decoration: none;
 }
-.eventday-entry--gate { background: var(--action); color: #FFFFFF; }
+.eventday-entry--gate { background: var(--action-fill); color: #FFFFFF; }
 .eventday-entry--stall { background: var(--surface); color: var(--ink); border: 1.5px solid var(--ink); }
 .eventday-entry__icon { display: flex; }
 .eventday-entry__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -28,7 +28,7 @@
 /* ── E7 stall: who buys ── */
 .eventday-scanbtn {
   display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 64px; width: 100%; border: 0; border-radius: 12px;
-  background: var(--action); color: #FFFFFF; font-size: 19px; font-weight: 700;
+  background: var(--action-fill); color: #FFFFFF; font-size: 19px; font-weight: 700;
 }
 
 /* ── E8 stall: sell ── */
@@ -40,7 +40,7 @@
 .eventday-tile {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line);
 }
-.eventday-tile--on { background: var(--selected); border-color: var(--selected); color: #FFFFFF; }
+.eventday-tile--on { background: var(--selected-fill); border-color: var(--selected); color: #FFFFFF; }
 .eventday-tile__head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; text-align: start; }
 .eventday-tile__name { font-size: 17px; line-height: 1.2; font-weight: 700; }
 .eventday-tile__price { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -53,7 +53,7 @@
   display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; font-size: 22px; font-weight: 700;
 }
 .eventday-tile__step--dec { background: transparent; color: #FFFFFF; border: 1.5px solid #FFFFFF; font-weight: 400; }
-.eventday-tile__step--inc { background: #FFFFFF; color: var(--selected); border: 0; }
+.eventday-tile__step--inc { background: #FFFFFF; color: var(--selected-fill); border: 0; }
 .eventday-total { display: flex; flex-direction: column; min-width: 72px; }
 .eventday-total b { font-size: 24px; font-variant-numeric: tabular-nums; }
 .eventday-total span { font-size: 14px; color: var(--soft); }
@@ -96,7 +96,7 @@
   flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--line-strong); background: transparent; color: #FFFFFF;
 }
-.eventday-check--done { border: 0; background: var(--selected); }
+.eventday-check--done { border: 0; background: var(--selected-fill); }
 .eventday-list { margin: 0; padding-inline-start: 18px; font-size: 15px; line-height: 1.6; list-style: disc; }
 .eventday-listcard { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
 .eventday-listcard__title { margin: 0; font-size: 15px; font-weight: 700; }

@@ -10,7 +10,7 @@
 .system-me { display: flex; align-items: center; gap: 14px; }
 .system-me__avatar {
   position: relative; flex: none; width: 64px; height: 64px; border-radius: 50%;
-  background: var(--selected); color: #FFFFFF; font-size: 20px; font-weight: 600;
+  background: var(--selected-fill); color: #FFFFFF; font-size: 20px; font-weight: 600;
   display: flex; align-items: center; justify-content: center; text-decoration: none; border: 0; padding: 0; font-family: inherit; cursor: pointer;
 }
 .system-me__avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
@@ -88,7 +88,7 @@
 .system-install-title { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 700; }
 .system-lead { font-size: 16px; line-height: 1.5; }
 .system-step { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 6px 14px; border-top: 1px solid var(--line); box-sizing: content-box; }
-.system-step__n { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--selected); color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.system-step__n { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--selected-fill); color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .system-step__body { display: flex; flex-direction: column; }
 .system-step__title { font-size: 17px; font-weight: 600; }
 .system-step__meta { font-size: 14px; color: var(--soft); }
@@ -100,7 +100,7 @@
 .system-suspended__text { margin: 0; font-size: 17px; line-height: 1.5; max-width: 300px; }
 .system-suspended__actions { display: flex; flex-direction: column; gap: 8px; }
 .system-bigbtn {
-  height: 56px; border: 0; border-radius: 12px; background: var(--action); color: #FFFFFF; font: inherit; font-size: 18px; font-weight: 700;
+  height: 56px; border: 0; border-radius: 12px; background: var(--action-fill); color: #FFFFFF; font: inherit; font-size: 18px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
 }
 .system-bigbtn--line { height: 52px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); font-size: 17px; }

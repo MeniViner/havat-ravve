@@ -76,6 +76,16 @@ Keep the same keys forever. A new key pair means every phone has to tap "להפ�
    npx wrangler secret put PUSH_MODE           --config api/wrangler.toml   # fcm
    ```
 
+## Installed Android app
+
+The locally bundled Android app registers with Firebase Cloud Messaging (FCM). Chrome and iPhone home screen installations continue to use Web Push with the current VAPID keys.
+
+1. Deploy the Worker with both senders. Configure a dedicated service account with permission to send FCM HTTP v1 messages to this Firebase project. Store its JSON in the Worker secret `FCM_SERVICE_ACCOUNT`. Set `PUSH_ANDROID_FCM=true` and keep `PUSH_MODE=webpush`.
+2. Verify the next run publishes `settings/push.androidFcm=true` and keeps the original Web Push mode and public key. The installed app requests Android notification permission from the account settings.
+3. Validate a private Android test release on a consenting test device. Check a notification with the app open and in the background. Tap it to verify the destination. Verify Web Push separately before promoting the Android bundle in Play.
+
+To pause native Android delivery, set `PUSH_ANDROID_FCM=false`. Browser push keeps its current mode and keys.
+
 ## Testing on a phone
 
 **iPhone (iOS 16.4 or later):**

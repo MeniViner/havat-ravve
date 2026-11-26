@@ -7,6 +7,7 @@ import { useDoc, useList, write, newId, push, pull, transact, ConflictError } fr
 import { isFemale } from '../gender';
 import { nowIso, nowMs, todayKey } from '../../clock';
 import { activityOp, logActivity } from '../../activity';
+import { demoOnly } from '../../demo/store';
 import { fillTemplate } from '../../data';
 import { notify } from './notify';
 import { hhmm, ddmm, dayName, keyOf } from '../format';
@@ -280,13 +281,49 @@ export const helperText = (v: VendorDoc, name: string, link: string, role: 'owne
   role === 'owner'
     ? `שלום ${first(name)}, זה הקישור לאפליקציה של חוות רווה בשביל ${v.name}: ${link} נכנסים עם חשבון Google.`
     : `שלום ${first(name)}, צירפתי אותך לדוכן ${v.name} באפליקציה של חוות רווה. נכנסים כאן עם חשבון Google: ${link}`;
-/** Removes a helper from the stall and closes their invite (D7 sheet). The account itself stays, without the stall. */
+/** D7 resolves only the requested link. The owner never reads another person's profile. */
 export async function removePerson(actor: Actor, v: VendorDoc, p: VendorPerson) {
-  const people = (v.people || []).filter((x) => !(x.code ? x.code === p.code : x.name === p.name && x.role === p.role));
-  const ops: Parameters<typeof write.batch>[0] = [{ op: 'update', col: 'vendors', id: v.id, data: { people, updatedAt: nowIso() } }];
-  if (p.code) ops.push({ op: 'update', col: 'vendor_invites', id: p.code, data: { active: false } });
-  ops.push(activityOp(actor, 'event', v.id, 'removed', 'גישה לדוכן'));
-  await write.batch(ops);
+  const code = p.code;
+  if (p.role !== 'helper' || !code || !/^[a-z0-9-]{8,40}$/.test(code)) {
+    throw new ConflictError('לקישור הישן חסר מידע. פנו לחווה כדי להסיר את הגישה.');
+  }
+  const receipt = activityOp(actor, 'event', v.id, 'removed', 'גישה לדוכן');
+  const at = nowIso();
+  const demo = demoOnly();
+  const remove = (revoke: boolean) => transact(async (tx) => {
+    const current = await tx.get<VendorDoc>('vendors', v.id);
+    const invite = await tx.get<VendorInviteDoc>('vendor_invites', code);
+    if (!current || !invite || invite.code !== code || invite.vendorId !== v.id || invite.role !== 'helper'
+      || (invite.usedBy !== null && (typeof invite.usedBy !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(invite.usedBy)))) {
+      throw new ConflictError('לא הצלחנו לבדוק את הקישור. נסו שוב או פנו לחווה.');
+    }
+    const logged = await tx.get<{ refId: string; action: string }>('activity', code);
+    const people = current.people || [];
+    const matches = people.filter((x) => x.code === code);
+    if (!matches.length && logged?.refId === v.id && logged.action === 'removed' && !invite.active) return;
+    const row = matches[0];
+    if (logged || matches.length !== 1 || row.role !== 'helper' || (row.uid && invite.usedBy && row.uid !== invite.usedBy)) {
+      throw new ConflictError('לא הצלחנו לזהות את הקישור. פנו לחווה כדי להסיר את הגישה.');
+    }
+    const uid = invite.usedBy || row.uid;
+    if (uid && !/^[A-Za-z0-9_-]{1,128}$/.test(uid)) throw new ConflictError('לא הצלחנו לזהות את החשבון. פנו לחווה כדי להסיר את הגישה.');
+    const profile = demo && uid ? await tx.get<Profile & { inviteCode?: string }>('users', uid) : null;
+    const demoLinked = profile?.role === 'vendor' && profile.helper && profile.vendorId === v.id && profile.inviteCode === code;
+    tx.update('vendors', v.id, { people: people.filter((x) => x.code !== code), updatedAt: at });
+    tx.update('vendor_invites', code, { active: false });
+    if (uid && (demo ? demoLinked : revoke)) tx.update('users', uid, { role: 'guest', updatedAt: at });
+    tx.set(receipt.col, code, receipt.data);
+  }, { serverOnly: true });
+  if (demo) return remove(true);
+  try {
+    await remove(true);
+  } catch (e) {
+    // A claimed account may have moved on to another link. Rules permit a row-only retry only
+    // after checking the current private profile, and refuse it if this link still grants access.
+    const error = (e as { code?: string }).code;
+    if (error !== 'permission-denied' && error !== 'not-found') throw e;
+    await remove(false);
+  }
 }
 
 // ---------- manager actions (V1, V2, V6, N8, V7) ----------

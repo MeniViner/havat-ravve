@@ -224,6 +224,8 @@ export type TransactOpts = {
   /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
    *  this phone as an ordinary queued write, as when offline, instead of failing. A server that answers still refuses a second entry. */
   queue?: boolean;
+  /** Never use cached data or queue mutations for this transaction. Its caller handles the server error. */
+  serverOnly?: boolean;
 };
 /** How long a queued-on-failure transaction waits for the server before it saves on the phone (tests shorten it). */
 export const txTiming = { waitMs: 4000 };
@@ -236,6 +238,8 @@ class Abandoned extends Error {}
  *  so it runs on the cached copy as an ordinary write; the rules refuse a late conflicting write and the shell shows X1.
  *  `queue`: the same when the server cannot be reached in time (TransactOpts). */
 export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = {}): Promise<T> {
+  const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || getDemoStates().offline;
+  if (o.serverOnly && offline) throw new ConflictError('אין חיבור לאינטרנט. נסו שוב אחרי החיבור.');
   if (demoOnly()) {
     if (takeRefusal()) throw new ConflictError();
     const ops: (() => void)[] = [];
@@ -248,7 +252,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     ops.forEach((o) => o());
     return out;
   }
-  if (!navigator.onLine || getDemoStates().offline) return queued(fn);
+  if (offline) return queued(fn);
   setSync({ pending: sync.pending + 1 });
   let abandoned = false, committing = false;
   const attempt = runTransaction(db, async (t) => {
@@ -265,7 +269,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     return out;
   });
   try {
-    if (!o.queue) return await attempt;
+    if (o.serverOnly || !o.queue) return await attempt;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), txTiming.waitMs); });
     const first = await Promise.race([attempt.then((v) => ({ v })), late]).finally(() => clearTimeout(timer));
@@ -273,7 +277,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     abandoned = true;
     return await queued(fn, committing ? attempt : undefined);
   } catch (e) {
-    if (isConflict(e)) throw e;
+    if (isConflict(e) || o.serverOnly) throw e;
     if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn); }
     throw new Error(readError(e));
   } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
