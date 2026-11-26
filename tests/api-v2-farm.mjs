@@ -112,7 +112,7 @@ try {
     const c = (await api('GET', '/v1/catalog')).json.data;
     const names = c.operations.map((o) => o.name);
     const mine = ['presence.save', 'presence.remove', 'calendar.create', 'calendar.update', 'calendar.delete', 'calendar.list', 'broadcasts.list', 'broadcasts.get', 'broadcastReads.list', 'broadcasts.send', 'broadcasts.resend', 'broadcasts.delete',
-      'me.notifications.list', 'me.notifications.get', 'me.notifications.markRead', 'notifications.send', 'notifications.delete', 'people.delete', 'visits.delete', 'donations.paymentNotArrived', 'donations.undoApproval', 'donations.delete',
+      'me.whoami', 'me.notifications.list', 'me.notifications.get', 'me.notifications.markRead', 'notifications.send', 'notifications.delete', 'people.delete', 'visits.delete', 'donations.paymentNotArrived', 'donations.undoApproval', 'donations.delete',
       'settings.update', 'settings.saveQuestion', 'settings.removeQuestion', 'settings.reorderQuestions', 'accountDeletions.list'];
     check(c.version === '3.0.0' && c.generatedAt.startsWith('2026-11-22') && (await api('GET', '/v1/health')).json.data.catalogVersion === '3.0.0', 'catalog and health report 3.0.0');
     check(mine.every((n) => names.includes(n)), 'every new operation is listed', mine.filter((n) => !names.includes(n)));
@@ -261,6 +261,22 @@ try {
     check((await w(MGR, 'broadcasts.delete', { broadcastId: bTeam })).status === 403, 'a manager cannot delete a broadcast (owner only)');
     ok(await w(OWNER, 'broadcasts.delete', { broadcastId: bTeam }), 'the owner deletes a broadcast');
     check(!(await docOf('broadcasts/' + bTeam)) && !!(await docOf(`users/syn-vendor/notifications/b_${bTeam}`)), 'gone; the person\'s copy stays, as in the app');
+  }
+
+  section('me.whoami: the caller\'s own identity and effective scopes');
+  {
+    const op = (await api('GET', '/v1/catalog')).json.data.operations.find((o) => o.name === 'me.whoami');
+    check(op && op.method === 'GET' && op.path === '/v1/me' && op.requiredScope === 'me:read' && !op.params, 'catalog lists me.whoami (GET /v1/me, me:read, no parameters)', op);
+    const s = await r(STAFF, '/v1/me');
+    check(s.status === 200 && s.json.ok && s.json.data.actor.role === 'staff' && s.json.data.actor.person.uid === 'syn-staff', 'staff: own uid and role', s.json);
+    check(s.json.data.scopes.includes('me:read') && s.json.data.scopes.includes('tasks:read') && !s.json.data.scopes.includes('donations:read'), 'staff: the staff scopes only');
+    check(s.json.data.key.version === 'current' && s.json.data.key.limited === false && s.json.meta.keyVersion === 'current', 'key block: current, not limited');
+    const m = await r(MGR, '/v1/me');
+    check(m.status === 200 && m.json.data.actor.role === 'manager' && m.json.data.actor.person.uid === 'syn-mgr' && m.json.data.scopes.includes('donations:read'), 'manager: own uid, role and manager scopes', m.json);
+    const text = JSON.stringify(s.json);
+    check(!text.includes('syn-mgr') && !text.includes('syn-staff2') && !/sha256|cred-v2/i.test(text), 'no other person, key hash or credential id in the answer');
+    check((await r(STAFF, '/v1/me?x=1')).status === 400, 'a query parameter → 400');
+    check((await api('GET', '/v1/me')).status === 401, 'no key → 401');
   }
 
   section('personal notifications (C1)');
