@@ -161,16 +161,24 @@ async function run() {
     const until = deviceTime();
     adb('shell', 'input', 'keyevent', '224');
     adb('shell', 'wm', 'dismiss-keyguard');
-    adb('shell', 'am', 'start', '-a', 'android.settings.SETTINGS');
+    adb('shell', 'am', 'start', '-W', '-a', 'android.settings.SETTINGS');
+    const foreground = () =>
+      adb('shell', 'dumpsys', 'activity', 'activities')
+        .split('\n')
+        .find((line) => line.includes('topResumedActivity')) || '';
+    assert.match(foreground(), /com.android.settings/);
+    const otherFrom = deviceTime();
     await delay(3500);
     adb('emu', 'geo', 'fix', '10.00001', '50.00008');
     await delay(3300);
+    assert.match(foreground(), /com.android.settings/);
+    const otherUntil = deviceTime();
     adb('shell', 'am', 'start', '-n', app + '/.MainActivity');
     const rows = (await call('samples', { ...key, id: s.id, after: 0 })).items;
     const locked = rows.filter((p) => p.at > from + 1000 && p.at < until);
     assert.ok(locked.length >= 3);
     assert.ok(new Set(locked.map((p) => p.lat)).size >= 2 && new Set(locked.map((p) => p.lng)).size >= 2);
-    const other = rows.filter((p) => p.at >= until + 2000);
+    const other = rows.filter((p) => p.at > otherFrom + 1000 && p.at < otherUntil);
     assert.ok(other.length);
     await call('control', { ...key, id: s.id, action: 'pause' });
     await delay(600);
@@ -186,7 +194,9 @@ async function run() {
         lockFrom: from,
         lockUntil: until,
         locked: locked.map((p) => ({ seq: p.seq, at: p.at, lat: p.lat, lng: p.lng })),
-        otherAppSamples: other.length,
+        otherFrom,
+        otherUntil,
+        otherAppSamples: other.map(({ at, seq }) => ({ at, seq })),
       })
     );
     adb('shell', 'am', 'force-stop', app);
