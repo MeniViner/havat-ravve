@@ -1,6 +1,6 @@
 # Google Play
 
-The Android application uses Capacitor and loads its interface, icons and fonts from the installed package. Updates to the packaged interface require a new Android version in Play. Firebase provides online sign-in and shared data. Firestore persists previously synced data and queues supported writes locally. A new install needs a connection to sign in and download shared records.
+The Android application uses Capacitor and loads its interface, icons and fonts from the installed package. Android 1.0.5 and later can also receive signed WebView assets over the air. Native changes, permissions and plugins still ship through Google Play. Firebase provides online sign-in and shared data. Firestore persists previously synced data and queues supported writes locally. A new install needs a connection to sign in and download shared records.
 
 ## Build and sign
 
@@ -10,6 +10,17 @@ The Android application uses Capacitor and loads its interface, icons and fonts 
 - Firebase Google sign-in uses the Firebase Android app for this package and requires registration of the local test or Play signing certificate's SHA-1. The public client config is `android/app/google-services.json`. Keep private keys and passwords outside git.
 - Android App Links for the HTTPS `/app` paths use `public/.well-known/assetlinks.json`, served by Firebase Hosting.
 - Run `npm run play:check` after the build and verify offline startup, touch navigation and an actual account sign-in on Android before promoting to the closed track.
+
+## Android web updates
+
+Each Play versionCode has its own GitHub Releases channel, tagged `android-ota-<versionCode>`. The included web bundle opens offline. Once the app renders, it checks the channel for a signed `current.json` and downloads the corresponding ZIP over HTTPS. Android checks the checksum before it installs the assets. Activation happens after the current session backgrounds or the app restarts. If the updated interface fails to report readiness, the updater restores the last working bundle.
+
+1. Use the release branch that matches the target Play versionCode. Make web-only changes that remain compatible with the native plugins and backend already in use.
+2. Run `npm run build:android:ota -- <versionCode> <revision> <private-key-path>`. The revision is a positive integer that increases within the channel. Store the signing key outside Git and share it only with the release owner. The built-in public key verifies the app ID, native build, revision and ZIP checksum together.
+3. Upload `web-<revision>.zip` to the release first. Confirm the public download matches the signed checksum. Then upload or replace `current.json` from the same output directory. Retain old ZIPs while devices may still be downloading them.
+4. Verify on Android that opening the app downloads the revision and leaving and reopening activates it. Check offline startup afterward. To undo an already activated rollout, publish the last known good web assets with a higher revision. Removing `current.json` stops future downloads.
+
+The channel carries installed-app web assets only. The website and iOS use their own release paths.
 
 ## Account deletion
 

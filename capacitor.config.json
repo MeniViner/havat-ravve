@@ -10,6 +10,14 @@
     "allowsLinkPreview": false
   },
   "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "statsUrl": "",
+      "httpsOnly": true,
+      "resetWhenUpdate": true,
+      "appReadyTimeout": 15000,
+      "keepUrlPathAfterReload": true
+    },
     "PushNotifications": { "presentationOptions": ["alert", "sound"] },
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
