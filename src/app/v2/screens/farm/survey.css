@@ -77,9 +77,23 @@
   color: #24372f;
   background: #fffffff0;
 }
-.survey-marker {
+.survey-place-button {
   display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 0;
   place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.survey-place-button:disabled {
+  pointer-events: none;
+}
+.survey-place-button:focus-visible {
+  outline: 3px solid var(--action);
+  outline-offset: -3px;
 }
 .survey-marker i {
   width: 19px;

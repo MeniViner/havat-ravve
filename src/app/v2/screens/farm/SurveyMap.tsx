@@ -158,20 +158,29 @@ export function SurveyMap(props: Props) {
       );
     draw(group, props.edit ?? props.raw, '#925114');
     for (const p of props.places.filter(coordinate)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'survey-place-button';
+      button.setAttribute('aria-label', p.name);
+      button.disabled = !!props.selecting;
+      button.append(document.createElement('i'));
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        current.current.onPlace(p.id);
+      });
       const marker = L.marker(p, {
         icon: L.divIcon({
           className: 'survey-marker' + (props.selected === p.id ? ' chosen' : ''),
-          html: '<i></i>',
-          iconSize: [32, 40],
-          iconAnchor: [16, 37],
+          html: button,
+          iconSize: [44, 48],
+          iconAnchor: [22, 41],
         }),
         title: p.name,
         alt: p.name,
-        keyboard: true,
+        keyboard: false,
         interactive: !props.selecting,
       }).addTo(group);
       marker.bindTooltip(label(p.name), { direction: 'top', offset: [0, -34] });
-      marker.on('click', () => props.onPlace(p.id));
     }
     if (props.edit?.length) {
       // A long walk stays usable. Select a vertex from any visible part of the line, or by its number in the review.

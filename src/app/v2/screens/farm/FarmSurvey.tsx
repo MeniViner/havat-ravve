@@ -90,6 +90,9 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const [view, setView] = useState<View | null>(null),
     [undo, setUndo] = useState<Review | null>(null);
   const mapTop = useRef<HTMLDivElement>(null);
+  const focusPlaceTitle = useCallback((title: HTMLHeadingElement | null) => {
+    title?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     if (selection) mapTop.current?.scrollIntoView({ block: 'start' });
   }, [selection]);
@@ -632,7 +635,7 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       {!place && !workingReview && active && (
         <section className="survey-panel">
           <div className="survey-row">
-            <h2>{active.name}</h2>
+            <h2 key={active.id} ref={focusPlaceTitle} tabIndex={-1}>{active.name}</h2>
             <Button variant="quiet" onClick={() => setSelected('')}>
               סגירה
             </Button>
