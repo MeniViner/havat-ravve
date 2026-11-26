@@ -11,7 +11,7 @@ lock screen.
 
 | Value | What happens |
 | --- | --- |
-| not set | Nothing runs and nothing is read. This is the state today. |
+| not set | The Worker does not read or drain the push queue. |
 | `off` | The Worker writes `settings/push = { mode: 'off' }` once, so the app stops offering phone push. No jobs are read. |
 | `webpush` | Standard Web Push. Works on Android (Chrome), on desktop browsers, and on iPhone (iOS 16.4 or later) once the app is added to the Home Screen. **Start with this one.** |
 | `fcm` | Firebase Cloud Messaging. Only if Web Push turns out not to work for you. |
