@@ -727,7 +727,7 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
                   }[session.state]
                 }
               </b>{' '}
-              · {session.count} מדידות שמורות במכשיר
+              · {session.count === 1 ? 'מדידה אחת שמורה' : session.count + ' מדידות שמורות'} במכשיר
               {session.lastAt && ' · מדידה אחרונה ' + age(session.lastAt, gps.clock)}
             </p>
           )}
@@ -822,12 +822,12 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       )}
       {native && session?.state === 'recording' && (place || workingReview) && (
         <p className="survey-note" role="status">
-          הקלטת השביל נמשכת · {session.count} מדידות שמורות
+          הקלטת השביל נמשכת · {session.count === 1 ? 'מדידה אחת שמורה' : session.count + ' מדידות שמורות'}
         </p>
       )}
       {queue.length > 0 && (
         <section className="survey-panel">
-          <h2>{queue.length} שמירות ממתינות לסנכרון</h2>
+          <h2>{queue.length === 1 ? 'שמירה אחת ממתינה לסנכרון' : queue.length + ' שמירות ממתינות לסנכרון'}</h2>
           <p>{syncError || 'הנתונים שמורים במכשיר ויישלחו כשיהיה חיבור.'}</p>
           <Button variant="outline" onClick={retrySync}>
             ניסיון סנכרון נוסף

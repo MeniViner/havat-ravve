@@ -175,7 +175,7 @@ try {
   adb('shell', 'svc', 'data', 'disable');
   await wait('!navigator.onLine');
   await click('שמירת המקום');
-  await wait(text('ממתינות לסנכרון'));
+  await wait('/ממתינ(?:ה|ות) לסנכרון/.test(document.body.innerText)');
   assert.equal((await lookup('places', placeName)).length, 0);
   fix(10.00011, 50.00002);
   await delay(3400);
@@ -184,7 +184,7 @@ try {
   adb('shell', 'svc', 'wifi', 'enable');
   adb('shell', 'svc', 'data', 'enable');
   await wait('navigator.onLine');
-  await wait('!document.body.innerText.includes("ממתינות לסנכרון")', 35000);
+  await wait('!/ממתינ(?:ה|ות) לסנכרון/.test(document.body.innerText)', 35000);
   const [place] = await lookup('places', placeName);
   assert.ok(place);
   const value = (x) => Number(x.doubleValue ?? x.integerValue);

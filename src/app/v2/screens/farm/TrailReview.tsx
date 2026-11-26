@@ -91,7 +91,8 @@ export function TrailReview({
     <section className="survey-panel survey-review">
       <h2>סקירת השביל</h2>
       <p>
-        {r.points.length} נקודות · {lines.length} מקטעים נפרדים
+        {r.points.length === 1 ? 'נקודה אחת' : r.points.length + ' נקודות'} ·{' '}
+        {lines.length === 1 ? 'מקטע אחד' : lines.length + ' מקטעים נפרדים'}
       </p>
       {!!troubled.length && (
         <details>
