@@ -75,6 +75,10 @@ async function nativeSheet(open: () => Promise<{ credential: { idToken?: string;
 }
 
 export async function signOutUser() {
+  if (isNative && getAppAuth().currentUser) {
+    const { disconnectSurvey } = await import('./survey/native');
+    await disconnectSurvey(getAppAuth().currentUser!.uid);
+  }
   await signOut(getAppAuth());
   // the native Google session too, so the next sign-in offers the account picker again
   if (isNative) await NativeAuth.signOut().catch(() => {});

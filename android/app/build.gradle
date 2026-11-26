@@ -3,12 +3,14 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.menis10tec.havatravve"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures { buildConfig = true }
     defaultConfig {
+        buildConfigField "boolean", "SURVEY_TEST_BACKEND", "false"
         applicationId "com.menis10tec.havatravve"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.0.5"
+        versionCode 8
+        versionName "1.0.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,7 +18,13 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    if (project.findProperty("surveyTestBackend") == "true") {
+        sourceSets.debug.assets.srcDir(layout.buildDirectory.dir("survey-test-assets"))
+    }
     buildTypes {
+        debug {
+            buildConfigField "boolean", "SURVEY_TEST_BACKEND", (project.findProperty("surveyTestBackend") == "true").toString()
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
@@ -35,6 +43,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

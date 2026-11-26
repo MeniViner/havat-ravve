@@ -5,7 +5,7 @@ import { AppScreen, go, mapsUrl, useExternal, useRemove, useToast } from '../../
 import { TopBar, PageTitle, Button, Card, Icon, Field, BottomBar, ListCard, Row, EmptyState, SectionHeader, MoreMenu } from '../../kit';
 import { tableCell, useTableView } from '../../patterns';
 import { back, param } from '../../../router';
-import { getPosition } from '../../../store';
+import { getPosition, usePlace } from '../../../store';
 import { useEvent } from '../../../data';
 import { useClockVersion, nowMs } from '../../../clock';
 import type { Place, Task } from '../../../types';
@@ -23,6 +23,8 @@ function placesBack() {
 export function PlacesScreen({ ctx }: ScreenProps) {
   const root = useRootTasks(ctx); const fail = useFail();
   const [busy, setBusy] = useState(false);
+  const [point, setPoint] = useState<Awaited<ReturnType<typeof getPosition>> | null>(null);
+  const [name, setName] = useState('');
   const open = root.items.filter((t) => !t.done);
   // rule 5: table view and export are ⋯ items (Q5, Q9), managers only as before
   const table = useTableView({
@@ -32,17 +34,22 @@ export function PlacesScreen({ ctx }: ScreenProps) {
   const here = async () => {
     setBusy(true);
     try {
-      const pos = await getPosition();
-      const id = await createPlace(ctx.actor, 'מקום חדש', pos);
-      go(`/places/${id}?new=1`);
-    } catch (e) { fail(e); setBusy(false); }
+      setPoint(await getPosition()); setName('');
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  };
+  const confirm = async () => {
+    if (!point || !name.trim()) return;
+    setBusy(true);
+    try { const id = await createPlace(ctx.actor, name, point); go(`/places/${id}`); }
+    catch (e) { fail(e); } finally { setBusy(false); }
   };
   if (table.active) return table.screen;
   return (
     <AppScreen variant="detail">
       <TopBar back={placesBack()} end={<MoreMenu title="מקומות" items={table.items.map((i) => ({ ...i, hidden: !ctx.manager || !ctx.places.length }))} />} />
       <PageTitle size="root">מקומות בחווה</PageTitle>
-      <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>
+      {ctx.owner && <Button block icon="pin" onClick={()=>go('/farm/map')}>פתיחת מפת החווה</Button>}
+      {point ? <Card><Field label="שם המקום" maxLength={120} value={name} onChange={e=>setName(e.target.value)}/><Button disabled={busy||!name.trim()} onClick={confirm}>שמירת המקום</Button><Button variant="quiet" onClick={()=>setPoint(null)}>ביטול</Button></Card> : <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>}
       {ctx.places.length > 0 ? (
         <Card as="section">
           <ul className="k-list k-list--flush" style={{ margin: 0 }}>
@@ -75,7 +82,10 @@ function PlaceRow({ p, open, ctx }: { p: Place; open: Task[]; ctx: ScreenProps['
 }
 
 export function PlaceScreen({ ctx, params }: ScreenProps) {
-  const p = ctx.places.find((x) => x.id === params.id) as PlaceV2 | undefined;
+  const visible = ctx.places.find((x) => x.id === params.id);
+  const archived = usePlace(params.id, !visible);
+  const p = (visible || archived.item) as PlaceV2 | undefined;
+  if (p?.archived) return <AppScreen variant="detail"><TopBar back={placesBack()} /><PageTitle>{p.name}</PageTitle><Card>המקום בארכיון. המשימות וההיסטוריה שלו נשמרו.</Card></AppScreen>;
   if (!p) {
     return (
       <AppScreen variant="detail">
@@ -114,9 +124,9 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
       {pick.input}
       {/* rule 6: delete is ⋯ → "מחיקה" → Q8 (managers) */}
       <TopBar back={{ label: 'מקומות', ...to('/places') }} end={<MoreMenu title="מקום" items={[{
-        label: 'מחיקה', icon: 'trash', tone: 'danger', hidden: !ctx.manager,
-        confirm: { title: 'למחוק את המקום?', text: `"${p.name}" יימחק מהרשימה. משימות שקשורות אליו נשארות.`,
-          onConfirm: () => remove(() => removePlace(ctx.actor, p), { text: 'המקום נמחק', after: () => go('/places', true) }) },
+        label: 'העברה לארכיון', icon: 'trash', tone: 'danger', hidden: !ctx.manager,
+        confirm: { title: 'להעביר את המקום לארכיון?', text: `"${p.name}" יועבר לארכיון. משימות שקשורות אליו נשארות.`,
+          onConfirm: () => remove(() => removePlace(ctx.actor, p), { text: 'המקום הועבר לארכיון', after: () => go('/places', true) }) },
       }]} />} />
       <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} />
       <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(pos.lat, pos.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(pos.lat, pos.lng)); }}>
@@ -127,7 +137,7 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
         <Button variant="outline" size="tall" icon="pin" iconSize={18} onClick={relocate}>לעדכן למקום שבו אני עומד</Button>
       </div>
       <div className="tasks-btnrow">
-        <Button variant="outline" size="tall" icon="nav" iconSize={16} onClick={() => external(mapsUrl(pos.lat, pos.lng))}>ניווט לכאן</Button>
+        <Button variant="outline" size="tall" icon="nav" iconSize={16} onClick={() => external(mapsUrl(pos.lat, pos.lng))}>ניווט חיצוני ב־Google Maps</Button>
         <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'להסיר את התמונה' : 'תמונה של המקום'}</Button>
       </div>
       {rows.length > 0 ? (

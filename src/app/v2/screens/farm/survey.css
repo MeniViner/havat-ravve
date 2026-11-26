@@ -1,0 +1,220 @@
+.survey-screen .survey-title,
+.survey-row,
+.survey-tools,
+.survey-actions,
+.survey-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.survey-title,
+.survey-row {
+  justify-content: space-between;
+}
+.survey-screen .k-screen__body {
+  gap: 8px;
+}
+.survey-title {
+  padding: 0 0 3px;
+}
+.survey-title h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+}
+.survey-title p,
+.survey-panel p {
+  color: var(--soft);
+  margin: 5px 0 10px;
+  line-height: 1.45;
+}
+.survey-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  margin: 0;
+  padding: 13px 15px;
+}
+.survey-panel h2 {
+  font-size: 18px;
+  margin: 0 0 5px;
+}
+.survey-actions,
+.survey-modes {
+  flex-wrap: wrap;
+}
+.survey-tools {
+  justify-content: space-between;
+  margin: 0;
+}
+.survey-map {
+  position: relative;
+  isolation: isolate;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-hero);
+  overflow: hidden;
+}
+.survey-map-canvas {
+  height: clamp(236px, 35dvh, 430px);
+  width: 100%;
+  direction: ltr;
+  background: #e4e8dd;
+  z-index: 0;
+}
+.survey-map.picking {
+  outline: 3px solid var(--action);
+}
+.survey-map .leaflet-control-zoom a {
+  width: 48px;
+  height: 48px;
+  line-height: 48px;
+}
+.survey-map .leaflet-control-attribution {
+  font:
+    11px Arial,
+    sans-serif;
+  color: #24372f;
+  background: #fffffff0;
+}
+.survey-marker {
+  display: grid;
+  place-items: center;
+}
+.survey-marker i {
+  width: 19px;
+  height: 19px;
+  transform: rotate(-45deg);
+  border-radius: 50% 50% 50% 0;
+  border: 3px solid white;
+  background: #205643;
+  box-shadow: 0 1px 4px #273a2c99;
+}
+.survey-marker.chosen i {
+  background: #944915;
+  width: 24px;
+  height: 24px;
+}
+.survey-tile-status {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  max-width: 72%;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #fffffff2;
+  color: #27382e;
+  font-size: 12px;
+}
+.survey-tile-status button {
+  color: #214f40;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  min-height: 44px;
+}
+.survey-note,
+.survey-error {
+  margin: 0;
+  color: var(--action);
+}
+.survey-error {
+  color: var(--red);
+}
+.survey-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--line-strong);
+  border-radius: 50%;
+}
+.survey-dot.good {
+  background: var(--green);
+}
+.survey-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.survey-hit,
+.survey-scroll button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: start;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+  min-height: 48px;
+  font: inherit;
+}
+.survey-photo {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.survey-review details,
+.survey-review fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 10px 0;
+  padding: 7px 10px;
+}
+.survey-review summary,
+.survey-review label {
+  min-height: 48px;
+  align-content: center;
+  font-weight: 600;
+}
+.survey-review label {
+  display: block;
+}
+.survey-review label input[type='number'],
+.survey-review select {
+  font: inherit;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 4px;
+  max-width: 100%;
+}
+.survey-review input[type='number'] {
+  width: 85px;
+}
+.survey-modes label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.survey-scroll {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.survey-samples {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+}
+.survey-samples li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.survey-screen .survey-tools button,
+.survey-panel .survey-actions button {
+  min-height: 48px;
+}
+.survey-screen :focus-visible {
+  outline: 3px solid var(--action);
+  outline-offset: 2px;
+}

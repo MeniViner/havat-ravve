@@ -676,7 +676,8 @@ try{
  await v2no(setDoc(doc(vol,'places','pl-w'),{name:'x',lat:1,lng:1,createdBy:A('vol'),createdAt:now,accuracy:'4'}),'places accuracy not a number');
  await v2no(setDoc(doc(raz,'places','pl-r'),{name:'x',lat:1,lng:1,createdBy:A('raz'),createdAt:now}),'places vendor creates');
  await v2no(getDoc(doc(guest,'places','pl-1')),'places guest reads');
- await v2ok(deleteDoc(doc(mgr,'places','pl-v')),'places manager deletes');
+ await v2no(deleteDoc(doc(mgr,'places','pl-v')),'place IDs survive linked history');
+ await v2ok(updateDoc(doc(mgr,'places','pl-v'),{archived:true}),'manager archives a place');
  // ---------------- shopping (shopping.md; tasks.md 16) ----------------
  await v2ok(setDoc(doc(vol,'shopping','sh1'),item('vol')),'shopping old shape');
  await v2ok(setDoc(doc(vol,'shopping','sh2'),item('vol',{taskId:'t1'})),'shopping 16 with taskId');

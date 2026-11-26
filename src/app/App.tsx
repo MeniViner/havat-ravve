@@ -96,6 +96,11 @@ export default function App() {
   const switchesDoc = useSwitchesDoc();
   const owner = !!user && isOwner(profile, user);
   useEffect(() => { publishSwitches(demo.on ? null : switchesDoc.item, owner); }, [switchesDoc.item, owner, demo.on]);
+  useEffect(() => {
+    if (!loading && !profileLoading && !demo.on && profile && user && !owner) {
+      void import('./survey/native').then(m=>m.disconnectSurvey(user.uid)).catch(()=>{});
+    }
+  },[loading,profileLoading,demo.on,profile?.role,profile?.status,user?.uid,owner]);
   const sw = useAppSwitches();
   // the public site (same origin) reads this to show who is signed in. Real accounts only, never a demo persona.
   useEffect(() => {
