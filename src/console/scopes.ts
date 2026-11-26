@@ -88,36 +88,43 @@ export const isReadOnly = (scopes: string[] | null) => !!scopes && AREAS.every((
 
 // ---------- on a computer: the same scopes as a checklist (K14) ----------
 // Finer areas than the phone's, each scope in exactly one of them. `main` are the ones in front; the rest open on demand.
-export type DeskArea = Area & { main?: boolean; short?: string; /** What the write level is called here, when it is not "קריאה ושינוי". */ writeHe?: string };
+export type DeskArea = Area & { existingOnly?: Scope[]; main?: boolean; short?: string; /** What the write level is called here, when it is not "קריאה ושינוי". */ writeHe?: string };
 export const DESK_AREAS: DeskArea[] = [
-  { id: 'tasks', he: 'משימות', main: true, read: ['tasks:read', 'templates:read', 'projects:read'], write: ['tasks:create', 'tasks:assign', 'tasks:complete', 'tasks:edit', 'templates:write', 'projects:write'] },
-  { id: 'shopping', he: 'קניות', main: true, read: ['shopping:read'], write: ['shopping:write'] },
+  { id: 'tasks', he: 'משימות', main: true, read: ['tasks:read', 'templates:read', 'projects:read'], write: ['tasks:create', 'tasks:assign', 'tasks:complete', 'tasks:edit', 'templates:write', 'projects:write'], existingOnly: ['tasks:delete'] },
+  { id: 'shopping', he: 'קניות', main: true, read: ['shopping:read'], write: ['shopping:write'], existingOnly: ['shopping:delete'] },
   { id: 'messages', he: 'הודעות לצוות', short: 'הודעות', main: true, writeHe: 'שליחה', read: ['broadcasts:read'], write: ['broadcasts:write', 'broadcasts:urgent'] },
-  { id: 'events', he: 'אירועים וכרטיסים', short: 'אירועים', main: true, read: ['events:read', 'tickets:read', 'tabs:read', 'vendors:read'], write: ['events:write', 'tickets:write', 'tabs:write', 'vendors:write'] },
-  { id: 'people', he: 'אנשים', main: true, read: ['people:read'], write: ['people:write'] },
-  { id: 'money', he: 'כסף', main: true, read: ['donations:read'], write: ['donations:write', 'tabs:settle'] },
+  { id: 'events', he: 'אירועים וכרטיסים', short: 'אירועים', main: true, read: ['events:read', 'tickets:read', 'tabs:read', 'vendors:read'], write: ['events:write', 'tickets:write', 'tabs:write', 'vendors:write'], existingOnly: ['events:delete'] },
+  { id: 'people', he: 'אנשים', main: true, read: ['people:read'], write: ['people:write'], existingOnly: ['people:block', 'people:delete'] },
+  { id: 'money', he: 'כסף', main: true, read: ['donations:read'], write: ['donations:write', 'tabs:settle'], existingOnly: ['donations:delete'] },
   { id: 'places', he: 'מקומות', read: ['places:read'], write: ['places:write'] },
   { id: 'visits', he: 'ביקורים', read: ['visits:read'], write: ['visits:write'] },
-  { id: 'calendar', he: 'יומן ונוכחות', read: ['calendar:read'], write: ['calendar:write', 'presence:write'] },
+  { id: 'calendar', he: 'יומן ונוכחות', read: ['calendar:read'], write: ['calendar:write', 'presence:write'], existingOnly: ['presence:remove', 'presence:write:any'] },
   { id: 'notifications', he: 'התראות', read: ['notifications:read'], write: ['notifications:write', 'notify:team', 'notify:all'] },
   { id: 'settings', he: 'הגדרות', read: ['settings:read'], write: ['settings:write'] },
   { id: 'general', he: 'מבט כללי, פעילות ותקלות', short: 'מבט כללי', read: ['overview:read', 'activity:read', 'system:read', 'me:read'], write: ['me:write'] },
 ];
+// These granular writes count toward access and are removed by a downgrade, but a coarse desktop
+// selection never adds them. Owners can grant them individually in the detailed mobile editor.
+const deskWrites = (a: DeskArea) => [...a.write, ...(a.existingOnly ?? [])];
+const deskAreaScopes = (a: DeskArea) => [...a.read, ...deskWrites(a)];
+export const deskExtraLabels = (a: DeskArea, scopes: string[]) =>
+  (a.existingOnly ?? []).filter((s) => scopes.includes(s)).map((s) => SCOPE_TEXT[s]);
 export const levelHe = (a: DeskArea, l: Level) => (l === 'none' ? '' : l === 'read' ? 'קריאה' : a.writeHe || 'קריאה ושינוי');
 export function deskLevels(scopes: string[] | null): Levels {
   if (!scopes) return Object.fromEntries(DESK_AREAS.map((a) => [a.id, 'write' as Level]));
   const has = new Set(scopes);
-  return Object.fromEntries(DESK_AREAS.map((a) => [a.id, (a.write.some((s) => has.has(s)) ? 'write' : a.read.some((s) => has.has(s)) ? 'read' : 'none') as Level]));
+  return Object.fromEntries(DESK_AREAS.map((a) => [a.id, (deskWrites(a).some((s) => has.has(s)) ? 'write' : a.read.some((s) => has.has(s)) ? 'read' : 'none') as Level]));
 }
 /** The scopes after a change of levels: only the areas that changed are rewritten, so a key that holds part of an area keeps exactly that part. */
 export function deskScopes(before: string[] | null, levels: Levels): string[] {
   const old = deskLevels(before);
-  const known = new Set<string>(DESK_AREAS.flatMap((a) => [...a.read, ...a.write]));
+  const known = new Set<string>(DESK_AREAS.flatMap(deskAreaScopes));
   const keep = (before || []).filter((s) => !known.has(s)); // a scope this list does not know yet stays as it is
   for (const a of DESK_AREAS) {
     const l = levels[a.id] || 'none';
-    if (before && l === old[a.id]) keep.push(...before.filter((s) => [...a.read, ...a.write].some((scope) => scope === s)));
-    else if (l !== 'none') keep.push(...a.read, ...(l === 'write' ? a.write : []));
+    if (l === 'none') continue;
+    if (before && l === old[a.id]) keep.push(...before.filter((s) => deskAreaScopes(a).some((scope) => scope === s)));
+    else keep.push(...a.read, ...(l === 'write' ? a.write : []));
   }
   return [...new Set(keep)].sort();
 }
