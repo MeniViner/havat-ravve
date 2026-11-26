@@ -277,7 +277,7 @@ export async function addPlace(actor: Actor, name: string, lat: number, lng: num
   return id;
 }
 export const updatePlace = (id: string, data: Partial<Pick<Place, 'name' | 'lat' | 'lng'>>) => write.update('places', id, data);
-export const deletePlace = (id: string) => write.remove('places', id);
+export const deletePlace = (id: string) => write.update('places', id, { archived: true });
 
 // ---------- helpers ----------
 export async function compressPhoto(file: File, maxDim = 1280, maxChars = 380_000): Promise<string> {
@@ -303,8 +303,8 @@ export function getPosition(): Promise<{ lat: number; lng: number; accuracy: num
     if (!('geolocation' in navigator)) return reject(Error('אין גישה למיקום במכשיר הזה'));
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), accuracy: Math.round(p.coords.accuracy) }),
-      () => reject(Error('לא הצלחנו לקבל מיקום. בדקו שהרשאת מיקום פתוחה.')),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+      (e) => reject(Error(e.code === 1 ? 'הגישה למיקום נדחתה. אפשר להתיר אותה בהגדרות האתר.' : e.code === 3 ? 'הזמן לקבלת מיקום חלף. נסו שוב בשטח פתוח.' : 'אין מדידת מיקום זמינה. בדקו ששירותי המיקום פעילים.')),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
   });
 }

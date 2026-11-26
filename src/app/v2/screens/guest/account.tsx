@@ -66,7 +66,7 @@ function useItems(ctx: GuestCtx) {
 const ItemRow = ({ it }: { it: Item }) => <Row minHeight={58} onClick={() => go(it.go)} title={it.title} tags={<Tag tone={it.tag.tone}>{it.tag.text}</Tag>} meta={it.meta || undefined} />;
 
 // ---------- U12 ----------
-const ABOUT: [RegExp, string][] = [[/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
+const ABOUT: [RegExp, string][] = [[/^\/farm\/map$/, 'כדי לפתוח את המפה בחשבון הבעלים של החווה'], [/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
 /** U12: the account page signed out, and /login?next=... (then the copy says why, and signing in goes on to `next`). */
 export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
   const sign = useSignIn();
@@ -77,7 +77,7 @@ export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
       {next && <TopBar className="guest-pull" back={{ label: 'חזרה', onClick: () => back('/') }} />}
       <main className="guest-signin__main">
         <span className="guest-signin__mark" aria-hidden="true"><Icon name="farm" size={32} /></span>
-        <h1 className="guest-signin__title">{next?.includes('/order') ? 'רגע לפני הכרטיסים' : 'החשבון שלי בחוות רווה'}</h1>
+        <h1 className="guest-signin__title">{next === '/farm/map' ? 'כניסה למפת החווה' : next?.includes('/order') ? 'רגע לפני הכרטיסים' : 'החשבון שלי בחוות רווה'}</h1>
         <p className="guest-signin__text">{about}, נכנסים פעם אחת עם חשבון Google. לא נשאל שוב.</p>
         <GoogleButton disabled={sign.busy} onClick={() => void sign.go(next)} />
         {sign.error && <span className="k-field__error" role="alert">{sign.error}</span>}

@@ -95,7 +95,7 @@ export const RESOURCES: ResourceDef[] = [
     visible: (c, d) => isManager(c) || !d.managersOnly,
     notes: ['Every day the app creates that day\'s task from each active template (id "<templateId>_<date>").'],
   },
-  { name: 'places', col: 'places', path: '/v1/places', scope: 'places:read', he: 'מקומות בחווה (שם וקואורדינטות)', order: { field: 'name', dir: 'ASCENDING' } },
+  { name: 'places', col: 'places', path: '/v1/places', scope: 'places:read', he: 'מקומות בחווה (שם וקואורדינטות)', notes: ['An archived place keeps its ID and history. Offer only places where archived is not true for new work.'], order: { field: 'name', dir: 'ASCENDING' } },
   {
     name: 'profiles', col: 'users', path: '/v1/profiles', scope: 'people:read',
     he: 'כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה',

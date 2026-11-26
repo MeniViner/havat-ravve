@@ -52,6 +52,15 @@ export function FarmRoot({ ctx }: ScreenProps) {
       onCamera={() => go('/new?camera=1')} onMic={() => go('/new?mic=1')} />}>
       <RootHead overline={`${dayOverline()} · ${hhmm(now())}`} title="החווה" />
 
+      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go(ctx.owner ? '/farm/map' : '/places?from=farm'); }}>
+        <span className="farm-linkcard__box farm-linkcard__box--count"><Icon name="pin" size={22} /></span>
+        <div className="farm-linkcard__body">
+          <span className="farm-linkcard__sub">{ctx.owner ? 'מפת החווה' : 'מקומות בחווה'}</span>
+          <span className="farm-linkcard__over">{ctx.places.length === 1 ? 'מקום אחד שמור' : ctx.places.length ? `${ctx.places.length} מקומות שמורים` : ctx.owner ? 'פתיחת מפה וסקר שטח' : 'עוד לא נשמר מקום'}</span>
+        </div>
+        <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
+      </a>
+
       <Hero className="farm-here" aria-label="מי בחווה עכשיו">
         <div className="farm-here__head">
           <h2 className="k-hero__h2">{here.now.length ? `${here.now.length} בחווה עכשיו` : 'אין רשומים בחווה עכשיו'}</h2>
@@ -101,14 +110,6 @@ export function FarmRoot({ ctx }: ScreenProps) {
         <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
       </a>
 
-      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go('/places?from=farm'); }}>
-        <span className="farm-linkcard__box farm-linkcard__box--count"><Icon name="pin" size={22} /></span>
-        <div className="farm-linkcard__body">
-          <span className="farm-linkcard__over">מקומות בחווה</span>
-          <span className="farm-linkcard__sub">{ctx.places.length ? `${ctx.places.length} מקומות שמורים` : 'עוד לא נשמר מקום'}</span>
-        </div>
-        <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
-      </a>
       {!ctx.manager && <LinkCard path="/manage/activity" title="כל הפעילות" meta="פעילות הצוות בחווה" />}
     </AppScreen>
   );
