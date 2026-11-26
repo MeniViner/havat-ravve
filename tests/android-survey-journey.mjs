@@ -28,8 +28,9 @@ const findBtn = (t) =>
   JSON.stringify(t) +
   '&&!x.disabled)';
 const click = async (t) => {
-  await wait('!!(' + findBtn(t) + ')');
-  await ev('(' + findBtn(t) + ').click()');
+  await wait(
+    '(() => { const button = ' + findBtn(t) + '; if (!button) return false; button.click(); return true; })()'
+  );
 };
 const fill = async (label, val) => {
   const field =
@@ -234,9 +235,11 @@ try {
   assert.equal(await ev('document.querySelector(".survey-modes input").checked'), true);
   await click('שמירת טיוטה');
   await wait('!document.body.innerText.includes("סקירת השביל")');
-  if (await ev('!!(' + findBtn('ניסיון סנכרון נוסף') + ')')) await click('ניסיון סנכרון נוסף');
+  await wait('!/ממתינ(?:ה|ות) לסנכרון/.test(document.body.innerText)', 35000);
   assert.equal((await lookup('places', placeName)).length, 1);
-  assert.equal((await lookup('farmTrails', trailName)).length, 1);
+  const afterEdit = await lookup('farmTrails', trailName);
+  assert.equal(afterEdit.length, 1);
+  assert.equal(afterEdit[0].fields.status.stringValue, 'draft');
   console.log(
     JSON.stringify({
       place: placeName,
