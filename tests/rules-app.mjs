@@ -1183,10 +1183,19 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'users/staff'), profile('staff', 'staff'));
       await setDoc(doc(f, 'users/guest'), profile('guest', 'guest'));
       await setDoc(doc(f, 'users/raz'), profile('raz', 'vendor', { vendorId: 'v-raz', helper: false, addedBy: 'mgr', inviteCode: 'code-raz-0001' }));
-      await setDoc(doc(f, 'users/tamar'), profile('tamar', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-tamar-01' }));
+      // a full-sized profile (log, push, photo, fields), so D7's removal is checked against the rules' expression budget
+      const heavy = { notes: 'הערה', log: Array.from({ length: 30 }, (_, i) => ({ at: now, by: actor('mgr'), text: 'שורה ' + i })), fields: { receiptPreference: 'whatsapp' }, photo: 'https://havat-ravve-api.meniviner.workers.dev/v1/files/avatar/tamar/' + 'a'.repeat(32) + '.jpg', photoSource: 'custom', googlePhoto: 'https://lh3.googleusercontent.com/a/x', town: 'רווה', birthDate: '1990-01-01', push: { enabled: true, kinds: ['task', 'vendor', 'event'], devices: Array.from({ length: 6 }, (_, i) => ({ token: 't' + i, at: now })), updatedAt: now }, welcomedAt: now, joinCode: '' };
+      await setDoc(doc(f, 'users/tamar'), profile('tamar', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-tamar-01', ...heavy }));
       await setDoc(doc(f, 'users/dana'), profile('dana', 'vendor', { vendorId: 'v-dana', helper: false, addedBy: 'mgr', inviteCode: 'code-dana-001' }));
+      await setDoc(doc(f, 'users/omer'), profile('omer', 'vendor', { vendorId: 'v-raz', helper: true, addedBy: 'raz', inviteCode: 'code-omer-001' }));
       await setDoc(doc(f, 'counters/users'), { value: 6 });
-      await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'] }));
+      await setDoc(doc(f, 'vendors/v-raz'), vendor('גבינות משק רז', { events: ['e-hidden'], people: [
+        { name: 'בדיקה בעלים', role: 'owner', uid: 'raz', code: 'code-raz-0001', entered: true },
+        { name: 'בדיקה עוזר', role: 'helper', code: 'code-tamar-01', entered: true },
+        { name: 'בדיקה עוזר נוסף', role: 'helper', code: 'code-omer-001', entered: true },
+        { name: 'בדיקה קישור ישן', role: 'helper', code: 'code-omer-old', entered: true },
+        { name: 'בדיקה רשומה ישנה', role: 'helper', entered: true },
+      ] }));
       await setDoc(doc(f, 'vendors/v-raz/private/main'), { notes: 'משלם באיחור', updatedAt: now });
       await setDoc(doc(f, 'vendors/v-dana'), vendor('קרמיקה של דנה', { events: ['e-other'] }));
       const ev = (title, published) => ({ title, published, start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z', stall: true, createdBy: actor('mgr'), createdAt: now, updatedAt: now });
@@ -1203,7 +1212,12 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
       await setDoc(doc(f, 'vendor_invites/code-owner-new'), invite('code-owner-new', 'v-raz', 'owner'));
       await setDoc(doc(f, 'vendor_invites/code-guest-001'), invite('code-guest-001', 'v-dana', 'helper', { createdBy: actor('dana') }));
       await setDoc(doc(f, 'vendor_invites/code-used-0001'), invite('code-used-0001', 'v-raz', 'helper', { active: false, usedBy: 'someone', usedAt: now }));
+      await setDoc(doc(f, 'vendor_invites/code-omer-001'), invite('code-omer-001', 'v-raz', 'helper', { active: false, usedBy: 'omer', usedAt: now, createdBy: actor('raz') }));
+      await setDoc(doc(f, 'vendor_invites/code-omer-old'), invite('code-omer-old', 'v-raz', 'helper', { active: false, usedBy: 'omer', usedAt: now, createdBy: actor('raz') }));
+      await setDoc(doc(f, 'users/claim-race'), profile('claim-race', 'guest'));
+
     });
+    const omer = db('omer');
     const raz = db('raz'), tamar = db('tamar'), dana = db('dana'), staff = db('staff'), mgr = db('mgr'), guest = db('guest'), fresh = db('fresh'), fresh2 = db('fresh2');
 
     vsection('Rules: own stall, invited events, nothing of other people');
@@ -1281,7 +1295,7 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await no(getDocs(query(collection(tamar, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 helper cannot list invites');
     await no(getDocs(query(collection(dana, 'vendor_invites'), where('vendorId', '==', 'v-raz'))), '20 another vendor cannot list');
     await ok(getDoc(doc(guest, 'vendor_invites/code-owner-new')), '21 the link holder reads the invite');
-    await ok(updateDoc(doc(raz, 'vendor_invites/code-avi-0001'), { active: false }), '26 owner revokes a helper invite');
+    await no(updateDoc(doc(raz, 'vendor_invites/code-avi-0001'), { active: false }), '26 closing a helper invite requires its row removal');
     await no(updateDoc(doc(raz, 'vendor_invites/code-owner-new'), { active: false }), '26 owner cannot revoke an owner invite');
 
     vsection('Rules: claiming an invite');
@@ -1310,6 +1324,86 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     await ok(getDoc(doc(guest, 'events/e-other')), '24 the new helper reads the invited event');
     await no(updateDoc(doc(guest, 'users/guest'), { vendorId: 'v-raz', updatedAt: now }), 'a vendor cannot switch stall by itself');
     await no(updateDoc(doc(mgr, 'users/staff'), { role: 'vendor', status: 'active', notes: '', updatedAt: now }), 'a manager cannot make a vendor without a claim');
+
+    vsection('Rules: the owner removes a helper (D7)');
+    const backToGuest = { role: 'guest', updatedAt: now };
+    const liveRef = (u) => doc(u, 'events/e-hidden/counters/live');
+    const stallReqs = (u) => getDocs(query(collection(u, 'events/e-hidden/vendor_requests'), where('vendorId', '==', 'v-raz')));
+    await no(updateDoc(doc(tamar, 'users/omer'), backToGuest), '30 a helper cannot remove another helper');
+    await no(updateDoc(doc(raz, 'users/guest'), backToGuest), '30 owner cannot remove a helper of another stall');
+    await no(updateDoc(doc(raz, 'users/fresh'), backToGuest), '30 owner cannot remove a co-owner');
+    await no(updateDoc(doc(raz, 'users/tamar'), { role: 'staff', updatedAt: now }), '30 owner can only set the helper to guest');
+    await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, displayName: 'אחר' }), '30 owner cannot touch other fields of the helper');
+    await no(updateDoc(doc(raz, 'users/tamar'), { ...backToGuest, vendorId: '' }), '30 owner cannot clear the vendor link itself');
+    await ok(getDoc(doc(tamar, 'vendors/v-raz')), '29 before: the helper reads the stall');
+    const stall = (u = raz) => doc(u, 'vendors/v-raz');
+    const remove = async (code, uid, { log = true, close = true, u = raz } = {}) => {
+      const people = (await getDoc(stall(u))).data().people;
+      const b = writeBatch(u);
+      b.update(stall(u), { people: people.filter((p) => code ? p.code !== code : !!p.code), updatedAt: now });
+      if (close && code) b.update(doc(u, 'vendor_invites', code), { active: false });
+      if (uid) b.update(doc(u, 'users', uid), backToGuest);
+      if (log && code) b.set(doc(u, 'activity', code), { kind: 'event', refId: 'v-raz', action: 'removed', text: 'גישה לדוכן', by: actor('raz'), at: now, subjectUid: '', eventId: '' });
+      return b.commit();
+    };
+    await no(getDoc(doc(raz, 'users/tamar')), '29 stall owner still cannot read a helper profile');
+    await ok(getDoc(doc(raz, 'activity/code-tamar-01')), '29 owner can check their own removal receipt before it exists');
+    await no(getDoc(doc(dana, 'activity/code-tamar-01')), '29 other stall cannot check the receipt');
+    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 profile-only change is refused');
+    await no(remove('code-tamar-01'), '29 row and invite cannot change without revoking the matching account');
+    await no(remove('code-tamar-01', 'tamar', { log: false }), '29 removal must be logged');
+    await no(remove('code-avi-0001', null, { close: false }), '29 active invite must close with the row');
+    await no(remove('', null), '29 legacy row without a code needs manual review');
+    await no(remove('code-omer-old', 'omer'), '29 old link cannot revoke the profile on a newer link');
+    await ok(remove('code-omer-old'), '29 old row can be removed and newer access is kept');
+    await ok(remove('code-tamar-01', 'tamar'), '29 owner removes the row, closes the invite and revokes a full-sized profile in one logged write');
+    const revoked = (await getDoc(doc(tamar, 'users/tamar'))).data();
+    if (revoked.role !== 'guest' || revoked.log.length !== 30 || revoked.push.devices.length !== 6 || revoked.inviteCode !== 'code-tamar-01') {
+      throw new Error('removal changed unrelated profile fields');
+    }
+    await ok(remove('code-avi-0001'), '29 unclaimed link closes with the removed row');
+    await no(claimExisting(guest, 'guest', 'code-avi-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }), '29 removed invite cannot be claimed');
+
+    await no(getDoc(doc(tamar, 'vendors/v-raz')), '29 the removed helper no longer reads the stall');
+    await no(getDoc(doc(tamar, 'events/e-hidden')), '29 nor the invited event');
+    await no(getDoc(liveRef(tamar)), '29 nor its live counters');
+    await no(stallReqs(tamar), '29 nor the stall\'s requests (list)');
+    await no(getDoc(reqRef(tamar, 'r2')), '29 nor a request they created');
+    await no(setDoc(reqRef(tamar, 'r6'), request('r6', 'e-hidden', 'v-raz', 'tamar')), '29 and cannot create a request');
+    await no(updateDoc(doc(tamar, 'events/e-hidden/vendors/v-raz'), { guidelinesReadAt: now }), '29 nor write the stall\'s event record');
+    await ok(getDoc(doc(tamar, 'users/tamar')), '29 the account itself stays (own profile)');
+    await no(updateDoc(doc(raz, 'users/tamar'), backToGuest), '29 a repeated direct revocation is refused');
+    async function addHelper(code) {
+      const b = writeBatch(raz);
+      b.set(doc(raz, 'vendor_invites', code), invite(code, 'v-raz', 'helper', { createdBy: actor('raz') }));
+      b.update(stall(), { people: arrayUnion({ name: 'בדיקה', role: 'helper', entered: false, code }), updatedAt: now });
+      return b.commit();
+    }
+    await ok(addHelper('reinvite-0001'), '29 stall owner can re-invite a removed helper');
+    await ok(claimExisting(tamar, 'tamar', 'reinvite-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }), '29 removed helper can claim a fresh invite');
+    await ok(getDoc(doc(tamar, 'vendors/v-raz')), '29 helper can read the stall after re-invite');
+    await ok(addHelper('racing-claim1'), '29 owner adds a second test link');
+    const C = db('claim-race');
+    const [claim, removal] = await Promise.allSettled([
+      claimExisting(C, 'claim-race', 'racing-claim1', { vendorId: 'v-raz', role: 'helper', createdBy: 'raz' }),
+      remove('racing-claim1'),
+    ]);
+    if (claim.status === 'fulfilled') {
+      if (removal.status === 'fulfilled') throw new Error('removal missed the concurrent claimant');
+      await ok(remove('racing-claim1', 'claim-race'), '29 removal recovers if the claim won first');
+    } else if (removal.status !== 'fulfilled') {
+      throw new Error('neither the claim nor removal committed');
+    }
+    await no(getDoc(doc(C, 'vendors/v-raz')), '29 concurrent claim cannot leave the account with access after removal');
+
+    await ok(getDoc(doc(raz, 'vendors/v-raz')), '29 the owner keeps the stall');
+    await ok(getDoc(liveRef(raz)), '29 the owner keeps the live counters');
+    await ok(stallReqs(raz), '29 the owner keeps the requests');
+    await ok(getDoc(doc(omer, 'vendors/v-raz')), '29 the other helper keeps the stall');
+    await ok(getDoc(doc(omer, 'events/e-hidden')), '29 the other helper keeps the event');
+    await ok(getDoc(liveRef(omer)), '29 the other helper keeps the live counters');
+    await ok(stallReqs(omer), '29 the other helper keeps the requests');
+    await ok(setDoc(reqRef(omer, 'r7'), request('r7', 'e-hidden', 'v-raz', 'omer')), '29 the other helper still creates a request');
 
     vsection('Rules: removing access (V6)');
     await ok(updateDoc(doc(mgr, 'users/raz'), { role: 'guest', notes: '', updatedAt: now, log: [] }), '27 manager sets the vendor back to guest');

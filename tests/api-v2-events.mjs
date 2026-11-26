@@ -471,8 +471,9 @@ try {
     check((await docOf('vendors/' + vid)).people.length === 2 && (await docOf('vendor_invites/' + helper)).role === 'helper', 'the person and the invite are stored');
     const il = await r(MGR, `/v1/vendor-invites?vendorId=${vid}`);
     check(il.status === 200 && il.json.data.items.length === 2 && (await r(STAFF, '/v1/vendor-invites')).status === 403, 'vendorInvites.list for managers only');
-    ok(await w(MGR, 'vendors.removePerson', { vendorId: vid, code: helper }), 'vendors.removePerson');
-    check((await docOf('vendors/' + vid)).people.length === 1 && (await docOf('vendor_invites/' + helper)).active === false, 'removed, and the link closed');
+    const rmp = await w(MGR, 'vendors.removePerson', { vendorId: vid, code: helper });
+    ok(rmp, 'vendors.removePerson');
+    check((await docOf('vendors/' + vid)).people.length === 1 && (await docOf('vendor_invites/' + helper)).active === false && rmp.json.data.accessRemoved === false, 'removed, and the link closed (nobody had signed in with it)');
     // an account that signed in with the owner link
     await person('syn-vendor-acct', 'מיכל כהן', 'vendor', { vendorId: vid, helper: false, addedBy: 'syn-mgr', inviteCode: owner.code });
     await seed('vendor_invites/' + owner.code, { ...(await docOf('vendor_invites/' + owner.code)), usedBy: 'syn-vendor-acct', usedAt: now, active: false });
@@ -531,6 +532,106 @@ try {
     const myActs = (await where('activity', 'by', MGR_ACTOR)).slice(0, 40);
     for (const a of myActs) { const { id, via: _via, ...data } = a; await tryIt('activity ' + a.action, setDoc(doc(mgr, 'activity', 'copy-' + id), data)); }
     check(tries.every(Boolean) && tries.length >= 30, `the app's Rules accept every shape (${tries.filter(Boolean).length}/${tries.length})`);
+  }
+
+  section('vendors.removePerson: the removed person loses access, the others keep theirs');
+  {
+    const { assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
+    const { doc, getDoc, getDocs, setDoc, collection, query, where: fwhere, writeBatch } = require('firebase/firestore');
+    const sv = 'syn-rp-v', sname = 'שמן זית בדיקה';
+    const row = (name, role, code, uid) => ({ name, role, entered: true, code, ...(uid ? { uid } : {}) });
+    await seed('vendors/' + sv, { name: sname, phone: '0506666666', product: 'שמן', sells: 'שמן', external: true, notes: '', note: '', needs: [], events: [eventId], inviteNext: false, createdAt: now, updatedAt: now, people: [
+      row('בעלת השמן', 'owner', 'rpownercode1', 'syn-rp-owner'),
+      row('עוזר א', 'helper', 'rphelperaaa1'), // no uid in the row: the account is found through the invite's usedBy
+      row('עוזרת ב', 'helper', 'rphelperbbb1', 'syn-rp-b'),
+      row('עוזר ג', 'helper', 'rphelperccc1'), // signed in, then claimed another stall's link
+    ] });
+    for (const [code, role, uid, linkedTo] of [['rpownercode1', 'owner', 'syn-rp-owner', sv], ['rphelperaaa1', 'helper', 'syn-rp-a', sv], ['rphelperbbb1', 'helper', 'syn-rp-b', sv], ['rphelperccc1', 'helper', 'syn-rp-c', 'syn-elsewhere']]) {
+      await seed('vendor_invites/' + code, { code, vendorId: sv, vendorName: sname, role, name: uid, phone: '', active: false, usedBy: uid, usedAt: now, createdBy: MGR_ACTOR, createdAt: now });
+      await person(uid, uid, 'vendor', { vendorId: linkedTo, helper: role === 'helper', addedBy: 'syn-mgr', inviteCode: linkedTo === sv ? code : 'elsewhere01' });
+    }
+    await seed(`events/${eventId}/vendors/${sv}`, { vendorId: sv, name: sname, confirmed: true, notes: '', status: 'confirmed', invitedAt: now, invitedBy: MGR_ACTOR, answeredAt: now, sells: 'שמן', needs: [], people: 2, vehicle: '', note: '', spot: null, spotNote: '', arrivedAt: null, feedback: null, updatedAt: now });
+    const vreq = (id, uid) => ({ id, eventId, vendorId: sv, vendorName: sname, kind: 'power', text: 'החשמל נפל', by: { uid, name: uid }, createdAt: now, takenBy: null, closedAt: null, closedBy: null });
+    await seed(`events/${eventId}/vendor_requests/rp-a`, vreq('rp-a', 'syn-rp-a'));
+    const claims = (email) => ({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
+    const as = (uid) => rulesEnv.authenticatedContext(uid, claims(uid + '@synthetic.invalid')).firestore();
+    const A = as('syn-rp-a'), B = as('syn-rp-b'), O = as('syn-rp-owner');
+    const reads = (u) => [() => getDoc(doc(u, 'vendors', sv)), () => getDoc(doc(u, 'events', eventId, 'counters', 'live')), () => getDocs(query(collection(u, 'events', eventId, 'vendor_requests'), fwhere('vendorId', '==', sv))), () => getDoc(doc(u, 'events', eventId, 'vendor_requests', 'rp-a'))];
+    const passes = async (ps) => { try { for (const p of ps) await assertSucceeds(p()); return true; } catch (e) { console.error('   ', String(e).slice(0, 220)); return false; } };
+    const refused = async (ps) => { for (const p of ps) { try { await assertFails(p()); } catch { return false; } } return true; };
+    check(await passes(reads(A)), 'before: the helper reads the stall, the live counters and the stall\'s requests');
+
+    const rp = await w(MGR, 'vendors.removePerson', { vendorId: sv, code: 'rphelperaaa1' });
+    ok(rp, 'vendors.removePerson of a helper who signed in');
+    const ua = await docOf('users/syn-rp-a');
+    check(rp.json?.data?.accessRemoved === true && ua.role === 'guest' && ua.vendorId === sv && ua.log.at(-1).text === `הגישה לדוכן ${sname} הוסרה` && ua.log.at(-1).by.uid === 'syn-mgr', 'the account (found through the invite) is a guest again, with a log line', ua);
+    const vp = await docOf('vendors/' + sv);
+    check(vp.people.map((x) => x.code).join() === 'rpownercode1,rphelperbbb1,rphelperccc1' && (await docOf('vendor_invites/rphelperaaa1')).active === false, 'the row is gone and the link stays closed', vp.people);
+    check((await docOf('users/syn-rp-b')).role === 'vendor' && (await docOf('users/syn-rp-owner')).role === 'vendor', 'the owner and the other helper are still linked');
+    check(await refused([...reads(A), () => setDoc(doc(A, 'events', eventId, 'vendor_requests', 'rp-a2'), vreq('rp-a2', 'syn-rp-a'))]), 'Rules: the removed helper no longer reads the stall, the live counters or the requests, and cannot create a request');
+    check(await passes([...reads(O), ...reads(B), () => setDoc(doc(B, 'events', eventId, 'vendor_requests', 'rp-b'), vreq('rp-b', 'syn-rp-b'))]), 'Rules: the owner and the other helper keep reading, and the helper still creates a request');
+
+    const rc = await w(MGR, 'vendors.removePerson', { vendorId: sv, code: 'rphelperccc1' });
+    const uc = await docOf('users/syn-rp-c');
+    check(rc.status === 200 && rc.json.data.accessRemoved === false && uc.role === 'vendor' && uc.vendorId === 'syn-elsewhere', 'an account linked to another stall since is left alone', [rc.json?.data, uc]);
+
+    const add = async (name) => {
+      const res = await w(MGR, 'vendors.addPerson', { vendorId: sv, name, role: 'helper' });
+      ok(res, 'create a synthetic helper link');
+      return res.json.data.code;
+    };
+    const adopt = (account, uid, invite, createdBy = 'syn-mgr') => {
+      const b = writeBatch(account);
+      b.update(doc(account, 'users', uid), { role: 'vendor', vendorId: sv, helper: true, inviteCode: invite, addedBy: createdBy, updatedAt: now });
+      b.update(doc(account, 'vendor_invites', invite), { active: false, usedBy: uid, usedAt: now });
+      return b.commit();
+    };
+    const old = await add('קישור ישן');
+    await adopt(B, 'syn-rp-b', old);
+    const later = await add('קישור חדש');
+    await adopt(B, 'syn-rp-b', later);
+    ok(await w(MGR, 'vendors.removePerson', { vendorId: sv, code: old }), 'remove an old link at the same stall');
+    check((await docOf('users/syn-rp-b')).inviteCode === later && await passes(reads(B)), 'older row removal keeps access through a newer same-stall invite');
+
+    const failedBody = { vendorId: sv, code: later };
+    const retryKey = randomUUID();
+    const removal = (fault) => api('POST', '/v1/actions/vendors.removePerson', { ...MGR, body: failedBody, idem: retryKey, headers: { ...MGR.headers, 'x-test-fault': fault } });
+    const unsent = await removal('commit-lost');
+    check(code(unsent) === 'OUTCOME_UNKNOWN' && (await docOf('users/syn-rp-b')).role === 'vendor'
+      && (await docOf('vendors/' + sv)).people.some((p) => p.code === later) && !(await docOf('activity/' + later)), 'before an uncommitted write all three documents and the journal stay unchanged');
+    const lost = await removal('commit-timeout');
+    ok(lost, 'lost acknowledgement finds the committed removal');
+    const retried = await w(MGR, 'vendors.removePerson', failedBody, retryKey);
+    check(retried.json?.data?.replayed === true && (await docOf('users/syn-rp-b')).role === 'guest'
+      && (await acts(sv)).filter((a) => a.id === later).length === 1, 'replaying a lost response does not write a second journal entry');
+    check((await w(MGR, 'vendors.removePerson', failedBody)).json?.data?.alreadyRemoved === true, 'same resolved row already removed under a new request key');
+
+    const keep = (await docOf('vendors/' + sv)).people;
+    await seed('vendors/' + sv, { ...(await docOf('vendors/' + sv)), people: [...keep,
+      { name: 'ישן עם חשבון', role: 'helper', uid: 'syn-rp-b', entered: true },
+      { name: 'ישן בלי חשבון', role: 'helper', entered: true },
+      row('חסר מסמך קישור', 'helper', 'missing-test1'),
+    ] });
+    for (const selector of [{ name: 'ישן עם חשבון' }, { name: 'ישן בלי חשבון' }, { code: 'missing-test1' }]) {
+      const res = await w(MGR, 'vendors.removePerson', { vendorId: sv, ...selector });
+      check(code(res) === 'VALIDATION_FAILED' && (await docOf('vendors/' + sv)).people.length === keep.length + 3, 'missing or unverifiable identity leaves the list intact');
+    }
+    const next = await add('הזמנה חוזרת');
+    await adopt(B, 'syn-rp-b', next);
+    check(await passes(reads(B)), 'removed account uses a fresh invite');
+    const anotherStall = await w(MGR, 'vendors.removePerson', { vendorId: 'syn-legacy-v', code: next });
+    check(code(anotherStall) === 'NOT_FOUND' && await passes(reads(B)), 'code from another stall cannot be used for removal');
+    check(code(await w(STAFF, 'vendors.removePerson', { vendorId: sv, code: next })) === 'FORBIDDEN', 'staff credentials may not remove a vendor helper');
+
+    await person('syn-claim-race', 'חשבון בדיקה', 'guest');
+    const racing = await add('מרוץ הרשמה');
+    const Race = as('syn-claim-race');
+    const [claim, remove] = await Promise.allSettled([
+      adopt(Race, 'syn-claim-race', racing),
+      w(MGR, 'vendors.removePerson', { vendorId: sv, code: racing }),
+    ]);
+    check(remove.status === 'fulfilled' && remove.value.status === 200 && await refused(reads(Race)), 'the concurrent API removal leaves the claimant without stall access', { claimed: claim.status, removal: remove.status === 'fulfilled' ? remove.value.status : 'failed' });
+
   }
 
   section('vendors.delete: the whole stall');

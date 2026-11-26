@@ -1,6 +1,6 @@
 // Q18-Profile (replaces L6-Me and C12-Profile), C13-ProfileEdit and the notification preferences sheet.
 // Q18: "עריכת פרטים" is the underlined link at the top end; registration answers are edited in /me/edit, not listed here;
-// the farm website, terms and the demo are quiet links beside "יציאה מהחשבון"; account deletion is at the bottom of /me/edit.
+// Account deletion is at the bottom of /me/edit.
 import { useState } from 'react';
 import { AppScreen, go, useToast } from '../../core';
 import { TopBar, Button, Icon, StatRow, StatTile, DetailList, DetailRow, TextLink, ListCard, Row, IconTile, FormHeader, Field, BottomBar, Toggle, Sheet, UnderlineLink, initials } from '../../kit';
@@ -19,7 +19,7 @@ import {
   receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { RegistrationQuestions } from './fields';
-import { isNative, openSitePage } from '../../../native';
+import { isNative } from '../../../native';
 import './system.css';
 
 export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
@@ -27,6 +27,31 @@ export function signOutEverywhere(demoOn: boolean, profile?: Profile) {
   // this phone stops getting pushes for this account (best effort; sign-out never waits for it)
   const revoke = profile ? revokeThisDevice(profile).catch(() => {}) : Promise.resolve();
   void Promise.race([revoke, new Promise((r) => setTimeout(r, 1500))]).then(() => signOutUser()).then(() => go('/', true));
+}
+
+export function AccountDemoRow({ viewAsStaff }: { viewAsStaff?: boolean }) {
+  const demo = useDemo();
+  return (
+    <Row leading={<IconTile icon="people" />} title="מצב הדגמה" meta={demo.on ? 'ההדגמה פעילה' : 'התנסות עם נתוני דוגמה'}
+      onClick={() => go('/demo')}
+      actions={viewAsStaff === undefined ? null : (
+        <Button variant="neutral" className="account-demo__preview" onClick={() => setViewAsStaff(!viewAsStaff)}>
+          {viewAsStaff ? 'חזרה לניהול' : 'תצוגת מתנדב'}
+        </Button>
+      )} />
+  );
+}
+
+export function AccountFooter({ onSignOut, websiteInNewTab = false }: { onSignOut: () => void; websiteInNewTab?: boolean }) {
+  return (
+    <footer className="account-footer">
+      <div className="account-footer__links k-card">
+        <Button variant="quiet" icon="globe" href="/" target={websiteInNewTab ? '_blank' : undefined} rel={websiteInNewTab ? 'noopener' : undefined}>האתר של החווה</Button>
+        <Button variant="quiet" icon="file" onClick={() => go('/terms')}>תנאי שימוש</Button>
+      </div>
+      <Button variant="danger" icon="exit" block onClick={onSignOut}>יציאה מהחשבון</Button>
+    </footer>
+  );
 }
 
 /** Q18 (L6 / C12): the same structure; managers and owners get the number, "view as volunteer", and no "contact managers". */
@@ -69,21 +94,12 @@ export function ProfileScreen({ ctx }: ScreenProps) {
       <ListCard>
         <Row leading={<IconTile icon="bell-settings" />} title="התראות במכשיר" meta={`${kinds.length} מתוך ${PUSH_KINDS.length} פעילות`} onClick={() => navigate('/me?notifications=1', false, true)} />
         <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
-        {(lead || ctx.viewAsStaff) && (
-          <Row leading={<IconTile icon="people" />} title="לראות את האפליקציה כמו מתנדב"
-            meta={ctx.viewAsStaff ? 'פעיל עכשיו. נגיעה מחזירה לתצוגה הרגילה' : 'בלי ניהול ובלי פרויקטים'} onClick={() => setViewAsStaff(!ctx.viewAsStaff)} />
-        )}
+        <AccountDemoRow viewAsStaff={lead || ctx.viewAsStaff ? ctx.viewAsStaff : undefined} />
         {!lead && !ctx.viewAsStaff && !vendor && <Row leading={<IconTile icon="people" />} title="פנייה למנהלים" meta="שאלה, בקשה או בעיה" onClick={() => go('/contact?from=team')} />}
         {!isNative && <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" meta="" onClick={() => go('/install')} />}
         {!vendor && <Row leading={<IconTile icon="ticket" />} title="הכרטיסים שלי כאורח" meta="" onClick={() => go('/me/tickets')} />}
       </ListCard>
-      <div className="system-foot">
-        <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>
-        <Button variant="quiet" onClick={() => openSitePage('/')}>האתר של החווה</Button>
-        <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
-        {/* the demo link (parity): a quiet link too, only while the demo is off */}
-        {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}
-      </div>
+      <AccountFooter websiteInNewTab onSignOut={() => signOutEverywhere(demo.on, p)} />
       <NotificationsSheet open={notifs} onClose={() => navigate('/me', true, true)} ctx={ctx} />
     </AppScreen>
   );

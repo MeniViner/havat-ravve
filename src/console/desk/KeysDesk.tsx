@@ -7,7 +7,7 @@ import { dayName, ddmm, daysFromToday } from '../../app/v2/format';
 import { nowMs } from '../../app/clock';
 import { ago, until, useLoad } from '../shared';
 import { errorText, source, type KeyView, type LastUse, type Person } from '../source';
-import { allLevels, DESK_AREAS, deskLevels, deskScopes, levelHe, scopesFrom, scopesShort, type DeskArea, type Level, type Levels } from '../scopes';
+import { allLevels, DESK_AREAS, deskExtraLabels, deskLevels, deskScopes, levelHe, scopesFrom, scopesShort, type DeskArea, type Level, type Levels } from '../scopes';
 import { ACCESS, type Access, accessOf, EXPIRY, type Expiry, GRACE, type Grace, inDays, type Notify, teamOf, unusedText, usageText, useLastUse } from '../Keys';
 import { Act, Btn, Check, Chips, Cols, DTag, Dialog, EmptyPanel, Fact, Facts, Failed, Input, LoadingPanel, Mono, Notice, Page, Panel, Seg, Select, Skeleton, SubTitle, Table, TableCard, Toolbar } from './desk';
 import { useLeaveGuard, useSelected } from './route';
@@ -85,9 +85,9 @@ export function KeysDesk({ keys, error, reload, lastUsed, people, notify }: { ke
 }
 
 /** One area: a box (may or may not), and at the end what it may there, changed in place. */
-function AreaRow({ a, level, onChange }: { a: DeskArea; level: Level; onChange: (l: Level) => void }) {
+function AreaRow({ a, level, extra, onChange }: { a: DeskArea; level: Level; extra: string[]; onChange: (l: Level) => void }) {
   return (
-    <Check on={level !== 'none'} onChange={(on) => onChange(on ? 'read' : 'none')} label={a.he}
+    <Check on={level !== 'none'} onChange={(on) => onChange(on ? 'read' : 'none')} label={extra.length ? <>{a.he} <small className="da-note">· {extra.join(', ')}</small></> : a.he}
       aside={level === 'none' ? undefined : (
         <select className="da-level" aria-label={`${a.he}: מה מותר`} value={level} onChange={(e) => onChange(e.target.value as Level)}>
           {(['read', 'write'] as Level[]).map((l) => <option key={l} value={l}>{levelHe(a, l)}</option>)}
@@ -102,8 +102,9 @@ const toAccess = (d: Draft, access: Access, scopes: string[] | null): Draft => (
   access, levels: access === 'all' ? deskLevels(null) : access === 'read' ? deskLevels(scopesFrom(allLevels('read'))) : scopes && accessOf(scopes) === 'custom' ? deskLevels(scopes) : d.levels });
 const AccessSelect = ({ value, onChange }: { value: Access; onChange: (a: Access) => void }) =>
   <span className="da-access"><Select bare label="מה המפתח יכול" value={value} onChange={(v) => onChange(v as Access)} options={ACCESS} /></span>;
-function Areas({ d, set, main }: { d: Draft; set: (d: Draft) => void; main: boolean }) {
-  return <>{DESK_AREAS.filter((a) => !!a.main === main).map((a) => <AreaRow key={a.id} a={a} level={d.levels[a.id] || 'none'} onChange={(l) => set({ access: 'custom', levels: { ...d.levels, [a.id]: l } })} />)}</>;
+function Areas({ d, set, main, before = null }: { d: Draft; set: (d: Draft) => void; main: boolean; before?: string[] | null }) {
+  const next = draftScopes(d, before);
+  return <>{DESK_AREAS.filter((a) => !!a.main === main).map((a) => <AreaRow key={a.id} a={a} level={d.levels[a.id] || 'none'} extra={next ? deskExtraLabels(a, next) : []} onChange={(l) => set({ access: 'custom', levels: { ...d.levels, [a.id]: l } })} />)}</>;
 }
 
 /** What the panel tells the page: is something not saved, how to save it, how to let it go. */
@@ -154,7 +155,7 @@ function KeyPanel({ work, k, who, role, lastUsed, notify, onChanged }: { work: M
         {k.status === 'revoked' && <Notice tone="red"><b>בוטל.</b> השרת לא מקבל אותו. אפשר להחזיר אותו לעבודה מכאן.</Notice>}
         {k.status === 'expired' && <Notice><b>פג תוקף.</b> השרת לא מקבל אותו. תאריך חדש מחזיר אותו לעבודה.</Notice>}
         <div className="da-sub"><SubTitle>מה מותר לו</SubTitle><AccessSelect value={d.access} onChange={(a) => setD(toAccess(d, a, k.scopes))} /></div>
-        <Areas d={d} set={setD} main />
+        <Areas d={d} set={setD} main before={k.scopes} />
         <Facts style={{ marginTop: 8 }}>
           {usage.loading ? <Fact label="שימוש"><Skeleton lines={1} /></Fact>
             : usage.error ? <Fact label="שימוש">לא נקרא. <Act onClick={usage.reload}>לנסות שוב</Act></Fact>
@@ -163,7 +164,7 @@ function KeyPanel({ work, k, who, role, lastUsed, notify, onChanged }: { work: M
         </Facts>
         <details key={`${k.id}${moreOn > 0}`} className="da-more" open={moreOn > 0}>
           <summary>תחומים נוספים{moreOn ? ` · ${moreOn} מותרים` : ''}</summary>
-          <Areas d={d} set={setD} main={false} />
+          <Areas d={d} set={setD} main={false} before={k.scopes} />
         </details>
         <details className="da-more">
           <summary>פרטי המפתח</summary>
