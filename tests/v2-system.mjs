@@ -222,31 +222,72 @@ const BASE = (process.argv.find((a) => a.startsWith('--base=')) || '').slice(7) 
 if (BASE) {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
-  const open = async (persona, path) => {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
+  const open = async (persona, path, width = 390) => {
+    const ctx = await browser.newContext({ viewport: { width, height: 844 }, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', serviceWorkers: 'block' });
     await ctx.addInitScript((p) => { if (sessionStorage.getItem('__vc')) return; sessionStorage.setItem('__vc', '1'); localStorage.clear(); localStorage.setItem('farm-demo', JSON.stringify({ on: true, persona: p, scenario: 'regular' })); }, persona);
     const page = await ctx.newPage(); page.setDefaultTimeout(4000);
     const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (x) => { if (x.type() === 'error') errors.push(x.text()); });
     await page.goto(`${BASE}/app${path}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(300);
     return { ctx, page, errors, text: async () => page.locator('body').innerText() };
   };
+  const checkAccountActions = async (page, persona) => {
+    const demoRow = page.locator('.k-row', { has: page.getByText('מצב הדגמה', { exact: true }) });
+    assert.equal(await demoRow.locator('xpath=preceding-sibling::li[1]').locator('.k-row__title').innerText(), 'עיצוב', `${persona}: demo follows appearance`);
+    const footer = page.locator('.account-footer');
+    const website = footer.getByRole('link', { name: 'האתר של החווה' });
+    const terms = footer.getByRole('button', { name: 'תנאי שימוש' });
+    const signOut = footer.getByRole('button', { name: 'יציאה מהחשבון' });
+    assert.equal(await website.getAttribute('href'), '/', `${persona}: website opens the farm site`);
+    assert.equal(await website.getAttribute('target'), persona === 'guest' ? null : '_blank', `${persona}: website preserves tab behavior`);
+    assert.equal(await footer.getByText('מצב הדגמה').count(), 0, `${persona}: footer has no demo action`);
+    const [siteBox, termsBox, signOutBox] = await Promise.all([website.boundingBox(), terms.boundingBox(), signOut.boundingBox()]);
+    assert.ok(siteBox.height >= 44 && termsBox.height >= 44 && signOutBox.height >= 44, `${persona}: touch targets are at least 44px tall`);
+    assert.ok(siteBox.x >= termsBox.x + termsBox.width - 1 && siteBox.y === termsBox.y && signOutBox.y > siteBox.y, `${persona}: links are side by side in RTL above sign-out`);
+    assert.ok(await footer.evaluate((el) => el.scrollWidth <= el.clientWidth), `${persona}: account footer fits the viewport`);
+    return { demoRow, terms, signOut };
+  };
   for (const persona of ['owner', 'staff']) {
-    const s = await open(persona, '/me');
+    const s = await open(persona, '/me', persona === 'owner' ? 320 : 1440);
     const t = await s.text();
     assert.equal(await s.page.locator('.k-topbar .k-ulink').filter({ hasText: 'עריכת פרטים' }).count(), 1, `${persona} Q18: "עריכת פרטים" is the underlined link in the top bar`);
     assert.equal(await s.page.getByRole('button', { name: 'עריכה', exact: true }).count(), 0, `${persona} Q18: no outlined "עריכה" on the profile`);
     assert.ok(!t.includes('איך שמעתם עלינו?'), `${persona} Q18: registration answers are not listed on /me`);
     assert.ok(!t.includes('מחיקת החשבון'), `${persona} Q18: account deletion is not on /me`);
-    const foot = await s.page.locator('.system-foot').innerText();
-    assert.ok(foot.includes('יציאה מהחשבון') && foot.includes('האתר של החווה') && foot.includes('תנאי שימוש'), `${persona} Q18: website and terms are quiet links beside sign-out`);
-    assert.equal(await s.page.locator('.k-list').filter({ hasText: 'האתר של החווה' }).count(), 0, `${persona} Q18: the website is not a row`);
-    assert.ok(t.includes(persona === 'owner' ? 'לראות את האפליקציה כמו מתנדב' : 'פנייה למנהלים') && t.includes('התקנה למסך הבית') && t.includes('הכרטיסים שלי כאורח'), `${persona} Q18: the designed rows stay`);
+    const { demoRow } = await checkAccountActions(s.page, persona);
+    assert.ok(t.includes('התקנה למסך הבית') && t.includes('הכרטיסים שלי כאורח'), `${persona}: the install and ticket rows stay`);
+    const volunteer = demoRow.getByRole('button', { name: 'תצוגת מתנדב' });
+    if (persona === 'owner') {
+      await volunteer.click();
+      const backToManagement = demoRow.getByRole('button', { name: 'חזרה לניהול' });
+      await backToManagement.waitFor();
+      await backToManagement.click();
+      await volunteer.waitFor();
+    } else {
+      assert.equal(await volunteer.count(), 0, 'staff does not get a manager action');
+      assert.ok(t.includes('פנייה למנהלים'), 'staff can still contact managers');
+    }
     await s.page.locator('.k-ulink').filter({ hasText: 'עריכת פרטים' }).click(); await s.page.waitForTimeout(400);
     assert.match(new URL(s.page.url()).pathname, /\/app\/me\/edit$/, `${persona}: "עריכת פרטים" opens /me/edit`);
     const e = await s.text();
     assert.ok(e.includes('איך שמעתם עלינו?') && e.includes('יישוב *'), `${persona} C13: the registration questions are edited in /me/edit`);
     assert.ok(e.includes('מחיקת החשבון'), `${persona} C13: account deletion sits at the bottom of /me/edit`);
     assert.deepEqual(s.errors, [], `${persona}: no page errors`);
+    await s.ctx.close();
+  }
+  {
+    const s = await open('guest', '/me/account', 375);
+    const { demoRow, terms, signOut } = await checkAccountActions(s.page, 'guest');
+    await terms.click();
+    await s.page.waitForURL('**/app/terms');
+    await s.page.goBack();
+    await demoRow.getByRole('button', { name: /מצב הדגמה/ }).click();
+    await s.page.waitForURL('**/app/demo');
+    await s.page.getByRole('button', { name: 'כניסה להדגמה' }).waitFor();
+    await s.page.goBack();
+    await signOut.click();
+    await s.page.waitForURL('**/app');
+    assert.equal(await s.page.evaluate(() => JSON.parse(localStorage.getItem('farm-demo')).persona), 'anon', 'guest sign-out leaves the demo account');
+    assert.deepEqual(s.errors, [], 'guest account: no page errors');
     await s.ctx.close();
   }
   { // a team invitee (C9) answers the same questions on first entry
