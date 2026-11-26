@@ -36,13 +36,40 @@ const storage = () =>
 export const scopeOf = (uid: string) => (demoOnly() ? 'demo:' : 'user:') + uid;
 export const jobs = async (scope: string) =>
   (await (await storage()).getAllFromIndex('queue', 'scope', scope)).sort((a, b) => a.time - b.time);
-export async function readDraft<T extends PlaceDraft | Review>(key: string) {
+type Draft = PlaceDraft | Review;
+const pendingDrafts = new Map<string, { value: Draft | null }>();
+const recoveryKey = (key: string) => 'farm-survey-reload:' + key;
+
+// Navigation can close IndexedDB before its last transaction commits. Keep only
+// uncommitted changes in this tab on pagehide, including an explicit cancellation.
+window.addEventListener('pagehide', () => {
+  for (const [key, change] of pendingDrafts) {
+    try { sessionStorage.setItem(recoveryKey(key), JSON.stringify(change)); }
+    catch { /* IndexedDB remains the primary store when session storage is full. */ }
+  }
+});
+function clearRecovery(key: string) {
+  try { sessionStorage.removeItem(recoveryKey(key)); } catch { /* storage may be disabled */ }
+}
+export async function readDraft<T extends Draft>(key: string) {
+  let recovery: { value: Draft | null } | null = null;
+  try {
+    const raw = sessionStorage.getItem(recoveryKey(key));
+    if (raw) recovery = JSON.parse(raw);
+  } catch { /* use the durable draft */ }
+  if (recovery && 'value' in recovery) await draftAt(key, recovery.value);
   return (await (await storage()).get('drafts', key)) as T | undefined;
 }
-export async function draftAt(key: string, value: PlaceDraft | Review | null) {
+export async function draftAt(key: string, value: Draft | null) {
+  const change = { value };
+  pendingDrafts.set(key, change);
   const db = await storage();
   if (value) await db.put('drafts', value, key);
   else await db.delete('drafts', key);
+  if (pendingDrafts.get(key) === change) {
+    pendingDrafts.delete(key);
+    clearRecovery(key);
+  }
 }
 export async function enqueue(scope: string, data: Pick<Job, 'place' | 'review'>, draftKey: string) {
   const db = await storage(),
@@ -51,6 +78,7 @@ export async function enqueue(scope: string, data: Pick<Job, 'place' | 'review'>
   await tx.objectStore('queue').put({ key, scope, time: Date.now(), ...data });
   await tx.objectStore('drafts').delete(draftKey);
   await tx.done;
+  clearRecovery(draftKey);
   window.dispatchEvent(new Event('farm-survey-change'));
 }
 export function placeFields(job: PlaceJob) {
