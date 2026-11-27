@@ -7,6 +7,23 @@ import type { ScreenProps } from '../../ctx';
 import { catalogStations, emptyRegistry, retireWorkStation, saveWorkStation, useLegacyStations, useStationRegistry, type WorkStation } from '../../data/workStations';
 import { cleanStationName } from '../../../../../shared/work-stations';
 
+export function StationPicker({ label, value, stations, select, create }: {
+  label: string; value: string; stations: WorkStation[]; select: (id: string) => void; create: () => void;
+}) {
+  // Firestore station IDs cannot contain a slash, so the action cannot shadow an existing station.
+  const addAction = '/new';
+  return <label className="k-field"><span className="k-field__label">{label}</span>
+    <select className="k-input" aria-label={label} value={value} onChange={e => {
+      if (e.target.value === addAction) create();
+      else select(e.target.value);
+    }}>
+      {!value && <option value="">בחירת תחנה</option>}
+      {stations.map(station => <option key={station.id} value={station.id}>{station.name}</option>)}
+      <option value={addAction}>＋ הוספת תחנת עבודה</option>
+    </select>
+  </label>;
+}
+
 export function StationNameForm({ initial, known, close, saved }: {
   initial?: WorkStation; known: WorkStation[]; close: () => void; saved: (station: WorkStation) => void;
 }) {
@@ -97,12 +114,7 @@ function RemoveStation({ source, alternatives, assignments, close, done }: {
     {assignments > 0 ? <>
       <Tag tone="waiting">{assignments} שיבוצים פעילים</Tag>
       <p>בחרו תחנה חלופית. כל שיבוץ יעבור לתחנה שבחרתם באותו אירוע, עם התפקיד ושעות ההגעה והסיום שלו.</p>
-      <label className="k-field"><span>תחנה חלופית</span>
-        <select className="k-input" aria-label="תחנה חלופית" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-          <option value="">בחירת תחנה</option>{options.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      </label>
-      <Button variant="quiet" icon="plus" onClick={() => setNewStation(true)}>הוספת תחנה חלופית</Button>
+      <StationPicker label="תחנה חלופית" value={targetId} stations={options} select={setTargetId} create={() => setNewStation(true)} />
     </> : <p>אין שיבוצים פעילים בתחנה. לאחר ההסרה התחנה תישאר בהיסטוריית האירועים שהסתיימו.</p>}
     {error && <p role="alert">{error}</p>}
     <Button variant="danger" size="bar" disabled={busy || (assignments > 0 && !targetId)} onClick={transfer}>

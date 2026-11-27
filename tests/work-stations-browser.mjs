@@ -42,14 +42,14 @@ try {
   await p.goto(base+'/app/manage/events/demo-e-festival/staffing');await button('הוסף משובץ').click();
   const form=dialog();await form.getByLabel('תפקיד בתחנה').fill('סידור קהל');await form.getByRole('combobox').nth(1).selectOption({index:1});
   await form.getByLabel('הגעה').fill('2026-11-28T16:00');await form.getByLabel('עד',{exact:true}).fill('2026-11-28T19:00');
-  await button('הוספת תחנה לשיבוץ',form).click();await dialog().getByLabel('שם התחנה').fill('רחבה');await button('הוספת התחנה',dialog()).click();
+  await form.getByLabel('תחנה',{exact:true}).selectOption({label:'＋ הוספת תחנת עבודה'});await dialog().getByLabel('שם התחנה').fill('רחבה');await button('הוספת התחנה',dialog()).click();
   await p.waitForFunction(()=>document.querySelectorAll('[role="dialog"]').length===1);
   assert.equal(await dialog().getByLabel('תפקיד בתחנה').inputValue(),'סידור קהל');
   assert.equal(await dialog().getByLabel('תחנה',{exact:true}).locator('option:checked').innerText(),'רחבה');
   await button('שמירת השיבוץ',dialog()).click();await p.getByText(/סידור קהל/).first().waitFor();
   await button('ניהול תחנות עבודה').click();await button('הסרת רחבה').click();
   const retire=dialog(),confirm=button('העברת השיבוצים והסרת התחנה',retire);
-  assert(await confirm.isDisabled());await retire.getByLabel('תחנה חלופית',{exact:true}).selectOption({label:'רישום'});await confirm.click();
+  assert(await confirm.isDisabled());assert(await retire.getByRole('option',{name:'＋ הוספת תחנת עבודה'}).count());await retire.getByLabel('תחנה חלופית',{exact:true}).selectOption({label:'רישום'});await confirm.click();
   await p.waitForFunction(()=>!document.querySelector('[role="dialog"]'));
   const transferred=await p.evaluate(()=>{const all=window.stationQA.items('events/demo-e-festival/staffing');return all.find(s=>s.station==='רישום')?.people.find(p=>p.role==='סידור קהל')});
   assert(transferred?.startsAt && transferred?.endsAt);assert.equal(await button('עריכת רחבה').count(),0);

@@ -7,7 +7,7 @@ import { useEvent } from '../../../data';
 import { dayName, ddmm, hhmm, keyOf } from '../../format';
 import { useStaffing, usePresenceOn, saveEventAssignment, removeFromStation, type EventAssignment } from '../../data/events';
 import { stationsOf, staffingStats, stationMissing, hoursText, isoFromLocal, localOf, type Station } from './logic';
-import { StationNameForm } from './workStations';
+import { StationNameForm, StationPicker } from './workStations';
 import { catalogStations, currentStaffingEvent, emptyRegistry, useLegacyStations, useStationRegistry, type WorkStation } from '../../data/workStations';
 import { assignmentKey, stationWritable } from '../../../../../shared/work-stations';
 import { Loading, Missing, backTo, useRun } from './shared';
@@ -80,12 +80,8 @@ function AssignmentForm({ctx,event:e,edit,stations,close}:{ctx:V2Ctx;event:FarmE
     setBusy(false); if (ok) close();
   };
   return <Sheet open onClose={close} title={p ? 'עריכת שיבוץ' : 'הוסף משובץ'}><div className="events-sheet">
-    <div className="events-station-picker"><label className="k-field"><span className="k-field__label">תחנה</span>
-      <select className="k-input" aria-label="תחנה" value={stationId} onChange={(e) => setStation(e.target.value)}>
-        {!stationId && <option value="">בחירת תחנה</option>}{choices.map((s) => <option key={s.id} value={s.id}>{s.station}</option>)}
-      </select></label>
-      <Button variant="outline" icon="plus" aria-label="הוספת תחנה לשיבוץ" onClick={() => setAddingStation(true)}>תחנה</Button>
-    </div>
+    <StationPicker label="תחנה" value={stationId} stations={choices.map(s => ({ id: s.id, name: s.station }))}
+      select={setStation} create={() => setAddingStation(true)} />
     <label className="k-field"><span className="k-field__label">איש צוות</span><select className="k-input" value={uid} disabled={!!p} onChange={(e) => setUid(e.target.value)}><option value="">בחירת אדם</option>{team.map((t) => <option key={t.uid} value={t.uid}>{t.displayName}</option>)}</select></label>
     <Field label="תפקיד בתחנה" value={role} maxLength={80} onChange={(e) => setRole(e.target.value)} />
     <Field label="הגעה" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
