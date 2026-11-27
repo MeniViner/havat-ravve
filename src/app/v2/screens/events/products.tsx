@@ -11,6 +11,7 @@ import { back } from '../../../router';
 import { logActivity } from '../../../activity';
 import { useTabsIn, saveProductV2, setProductActive, reorderProducts, type ProductV2 } from '../../data/events';
 import { unitsSold, phaseOf } from './logic';
+import { EventCatalogs } from './catalogs';
 import { FormEnd, Loading, Missing, backTo, link, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
 
@@ -31,7 +32,9 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   return (
     <AppScreen variant="detail">
       <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<MoreMenu title="מוצרי הדוכן" items={[{ label: 'העתקה מאירוע קודם', icon: 'calendar', onSelect: () => setCopying(true) }]} />} />
-      <PageTitle>מוצרי הדוכן</PageTitle>
+      <PageTitle>מוצרי דוכן החווה</PageTitle>
+      <EventCatalogs event={e} chosen={list} />
+      <h2>מוצרים באירוע</h2>
       {list.length > 0 ? (
         <section className="k-card k-card--list" aria-label="מוצרי הדוכן">
           <div className="events-prodhead" aria-hidden="true"><span>מוצר ומחיר</span><span>מוצג בדוכן</span></div>
@@ -49,7 +52,7 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
           </ul>
         </section>
       ) : !products.loading && <EmptyState variant="card" icon="cart" title="עוד אין מוצרים" text="מוסיפים מוצר, או מעתיקים את המוצרים מאירוע קודם." />}
-      <Button variant="dashed" size="tall" icon="plus" onClick={() => go(`/manage/events/${e.id}/products/new`)}>מוצר חדש</Button>
+      <Button variant="dashed" size="tall" icon="plus" onClick={() => go(`/manage/events/${e.id}/products/new`)}>מוצר חד־פעמי לאירוע</Button>
       <CopySheet ctx={ctx} e={e} open={copying} onClose={() => setCopying(false)} after={list.reduce((m, p) => Math.max(m, p.sort || 0), 0)} />
     </AppScreen>
   );

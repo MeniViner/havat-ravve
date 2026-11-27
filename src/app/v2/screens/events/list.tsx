@@ -1,5 +1,6 @@
 // M3 Events: upcoming and past events with the one number that matters for each, and the vendor pool.
 import { useMemo, useState } from 'react';
+import { useEventClock } from '../../data/eventClock';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go } from '../../core';
 import { TopBar, PageTitle, SectionTitle, Card, DateBox, Tag, Button, EmptyState } from '../../kit';
@@ -27,9 +28,8 @@ function EventCard({ e, tickets, tabs, now, next }: { e: FarmEvent; tickets: Tic
 }
 
 export function EventsList({ ctx }: ScreenProps) {
-  useClockVersion();
-  const now = nowMs();
   const all = useAllEvents(ctx.manager);
+  const now = useEventClock(all.items.map((e)=>e.end));
   const pool = useVendors(ctx.manager);
   const [showOlder, setShowOlder] = useState(false);
   const { upcoming, recent, older } = useMemo(() => {
@@ -54,7 +54,7 @@ export function EventsList({ ctx }: ScreenProps) {
       )}
       {upcoming.length > 0 && <SectionTitle spaced>קרובים</SectionTitle>}
       {upcoming.map((e) => <EventCard key={e.id} e={e} tickets={of(tickets.items, e.id)} tabs={[]} now={now} next={e.id === nextId} />)}
-      {shownPast.length > 0 && <SectionTitle spaced>עברו</SectionTitle>}
+      {shownPast.length > 0 && <SectionTitle spaced>ארכיון אירועים</SectionTitle>}
       {shownPast.map((e) => <EventCard key={e.id} e={e} tickets={of(tickets.items, e.id)} tabs={of(tabs.items, e.id)} now={now} next={false} />)}
       <a className="events-linkrow" {...link('/manage/vendors')}>
         <span>מאגר בעלי הדוכנים · {pool.items.length}</span>

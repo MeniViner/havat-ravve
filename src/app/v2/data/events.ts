@@ -1,13 +1,14 @@
+import { eventMillis } from '../screens/events/logic';
 // Events area data: listeners and writes for M3-M7, N9-N12, V3-V5. Everything goes through db.ts (offline-first writes,
 // transact for read-modify-write) and reuses the shared helpers in data.ts so the guest app and site keep reading the same fields.
 // New, optional fields (see docs/redesign-data/events.md): products.unit, tickets.reminderSentAt, tabs.reminderSentAt / claimedAt,
 // files.mime / size, events/{id}/staffing/{station}.
 import { useMemo } from 'react';
 import { useList, useDoc, write, transact, newId, ConflictError, serverNow } from '../../db';
-import { nowIso } from '../../clock';
+import { nowIso, nowMs } from '../../clock';
 import { activityOp, logActivity } from '../../activity';
 import {
-  setOrderPayment, setTabStatus, handleNotificationsFor, randomSecret, saveEvent, deleteEvent, upsertCalendarRef, deleteCalendarRef, type EventInput,
+  contactPhoneOk, setOrderPayment, setTabStatus, handleNotificationsFor, randomSecret, saveEvent, deleteEvent, upsertCalendarRef, deleteCalendarRef, type EventInput,
 } from '../../data';
 import { eventCalendarFields } from '../../calendarRef';
 import { notify } from './notify';
@@ -82,6 +83,9 @@ export async function approveOrders(actor: Actor, orders: Ticket[][], open: AppN
 /** A manager adds a registration by hand (phone call, walk-in). The rules let a person create only their own tickets,
  *  so the manager is the owner; the guest's name and phone are on the tickets. */
 export async function addGuestOrder(actor: Actor, e: FarmEvent, g: { name: string; phone: string; count: number; paid: boolean }) {
+  if (!g.name.trim() || !contactPhoneOk(g.phone)) throw new Error('יש למלא שם מלא ומספר טלפון תקין');
+  if (e.published === false || !e.open || !(eventMillis(e.end) > nowMs()) || ('closed' in e && e.closed)) throw new Error('ההרשמה לאירוע הסתיימה או סגורה');
+  if (!Number.isInteger(g.count) || g.count < 1 || g.count > (e.maxPerOrder || 20)) throw new Error('כמות הכרטיסים חורגת מהמותר להזמנה');
   const orderId = newId('tickets');
   const now = nowIso();
   const status: PaymentStatus = e.price > 0 ? 'pending' : 'free';
@@ -131,6 +135,7 @@ export async function approveDebts(actor: Actor, debts: EventDebt[], tickets: Ti
 export async function saveProductV2(eventId: string, data: { name: string; price: number; active: boolean; sort: number; unit?: string }, existing?: ProductV2) {
   const id = existing?.id || newId('products');
   const doc: Record<string, unknown> = { name: data.name.trim(), price: data.price, active: data.active, sort: data.sort };
+  if (existing && 'catalogId' in existing) { doc.catalogId = existing.catalogId; if ('catalogProductId' in existing) doc.catalogProductId = existing.catalogProductId; }
   if (data.unit?.trim()) doc.unit = data.unit.trim();
   await write.set(`events/${eventId}/products`, id, doc);
   return id;
@@ -196,4 +201,24 @@ export const tabClaimedAt = (t: Tab) => (t as Tab & { claimedAt?: string }).clai
 export async function approveTab(actor: Actor, t: Tab, open: AppNotification[]) {
   await setTabStatus(actor, t, 'paid');
   await handleNotificationsFor(open, t.id, actor);
+}
+
+export type EventAssignment = Staffing['people'][number] & { role?: string; startsAt?: string; endsAt?: string };
+/** Editing an assignment can change its station. Move both rows in the same transaction. */
+export async function saveEventAssignment(actor: Actor, event: FarmEvent, station: Staffing, person: EventAssignment, previous?: Staffing) {
+  if (!previous) return assignToStation(actor, event, station, person);
+  const col = 'events/' + event.id + '/staffing';
+  await transact(async (tx) => {
+    const from = await tx.get<Staffing>(col, previous.id);
+    if (!from?.people.some((p) => p.uid === person.uid)) throw new ConflictError('השיבוץ השתנה. פתחו אותו מחדש.');
+    if (station.id === previous.id) {
+      tx.update(col, previous.id, { people: from.people.map((p) => p.uid === person.uid ? {...p, ...person} : p) });
+      return;
+    }
+    const target = await tx.get<Staffing>(col, station.id);
+    if (target?.people.some((p) => p.uid === person.uid)) throw new ConflictError('האדם כבר משובץ בתחנה שבחרתם.');
+    tx.update(col, previous.id, {people:from.people.filter((p) => p.uid !== person.uid)});
+    tx.set(col, station.id, {station:target?.station || station.station, needed:target?.needed ?? station.needed, people:[...(target?.people || []),person]});
+  });
+  logActivity(actor, 'event', event.id, 'edited', 'עודכן שיבוץ של ' + person.name + ' בתחנת ' + station.station, {eventId:event.id,subjectUid:person.uid});
 }

@@ -5,12 +5,12 @@
 // deleteVendorV2, removeFromEvent, closeRequest) and deleteVendorRequest() (src/app/v2/data/manage.ts) write them.
 import { ApiError, invalid } from '../http';
 import type { Doc, Write } from '../firestore';
-import { activity, fresh, mustGet, notFound, nowIso, project, whereEq } from '../core';
+import { activity, forbidden, fresh, isManager, mustGet, notFound, nowIso, project, whereEq } from '../core';
 import { type Ctx, bool, def, en, given, mergedSettings, needSome, req, storedImage, str } from '../writes';
 import { notifyWrites } from '../notify';
 import { autoId } from '../util';
 import { isFemale } from './taskutil';
-import { type Data, IFU, dayShort, eventFor, hhmmIL, keyIL, shiftIso } from './events';
+import { type Data, IFU, dayShort, eventFor, randomSecret, hhmmIL, keyIL, shiftIso } from './events';
 
 // ---------- helpers (vendor.ts) ----------
 const NEEDS = ['table', 'power', 'shade', 'water', 'chairs'];
@@ -356,3 +356,53 @@ def('vendorRequests.delete', 'vendors:write', 'מחיקת בקשה של בעל �
   const r = await mustGet(c.fs, col, c.input.requestId, c.tx, 'request');
   return { writes: [c.fs.remove(col, r.id, r.updateTime)], refs: [{ col, id: r.id, gone: true }], data: { deleted: project('vendor_requests', r.id, r.data) } };
 }, ['Destructive: confirm with the user first. To mark it handled instead, use vendorRequests.close.']);
+
+// The farm has a single stall with named catalogs. Event selections are price snapshots.
+const farmCatalogs = 'farm_catalogs';
+const cost = {type:'number' as const,min:0,max:1000000,he:'מחיר המוצר בשקלים',required:true};
+const managers = (c:Ctx) => { if (!isManager(c.caller)) throw forbidden('a farm manager or owner is required'); };
+def('farmCatalogs.save', 'events:write', 'הוספת קטלוג לדוכן החווה או עדכון שמו', {
+  catalogId:{type:'id'},name:str(100,'שם הקטלוג',true,1),
+}, async(c)=>{
+  managers(c);
+  const id=c.input.catalogId || autoId(), at=nowIso(), name=c.input.name.trim();
+  if (!name) throw invalid('name','a catalog name is required');
+  const current=c.input.catalogId ? await mustGet(c.fs,farmCatalogs,id,c.tx,'catalog') : null;
+  const action=current ? c.fs.patch(farmCatalogs,id,{name,updatedAt:at},current.updateTime) : c.fs.create(farmCatalogs,id,{name,createdAt:at,updatedAt:at});
+  return {writes:[action],refs:[{col:farmCatalogs,id,expected:{name}}],data:{catalogId:id}};
+});
+def('farmCatalogs.saveProduct','events:write','הוספת מוצר לקטלוג בחווה או עדכון שם ומחיר',{
+  catalogId:req(),productId:{type:'id'},name:str(100,'שם המוצר',true,1),price:cost,
+},async(c)=>{
+  managers(c);await mustGet(c.fs,farmCatalogs,c.input.catalogId,c.tx,'catalog');
+  const col=farmCatalogs+'/'+c.input.catalogId+'/products',id=c.input.productId || autoId(),at=nowIso();
+  const name=c.input.name.trim(),price=Math.round(c.input.price*100)/100;
+  if (!name) throw invalid('name','a product name is required');
+  const current=c.input.productId ? await mustGet(c.fs,col,id,c.tx,'catalog product') : null;
+  const action=current ? c.fs.patch(col,id,{name,price,updatedAt:at},current.updateTime) : c.fs.create(col,id,{name,price,createdAt:at,updatedAt:at});
+  return {writes:[action],refs:[{col,id,expected:{name,price}}],data:{catalogProductId:id}};
+});
+def('farmCatalogs.selectForEvent','events:write','בחירת מוצר מקטלוג למכירה באירוע', {
+  eventId:req(),catalogId:req(),productId:req(),active:bool('נבחר למכירה באירוע',true),
+},async(c)=>{
+  managers(c);
+  const ev=await eventFor(c,c.input.eventId), cid=c.input.catalogId, pid=c.input.productId;
+  const master=await mustGet(c.fs,farmCatalogs+'/'+cid+'/products',pid,c.tx,'catalog product');
+  const col='events/'+ev.id+'/products',id='catalog_'+cid.length+'_'+cid+'_'+pid;
+  const old=await c.fs.get(col,id,c.tx), active=c.input.active===true;
+  if (old?.data.active===active || (!old&&!active)) return {writes:[],refs:[],data:{changed:false}};
+  const data={name:master.data.name,price:master.data.price,active,sort:old?.data.sort || Date.now(),catalogId:cid,catalogProductId:pid};
+  const action=old ? c.fs.patch(col,id,active?data:{active:false},old.updateTime) : c.fs.create(col,id,data);
+  return {writes:[action],refs:[{col,id,expected:{active}}],data:{changed:true,eventProductId:id}};
+});
+def('eventVendorApplications.approve','vendors:write','אישור בקשה שהגיש בעל דוכן לאירוע', {
+  eventId:req(),applicantUid:{type:'uid',required:true},
+},async(c)=>{
+  managers(c);
+  const ev=await eventFor(c,c.input.eventId),col='events/'+ev.id+'/vendor_applications',uid=c.input.applicantUid;
+  const app=await mustGet(c.fs,col,uid,c.tx,'vendor application');
+  if (app.data.status==='approved') return {writes:[],refs:[],data:{changed:false}};
+  if (app.data.status!=='requested' || app.data.ownerUid!==uid || app.data.eventId!==ev.id) throw invalid('applicantUid','the application is not a pending request for this event');
+  const at=nowIso(),token=randomSecret(), pass='events/'+ev.id+'/supplier_passes';
+  return {writes:[c.fs.patch(col,uid,{status:'approved',qrToken:token,updatedAt:at},app.updateTime),c.fs.create(pass,token,{eventId:ev.id,name:app.data.name,people:app.data.people,createdAt:at})],refs:[{col,id:uid,expected:{status:'approved'}}],data:{changed:true}};
+});

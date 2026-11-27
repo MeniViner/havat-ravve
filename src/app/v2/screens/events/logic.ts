@@ -11,9 +11,10 @@ const TZ = 'Asia/Jerusalem';
 export type Phase = 'before' | 'during' | 'after';
 /** Before the start, between start and end, after the end (or closed). */
 export function phaseOf(e: Pick<FarmEvent, 'start' | 'end'> & { closed?: unknown }, now: number): Phase {
-  if (e.closed) return 'after';
-  if (now < Date.parse(e.start)) return 'before';
-  if (now <= Date.parse(e.end)) return 'during';
+  const end = eventMillis(e.end);
+  if (e.closed || !(end > now)) return 'after';
+  if (now < eventMillis(e.start)) return 'before';
+  if (now < end) return 'during';
   return 'after';
 }
 export type EventTab = 'prep' | 'guests' | 'day' | 'summary';
@@ -56,6 +57,22 @@ export function isoFromLocal(dateKey: string, time: string): string {
   let ms = target - 2 * 3600_000;
   for (let i = 0; i < 2; i++) ms += target - wall(ms);
   return new Date(ms).toISOString();
+}
+/**
+ * Event timestamps without a zone were entered in Israeli local time.
+ * Missing or impossible cutoff dates never authorize new registrations.
+ */
+export function eventMillis(value: string): number {
+  if (typeof value !== 'string') return NaN;
+  const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?$/i.exec(value);
+  if (!parts) return NaN;
+  const [, date, time, seconds = '00', fraction = '', zone] = parts;
+  const wallTime = Date.parse(date + 'T' + time + ':' + seconds + 'Z');
+  if (!Number.isFinite(wallTime) || new Date(wallTime).toISOString().slice(0, 19) !== date + 'T' + time + ':' + seconds) return NaN;
+  if (zone) return Date.parse(value);
+  const instant = Date.parse(isoFromLocal(date, time));
+  if (wall(instant) !== Date.parse(date + 'T' + time + ':00Z')) return NaN;
+  return instant + Number(seconds) * 1000 + Number(fraction.padEnd(3, '0'));
 }
 /** ISO -> { date: "2026-11-28", time: "16:00" } in Israel. */
 export function localOf(iso: string): { date: string; time: string } {
@@ -443,7 +460,7 @@ export function productsMeta(products: { active: boolean }[]): string {
 // ---------- details row (M4) ----------
 export function detailsMeta(e: Pick<FarmEvent, 'price' | 'maxPerOrder' | 'entry' | 'stall'>): string {
   const parts = [e.price > 0 ? `${e.price} ₪ לכרטיס` : 'חינם', `עד ${e.maxPerOrder} בהזמנה`];
-  const day = e.entry !== false && e.stall !== false ? 'כניסה ודוכן' : e.entry !== false ? 'כניסה בסריקה' : e.stall !== false ? 'דוכן החווה' : '';
+  const day = e.entry !== false && e.stall !== false ? 'כניסה ודוכן' : e.entry !== false ? 'כניסה בסריקה' : e.stall !== false ? 'אירוע עם דוכנים' : '';
   if (day) parts.push(day);
   return parts.join(' · ');
 }

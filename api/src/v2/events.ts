@@ -163,7 +163,15 @@ def('events.removeFile', 'events:write', 'מחיקת קובץ מהאירוע', {
 
 // ======================= staffing (V4) =======================
 
-type Staff = { uid: string; name: string; hours: string };
+type Staff = { uid: string; name: string; hours: string; role?:string; startsAt?:string; endsAt?:string };
+const dutyFields = { role:str(80,'התפקיד בתחנה'), startsAt:str(40,'תחילת השיבוץ, ISO עם אזור זמן'), endsAt:str(40,'סיום השיבוץ, ISO עם אזור זמן') };
+function dutyOf(c:Ctx) {
+  const {role,startsAt,endsAt}=c.input;
+  if (!role && !startsAt && !endsAt) return {};
+  const offset = /(?:Z|[+-]\d\d:\d\d)$/;
+  if (!role?.trim() || !offset.test(startsAt || '') || !offset.test(endsAt || '') || !(Date.parse(endsAt) > Date.parse(startsAt))) throw invalid('startsAt','a station role and an ordered pair of zoned datetimes are required');
+  return {role:role.trim(),startsAt:new Date(startsAt).toISOString(),endsAt:new Date(endsAt).toISOString()};
+}
 /** logic.ts stationsOf(): the usual three stations, shown even before anyone saved them. */
 const STATION_NAMES: Record<string, string> = { gate: 'שער', stall: 'דוכן', parking: 'חניה' };
 /** logic.ts hoursText(): "16:00-20:00" -> "16:00–20:00". */
@@ -177,7 +185,7 @@ async function station(c: Ctx, eventId: string, sid: string, name: string | null
   if (!cur && mustExist) throw notFound('station');
   const title = String(cur?.data.station || name || STATION_NAMES[sid] || '');
   if (!title) throw invalid('stationName', 'a new station needs stationName');
-  const people = ((cur?.data.people as Staff[]) || []).map((p) => ({ uid: p.uid, name: p.name, hours: p.hours || '' }));
+  const people = ((cur?.data.people as Staff[]) || []).map((p) => ({ ...p, hours: p.hours || '' }));
   const write = (next: Staff[]) => {
     if (next.length > 30) throw invalid('uid', 'a station holds at most 30 people');
     return c.fs.set(col, sid, { station: title, people: next, needed: Number(cur?.data.needed ?? needed ?? 1) });
@@ -188,15 +196,16 @@ async function station(c: Ctx, eventId: string, sid: string, name: string | null
 def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמדה באירוע (שער, דוכן, חניה או עמדה אחרת)', {
   eventId: req(), station: req('מזהה העמדה: gate שער, stall דוכן, parking חניה, או מזהה של עמדה אחרת מתוך eventStaffing.list'),
   stationName: str(60, 'שם העמדה, רק לעמדה חדשה', false, 1), needed: int(1, 30, 'כמה צריך בעמדה (לעמדה חדשה; ברירת מחדל 1)'),
-  uid: req('איש הצוות, מתוך people.search'), hours: HOURS,
+  uid: req('איש הצוות, מתוך people.search'), hours: HOURS, ...dutyFields,
 }, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   hoursOk(c.input.hours);
   const who = await member(c.fs, c.input.uid, 'uid', c.tx);
   const st = await station(c, ev.id, c.input.station, c.input.stationName, c.input.needed, false);
   if (st.people.some((p) => p.uid === who.uid)) throw invalid('uid', `${who.name} is already on this station`);
   const hours = c.input.hours || '';
-  const person: Staff = { uid: who.uid, name: who.name, hours };
+  const person: Staff = { uid: who.uid, name: who.name, hours, ...dutyOf(c) };
   const h = hours ? ' · ' + hoursText(hours) : '';
   return {
     writes: [st.write([...st.people, person]),
@@ -206,19 +215,21 @@ def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמד
   };
 }, ['Adds one in-app notification and queues a phone push for the assignee, including a self-assignment.']);
 // updateStationPerson()
-def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS }, async (c) => {
+def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS, ...dutyFields }, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   hoursOk(c.input.hours);
   const st = await station(c, ev.id, c.input.station, null, null, true);
   if (!st.people.some((p) => p.uid === c.input.uid)) throw notFound('person on this station');
   return {
-    writes: [st.write(st.people.map((p) => (p.uid === c.input.uid ? { ...p, hours: c.input.hours || '' } : p))),
+    writes: [st.write(st.people.map((p) => (p.uid === c.input.uid ? { ...p, ...(c.input.hours !== undefined && c.input.hours !== null ? {hours:c.input.hours} : {}), ...dutyOf(c) } : p))),
       activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: שעות ב${st.title} עודכנו`, { eventId: ev.id, subjectUid: c.input.uid })],
     refs: [{ col: st.col, id: c.input.station }],
   };
 });
 // removeFromStation()
 def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמדה באירוע', { eventId: req(), station: req('מזהה העמדה'), uid: req() }, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   const st = await station(c, ev.id, c.input.station, null, null, true);
   const p = st.people.find((x) => x.uid === c.input.uid);
@@ -234,10 +245,12 @@ def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמ
 // addGuestOrder(): a registration a manager adds by hand (phone call, walk-in before the day). The manager owns the tickets
 // (the create rule allows only one's own); the guest's name and phone are on them.
 def('tickets.addGuestOrder', 'tickets:write', 'הוספת נרשם לאירוע ידנית (טלפון, וואטסאפ)', {
-  eventId: req(), name: str(80, 'שם הנרשם', true, 1), phone: str(25, 'טלפון'), count: int(1, 20, 'כמה כרטיסים', false, 1), paid: bool('כבר שילם (רק באירוע בתשלום)', false),
+  eventId: req(), name: str(80, 'שם הנרשם', true, 1), phone: str(25, 'טלפון', true, 9), count: int(1, 20, 'כמה כרטיסים', false, 1), paid: bool('כבר שילם (רק באירוע בתשלום)', false),
 }, async (c) => {
+  if (!/^\+?[\d(). -]+$/.test(String(c.input.phone)) || !/^\d{9,15}$/.test(String(c.input.phone).replace(/\D/g,''))) throw invalid('phone','valid phone required');
   const e = await eventFor(c, c.input.eventId);
   // firestore.rules tickets create: the event is published and open, and the order is within maxPerOrder
+  if (e.data.closed || !(Date.parse(eventIso(e.data.end)) > Date.now())) throw invalid('eventId','registration ended');
   if (!e.data.published || !e.data.open) throw invalid('eventId', 'the event must be published and open for registration');
   if (c.input.count > Number(e.data.maxPerOrder || 20)) throw invalid('count', `at most ${e.data.maxPerOrder} tickets in one order for this event`);
   const price = Number(e.data.price) || 0;

@@ -1,4 +1,6 @@
 // Manager side of vendors: V1 pool (+ new/edit form), V2 vendor card, V6 app access, Q10 vendors of an event (+ Q11 row sheet), V7 vendors on the day.
+import { useApplications } from '../../data/vendorApplications';
+import { EventStallApplications, StallPoolApplications } from './applications';
 import { useMemo, useState } from 'react';
 import {
   Avatar, BottomBar, Button, ChoiceChip, DetailList, DetailRow, Dot, EmptyState, Field, FormHeader, IconButton, ListCard, PageTitle, Quote, Row,
@@ -11,7 +13,7 @@ import { isConflict } from '../../../db';
 import { ddmm, hhmm, ago } from '../../format';
 import {
   useVendorDoc, useVendorPool, useEventDoc, useEventVendorList, useEventRequests, useVendorInvites, useVendorInfo, useVendorBundles, useEvents,
-  useVendorPrivate, peopleOf, inviteToEvent, remindVendor, confirmForVendor, declineForVendor, inviteMany, savePoolVendor, addPerson, removeAccess, deleteVendorV2, removeFromEvent, closeRequest, helperText, inviteLink,
+  useVendorPrivate, peopleOf, remindVendor, confirmForVendor, declineForVendor, savePoolVendor, addPerson, removeAccess, deleteVendorV2, removeFromEvent, closeRequest, helperText, inviteLink,
   needsText, requestLabel, phaseOf, femName, first, g, andList, NEED_ORDER, type VendorDoc, type EventVendorDoc, type PoolForm, type VendorPerson,
 } from '../../data/vendor';
 import { NEED_LABELS, type FarmEvent, type VendorNeed } from '../../../types';
@@ -49,17 +51,17 @@ export function VendorPool({ ctx }: ScreenProps) {
   // ⋯ (rule 5): table view, export, and the saved invite message ("saved vendor template", tidy plan row 219; Q10's ⋯ keeps it too)
   const more: ActionItem[] = [
     ...table.items.map((i) => ({ ...i, hidden: !pool.items.length })),
-    { label: 'נוסח ההזמנה', icon: 'message', meta: 'הודעה מוכנה: הזמנת בעל דוכן', onSelect: () => navigate('/manage/settings/messages') },
   ];
   return (
     <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: 'אירועים', onClick: () => navigate('/manage/events') }} end={<MoreMenu title="בעלי דוכנים" items={more} />} />
       <PageTitle>בעלי דוכנים · {pool.items.length}</PageTitle>
+      <StallPoolApplications />
       <SearchField label="שם, טלפון או מה מוכרים" value={q} onChange={(e) => setQ(e.target.value)} />
       {/* W3: "חדש" left the top bar; this dashed row under the search opens the same form */}
       <Button variant="dashed" size="tall" icon="plus" iconSize={18} block onClick={() => navigate('/manage/vendors?new=1')}>בעל דוכן חדש</Button>
       {pool.loading ? <Quiet text="טוען..." /> : !list.length ? (
-        <EmptyState variant="card" icon="stall" title={s ? 'לא מצאנו' : 'עוד אין בעלי דוכנים'} text={s ? 'נסו שם אחר או מספר טלפון.' : 'מוסיפים ב"בעל דוכן חדש", ואז מזמינים לאירוע.'} />
+        <EmptyState variant="card" icon="stall" title={s ? 'לא מצאנו' : 'עוד אין בעלי דוכנים'} text={s ? 'נסו שם אחר או מספר טלפון.' : 'בעלי הדוכנים נרשמים בקישור ומבקשים להשתתף באירוע.'} />
       ) : (
         <ListCard>
           {list.map((v) => (
@@ -74,11 +76,8 @@ export function VendorPool({ ctx }: ScreenProps) {
 /** New vendor (W3 "בעל דוכן חדש") and edit (V2 "עריכה"). Not in the designs: built from N11's form pattern. */
 function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorDoc | null; notes?: string }) {
   const toast = useToast();
-  // "בעל דוכן חדש" from an event's vendors (?event=): after saving, invite to that event and go back there.
   const eventParam = useParam('event');
   const fromEvent = existing ? '' : eventParam || '';
-  const ev = useEventDoc(fromEvent); const evInfo = useVendorInfo(fromEvent);
-  const open = useExternal();
   const [f, setF] = useState<PoolForm>({
     name: existing?.name || '', contact: existing?.contact || '', phone: existing?.phone || '', sells: existing?.sells || existing?.product || '',
     needs: existing?.needs || [], notes, external: existing?.external !== false, fem: !!existing?.fem,
@@ -92,19 +91,11 @@ function PoolEdit({ ctx, existing, notes = '' }: { ctx: V2Ctx; existing: VendorD
   const save = async () => {
     const e: typeof errs = {};
     if (!f.name.trim()) e.name = 'צריך שם לדוכן';
-    if (f.phone.trim() && !phoneOk(f.phone)) e.phone = 'מספר טלפון לא תקין';
+    if ((f.external || f.contact.trim() || f.phone.trim()) && !phoneOk(f.phone)) e.phone = 'מספר טלפון לא תקין';
     setErrs(e); if (Object.keys(e).length) return;
     setBusy(true);
     try {
       const id = await savePoolVendor(ctx, f, existing);
-      if (!existing && fromEvent && ev.item) {
-        const v = { id, name: f.name.trim(), contact: f.contact.trim(), phone: f.phone.trim(), sells: f.sells.trim(), product: f.sells.trim(), needs: f.needs, external: f.external, fem: f.fem, events: [], people: [] } as unknown as VendorDoc;
-        const r = await inviteToEvent(ctx, v, ev.item, evInfo.item, null);
-        if (v.phone) open(waUrl(v.phone, r.text));
-        toast.show({ text: `${v.name} ${g(f.fem, 'הוזמן', 'הוזמנה')}`, check: true });
-        navigate(`/manage/events/${fromEvent}/vendors`, true);
-        return;
-      }
       toast.show({ text: existing ? 'נשמר' : `${f.name.trim()} נוסף למאגר`, check: true }); navigate(`/manage/vendors/${id}`, true);
     }
     catch (x) { toast.refused(errText(x)); } finally { setBusy(false); }
@@ -160,13 +151,10 @@ export function VendorCard({ ctx, params }: ScreenProps) {
   return edit ? <PoolEdit ctx={ctx} existing={v.item} notes={notes} /> : <Card ctx={ctx} v={v.item} notes={notes} />;
 }
 function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
-  const open = useExternal(); const toast = useToast();
+  const open = useExternal();
   const b = useVendorBundles(v.id, v.events);
-  const all = useEvents(true);
-  const [pick, setPick] = useState(false);
   const f = fem(v);
   const items = [...b.items].reverse();
-  const upcoming = all.items.filter((e) => e.stall !== false && !(e as { closed?: unknown }).closed && new Date(e.end || e.start).getTime() > nowMs()).sort((a, c) => a.start.localeCompare(c.start));
   const meta = (x: { event: FarmEvent; record: EventVendorDoc | null; phase: string }) => {
     const r = x.record;
     if (!r) return '';
@@ -179,17 +167,8 @@ function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
     if (x.record.status === 'declined') return <Tag>{g(f, 'לא מגיע', 'לא מגיעה')}</Tag>;
     return <Tag tone="waiting">{g(f, 'לא ענה', 'לא ענתה')}</Tag>;
   };
-  const invite = async (e: FarmEvent) => {
-    try {
-      const existing = b.items.find((x) => x.id === e.id)?.record || null;
-      const r = await inviteToEvent(ctx, v, e, null, existing);
-      setPick(false);
-      if (v.phone) open(waUrl(v.phone, r.text));
-      toast.show({ text: `${v.name} ${g(f, 'הוזמן', 'הוזמנה')} ל${e.title}`, check: true });
-    } catch (x) { toast.refused(errText(x)); }
-  };
   return (
-    <AppScreen variant="detail" gap={10} bar={<BottomBar><Button size="bar" grow icon="message" onClick={() => setPick(true)}>הזמנה לאירוע</Button></BottomBar>}>
+    <AppScreen variant="detail" gap={10}>
       <TopBar back={{ label: 'בעלי דוכנים', onClick: () => back('/manage/vendors') }} end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => navigate(`/manage/vendors/${v.id}?edit=1`)}>עריכה</Button>} />
       <div className="vendor-titlerow"><PageTitle size="detail">{v.name}</PageTitle>{v.external === false ? <Tag tone="warm">של החווה</Tag> : <Tag>חיצוני</Tag>}</div>
       {v.phone && (
@@ -210,17 +189,7 @@ function Card({ ctx, v, notes }: { ctx: V2Ctx; v: VendorDoc; notes: string }) {
           {items.map((x) => <Row key={x.id} title={`${x.event.title} · ${ddmm(x.event.start)}`} tags={tag(x)} meta={meta(x)} onClick={() => navigate(`/manage/events/${x.id}/vendors`)} />)}
         </ListCard>
       )}
-      <Sheet open={pick} onClose={() => setPick(false)} title="הזמנה לאירוע" aside={v.phone ? 'נפתח בוואטסאפ' : 'אין טלפון'}>
-        {upcoming.length ? (
-          <ul className="k-card k-card--list k-list k-list--flush" style={{ margin: 0, padding: 0 }}>
-            {upcoming.map((e) => {
-              const r = b.items.find((x) => x.id === e.id)?.record;
-              return <Row key={e.id} title={`${e.title} · ${ddmm(e.start)}`} tags={r ? <Tag tone={r.status === 'confirmed' ? 'paid' : 'waiting'}>{r.status === 'confirmed' ? g(f, 'אישר', 'אישרה') : 'הוזמן'}</Tag> : undefined}
-                meta={r ? 'לשלוח שוב את ההזמנה' : e.published === false ? 'עוד לא פורסם' : undefined} onClick={() => invite(e)} />;
-            })}
-          </ul>
-        ) : <span className="vendor-note">אין אירוע קרוב עם דוכנים. יוצרים אירוע במסך האירועים.</span>}
-      </Sheet>
+
     </AppScreen>
   );
 }
@@ -316,36 +285,15 @@ const statusTag = (st: Status, f: boolean) => <Tag tone={st === 'confirmed' ? 'p
 
 export function EventVendors({ ctx, params }: ScreenProps) {
   const eid = params.id || '';
-  const e = useEventDoc(eid); const recs = useEventVendorList(eid); const pool = useVendorPool(true); const info = useVendorInfo(eid);
-  const all = useEvents(true);
+  const e = useEventDoc(eid); const recs = useEventVendorList(eid); const pool = useVendorPool(true);
   const open = useExternal(); const toast = useToast();
-  const [pick, setPick] = useState(false); const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<EventVendorDoc | null>(null);
   const remove = useRemove();
-  const prev = useMemo(() => {
-    const ev = e.item; if (!ev) return null;
-    return all.items.filter((x) => x.id !== ev.id && x.stall !== false && phaseOf(x) === 'past' && x.start < ev.start).sort((a, b) => b.start.localeCompare(a.start))[0] || null;
-  }, [all.items, e.item]);
-  const prevRecs = useEventVendorList(prev?.id || '');
   const byId = new Map(pool.items.map((v) => [v.id, v]));
   const list = [...recs.items].sort((a, b) => rank(a) - rank(b) || (a.spot ?? 99) - (b.spot ?? 99));
-  const invitedIds = new Set(recs.items.map((r) => r.vendorId || r.id));
-  const rest = pool.items.filter((v) => !invitedIds.has(v.id));
   if (e.loading || recs.loading) return <AppScreen variant="detail" gap={10}><Quiet text="טוען..." /></AppScreen>;
   if (!e.item) return <AppScreen variant="detail" gap={10}><TopBar back={{ label: 'אירועים', onClick: () => navigate('/manage/events') }} /><EmptyState variant="card" icon="calendar" title="האירוע לא נמצא" /></AppScreen>;
   const ev = e.item;
-  const confirmed = recs.items.filter((r) => statusOf(r) === 'confirmed').length;
-  const waiting = recs.items.filter((r) => statusOf(r) === 'invited').length;
-  const fromPrev = prevRecs.items.filter((r) => r.status === 'confirmed' && !invitedIds.has(r.vendorId || r.id)).map((r) => byId.get(r.vendorId || r.id)).filter(Boolean) as VendorDoc[];
-  const invite = async (v: VendorDoc) => {
-    try { const r = await inviteToEvent(ctx, v, ev, info.item, null); if (v.phone) open(waUrl(v.phone, r.text)); toast.show({ text: `${v.name} ${g(fem(v), 'הוזמן', 'הוזמנה')}`, check: true }); }
-    catch (x) { toast.refused(errText(x)); }
-  };
-  const inviteAll = async () => {
-    setBusy(true);
-    try { const n = await inviteMany(ctx, fromPrev, ev, info.item); toast.show({ text: n === 1 ? 'הוזמן בעל דוכן אחד. שולחים לו בוואטסאפ מהרשימה' : `הוזמנו ${n} בעלי דוכנים. שולחים להם בוואטסאפ מהרשימה`, check: true }); }
-    catch (x) { toast.refused(errText(x)); } finally { setBusy(false); }
-  };
   const remind = async (v: VendorDoc) => {
     try { const text = await remindVendor(ctx, v, ev); if (v.phone) open(waUrl(v.phone, text)); }
     catch (x) { toast.refused(errText(x)); }
@@ -358,11 +306,6 @@ export function EventVendors({ ctx, params }: ScreenProps) {
     try { await declineForVendor(ctx, eid, r, f); toast.show({ text: `${r.name}: ${g(f, 'לא מגיע', 'לא מגיעה')} הפעם`, check: true }); }
     catch (x) { toast.refused(errText(x)); }
   };
-  // ⋯ (rule 5): copy-from-previous (was a dashed "להזמין את מי שהיה ב..." under the list) and the saved invite message (plan row 219)
-  const more: ActionItem[] = [
-    { label: `להזמין את מי שהיה ב${prev?.title || ''}`, icon: 'people', meta: fromPrev.length === 1 ? 'בעל דוכן אחד' : `${fromPrev.length} בעלי דוכנים`, hidden: !prev || !fromPrev.length || busy, onSelect: inviteAll },
-    { label: 'נוסח ההזמנה', icon: 'message', meta: 'הודעה מוכנה: הזמנת בעל דוכן', onSelect: () => navigate('/manage/settings/messages') },
-  ];
   // Q11: the row sheet of one stall in this event (replaces the row's buttons and its X)
   const sv = sheet ? byId.get(sheet.vendorId || sheet.id) : undefined;
   const sf = sv ? fem(sv) : false;
@@ -382,15 +325,11 @@ export function EventVendors({ ctx, params }: ScreenProps) {
   ];
   return (
     <AppScreen variant="detail" gap={10}>
-      <TopBar back={{ label: ev.title, onClick: () => back(`/manage/events/${eid}`) }} end={<MoreMenu title="בעלי דוכנים" items={more} />} />
+      <TopBar back={{ label: ev.title, onClick: () => back(`/manage/events/${eid}`) }} />
       <PageTitle>בעלי דוכנים</PageTitle>
-      <StatRow>
-        <StatTile value={recs.items.length} label="הוזמנו" />
-        <StatTile value={confirmed} label="אישרו" />
-        <StatTile value={waiting} label="לא ענו" />
-      </StatRow>
+      <EventStallApplications eid={eid} />
       {list.length > 0 ? (
-        <ListCard>
+        <ListCard title="השתתפויות קודמות והזמנות קיימות">
           {list.map((r) => {
             const v = byId.get(r.vendorId || r.id); const f = v ? fem(v) : false;
             const st = statusOf(r);
@@ -401,18 +340,11 @@ export function EventVendors({ ctx, params }: ScreenProps) {
               actions={st === 'invited' && v?.phone ? <IconButton icon="message" variant="outline" iconSize={20} label={`תזכורת בוואטסאפ ל${first(who || v.name)}`} onClick={() => remind(v)} /> : undefined} />;
           })}
         </ListCard>
-      ) : <EmptyState variant="card" icon="stall" title="עוד לא הזמנו דוכנים" text="מזמינים מהמאגר, וכל אחד מקבל קישור בוואטסאפ." />}
-      <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => setPick(true)}>{rest.length ? `הזמנה מהמאגר · עוד ${rest.length}` : 'כל המאגר הוזמן'}</Button>
+      ) : null}
       <ActionSheet open={!!sheet} onClose={() => setSheet(null)} items={sheetItems}
         title={sheet ? [sheet.name || sv?.name, first(sv?.contact || '')].filter(Boolean).join(' · ') : ''}
         sub={sheet ? [statusWord(sst, sf), sheet.invitedAt ? `${g(sf, 'הוזמן', 'הוזמנה')} ב־${ddmm(sheet.invitedAt)}` : ''].filter(Boolean).join(' · ') : undefined} />
-      <Sheet open={pick} onClose={() => setPick(false)} title="הזמנה מהמאגר" aside={`${rest.length} לא הוזמנו`}>
-        <ul className="k-card k-card--list k-list k-list--flush" style={{ margin: 0, padding: 0 }}>
-          {rest.map((v) => <Row key={v.id} title={v.name} meta={[v.contact, sellsShort(v)].filter(Boolean).join(' · ')} onClick={() => invite(v)} />)}
-        </ul>
-        <Button variant="dashed" size="tall" block icon="plus" iconSize={18} onClick={() => { setPick(false); navigate(`/manage/vendors?new=1&event=${eid}`); }}>בעל דוכן חדש</Button>
-        <Button variant="secondary" size="lg" block onClick={() => setPick(false)}>סגירה</Button>
-      </Sheet>
+
     </AppScreen>
   );
 }
@@ -422,6 +354,8 @@ const rank = (r: EventVendorDoc) => (r.status === 'confirmed' ? 0 : (r.status ||
 export function VendorsToday({ ctx, params }: ScreenProps) {
   const eid = params.id || '';
   const e = useEventDoc(eid); const recs = useEventVendorList(eid); const pool = useVendorPool(true); const reqs = useEventRequests(eid);
+  const applications = useApplications(eid);
+  const approved = applications.items.filter((a)=>a.status==='approved');
   const open = useExternal(); const toast = useToast();
   if (e.loading || recs.loading) return <AppScreen variant="detail" gap={12}><Quiet text="טוען..." /></AppScreen>;
   if (!e.item) return <AppScreen variant="detail" gap={12}><TopBar back={{ label: 'אירועים', onClick: () => navigate('/manage/events') }} /><EmptyState variant="card" icon="calendar" title="האירוע לא נמצא" /></AppScreen>;
@@ -444,7 +378,7 @@ export function VendorsToday({ ctx, params }: ScreenProps) {
         end={<Button icon="megaphone" iconSize={18} onClick={() => navigate(`/manage/broadcasts/new?audience=vendors&event=${eid}`)}>הודעה</Button>} />
       <PageTitle>הדוכנים היום</PageTitle>
       <StatRow>
-        <StatTile value={coming.length} label="אישרו" />
+        <StatTile value={coming.length+approved.length} label="אושרו" />
         <StatTile value={arrived.length} label="הגיעו" />
         <StatTile value={openReqs.length} label={openReqs.length === 1 ? 'בקשה פתוחה' : 'בקשות פתוחות'} />
       </StatRow>
@@ -457,6 +391,7 @@ export function VendorsToday({ ctx, params }: ScreenProps) {
           ))}
         </ListCard>
       )}
+      {approved.length > 0 && <ListCard title="בקשות השתתפות שאושרו">{approved.map((a)=><Row key={a.id} title={a.name} meta={a.people+' אנשים · '+a.vehicles+' רכבים'} onClick={()=>navigate('/manage/events/'+eid+'/vendors')} />)}</ListCard>}
       {sortedList.length > 0 ? (
         <ListCard>
           {sortedList.map((r) => {
@@ -468,7 +403,7 @@ export function VendorsToday({ ctx, params }: ScreenProps) {
               actions={v?.phone ? <IconButton icon="message" variant="outline" label={`וואטסאפ ל${who}`} onClick={() => open(waUrl(v.phone))} /> : undefined} />;
           })}
         </ListCard>
-      ) : <EmptyState variant="card" icon="stall" title="אין דוכנים שאישרו" text="מזמינים בעלי דוכנים ממסך האירוע." />}
+      ) : !approved.length && <EmptyState variant="card" icon="stall" title="אין דוכנים שאושרו" text="בקשות השתתפות מופיעות במסך האירוע." />}
     </AppScreen>
   );
 }

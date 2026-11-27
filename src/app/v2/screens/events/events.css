@@ -133,3 +133,16 @@
 /* edit form header: ביטול and ⋯ (rule 6) */
 .events-formend { display: flex; align-items: center; gap: 12px; }
 .v2 .events-cancel { background: transparent; border: 0; font-family: inherit; }
+
+.events-report { display: grid; gap: 10px; min-width: 0; }
+.events-arrivals { display: inline-grid; position: relative; border-radius: 4px; overflow: hidden; min-width: 34px; text-align: center; }
+.events-arrivals > span { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--green-tint, #d8ebd9); }
+.events-arrivals > b { position: relative; }
+
+.events-cache { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; background: var(--card); border: 1px solid var(--line); border-radius: 30px; color: var(--ink); font: inherit; padding: 5px 10px; cursor: pointer; }
+.events-cache > span { border-radius: 50%; width: 9px; height: 9px; background: #a64c0d; }
+.events-cache--good > span { background: #28734b; } .events-cache--bad > span { background: #a32b2b; }
+
+.events-catalog, .events-need { padding: 12px; }
+.events-catalog > button { margin: 4px; }
+.events-checkline { display: flex; align-items: center; gap: 8px; min-height: 44px; }

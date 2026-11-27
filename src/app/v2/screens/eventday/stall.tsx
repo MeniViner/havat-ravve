@@ -9,7 +9,7 @@ import { AppScreen, useToast } from '../../core';
 import { hhmm, money, firstName } from '../../format';
 import { useDemo } from '../../../demo/store';
 import { navigate } from '../../../router';
-import { parseQr, hasTabPurchases } from '../../../data';
+import { contactPhoneOk, parseQr, hasTabPurchases } from '../../../data';
 import type { Product, Tab } from '../../../types';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
@@ -108,7 +108,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
 function WalkInTab({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (g: StallGuest) => void }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const ok = !!name.trim();
+  const ok = !!name.trim() && contactPhoneOk(phone);
   return (
     <Sheet open={open} onClose={onClose} title="לקוח בלי כרטיס">
       <div className="eventday-sheetbody">

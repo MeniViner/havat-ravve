@@ -1,11 +1,13 @@
+import { eventMillis } from '../events/logic';
 // U1 GuestHome and U2 GuestEvent. Both open signed out.
 import { useEffect, useMemo, useState } from 'react';
 import { AppScreen, go, useExternal } from '../../core';
 import { Button, BottomBar, DateBox, DetailList, DetailRow, EmptyState, Icon, IconButton, ListCard, Quote, Row, Tag, TextLink, TopBar, cx } from '../../kit';
+import { useEventClock } from '../../data/eventClock';
 import { useEvent, useMyTickets } from '../../../data';
 import { useDemo } from '../../../demo/store';
 import { demoPreviousGuestVisit } from '../../../demo/data';
-import { nowIso, now as clockNow } from '../../../clock';
+import { nowIso } from '../../../clock';
 import { back } from '../../../router';
 import { dayName, daysFromToday, hhmm, ddmm } from '../../format';
 import { isRead, markRead, markSeen, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
@@ -97,8 +99,8 @@ function TicketShortcut({ ctx }: { ctx: GuestCtx }) {
 export function GuestHome({ ctx }: { ctx: GuestCtx }) {
   const { items, loading, error } = useEvents();
   const previous = usePreviousVisit(ctx.profile?.uid, !loading && !error);
-  const now = clockNow().toISOString();
-  const upcoming = items.filter((e) => (e.end || e.start) >= now);
+  const now = useEventClock(items.map((event)=>event.end));
+  const upcoming = items.filter((e) => eventMillis(e.end) > now);
   const presets = ctx.settings.donationPresets.slice(0, 2).map((p) => p.label).join(', ');
   return (
     <AppScreen variant="root" gap={10} bodyClassName="guest-bleed">
@@ -132,6 +134,7 @@ function GuestTile({ icon, title, meta, onClick }: { icon: 'pin' | 'heart' | 'ph
 // ---------- U2 ----------
 export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const { item: e, loading } = useEvent(id);
+  useEventClock([e?.end || '']);
   const open = useExternal();
   if (loading) return <AppScreen variant="detail" />;
   if (!e || !e.published) {
@@ -145,7 +148,7 @@ export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const past = isPast(e);
   const place = e.location || 'חוות רווה, ליד טנא עומרים';
   const bar = past ? <Button size="bar" grow disabled>האירוע הסתיים</Button>
-    : !e.open ? <Button size="bar" grow disabled>ההרשמה עוד לא נפתחה</Button>
+    : !e.open || ('closed' in e && !!e.closed) ? <Button size="bar" grow disabled>ההרשמה עוד לא נפתחה</Button>
     : <Button size="bar" grow icon="ticket" onClick={() => go(`/events/${e.id}/order`)}>{e.price ? 'הזמנת כרטיסים' : 'הרשמה'}</Button>;
   return (
     <AppScreen variant="detail" gap={12} bodyClassName="guest-bleed" bar={<BottomBar>{bar}</BottomBar>}>

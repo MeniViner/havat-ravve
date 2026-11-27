@@ -48,6 +48,15 @@ t('an event links an order only to its proven registrant', () => {
 
 // ---------- phases and tabs ----------
 const fest = { start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z' };
+t('registration stops at the exact end and legacy local times use Jerusalem', () => {
+  assert.equal(L.eventMillis('2026-07-12T12:30'), Date.parse('2026-07-12T09:30:00Z'));
+  assert.equal(L.eventMillis('2026-12-12T12:30:05.01'), Date.parse('2026-12-12T10:30:05.010Z'));
+  assert.equal(L.eventMillis('2026-12-12T12:30:05+01:00'), Date.parse('2026-12-12T11:30:05Z'));
+  for (const invalid of ['', 'bad', '2026-02-30T12:00', '2026-11-31T12:00:00Z', '2026-03-27T02:30']) assert(Number.isNaN(L.eventMillis(invalid)), invalid);
+  assert.equal(L.phaseOf({start:fest.start,end:''}, Date.parse(fest.start) - 1000), 'after');
+  assert.equal(L.phaseOf(fest, Date.parse(fest.end) - 1), 'during');
+  assert.equal(L.phaseOf(fest, Date.parse(fest.end)), 'after');
+});
 t('phaseOf', () => {
   assert.equal(L.phaseOf(fest, Date.parse('2026-11-19T08:30:00Z')), 'before');
   assert.equal(L.phaseOf(fest, Date.parse('2026-11-28T15:20:00Z')), 'during');

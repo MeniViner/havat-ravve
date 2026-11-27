@@ -2,7 +2,7 @@
 // Event today and confirmed: D5 (not arrived yet) or D6 (arrived). Otherwise a helper sees D11, a stall owner D3,
 // and with nothing coming up D10.
 import { useState } from 'react';
-import { Card, Dot, EmptyState, Hero, HeroNumber, Icon, IconTile, ListCard, Row, TextLink, TileGrid, Toggle, type IconName } from '../../kit';
+import { Button, Card, Dot, EmptyState, Hero, HeroNumber, Icon, IconTile, ListCard, Row, TextLink, TileGrid, Toggle, type IconName } from '../../kit';
 import { AppScreen, useToast, useExternal } from '../../core';
 import { navigate } from '../../../router';
 import { nowMs } from '../../../clock';
@@ -22,7 +22,7 @@ export function VendorHome({ ctx }: ScreenProps) {
   const v = w.vendor;
   if (!ctx.vendorId || (!w.loading && !v)) {
     return <AppScreen variant="root" gap={10}>
-      <VendorHead title="האירועים" />
+      <VendorHead title="האירועים" /><Button variant="outline" onClick={()=>navigate('/vendor-registration')}>הרשמה כדוכן והשתתפות באירוע</Button>
       <EmptyState variant="card" icon="stall" title="החשבון עוד לא מקושר לדוכן" text="בקשו מהחווה קישור חדש בוואטסאפ, ונחבר אתכם לדוכן." />
     </AppScreen>;
   }
@@ -54,7 +54,7 @@ function Home({ ctx, v, b, past }: { ctx: V2Ctx; v: VendorDoc; b: Bundle; past: 
   return (
     <AppScreen variant="root" gap={10}>
       <VendorHead overline={v.name} title="האירועים" />
-      <BroadcastCard ctx={ctx} />
+      <BroadcastCard ctx={ctx} /><Button variant="outline" onClick={()=>navigate('/vendor-registration')}>בקשת השתתפות באירוע</Button>
       <NextHero b={b} info={info} />
       {todos.length > 0 && (
         <ListCard title="נשאר לך" count={todos.length}>
