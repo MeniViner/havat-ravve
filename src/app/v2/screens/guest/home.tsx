@@ -11,9 +11,10 @@ import { dayName, daysFromToday, hhmm, ddmm } from '../../format';
 import { isRead, markRead, markSeen, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import type { Broadcast, Profile } from '../../../types';
 import {
-  type GuestCtx, actorOf, paths, useEvents, isPast, hours, monthShort, dayNum, priceLine, whenLong, ordersOf, byDate, ticketsWord, dayShort, downloadIcs, share, mapsSearch,
+  type GuestCtx, actorOf, paths, useEvents, isPast, hours, monthShort, dayNum, priceLine, whenLong, ordersOf, byDate, ticketsWord, dayShort, downloadIcs, mapsSearch,
 } from './data';
 import { PhotoHeader } from './parts';
+import { EventShareActions } from '../events/EventShareActions';
 
 // ---------- "חדש" on events published since the previous visit ----------
 // Kept stable while the guest opens an event and comes back to the home screen.
@@ -151,7 +152,7 @@ export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
       <PhotoHeader src={e.image} height={190} overline={whenLong(e)} title={e.title} label={`תמונה מ${e.title}`} />
       <TopBar className="guest-pull" back={{ label: 'בית', onClick: () => back('/') }} end={<span className="guest-icons">
         <IconButton icon="calendar" label="להוסיף ליומן" variant="bordered" onClick={() => downloadIcs(e)} />
-        <IconButton icon="share" label="שיתוף" variant="bordered" onClick={() => share({ title: e.title, text: `${e.title} בחוות רווה · ${whenLong(e)}`, url: location.href })} />
+        <EventShareActions event={e} compact />
       </span>} />
       <DetailList>
         <DetailRow term="איפה" action={<TextLink onClick={() => open(mapsSearch(place))}>ניווט</TextLink>}>{place}</DetailRow>
