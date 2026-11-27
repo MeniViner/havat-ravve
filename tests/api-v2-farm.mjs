@@ -352,8 +352,10 @@ try {
     check((await docOf('visits/syn-v')).status === 'cancelled' && (await docOf('notifications/n-v')).handled === true, 'cancelled, inbox item closed');
     check((await w(STAFF, 'visits.delete', { visitId: 'syn-v' })).status === 403, 'staff cannot delete a visit');
     await seed('calendar/visit_syn-v', { title: 'ביקור', date: '2026-12-20', time: '', ownerUid: 'syn-mgr', ownerName: 'x', kind: 'visit', refId: 'syn-v', createdAt: t0 });
+    await seed('visits/syn-v/private/staff', { note: 'תרגול', updatedAt: t0 });
     const vd = await w(MGR, 'visits.delete', { visitId: 'syn-v' });
     check(vd.status === 200 && vd.json.data.verified && vd.json.data.inboxRemoved === 1 && !(await docOf('visits/syn-v')) && !(await docOf('calendar/visit_syn-v')) && !(await docOf('notifications/n-v')), 'visits.delete: the visit, its calendar entry and its inbox items', vd.json);
+    check(!(await docOf('visits/syn-v/private/staff')), 'visits.delete removes its internal note in the same commit');
     check((await where('activity', 'refId', 'syn-v')).some((a) => a.action === 'deleted' && a.text === 'אורחת · 2026-12-20'), 'activity visit/deleted');
 
     await seed('donations/syn-d', { uid: 'syn-guest', name: 'אורחת', phone: '0500000000', amount: 180, label: 'חי', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'claimed', createdAt: t0, updatedAt: t0 });
