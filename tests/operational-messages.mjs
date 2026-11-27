@@ -15,7 +15,7 @@ const env = {
 const bundle = await build({
   stdin: {
     contents:
-      "export * from './api/src/operationalMessages';export {Firestore} from './api/src/firestore'; export {runPush} from './api/src/push'; export {runEmail} from './api/src/email'",
+      "export {default as worker} from './api/src/index';export {allowsOperationalChannel} from './api/src/operationalMessages';export {Firestore} from './api/src/firestore'; export {runPush} from './api/src/push'; export {runEmail} from './api/src/email'",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -23,7 +23,7 @@ const bundle = await build({
   format: 'esm',
   write: false,
 });
-const { operationalMessageRoute, Firestore, allowsOperationalChannel, runPush, runEmail } = await import(
+const { worker, Firestore, allowsOperationalChannel, runPush, runEmail } = await import(
   'data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].contents).toString('base64')
 );
 const vapid = createECDH('prime256v1');
@@ -165,7 +165,24 @@ const command = {
   channels: ['whatsapp', 'push', 'email'],
   text: 'תזכורת דמיונית',
 };
-const call = (source, input, who = refs.boss) => operationalMessageRoute(auth(who), env, source, input);
+const call = async (source, input, who = refs.boss) => {
+  const origin = 'http://127.0.0.1:18777';
+  const path = source === 'event' ? '/v1/event-reminders' : '/v1/visit-notices';
+  const req = new Request(origin + path, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin,
+      authorization: auth(who).headers.get('authorization'),
+    },
+    body: JSON.stringify(input),
+  });
+  const res = await worker.fetch(req, env);
+  assert.equal(res.headers.get('access-control-allow-origin'), origin);
+  const body = await res.json();
+  if (!res.ok) throw Object.assign(new Error(body.error.message), { code: body.error.code });
+  return body.data;
+};
 await assert.rejects(call('event', command, refs.crew), e => e.code === 'FORBIDDEN');
 await assert.rejects(call('event', { ...command, recipients: [refs.boss] }), e => e.code === 'VALIDATION_FAILED');
 const sent = await call('event', command);
@@ -214,12 +231,14 @@ const decision = {
   visitId: visit,
   text,
   channels: ['whatsapp', 'email'],
-  decision: { status: 'rejected', expectedUpdatedAt: updated },
+  decision: { status: 'rejected', expectedUpdatedAt: updated, managerNote: 'תזכורת לצוות בלבד' },
 };
 const reply = await call('visit', decision);
 assert.deepEqual([reply.created, reply.queued, reply.drafts.length], [1, 1, 1]);
 assert.match(reply.drafts[0].url, /972500000009/);
 assert.equal((await db.get('visits', visit)).data.managerNote, 'הערה פנימית');
+assert.equal((await db.get('visits/' + visit + '/private', 'staff')).data.note, decision.decision.managerNote);
+assert(!JSON.stringify((await db.get('visits', visit)).data).includes(decision.decision.managerNote));
 assert.equal((await db.get('notifications', id('vnote'))).data.handled, true);
 assert.equal(await db.get('calendar', 'visit_' + visit), null);
 assert.deepEqual(await call('visit', decision), reply);
@@ -315,5 +334,5 @@ if (process.argv.includes('--providers')) {
   );
 }
 console.log(
-  'PASS event and visit messages: manager authorization, legacy identity, group deduplication, approved stalls, channel eligibility, local outboxes, replay, concurrent approval, rescheduling, rejection and reopening',
+  'PASS event and visit HTTP routes: manager authorization, legacy identity, group deduplication, approved stalls, channel eligibility, local outboxes, replay, concurrent approval, private note storage, rescheduling, rejection and reopening',
 );

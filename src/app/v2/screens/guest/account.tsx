@@ -50,7 +50,7 @@ const tabItem = (t: Tab): Item => ({
   go: `/me/stall/${t.id}`, rank: t.status === 'open' || t.status === 'claimed' ? 1 : 2, at: t.createdAt,
 });
 const visitItem = (v: Visit): Item => ({
-  key: 'v' + v.id, title: `ביקור · ${dayShort(v.status === 'approved' && v.approvedDate || v.date)} · ${v.people} אנשים`, tag: visitTag(v), meta: v.status === 'approved' && v.managerNote ? v.managerNote : v.type,
+  key: 'v' + v.id, title: `ביקור · ${dayShort(v.status === 'approved' && v.approvedDate || v.date)} · ${v.people} אנשים`, tag: visitTag(v), meta: v.replyText || (v.status === 'approved' && v.managerNote) || v.type,
   go: `/me/visits/${v.id}`, rank: v.status === 'new' ? 1 : 2, at: v.createdAt,
 });
 /** Upcoming orders first, then what still waits (to pay, to approve), then the rest; newest first inside each. */
@@ -326,7 +326,7 @@ function VisitSteps({ v }: { v: Visit }) {
   const steps = [
     { title: 'הבקשה נשלחה', meta: messageWhen(v.createdAt), done: true },
     { title: 'החווה חוזרת אליך', meta: set ? '' : 'בדרך כלל תוך יום, בוואטסאפ או בטלפון', done: set },
-    { title: 'הביקור נקבע', meta: set ? (v.managerNote || `${dayName(v.date)}, ${longDate(v.date)}`) : 'יופיע כאן עם השעה', done: set },
+    { title: 'הביקור נקבע', meta: set ? (v.replyText ? [longDate(v.approvedDate || v.date), v.approvedTime].filter(Boolean).join(' · ') : v.managerNote || longDate(v.date)) : 'יופיע כאן עם השעה', done: set },
   ];
   return (
     <section className="k-card guest-steps" aria-label="מצב הבקשה">

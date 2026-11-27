@@ -154,7 +154,8 @@ async function inboxFor(refId: string, open: AppNotification[]) {
 export async function deleteVisit(actor: Actor, v: Visit, open: AppNotification[]) {
   const inbox = await inboxFor(v.id, open);
   await write.batch([
-    { op: 'remove', col: 'visits', id: v.id }, { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
+    { op: 'remove', col: 'visits', id: v.id }, { op: 'remove', col: `visits/${v.id}/private`, id: 'staff' },
+    { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
     ...inbox.map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id })),
   ]);
   logActivity(actor, 'visit', v.id, 'deleted', `${v.name} · ${v.date}`, { subjectUid: v.uid });

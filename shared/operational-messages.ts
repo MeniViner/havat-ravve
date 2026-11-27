@@ -24,6 +24,7 @@ export type ReminderInputs = {
     orderId: string;
     eventId: string;
     test?: boolean;
+    isTest?: boolean;
     selfRegistered?: boolean;
     walkIn?: boolean;
   }[];
@@ -78,7 +79,7 @@ export function eventReminderPeople(input: ReminderInputs, groups: readonly Even
   );
   if (groups.includes('registrants'))
     for (const t of input.tickets) {
-      if (t.status !== 'valid' || t.paymentStatus === 'cancelled' || t.test) continue;
+      if (t.status !== 'valid' || t.paymentStatus === 'cancelled' || t.test || t.isTest) continue;
       const p = active.get(t.ownerUid);
       const linked =
         !t.walkIn &&

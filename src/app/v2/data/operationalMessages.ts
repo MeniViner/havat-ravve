@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { useList, write } from '../../db';
-import { demoOnly, demoDoc } from '../../demo/store';
+import { ConflictError, transact, useDoc, useList, write } from '../../db';
+import { demoOnly, demoDoc, demoItems } from '../../demo/store';
+import { activityOp } from '../../activity';
 import { emulatorMode, readyAuth } from '../../firebase';
 import { FILES_API } from '../../upload';
 import { nowIso } from '../../clock';
@@ -75,11 +76,105 @@ type Input = {
   decision?: VisitDecision;
 };
 type Result = { drafts: ReturnType<typeof whatsappDrafts>; created: number; queued: number; pending: boolean };
-export async function deliverOperationalMessage(
-  actor: Actor,
-  d: Input,
-  applyDemoDecision?: () => Promise<unknown>,
-): Promise<Result> {
+export const nextVisitVersion = (previous: string) =>
+  new Date(Math.max(Date.parse(nowIso()), (Date.parse(previous) || 0) + 1)).toISOString();
+
+export const usePrivateVisitNote = (id: string, enabled: boolean) =>
+  useDoc<{ note: string }>(`visits/${id || '_'}/private/staff`, enabled && !!id);
+export async function savePrivateVisitNote(visit: Visit, actor: Actor, note: string) {
+  await transact(
+    async tx => {
+      const current = await tx.get<Visit>('visits', visit.id);
+      if (current?.updatedAt !== visit.updatedAt) throw new ConflictError();
+      const updatedAt = nextVisitVersion(visit.updatedAt);
+      tx.set(`visits/${visit.id}/private`, 'staff', { note, updatedAt });
+      tx.update('visits', visit.id, { handledBy: actor, updatedAt });
+    },
+    { serverOnly: true },
+  );
+}
+
+function demoVisitWrites(actor: Actor, input: Input, text: string, channels: MessageChannel[]) {
+  const decision = input.decision;
+  const visit = demoDoc('visits/' + input.sourceId);
+  const approved = decision?.status === 'approved';
+  if (
+    !decision ||
+    !visit ||
+    visit.updatedAt !== decision.expectedUpdatedAt ||
+    !(approved ? ['new', 'approved', 'rejected', 'cancelled'] : ['new', 'approved']).includes(String(visit.status))
+  ) {
+    throw new Error('בקשת הביקור השתנתה. פתחו אותה מחדש כדי לעדכן.');
+  }
+  const calendarId = 'visit_' + input.sourceId;
+  const existing = approved || visit.status === 'approved' ? demoDoc('calendar/' + calendarId) : null;
+  if (existing && (existing.kind !== 'visit' || existing.refId !== input.sourceId))
+    throw new Error('רשומת היומן שייכת לפעילות אחרת.');
+  const date = decision.date || String((approved && visit.status === 'approved' && visit.approvedDate) || visit.date);
+  const time =
+    decision.time || String((approved && !decision.date && visit.status === 'approved' && visit.approvedTime) || '');
+  const at = nowIso();
+  const rows: Parameters<typeof write.batch>[0] = [
+    {
+      op: 'update',
+      col: 'visits',
+      id: input.sourceId,
+      data: {
+        status: decision.status,
+        handledBy: actor,
+        updatedAt: nextVisitVersion(decision.expectedUpdatedAt),
+        requestedDate: visit.requestedDate || visit.date,
+        approvedDate: approved ? date : '',
+        approvedTime: approved ? time : '',
+        replyText: text,
+        replyChannels: channels,
+        replyChannel: channels.includes('email') ? 'app-email' : channels.includes('whatsapp') ? 'whatsapp' : 'app',
+      },
+    },
+  ];
+  if (decision.managerNote !== undefined)
+    rows.push({
+      op: 'set',
+      col: `visits/${input.sourceId}/private`,
+      id: 'staff',
+      data: { note: decision.managerNote, updatedAt: at },
+    });
+  if (approved)
+    rows.push({
+      op: 'set',
+      col: 'calendar',
+      id: calendarId,
+      data: {
+        title: `ביקור: ${visit.name} · ${visit.people}`,
+        date,
+        time,
+        ownerUid: actor.uid,
+        ownerName: actor.name,
+        kind: 'visit',
+        refId: input.sourceId,
+        audience: existing?.audience === 'managers' ? 'managers' : 'all',
+        createdAt: existing?.createdAt || at,
+      },
+    });
+  else if (existing) rows.push({ op: 'remove', col: 'calendar', id: calendarId });
+  for (const note of demoItems('notifications')) {
+    if (note.type === 'visit' && note.refId === input.sourceId && !note.handled)
+      rows.push({
+        op: 'update',
+        col: 'notifications',
+        id: String(note.id),
+        data: { handled: true, handledBy: actor, handledAt: at },
+      });
+  }
+  rows.push(
+    activityOp(actor, 'visit', input.sourceId, decision.status, `${visit.name} · ${date}`, {
+      subjectUid: String(visit.uid || ''),
+    }),
+  );
+  return rows;
+}
+
+export async function deliverOperationalMessage(actor: Actor, d: Input): Promise<Result> {
   const text = d.text.trim(),
     groups = serverGroups(d.groups || []),
     channels = [...new Set(d.channels)].sort();
@@ -106,7 +201,8 @@ export async function deliverOperationalMessage(
       queued: 0,
       pending: false,
     };
-    const rows: Parameters<typeof write.batch>[0] = [];
+    const rows: Parameters<typeof write.batch>[0] =
+      d.source === 'visit' ? demoVisitWrites(actor, d, text, channels) : [];
     for (const p of people.filter(p => p.uid)) {
       const push = channels.includes('push') && p.push;
       if (d.source === 'visit' || push) {
@@ -138,7 +234,6 @@ export async function deliverOperationalMessage(
       if (push) receipt.queued++;
       if (channels.includes('email') && p.email) receipt.queued++;
     }
-    if (applyDemoDecision) await applyDemoDecision();
     await write.batch([
       ...rows,
       { op: 'set', col: 'operational_notices', id: d.id, data: { request: JSON.stringify(body), receipt } },

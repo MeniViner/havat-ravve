@@ -359,11 +359,12 @@ async function visitWrites(fs: Firestore, tx: string, c: Command, visit: Doc, ac
         replyChannel,
         replyChannels: c.channels,
         replyText: c.text,
-        ...(d.managerNote === undefined ? {} : { managerNote: d.managerNote }),
       },
       visit.updateTime,
     ),
   ];
+  if (d.managerNote !== undefined)
+    writes.push(fs.set(`visits/${visit.id}/private`, 'staff', { note: d.managerNote, updatedAt: at }));
   if (approved)
     writes.push(
       fs.set('calendar', calendarId, {

@@ -17,7 +17,7 @@ import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } fro
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
   inboxSummary, donationTotals, approvedSoon, gw, timeFromNote, needsReceipt, fillTemplate, payTarget,
-  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, type PayItem, type InboxFilter,
+  approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, markReceipt, useRun, deleteInboxItem, type PayItem, type InboxFilter,
 } from '../../data/manage';
 import { inboxRows, rowIn } from './inboxRows';
 import { write } from '../../../db';
@@ -252,17 +252,17 @@ function InboxCardBody({ n, members, r, open, handled }: { n: AppNotification; m
   if (n.type === 'visit' && r.visit) {
     const v = r.visit;
     const time = timeFromNote(v.managerNote);
-    const decideAs = (status: Visit['status']) => run(() => decide(v, actor, status, v.managerNote, time, open), status === 'approved' ? 'אושר ונכנס ליומן' : 'סומן: לא מתאים');
-    const wa = () => ext(waUrl(v.phone, fillTemplate(settings.templates.visitApproved, { 'שם': firstName(v.name), 'תאריך': longDate(v.date), 'שעה': time, 'הערה': v.managerNote })));
+    const visitPath = `/manage/visits/${v.id}`;
+    const wa = () => ext(waUrl(v.phone, v.replyText || fillTemplate(settings.templates.visitApproved, { 'שם': firstName(v.name), 'תאריך': longDate(v.date), 'שעה': time, 'הערה': v.managerNote })));
     return (
       <CardShell icon="pin" done={handled} over={`בקשת ביקור · ${agoLong(n.createdAt)}${by}`} title={`${v.name} · ${v.people} אנשים`} meta={`${dayName(v.date)} ${ddmm(v.date)} · ${v.type}`}>
         {handled ? back : v.status === 'new' ? <>
-          <Button onClick={() => decideAs('approved')}>אישור ליומן</Button>
-          <Button variant="outline" onClick={() => decideAs('rejected')}>לא מתאים</Button>
-          <Button variant="quiet" {...lnk(`/manage/visits/${v.id}`)}>פרטים</Button>
+          <Button {...lnk(visitPath + '?decision=approved')}>אישור ליומן</Button>
+          <Button variant="outline" {...lnk(visitPath + '?decision=rejected')}>לא מתאים</Button>
+          <Button variant="quiet" {...lnk(visitPath)}>פרטים</Button>
         </> : <>
           {v.status === 'approved' && contactPhoneOk(v.phone) && <Button variant="outline" icon="message" onClick={wa}>וואטסאפ</Button>}
-          <Button variant="quiet" {...lnk(`/manage/visits/${v.id}`)}>פרטים</Button>
+          <Button variant="quiet" {...lnk(visitPath)}>פרטים</Button>
           <Button variant="quiet" onClick={done}>טופל</Button>
         </>}
       </CardShell>
