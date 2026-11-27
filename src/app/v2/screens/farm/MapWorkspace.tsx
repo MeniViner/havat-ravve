@@ -288,15 +288,17 @@ export function MapWorkspace({
             </button>
           </div>
         )}
-        {dock && <div className="map-dock">{dock}</div>}
-        {(feedback || message || loading || homeDoc.error) && (
-          <div className="map-feedback" role="status">
-            {feedback}
-            {message && <button onClick={() => setMessage('')}>{message} · סגירה</button>}
-            {loading && 'טוענים את מפת החווה…'}
-            {homeDoc.error && 'מבט הפתיחה אינו זמין'}
-          </div>
-        )}
+        <div className="map-status-stack">
+          {dock && <div className="map-dock">{dock}</div>}
+          {(feedback || message || loading || homeDoc.error) && (
+            <div className="map-feedback" role="status">
+              {feedback}
+              {message && <button onClick={() => setMessage('')}>{message} · סגירה</button>}
+              {loading && 'טוענים את מפת החווה…'}
+              {homeDoc.error && 'מבט הפתיחה אינו זמין'}
+            </div>
+          )}
+        </div>
         {hasPanel && (
           <aside
             className={'map-sheet' + (sheet === 'home' || map.selecting ? ' compact' : '')}
@@ -367,7 +369,11 @@ export function MapWorkspace({
             {sheet === 'trail' && trail && (
               <>
                 <h2>{trail.trail.name}</h2>
-                <p>{trail.trail.modes.map((m) => MODES[m]).join(' · ') || 'התאמת השביל טרם נקבעה'}</p>
+                <p>
+                  {(Object.keys(MODES) as (keyof typeof MODES)[])
+                    .map((m) => MODES[m] + ' · ' + (trail.trail.modes.includes(m) ? 'מתאים' : 'טרם נקבע'))
+                    .join(' / ')}
+                </p>
                 {editing && editTrail && (
                   <Button
                     onClick={() => {

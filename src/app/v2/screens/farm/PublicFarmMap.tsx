@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { demoOnly } from '../../../demo/store';
 import { usePlaces, useOnline } from '../../../store';
 import { apiBase } from '../../../upload';
@@ -48,9 +48,12 @@ export function PublicFarmMap() {
           pages<MapPlace>(base, { layer: 'places' }, ctl.signal),
           pages<PublicTrail>(base, { layer: 'trails' }, ctl.signal),
         ]);
+        if (ctl.signal.aborted) return;
+        setLayers({ places, trails: [] });
         const drawn: Layers['trails'] = [];
+        let missing = false;
         for (let i = 0; i < trails.length; i += 4) {
-          const group = await Promise.all(
+          const group = await Promise.allSettled(
             trails.slice(i, i + 4).map(async (trail) => {
               const chunks = await pages<{ index: number; points: Vertex[] }>(
                 base,
@@ -65,9 +68,16 @@ export function PublicFarmMap() {
               return { trail, points };
             })
           );
-          drawn.push(...group);
+          if (ctl.signal.aborted) return;
+          for (const result of group) {
+            if (result.status === 'fulfilled') drawn.push(result.value);
+            else missing = true;
+          }
         }
-        if (!ctl.signal.aborted) setLayers({ places, trails: drawn });
+        if (!ctl.signal.aborted) {
+          setLayers({ places, trails: drawn });
+          if (missing) setError('חלק מהשבילים עדיין אינם זמינים');
+        }
       } catch {
         if (!ctl.signal.aborted) setError('לא ניתן לעדכן את נתוני המפה');
       } finally {
@@ -77,7 +87,10 @@ export function PublicFarmMap() {
     void read();
     return () => ctl.abort();
   }, [demo, online, retry]);
-  const places = demo ? fixtures.items.flatMap((p) => publicPlace(p.id, p) || []) : layers.places;
+  const places = useMemo(
+    () => (demo ? fixtures.items.flatMap((p) => publicPlace(p.id, p) || []) : layers.places),
+    [demo, fixtures.items, layers.places]
+  );
   return (
     <MapWorkspace
       gps={gps}

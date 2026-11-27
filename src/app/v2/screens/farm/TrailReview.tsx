@@ -180,6 +180,7 @@ export function TrailReview({
       )}
       <fieldset>
         <legend>למי השביל מתאים?</legend>
+        <p>סמנו רק אפשרויות שנבדקו בשטח. עבור השאר, ההתאמה טרם נקבעה.</p>
         <div className="survey-modes">
           {(Object.keys(MODES) as Mode[]).map((m) => (
             <label key={m}>
