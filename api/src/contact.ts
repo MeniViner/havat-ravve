@@ -17,7 +17,7 @@ function input(value: unknown): Input | null {
 
 export async function handleContact(req: Request, env: Env) {
   const origin = req.headers.get('origin') || '';
-  const official = /^https:\/\/havat-ravve\.(web\.app|firebaseapp\.com)$/.test(origin);
+  const official = origin === 'https://localhost' || /^https:\/\/havat-ravve\.(web\.app|firebaseapp\.com)$/.test(origin);
   const local = !!env.FIRESTORE_EMULATOR_HOST && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
   if (!official && !local) return new Response(null, { status: 403 });
   const headers = { 'access-control-allow-origin': origin, vary: 'Origin', 'access-control-allow-methods': 'POST',

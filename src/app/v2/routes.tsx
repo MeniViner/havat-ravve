@@ -154,7 +154,7 @@ export const VENDOR_ROUTES: Route[] = [
 ];
 
 /** Guest pages a vendor may open (rendered by legacy.teamFallback). */
-export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact'];
+export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact', '/vendor-registration', '/me/messages'];
 
 /** Old paths (bookmarks, notification links stored in Firestore, the Worker) -> new paths. */
 export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['role']): string | null {

@@ -85,7 +85,13 @@ export const PAYMENT = ['free', 'pending', 'claimed', 'paid', 'paid_onsite', 'ca
 const TEAM_KINDS: readonly string[] = TEAM_ACTIVITY_KINDS;
 const ALL_KINDS = [...TEAM_KINDS, 'task_private', 'visit', 'donation', 'user', 'settings', 'project', 'calendar_private', 'inbox'];
 
+const managerReads = { restrict: (c: Caller) => isManager(c) ? [] : null, visible: (c: Caller) => isManager(c) };
 export const RESOURCES: ResourceDef[] = [
+  { name: 'vendorApplications', col: 'vendor_applications', path: '/v1/vendor-applications', scope: 'vendors:read', he: 'בקשות רישום דוכנים', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
+  { name: 'eventVendorApplications', col: 'vendor_applications', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/vendor-applications', scope: 'vendors:read', he: 'בקשות השתתפות לדוכנים באירוע', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
+  { name: 'farmCatalogs', col: 'farm_catalogs', path: '/v1/farm-catalogs', scope: 'events:read', he: 'קטלוגים לדוכן החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
+  { name: 'farmCatalogProducts', col: 'products', parent: { param: 'catalogId', col: 'farm_catalogs' }, path: '/v1/farm-catalogs/{catalogId}/products', scope: 'events:read', he: 'מוצרים ומחירים בקטלוג החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
+  { name: 'eventShopping', col: 'shopping', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/shopping', scope: 'events:read', he: 'רשימת הקניות של האירוע', order: { field: 'createdAt', dir: 'DESCENDING' } },
   {
     name: 'templates', col: 'task_templates', path: '/v1/templates', scope: 'templates:read',
     he: 'משימות קבועות (חוזרות): ימים בשבוע (0=ראשון), שעה, פעילה או לא',
@@ -101,7 +107,7 @@ export const RESOURCES: ResourceDef[] = [
     he: 'כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה',
     order: { field: 'displayName', dir: 'ASCENDING' },
     filters: {
-      role: { field: 'role', param: en(['owner', 'manager', 'staff', 'guest'], 'owner בעלים, manager מנהל, staff מתנדב, guest אורח') },
+      role: { field: 'role', param: en(['owner', 'manager', 'staff', 'vendor', 'guest'], 'owner בעלים, manager מנהל, staff מתנדב, vendor בעל דוכן, guest אורח') },
       status: { field: 'status', param: en(['active', 'pending', 'blocked'], 'active פעיל, pending ממתין, blocked חסום') },
     },
     redact: redactProfiles,
@@ -348,11 +354,17 @@ export async function listResource(fs: Firestore, caller: Caller, r: ResourceDef
     // inclusive end date, also for "YYYY-MM-DDTHH:mm" and ISO time values on that date
     if (hi) filters.push({ fieldFilter: { field: { fieldPath: r.order.field }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: hi } } });
   }
-  const where = filters.length ? { where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } } } : {};
+  const whereFor = (parts: Record<string, unknown>[]) => parts.length ? { where: parts.length === 1 ? parts[0] : { compositeFilter: { op: 'AND', filters: parts } } } : {};
+  const where = whereFor(filters);
+  const teamCalendar = r.col === 'calendar' && !isManager(caller);
+  if (teamCalendar && p.audience === 'managers') return p.countOnly ? { count: 0 } : { items: [], hasMore: false, nextCursor: null };
   const parent = parentPath(r, caller, parentId);
   if (p.countOnly) {
     if (parent) return { count: (await fs.query({ from: [{ collectionId: r.col }], ...where, select: { fields: [] }, limit: 1000 }, parent)).length };
-    return { count: await fs.count({ from: [{ collectionId: r.col }], ...where }) };
+    const total = await fs.count({ from: [{ collectionId: r.col }], ...where });
+    if (!teamCalendar || p.audience === 'all') return { count: total };
+    const privateCount = await fs.count({ from: [{ collectionId: r.col }], ...whereFor([...filters, eq('audience', 'managers')]) });
+    return { count: Math.max(0, total - privateCount) };
   }
 
   const fingerprint = (await sha256hex(canonical({ r: r.name, parent, given, range: r.range ? [p[r.range.from], p[r.range.to]] : null, m: isManager(caller) }))).slice(0, 16);
@@ -364,12 +376,19 @@ export async function listResource(fs: Firestore, caller: Caller, r: ResourceDef
     if (c.f !== fingerprint) throw invalid('cursor', 'cursor belongs to a different filter');
     startAt = { values: [enc(c.v), { referenceValue: fs.name(parent ? `${parent}/${r.col}` : r.col, c.n) }], before: false };
   }
-  const docs = await fs.query({
+  const docs: Doc[] = [];
+  const queryBase = {
     from: [{ collectionId: r.col }], ...where,
     orderBy: [{ field: { fieldPath: r.order.field }, direction: r.order.dir }, { field: { fieldPath: '__name__' }, direction: r.order.dir }],
-    ...(startAt ? { startAt } : {}),
-    limit: p.limit + 1,
-  }, parent);
+  };
+  const pageSize = teamCalendar ? Math.max(100, p.limit + 1) : p.limit + 1;
+  for (;;) {
+    const batch = await fs.query({ ...queryBase, ...(startAt ? { startAt } : {}), limit: pageSize }, parent);
+    docs.push(...(teamCalendar ? batch.filter(d => d.data.audience !== 'managers') : batch));
+    if (docs.length > p.limit || batch.length < pageSize || !teamCalendar) break;
+    const last = batch[batch.length - 1];
+    startAt = { values: [enc(last.data[r.order.field]), { referenceValue: last.name }], before: false };
+  }
   const page = docs.slice(0, p.limit);
   const last = page[page.length - 1];
   const hasMore = docs.length > p.limit;

@@ -15,6 +15,7 @@
 // send the same job and a big job continues on the next run. sentAt is set when the last recipient is done.
 // If a run dies between sending and recording, the next run may send that slice again; every push carries the
 // job's tag (b_<id> for a broadcast), so the phone replaces the copy instead of showing two.
+import { allowsOperationalChannel } from './operationalMessages';
 import { type Doc, type Env, Firestore } from './firestore';
 import { allowedEndpoint, sendWebPush, type Vapid } from './webpush';
 import { type FcmEnv, fcmConfigured, fcmToken, sendFcm } from './fcm';
@@ -185,15 +186,25 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
   const active = creator?.status === 'active';
   // the server's own alerts to the owners (monitor.ts) have no profile: they are sent by the Worker itself
   const fromServer = by.uid === 'server' && kind === 'system';
+  const operational = job.id.startsWith('op_push_') || 'operationalId' in j;
+  let notice: Record<string, unknown> | undefined;
+  if (operational && kind === 'event' && typeof j.operationalId === 'string' && /^op_[a-f0-9]{40}$/.test(j.operationalId)
+      && job.id.startsWith('op_push_' + j.operationalId + '_')) {
+    st.calls++;
+    const rows = await fs.getMany('operational_notices', [j.operationalId], ['source', 'sourceId', 'actor', 'title', 'text', 'pushUids']);
+    const candidate = rows[0]?.data;
+    if (candidate && candidate.sourceId === j.refId && (candidate.actor as { uid?: string } | undefined)?.uid === by.uid) notice = candidate;
+  }
   const allowed = fromServer || (active && (TEAM.has(role) ? (kind === 'broadcast' || kind === 'system' ? MANAGERS.has(role) : true) : role === 'vendor' && kind === 'vendor'));
-  if (!allowed) {
+  if (!allowed || (operational && (!notice || !MANAGERS.has(role)))) {
     st.calls++; st.skipped++;
     await fs.commit([fs.patch(JOBS, job.id, { sentAt: iso(nowMs), outcome: 'refused', leaseUntil: null }, lease)]).catch(() => {});
     return;
   }
 
   const payload: Payload = {
-    title: clip(j.title, 80) || 'חוות רווה', body: clip(j.body, 180), link: appLink(j.link),
+    title: clip(notice?.title || j.title, 80) || 'חוות רווה', body: clip(notice?.text || j.body, 180),
+    link: notice ? (notice.source === 'visit' ? '/me/visits/' + String(notice.sourceId) : '/me/messages') : appLink(j.link),
     tag: clip(j.tag || job.id, 64), urgent: j.urgent === true || kind === 'urgent',
     ttl: Math.max(60, Math.floor((STALE_MS - (nowMs - ms(j.createdAt))) / 1000)),
   };
@@ -223,13 +234,14 @@ async function drainJob(fs: Firestore, job: Doc, send: Sender, nowMs: number, st
     const guestReceives = rrole === 'guest' && guestRecipients.has(uid) && (audience === 'registrants' || u?.data.updatesOptIn === true);
     const vendorReceives = rrole === 'vendor' && (kind === 'broadcast' || (kind === 'vendor' && uid === by.uid));
     const teamReceives = TEAM.has(rrole) && (role !== 'vendor' || MANAGERS.has(rrole));
-    const receives = !!u && u.data.status === 'active' && (guestReceives || vendorReceives || teamReceives)
+    const receives = !!u && u.data.status === 'active' && (operational ? allowsOperationalChannel(notice, uid, 'push') : (guestReceives || vendorReceives || teamReceives))
       && p.enabled === true && (!pref || !Array.isArray(p.kinds) || p.kinds.includes(pref));
     const devices = receives && Array.isArray(p.devices) ? p.devices.slice(0, MAX_DEVICES) : [];
     // keep one call for the progress commit and one for a possible cleanup
     if (budget - st.calls - 2 < devices.length) break;
     for (let i = 0; i < devices.length; i++) {
-      const r = await send(devices[i], guestReceives ? { ...payload, link: '/me/messages' } : payload);
+      const link = notice?.source === 'event' && rrole !== 'guest' ? '/notifications' : guestReceives ? '/me/messages' : payload.link;
+      const r = await send(devices[i], { ...payload, link });
       if (!r) continue; // a device of the other mode
       st.calls++;
       if (r.ok) delivered++;

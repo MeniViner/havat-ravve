@@ -14,6 +14,8 @@ const read = (path) => fetch(base + path, admin).then((r) => r.json());
 const send = (body, headers = {}, settings = env) => handleContact(new Request('http://localhost/v1/contact', { method: 'POST', headers: { origin, 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), settings);
 const data = { id: randomUUID(), subject: 'פניית בדיקה', message: 'הודעה בדויה', method: 'email', reply: 'qa@example.invalid' };
 assert.equal((await send(data, { origin: 'https://example.invalid' })).status, 403);
+const native = new Request('http://localhost/v1/contact', { method:'OPTIONS', headers:{ origin:'https://localhost' } });
+assert.equal((await handleContact(native, {})).headers.get('access-control-allow-origin'), 'https://localhost');
 assert.equal((await send({ ...data, role: 'owner' })).status, 400);
 assert.equal((await send({ ...data, reply: 'invalid' })).status, 400);
 assert.equal((await send('א'.repeat(4500))).status, 413); // actual bytes, even without Content-Length

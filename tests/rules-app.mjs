@@ -465,7 +465,7 @@ try{
  await assertFails(getDoc(doc(guest,'notifications','guest-contact')));
  await assertSucceeds(getDoc(doc(beni,'notifications','guest-contact')));
  await assertSucceeds(updateDoc(doc(beni,'notifications','guest-contact'),{handled:true,handledBy:actor('beni'),handledAt:now}));
- const cal={ownerUid:'beni',ownerName:'בני',title:'פריט ביומן',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now};
+ const cal={ownerUid:'beni',ownerName:'בני',title:'פריט ביומן',audience:'all',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now};
  const volCal={...cal,ownerUid:'vol',ownerName:'בדיקה',kind:'presence',time:'08:00–11:00'};
  await assertSucceeds(setDoc(doc(beni,'calendar','c1'),cal));
  await assertSucceeds(setDoc(doc(beni,'calendar','c2'),{...cal,time:'18:00–21:00',kind:'event',refId:'e1'}));
@@ -474,7 +474,8 @@ try{
  await assertSucceeds(setDoc(doc(beni,'calendar','c5'),{...cal,kind:'planning'}));
  await assertSucceeds(setDoc(doc(beni,'calendar','c6'),{...cal,kind:'presence'}));
  await assertFails(updateDoc(doc(beni,'calendar','c1'),{time:'08:00–11:000'}));
- const teamCalendar=await assertSucceeds(getDocs(query(collection(vol,'calendar'),where('date','==',cal.date))));
+ await assertFails(getDocs(query(collection(vol,'calendar'),where('date','==',cal.date))));
+ const teamCalendar=await assertSucceeds(getDocs(query(collection(vol,'calendar'),where('audience','==','all'),where('date','==',cal.date))));
  assert(teamCalendar.docs.some((entry)=>entry.data().kind==='visit'));
  await assertFails(getDocs(collection(guest,'calendar')));
  await assertFails(getDoc(doc(guest,'calendar','c1')));
@@ -712,7 +713,8 @@ try{
  await v2ok(setDoc(doc(vol,'calendar','cp1'),cal('vol',{from:'08:00',to:'13:00',note:'מגיע עם הטנדר'})),'farm 1 own presence with hours and note');
  await v2no(setDoc(doc(vol,'calendar','cp2'),cal('dana')),'farm 2 presence for someone else');
  await v2no(setDoc(doc(vol,'calendar','cp3'),cal('vol',{ownerName:'שם אחר'})),'farm 2 ownerName not the profile name');
- await v2no(setDoc(doc(vol,'calendar','cp4'),cal('vol',{audience:'all'})),'farm 3 presence with audience');
+ await v2ok(setDoc(doc(vol,'calendar','cp4'),cal('vol',{audience:'all'})),'staff publishes their own presence for the team');
+ await v2no(setDoc(doc(vol,'calendar','cp4priv'),cal('vol',{audience:'managers'})),'staff cannot mark their presence managers-only');
  await v2no(setDoc(doc(vol,'calendar','cp5'),cal('vol',{participants:[]})),'farm 3 presence with participants');
  await v2no(setDoc(doc(vol,'calendar','cp6'),cal('vol',{remindAt:now})),'farm 3 presence with remindAt');
  await v2no(setDoc(doc(vol,'calendar','cp7'),cal('vol',{kind:'manual'})),'farm 4 staff creates a C11 item');
@@ -730,7 +732,8 @@ try{
  await v2no(setDoc(doc(mgr,'calendar','cm5'),c11({note:'x'.repeat(201)})),'farm 8 note of 201');
  await v2no(setDoc(doc(mgr,'calendar','cm6'),c11({time:'x'.repeat(12)})),'farm 8 time of 12');
  await v2ok(updateDoc(doc(mgr,'calendar','c-old'),{title:'פגישה חדשה'}),'farm 9 old item updated by manager');
- await v2ok(getDocs(query(collection(vol,'calendar'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'farm 10 staff reads a date range');
+ await v2no(getDocs(query(collection(vol,'calendar'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'staff cannot query a range including private calendar items');
+ await v2ok(getDocs(query(collection(vol,'calendar'),where('audience','==','all'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'staff reads an explicitly public date range');
  await v2no(getDocs(query(collection(anon,'calendar'),where('date','>=','2030-01-01'))),'farm 10 signed-out read');
  await v2no(getDocs(query(collection(raz,'calendar'),where('date','>=','2030-01-01'))),'calendar vendor read');
  await v2ok(updateDoc(doc(mgr,'calendar','visit_x'),{time:'09:00–14:00'}),'manage 8 visit time of 11 chars');

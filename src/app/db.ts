@@ -3,7 +3,7 @@
 // Screens never import firebase/firestore directly.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  collection, doc, documentId, onSnapshot, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment, serverTimestamp, runTransaction,
+  collection, doc, documentId, onSnapshot, getDocsFromCache, getDocsFromServer, query, where, orderBy, limit, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, increment, serverTimestamp, runTransaction,
   type QueryConstraint, type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -144,6 +144,13 @@ export async function readOnce<T extends Row>(path: string, spec: Spec): Promise
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as DocumentData) }) as unknown as T);
 }
 
+/** Read the same Firestore query exclusively from this device's cache. */
+export async function readListFromCache<T extends Row>(path: string, spec: Spec): Promise<T[]> {
+  if (demoOnly()) return applySpec(demoItems(path) as T[], spec);
+  const snap = await getDocsFromCache(query(collection(db, path), ...toConstraints(spec)));
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as unknown as T);
+}
+
 // ---------- writes ----------
 // The farm has almost no reception, so no screen may wait for the server. A write is applied to the local cache at once
 // (Firestore does that itself) and every list updates immediately. `settle` gives the server a short moment to answer:
@@ -259,6 +266,8 @@ export type TransactOpts = {
   /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
    *  this phone as an ordinary queued write, as when offline, instead of failing. A server that answers still refuses a second entry. */
   queue?: boolean;
+  /** Translate a delayed refusal only when the caller can verify a specific cause on the server. */
+  queuedErrorText?: (reason: unknown) => Promise<string | undefined>;
   /** Never use cached data or queue mutations for this transaction. Its caller handles the server error. */
   serverOnly?: boolean;
 };
@@ -287,7 +296,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     ops.forEach((o) => o());
     return out;
   }
-  if (offline) return queued(fn);
+  if (offline) return queued(fn, undefined, o.queuedErrorText);
   setSync({ pending: sync.pending + 1 });
   let abandoned = false, committing = false;
   const attempt = runTransaction(db, async (t) => {
@@ -310,17 +319,17 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     const first = await Promise.race([attempt.then((v) => ({ v })), late]).finally(() => clearTimeout(timer));
     if (first !== 'late') return first.v;
     abandoned = true;
-    return await queued(fn, committing ? attempt : undefined);
+    return await queued(fn, committing ? attempt : undefined, o.queuedErrorText);
   } catch (e) {
     if (isConflict(e) || o.serverOnly) throw e;
-    if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn); }
+    if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn, undefined, o.queuedErrorText); }
     throw new Error(readError(e));
   } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
 }
 /** `fn` on the cached copy, its writes as one queued batch (Firestore sends it when the network is back).
  *  `attempt`: the transaction this replaces, when its commit was already on the way. If it still landed, the batch repeats it
  *  and the rules refuse the repeat (the scan id is fixed per entry), so that refusal is not a failure the shell should show. */
-async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>): Promise<T> {
+async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>, errorText?: TransactOpts['queuedErrorText']): Promise<T> {
   const ops: Parameters<typeof write.batch>[0] = [];
   const cache = new Map<string, unknown>();
   const out = await fn({
@@ -338,7 +347,12 @@ async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>)
     else b.update(refs[i], toFirestore(x.data!));
   });
   const commit = b.commit();
-  await settle(attempt ? commit.catch(async (e) => { if (await attempt.then(() => true, () => false)) return; throw e; }) : commit);
+  await settle(commit.catch(async (error) => {
+    if (attempt && await attempt.then(() => true, () => false)) return;
+    const detail = await errorText?.(error).catch(() => undefined);
+    if (detail) throw new Error(detail);
+    throw error;
+  }));
   return out;
 }
 async function readCached(col: string, id: string): Promise<Row | null> {

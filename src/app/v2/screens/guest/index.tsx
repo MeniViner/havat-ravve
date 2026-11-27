@@ -22,6 +22,7 @@ import { GuestHome, EventPage } from './home';
 import { OrderPage, PayPage } from './order';
 import { TicketsPage, OrderDetail, PastPage } from './tickets';
 import { AccountPage, SignInPage, ItemsPage, EditPage, MessagesPage, VisitPage, DonationPage, StallPage } from './account';
+import { PublicVendorRegistration } from '../vendor/registration';
 import { VisitForm, DonateForm, ContactForm } from './forms';
 import { TermsPage, DeleteAccountPage } from './pages';
 import './guest.css';
@@ -34,6 +35,7 @@ export type { GuestCtx };
 export function guestScreen(route: string, ctx: GuestCtx): ReactNode | null {
   let m: Record<string, string> | null;
   const p = { ctx };
+  if (route === '/vendor-registration') return <PublicVendorRegistration ctx={ctx} eventId={param('event') || ''} />;
   if (route === '/' && !ctx.team) return <GuestHome {...p} />;
   if ((m = match(route, '/events/:id/order'))) return <OrderPage {...p} id={m.id} />;
   if ((m = match(route, '/events/:id'))) return <EventPage {...p} id={m.id} />;
@@ -49,7 +51,7 @@ export function guestScreen(route: string, ctx: GuestCtx): ReactNode | null {
   if (!ctx.team && route === '/me/account') return <AccountPage {...p} />;
   if (!ctx.team && route === '/me/appearance') return ctx.profile ? <AppearanceScreen parent="/me/account" /> : <AccountPage {...p} />;
   if (!ctx.team && route === '/me/edit') return <EditPage {...p} />;
-  if (!ctx.team && route === '/me/messages') return <MessagesPage {...p} />;
+  if (route === '/me/messages') return <MessagesPage {...p} />;
   if (route === '/visit') return <VisitForm {...p} />;
   if (route === '/donate') return <DonateForm {...p} />;
   if (route === '/contact') return <ContactForm {...p} />;

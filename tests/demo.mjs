@@ -9,7 +9,7 @@ const stub = {
   setup(b) {
     b.onResolve({ filter: /^firebase\/firestore$/ }, () => ({ path: 'fs', namespace: 'stub' }));
     b.onResolve({ filter: /^firebase\/auth$/ }, () => ({ path: 'auth', namespace: 'stub' }));
-    b.onResolve({ filter: /^\.\/firebase$/ }, () => ({ path: 'app', namespace: 'stub' }));
+    b.onResolve({ filter: /^(?:\.\.?\/)+firebase$/ }, () => ({ path: 'app', namespace: 'stub' }));
     b.onLoad({ filter: /^fs$/, namespace: 'stub' }, () => ({ contents: `
       const calls = globalThis.__calls;
       let n = 0;
@@ -17,6 +17,7 @@ const stub = {
       export const doc = (a, b, c) => (c !== undefined ? { path: b + '/' + c } : b !== undefined ? { path: b } : { id: 'real' + (++n), path: a.path + '/real' + n });
       export const query = (c) => c, where = () => 0, orderBy = () => 0, limit = () => 0;
       export const onSnapshot = (ref) => { calls.push(['listen', ref.path]); return () => {}; };
+      export const getDocsFromCache = async (ref) => { calls.push(['listCache', ref.path]); return { docs: [] }; };
       export const getDocsFromServer = async (ref) => { calls.push(['get', ref.path]); return { docs: [] }; };
       export const serverTimestamp = () => ({ __serverTimestamp: true });
       export const documentId = () => '__name__';
@@ -47,7 +48,7 @@ const stub = {
     ` }));
     b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {};' }));
     b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: `
-      export const db = {}, ownerEmail = 'owner@example.test';
+      export const db = {}, config = {}, emulatorMode = true, ownerEmail = 'owner@example.test';
       export const readyAuth = async () => ({});
       export const nowIso = () => new Date().toISOString();
       export const todayKey = () => '', hoursAgoIso = () => '', isGoogleUser = () => false;
@@ -64,8 +65,19 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemoAccess, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, readListFromCache, directoryInvitations, birthChange, storedBirthYear, newId, push, inc, syncState, setDemoAccess, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
+const checked = {uid:'linked-user',email:'joined@example.invalid',createdAt:'2026-11-20'};
+const invites = directoryInvitations([checked], [{email:'JOINED@example.invalid'},{email:'pending@example.invalid'}], [
+  {usedBy:'linked-user',active:false,expiresMs:0},{usedBy:null,active:true,expiresMs:Date.now()+86400000},{usedBy:null,active:true,expiresMs:0},
+]);
+assert.deepEqual([invites.count,invites.joined.length,invites.expired.length],[2,1,1]);
+const birthFields=[{id:'birth',type:'date',label:'תאריך לידה'}];
+const older={birthDate:'1982-05-19',fields:{birth:'1982-05-19',member:'yes'}};
+assert.equal(storedBirthYear(older,birthFields),1982);
+assert.deepEqual(birthChange(older,undefined,birthFields),{});
+assert.deepEqual(birthChange(older,1980,birthFields),{birthYear:1980,birthDate:'',fields:{member:'yes'}});
+
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
 assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'an old mixed state loads as "demo off"');
@@ -87,6 +99,7 @@ for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest',
   await write.update('tabs', 'demo-tab-roni-oct', { items: push({ name: 'x' }), total: inc(5) });
   assert.deepEqual(writes(), [], `no Firestore write as ${persona}`);
 }
+assert.equal((await readListFromCache('tasks',{where:[['title','==','x']]})).some(t=>t.id==='a-real-looking-id'),true);
 assert.ok(demoItems('tasks').some((t) => t.id === 'a-real-looking-id'), 'the write landed in the local demo store');
 const signup = { displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
 await createProfile(NEW_DEMO_SESSION, signup);

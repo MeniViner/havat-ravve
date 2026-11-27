@@ -10,7 +10,10 @@ import { getResource, listResource, matchResource } from './resources';
 import { WRITE_DEFS } from './writes';
 import { getSettings, overview } from './overview';
 import { whoami } from './whoami';
+import { teamCalendar } from './team-calendar';
 import { handleContact } from './contact';
+import { operationalMessageRoute } from './operationalMessages';
+import { publicEventShare } from './v2/eventShare';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
 import { runAccountDeletions } from './accounts';
@@ -34,8 +37,22 @@ const WRITES: Record<string, typeof createTask> = {
 };
 
 async function readBody(req: Request): Promise<Record<string, unknown>> {
-  const text = await req.text();
-  if (text.length > MAX_BODY) throw new ApiError('VALIDATION_FAILED', 'body too large', { field: 'body' });
+  const reader = req.body?.getReader();
+  const decoder = new TextDecoder();
+  let text = '', bytes = 0;
+  if (reader) {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > MAX_BODY) {
+        await reader.cancel();
+        throw new ApiError('VALIDATION_FAILED', 'body too large', { field: 'body' });
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+  }
   if (!text) return {};
   let v: unknown;
   try { v = JSON.parse(text); } catch { throw new ApiError('VALIDATION_FAILED', 'body is not valid JSON', { field: 'body' }); }
@@ -178,6 +195,29 @@ export default {
     const meta: Meta = { requestId: 'req_' + autoId(16), started: Date.now() };
     const url = new URL(req.url);
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
+    if (url.pathname === '/v1/team-calendar') return teamCalendar(req, env);
+    const share = /^\/v1\/events\/([^/]+)\/share$/.exec(url.pathname);
+    if (share) {
+      let eventId: string;
+      try { eventId = decodeURIComponent(share[1]); } catch { return new Response(null, { status: 404 }); }
+      return publicEventShare(req, env, eventId);
+    }
+    if (url.pathname === '/v1/event-reminders' || url.pathname === '/v1/visit-notices') {
+      const origin = req.headers.get('origin') || '';
+      const local = !!env.FIRESTORE_EMULATOR_HOST && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+      const headers = { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'authorization,content-type', 'access-control-allow-methods': 'POST, OPTIONS', vary: 'Origin' };
+      if (!local && origin !== 'https://localhost' && !/^https:\/\/havat-ravve\.(web\.app|firebaseapp\.com)$/.test(origin)) return new Response(null, { status: 403 });
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+      if (req.method !== 'POST') return new Response(null, { status: 405, headers });
+      let res: Response;
+      try {
+        if (env.AUTH_LIMITER && !(await env.AUTH_LIMITER.limit({ key: 'operational:' + (req.headers.get('cf-connecting-ip') || 'local') })).success) throw new ApiError('RATE_LIMITED', 'too many requests');
+        const source = url.pathname === '/v1/event-reminders' ? 'event' : 'visit';
+        res = ok(meta, await operationalMessageRoute(req, env, source, await readBody(req)));
+      } catch (e) { res = fail(meta, toApiError(e)); }
+      for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);
+      return res;
+    }
     if (url.pathname === '/v1/contact') return handleContact(req, env);
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
     // the site's and the app's visit counter (traffic.ts): public, no sign-in, counters only, always 204

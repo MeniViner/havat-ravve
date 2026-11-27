@@ -9,6 +9,7 @@ import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
 import { currentDemoRole, setDemoAccess, useDemo, type DemoAccessRole } from './demo/store';
 import { V2Root } from './v2/App';
+import { PushEntryPrompt } from './v2/PushEntryPrompt';
 import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
 import { GuestRoot, GuestFrame, TermsPage, BlockedPage, DeletionScheduledPage, useDeletionRequest } from './v2/screens/guest';
 import { ToastProvider as V2Toasts } from './v2/core';
@@ -138,6 +139,8 @@ export default function App() {
     return <><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></>;
   }
   // staff, managers, owners and vendors: the redesigned app
-  if (user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
-  return <GuestRoot user={user} profile={profile} settings={settings} />;
+  const screen = user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))
+    ? <V2Root user={user} profile={profile} settings={settings} /> : <GuestRoot user={user} profile={profile} settings={settings} />;
+  return <>{screen}{!demo.on && user && profile?.status === 'active' && <PushEntryPrompt key={profile.uid} profile={profile} />}</>;
+
 }

@@ -1,6 +1,7 @@
 // Data for the system area: my profile (L6, C12, C13), profile photo (A1, A2), global search (C2), first entry (C9),
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
+import { useCalendarRange } from './farm';
 import { saveAccountChange } from '../../account-activity';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useList, useDoc, write, type Spec } from '../../db';
@@ -11,7 +12,7 @@ import { useActivityBy } from '../../activity';
 import { getDemo } from '../../demo/store';
 import { readyAuth } from '../../firebase';
 import { storePhoto } from '../../upload';
-import type { Activity, CalendarItem, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
+import type { Activity, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
 import type { V2Ctx } from '../ctx';
 import { gw } from '../gender';
@@ -107,9 +108,23 @@ export function useGooglePhotoSync(profile: Profile) {
 }
 
 // ---------- registration questions (settings.registrationFields; the same rules as the old RegistrationFields.tsx) ----------
+export const birthQuestion = (f: RegistrationField) => f.type === 'date' && (f.label.includes('לידה') || /^(birthdate|dob)$/i.test(f.id));
+export function storedBirthYear(p: Profile, fields: RegistrationField[]) {
+  if (p.birthYear) return p.birthYear;
+  const legacy = p.birthDate || p.fields?.[fields.find(birthQuestion)?.id || ''] || '';
+  const year = /^(\d{4})-\d{2}-\d{2}$/.exec(legacy)?.[1];
+  return year ? Number(year) : undefined;
+}
+/** Drop the old full-date answer only when the person explicitly replaces it with a year. */
+export function birthChange(p: Profile, year: number | undefined, fields: RegistrationField[]): Partial<Pick<Profile, 'birthYear' | 'birthDate' | 'fields'>> {
+  if (year === undefined) return {};
+  const answers = { ...p.fields };
+  fields.filter(birthQuestion).forEach((f) => { delete answers[f.id]; });
+  return { birthYear: year, ...(p.birthDate ? { birthDate: '' } : {}), fields: answers };
+}
 /** The questions a person answers: a label, and options for a choice; the receipt preference has its own toggle. */
 export const registrationQuestions = (fields: RegistrationField[] | undefined) => (fields || []).filter((f) => (
-  f.id !== RECEIPT_PREFERENCE_FIELD && (f.label || '').trim() && (f.type !== 'choice' || (f.options || []).length)
+  !birthQuestion(f) && f.id !== RECEIPT_PREFERENCE_FIELD && (f.label || '').trim() && (f.type !== 'choice' || (f.options || []).length)
 ));
 /** The stored answer, or '' (a choice answer that is no longer one of the options counts as none). */
 export function answerOf(answers: Record<string, string> | undefined, field: RegistrationField) {
@@ -130,7 +145,7 @@ export const answerText = (answers: Record<string, string> | undefined, field: R
 
 // ---------- profile ----------
 /** `answers`: the registration questions (optional; kept as they are when left out). */
-export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate: string; receipt: 'whatsapp' | 'email'; answers?: Record<string, string> };
+export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate?: string; birthYear?: number; receipt: 'whatsapp' | 'email'; answers?: Record<string, string> };
 export const receiptOf = (p: Profile): 'whatsapp' | 'email' => (p.fields?.[RECEIPT_PREFERENCE_FIELD] === 'email' ? 'email' : 'whatsapp');
 /** "14.3.1975" / "14/03/1975" / "1975-03-14" -> "1975-03-14"; '' stays ''; null when it is not a date. */
 export function parseBirth(s: string): string | null {
@@ -150,10 +165,11 @@ export function parseBirth(s: string): string | null {
 export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : iso || ''; };
 const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
-export function saveProfile(p: Profile, d: ProfileDraft) {
+export function saveProfile(p: Profile, d: ProfileDraft, questions: RegistrationField[] = []) {
+  const changedBirth = birthChange(p, d.birthYear, questions);
   return saveAccountChange(p.uid, 'profile_updated', {
-    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), birthDate: parseBirth(d.birthDate) || '',
-    fields: { ...(p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
+    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), ...(d.birthDate !== undefined ? { birthDate: parseBirth(d.birthDate) || '' } : {}), ...changedBirth,
+    fields: { ...(changedBirth.fields || p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
 }
 
@@ -171,11 +187,12 @@ export function useMyCounts(ctx: V2Ctx) {
   }, [done.items, done.loading, ctx.user.uid, s.day, s.week]);
 }
 /** "היום, עד 13:00" / "היום, כל היום" from my presence entries today (calendar kind 'presence'). */
-export function usePresenceText(uid: string, today: string, enabled = true) {
-  const r = useList<CalendarItem>('calendar', { where: [['date', '==', today], ['kind', '==', 'presence'], ['ownerUid', '==', uid]] }, enabled && !!uid);
-  if (!r.items.length) return r.loading ? '' : 'לא היום';
+export function usePresenceText(uid: string, today: string, manager: boolean, enabled = true) {
+  const r = useCalendarRange(today, today, manager, enabled && !!uid);
+  const mine = r.items.filter((item) => item.kind === 'presence' && item.ownerUid === uid);
+  if (!mine.length) return r.loading ? '' : 'לא היום';
   const ends: string[] = [];
-  for (const c of r.items) {
+  for (const c of mine) {
     const to = c.to || (c.time || '').split(/[–-]/)[1]?.trim();
     if (!to) return 'היום, כל היום';
     ends.push(to);

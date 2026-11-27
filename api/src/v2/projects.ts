@@ -6,7 +6,7 @@ import type { Param } from '../catalog';
 import type { Doc, Firestore, Write } from '../firestore';
 import { type Person, type Ref, IF_UPDATED_AT, forbidden, fresh, isManager, isOwner, member, mustGet, nowIso, project, todayIL } from '../core';
 import { type Ctx, date, def, req, str } from '../writes';
-import { RESOURCES } from '../resources';
+import { RESOURCES, type ResourceDef } from '../resources';
 import { notifyWrites } from '../notify';
 import { autoId } from '../util';
 
@@ -114,21 +114,22 @@ const STEPS_HE = 'הצעדים לפי הסדר, JSON: [{"id":"<קיים, מתו�
 async function projectFor(c: Ctx, pid: string) { return mustGet(c.fs, P, pid, c.tx, 'project'); }
 async function stepFor(c: Ctx, pid: string, sid: string) { return mustGet(c.fs, stepsCol(pid), sid, c.tx, 'step'); }
 const conflict = (message: string, details: Record<string, unknown> = {}) => new ApiError('STALE_WRITE', message, details);
-const MGR_NOTE = 'Managers and owners only, like the app (staff cannot see projects). Activity entries are visible to managers and owners.';
+const MGR_NOTE = 'Managers and owners edit projects. Staff can read projects assigned to an event. Activity entries are visible to managers and owners.';
 const STEPS_NOTE = 'steps is a string that holds a JSON array (send the array serialized, not as an array): [{"id":"<existing id>","title":"...","assignee":"<uid>"|null}]. No id = a new step; assignee null = free; no assignee key = unchanged.';
 
 // createProject()
 def('projects.create', 'projects:write', 'יצירת פרויקט עם צעדים (מי שמקבל צעד מקבל התראה)', {
-  title: str(120, 'לאן רוצים להגיע', true, 1), deadline: str(60, 'עד מתי: תאריך (27.11, 2026-11-27) או טקסט חופשי ("סוף דצמבר")'), steps: str(12000, STEPS_HE),
+  eventId: { type: 'id', he: 'קישור לאירוע' }, title: str(120, 'לאן רוצים להגיע', true, 1), deadline: str(60, 'עד מתי: תאריך (27.11, 2026-11-27) או טקסט חופשי ("סוף דצמבר")'), steps: str(12000, STEPS_HE),
 }, async (c) => {
   const at = nowIso(); const me = c.me;
   const pid = autoId();
+  if (c.input.eventId) await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event');
   const plan = planSteps(c.input.steps ? await parseDrafts(c, c.input.steps) : [], []);
   const members: Person[] = [me];
   for (const s of plan.create) if (s.assignee && !members.some((m) => m.uid === s.assignee!.uid)) members.push(s.assignee);
   const dl = parseDeadline(c.input.deadline || '');
   const doc: Record<string, unknown> = {
-    id: pid, title: c.input.title, goal: c.input.title, deadline: dl.deadline, ...(dl.deadlineText ? { deadlineText: dl.deadlineText } : {}),
+    id: pid, ...(c.input.eventId ? { eventId: c.input.eventId } : {}), title: c.input.title, goal: c.input.title, deadline: dl.deadline, ...(dl.deadlineText ? { deadlineText: dl.deadlineText } : {}),
     members, memberUids: members.map((m) => m.uid), status: 'active', createdBy: me, createdAt: at, updatedAt: at, doneAt: null,
   };
   const col = stepsCol(pid);
@@ -140,7 +141,7 @@ def('projects.create', 'projects:write', 'יצירת פרויקט עם צעדי�
 
 // saveProject()
 def('projects.update', 'projects:write', 'עריכת פרויקט: שם, יעד, והצעדים (הוספה, שינוי, מחיקה של צעד פתוח שהוסר)', {
-  ifUpdatedAt: IF_UPDATED_AT as Param, projectId: req(), title: str(120, 'לאן רוצים להגיע', false, 1), deadline: str(60, 'עד מתי (ריק מסיר)'), steps: str(12000, STEPS_HE),
+  ifUpdatedAt: IF_UPDATED_AT as Param, projectId: req(), eventId: str(80, 'מזהה אירוע; מחרוזת ריקה לניתוק'), title: str(120, 'לאן רוצים להגיע', false, 1), deadline: str(60, 'עד מתי (ריק מסיר)'), steps: str(12000, STEPS_HE),
 }, async (c) => {
   const p = await projectFor(c, c.input.projectId);
   fresh(p, c.input.ifUpdatedAt);
@@ -173,7 +174,11 @@ def('projects.update', 'projects:write', 'עריכת פרויקט: שם, יעד,
   const fresh_ = joiners.filter((a, i) => !known.has(a.uid) && joiners.findIndex((b) => b.uid === a.uid) === i);
   const title = c.input.title ?? String(p.data.title);
   const dl = c.input.deadline !== null && c.input.deadline !== undefined ? parseDeadline(c.input.deadline) : { deadline: String(p.data.deadline || ''), deadlineText: String(p.data.deadlineText || '') };
-  const ppatch: Record<string, unknown> = { title, goal: title, deadline: dl.deadline, deadlineText: dl.deadlineText || '', updatedAt: at, ...(fresh_.length ? withMembers(p.data, fresh_) : {}) };
+  if (c.input.eventId) {
+    if (!/^[\w-]{1,80}$/.test(c.input.eventId)) throw invalid('eventId', 'invalid event id');
+    await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event');
+  }
+  const ppatch: Record<string, unknown> = { ...(c.input.eventId != null ? { eventId: c.input.eventId } : {}), title, goal: title, deadline: dl.deadline, deadlineText: dl.deadlineText || '', updatedAt: at, ...(fresh_.length ? withMembers(p.data, fresh_) : {}) };
   writes.push(c.fs.patch(P, p.id, ppatch, p.updateTime));
   const total = plan.update.length + created.length;
   const pd = { ...p.data, title, id: p.id };
@@ -308,7 +313,7 @@ def('projects.addStep', 'projects:write', 'הוספת צעד בסוף הפרוי
 
 // ======================= reads =======================
 
-RESOURCES.push({
+const projectsResource: ResourceDef = {
   name: 'projects', col: P, path: '/v1/projects', scope: 'projects:read',
   he: 'פרויקטים של המנהלים: יעד, תאריך, חברים, מצב, וכל הצעדים שלהם לפי הסדר',
   order: { field: 'createdAt', dir: 'ASCENDING' },
@@ -321,4 +326,11 @@ RESOURCES.push({
     return { ...it, steps, progress };
   })),
   notes: ['Managers and owners only. status: active or done. Each project includes "steps" (ordered; a step\'s id is what the step actions take) and "progress".'],
+};
+RESOURCES.push(projectsResource, {
+  ...projectsResource, name: 'eventProjects', path: '/v1/event-projects', scope: 'events:read',
+  he: 'פרויקטים משויכים לאירוע, עם צעדים והתקדמות', filters: { eventId: { field:'eventId', param:{ type:'id', required:true } } },
+  restrict: (_caller, given) => typeof given.eventId === 'string' && given.eventId ? [] : null,
+  visible: (_caller, data) => typeof data.eventId === 'string' && !!data.eventId,
+  notes: ['List requires eventId. Only event-linked projects are visible in this read-only view.'],
 });

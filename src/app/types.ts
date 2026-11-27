@@ -34,6 +34,7 @@ export type Profile = {
   googlePhoto?: string;
   town?: string;
   birthDate?: string;
+  birthYear?: number;
   /** Push opt-in (L6 / C12 notification rows). */
   push?: { enabled: boolean; kinds?: string[]; updatedAt?: string };
   /** First entry (C9) was completed. */
@@ -104,7 +105,7 @@ export type Template = {
   skip?: string[];
 };
 
-export type ShoppingCategory = 'super' | 'building' | 'online' | 'giveaway';
+export type ShoppingCategory = 'super' | 'building' | 'online' | 'giveaway' | `custom_${string}`;
 
 export type ShoppingItem = {
   id: string;
@@ -115,6 +116,7 @@ export type ShoppingItem = {
   category: ShoppingCategory;
   qty: string;
   urgent: boolean;
+  urgentDueAt?: string | null;
   createdBy: Actor;
   createdAt: string;
   bought: boolean;
@@ -136,7 +138,7 @@ export type ShoppingItem = {
 
 /** A shopping trip (S6/S7): someone is at the store now. */
 export type ShoppingTrip = {
-  id: string; by: Actor; list: ShoppingCategory; startedAt: string; closedAt: string | null;
+  id: string; recipientUids?: string[]; by: Actor; list: ShoppingCategory; startedAt: string; closedAt: string | null;
   /** ids bought / marked not available during the trip (filled on close) */
   bought: string[]; missing: string[];
 };
@@ -161,7 +163,7 @@ export const PAYMENT_LABELS: Record<PaymentStatus, string> = { free: 'חינם',
 export type EventQuestion = { id: string; label: string; required: boolean };
 export type EventFile = { name: string; url: string; kind: 'doc' | 'image'; by: Actor; at: string };
 export type FarmEvent = {
-  id: string; title: string; description: string; image: string; location: string;
+  id: string; title: string; description: string; image: string; location: string; shareWords?: string;
   start: string; end: string; price: number; maxPerOrder: number; capacity: number;
   open: boolean; published: boolean; publishedAt?: string; questions: EventQuestion[];
   entry?: boolean; stall?: boolean;
@@ -187,6 +189,7 @@ export type VisitStatus = 'new' | 'approved' | 'rejected' | 'cancelled';
 export const VISIT_LABELS: Record<VisitStatus, string> = { new: 'חדש', approved: 'אושר', rejected: 'לא מתאים', cancelled: 'בוטל' };
 export type Visit = {
   id: string; uid: string; name: string; phone: string; date: string; people: number; type: string; note: string;
+  requestedDate?: string; approvedDate?: string; approvedTime?: string; replyText?: string; replyChannel?: 'app' | 'app-email' | 'whatsapp'; replyChannels?: ('push' | 'email' | 'whatsapp')[];
   status: VisitStatus; managerNote: string; handledBy: Actor | null; createdAt: string; updatedAt: string;
 };
 
@@ -199,7 +202,7 @@ export type Donation = {
 
 export type Vendor = { id: string; name: string; phone: string; product: string; external: boolean; notes: string; createdAt: string; updatedAt: string };
 export type EventVendor = { id: string; vendorId: string; name: string; confirmed: boolean; notes: string };
-export type Product = { id: string; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
+export type Product = { id: string; catalogId?: string; catalogProductId?: string; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
 export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor };
 export type TabStatus = 'open' | 'claimed' | 'paid' | 'waived';
 export const TAB_LABELS: Record<TabStatus, string> = { open: 'פתוח', claimed: 'הועבר, ממתין לאישור', paid: 'שולם', waived: 'נמחל' };
@@ -252,7 +255,7 @@ export type CalendarItem = { id: string; ownerUid: string; ownerName: string; ti
 
 /** Manager projects (P1-P6). Managers and owners only. */
 export type Project = {
-  id: string; title: string; goal: string; deadline: string; deadlineText?: string;
+  id: string; eventId?: string; title: string; goal: string; deadline: string; deadlineText?: string;
   members: Actor[]; status: 'active' | 'done'; createdBy: Actor; createdAt: string; updatedAt: string;
   /** uids of members (rules and queries); short name for compact places (P4, P6); when the last step was done. */
   memberUids?: string[]; short?: string; doneAt?: string | null;
@@ -313,7 +316,7 @@ export type GateScan = { id: string; eventId: string; ticketId: string; orderId:
 export type LiveCounters = { entered: number; paidAtGate: number; payLater: number; payLaterAmount: number; rejected: number; scans: number; perHalfHour: Record<string, number> };
 
 /** events/{id}/staffing/{station} (V4). */
-export type Staffing = { id: string; station: string; people: { uid: string; name: string; hours: string }[]; needed: number };
+export type Staffing = { id: string; station: string; people: { uid: string; name: string; hours: string; role?: string; startsAt?: string; endsAt?: string }[]; needed: number };
 
 /** Event close (Y5). Stored on the event document as `closed`. */
 /** events/{id}.closed. Public with the event, so it holds no money: the cash counts live in events/{id}/counters/cash (managers only). */

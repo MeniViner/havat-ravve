@@ -128,3 +128,8 @@
 .manage-item__meta--one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 /* W4: the lead paragraph under the title */
 .manage-lead { margin: 0; font-size: 16px; line-height: 1.5; color: var(--soft); }
+
+.manage-joined-list { max-height: 21rem; overflow: auto; }
+.manage-directory-search { display: flex; gap: 8px; align-items: center; }
+.manage-directory-search .k-search { flex: 1; min-width: 0; }
+.manage-directory-roles { display: grid; gap: 10px; margin: 0; padding: 9px 0; border: 0; }

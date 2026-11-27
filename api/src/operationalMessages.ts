@@ -107,7 +107,7 @@ async function visitWrites(fs:Firestore,tx:string,c:Command,visit:Doc,actor:Acto
   const replyChannel=c.channels.includes('email')?'app-email':c.channels.includes('whatsapp')?'whatsapp':'app';
   const writes=[fs.patch('visits',visit.id,{status:d.status,handledBy:actor,updatedAt:nextUpdatedAt(v.updatedAt),requestedDate:v.requestedDate || v.date,
     ...(approved?{approvedDate:date,approvedTime:time}:{}),replyChannel,replyChannels:c.channels,replyText:c.text,...(d.managerNote===undefined?{}:{managerNote:d.managerNote})},visit.updateTime)];
-  if (approved) writes.push(fs.set('calendar','visit_'+visit.id,{title:`ביקור: ${v.name} · ${v.people}`,date,time,ownerUid:actor.uid,ownerName:actor.name,kind:'visit',refId:visit.id,createdAt:at}));
+  if (approved) writes.push(fs.set('calendar','visit_'+visit.id,{title:`ביקור: ${v.name} · ${v.people}`,date,time,ownerUid:actor.uid,ownerName:actor.name,audience:'all',kind:'visit',refId:visit.id,createdAt:at}));
   for(const row of match) if (!row.data.handled && row.data.type==='visit') writes.push(fs.patch('notifications',row.id,{handled:true,handledBy:actor,handledAt:at},row.updateTime));
   writes.push(activity(fs,actor,'visit',visit.id,d.status,`${v.name} · ${date}`,{subjectUid:String(v.uid || '')}));
   return writes;

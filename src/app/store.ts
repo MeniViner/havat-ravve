@@ -80,10 +80,10 @@ export function useCmsEditor(user: Session, enabled: boolean) {
 /** The role for a brand-new account: owner by bootstrap email; otherwise the role of the one-time team link the person came
  *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
  *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }, link = '') {
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string>; birthYear?: number }, link = '') {
   const now = nowIso();
   const email = (user.email || '').toLowerCase();
-  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, ...(data.birthYear !== undefined ? { birthYear: data.birthYear } : {}), status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
   if (demoOnly() && getDemo().persona === 'new' && user.uid === NEW_DEMO_SESSION.uid) {
     if (!demoDoc('users/' + user.uid)) await write.set('users', user.uid, { ...details, role: 'guest', customerNumber: 999 });
     return;

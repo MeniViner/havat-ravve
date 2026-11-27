@@ -19,7 +19,7 @@ import {
   afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
-import { RegistrationQuestions, RegistrationTerms } from './fields';
+import { RegistrationQuestions, RegistrationTerms, BirthYearField } from './fields';
 import { forgetVendorInvite } from '../../data/vendor';
 import './system.css';
 
@@ -31,6 +31,7 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
   const toast = useToast();
   const [name, setName] = useState(profile?.displayName || '');
   const [termsRead, setTermsRead] = useState(false);
+  const [birthYear, setBirthYear] = useState<number>();
   const [phone, setPhone] = useState(profile?.phone || '');
   const questions = registrationQuestions(fields);
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(profile?.fields, questions));
@@ -50,9 +51,9 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
       if (profile) await markWelcomed(profile.uid, d);
       else if (demoOnly()) {
         const at = nowIso();
-        await write.set('users', user.uid, { uid: user.uid, email: (invite?.email || user.email).toLowerCase(), displayName: name.trim(), phone: phone.trim(), role: invite?.role || 'staff', status: 'active', customerNumber: 999, acceptedTermsAt: at, createdAt: at, updatedAt: at, welcomedAt: at, fields: given });
+        await write.set('users', user.uid, { uid: user.uid, email: (invite?.email || user.email).toLowerCase(), displayName: name.trim(), phone: phone.trim(), role: invite?.role || 'staff', status: 'active', customerNumber: 999, acceptedTermsAt: at, createdAt: at, updatedAt: at, welcomedAt: at, fields: given, ...(birthYear === undefined ? {} : { birthYear }) });
       } else {
-        await createProfile(user, { displayName: name, phone, fields: given }, link);
+        await createProfile(user, { displayName: name, phone, fields: given, birthYear }, link);
         if (link) forgetVendorInvite();
         void write.update('users', user.uid, { welcomedAt: nowIso() }, { quiet: true }).catch(() => {});
       }
@@ -87,6 +88,7 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
         </MoreDetails>
       )}
       <span className="system-note">השם יופיע ליד כל משימה שתבצע.</span>
+      {!profile && <BirthYearField value={birthYear} onChange={setBirthYear} />}
       {!profile && <RegistrationTerms read={termsRead} onChange={setTermsRead} invalid={tried && !termsRead} />}
     </AppScreen>
   );

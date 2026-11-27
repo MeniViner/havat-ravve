@@ -11,6 +11,7 @@ import {
 import { autoId } from './util';
 import { notifyWrites } from './notify';
 import { member as teamMember, todayIL } from './core';
+import { readShoppingCategory, urgentDueAt } from './v2/shoppingCategories';
 import { storedPhoto, taskToPerson } from './v2/taskutil';
 import { dropPushDevices } from './resources';
 import { addWriteActivity } from './write-activity';
@@ -212,16 +213,21 @@ def('templates.delete', 'templates:write', 'מחיקת משימה קבועה', {
 
 // ======================= shopping =======================
 
-const CAT = ['super', 'building', 'online', 'giveaway'];
 const itemText = (d: Record<string, unknown>) => `${d.title}${d.qty ? ' · ' + d.qty : ''}`;
 // editShopping()
 def('shopping.edit', 'shopping:write', 'עריכת פריט ברשימת הקניות', { ifUpdatedAt: IF_UPDATED_AT as Param,
   itemId: req(), title: str(200, 'מה לקנות', false, 1), qty: str(40, 'כמות'), note: str(1000, 'הערה'), link: str(2000, 'קישור https'),
-  category: en(CAT, 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה'), urgent: bool('דחוף'),
+  category: str(327, 'מזהה קטגוריה מובנית או רשימה מותאמת', false, 1), urgent: bool('דחוף'), urgentDueAt: str(24, 'מועד הדחיפות בשעון UTC, מחרוזת ריקה להסרה'),
 }, async (c) => {
   const it = await mustGet(c.fs, 'shopping', c.input.itemId, c.tx, 'shopping item');
   fresh(it, c.input.ifUpdatedAt);
-  const patch = given(c.input, ['title', 'qty', 'note', 'link', 'category', 'urgent']);
+  const patch = given(c.input, ['title', 'qty', 'note', 'link', 'category', 'urgent', 'urgentDueAt']);
+  if ('category' in patch) patch.category = await readShoppingCategory(c.fs, patch.category, c.tx);
+  if ('urgentDueAt' in patch) {
+    patch.urgentDueAt = urgentDueAt(patch.urgentDueAt);
+    if (patch.urgentDueAt && !(patch.urgent ?? it.data.urgent)) throw invalid('urgentDueAt', 'a due time requires an urgent item');
+  }
+  if (patch.urgent === false && it.data.urgentDueAt) patch.urgentDueAt = null;
   if (typeof patch.link === 'string' && patch.link && !/^https:\/\//.test(patch.link)) throw invalid('link', 'link must start with https://');
   needSome(patch);
   const onlyUrgent = Object.keys(patch).length === 1 && 'urgent' in patch;
@@ -368,7 +374,7 @@ function questionsOf(c: Ctx, old: unknown): Question[] | null {
   });
 }
 const eventFields = (required: boolean): Record<string, Param> => ({
-  title: str(200, 'שם האירוע', required, 1), description: str(8000, 'תיאור לאורחים'), location: str(300, 'מקום'),
+  title: str(200, 'שם האירוע', required, 1), description: str(8000, 'תיאור לאורחים'), shareWords: str(300, 'כמה מילים לשיתוף'), location: str(300, 'מקום'),
   start: dt('התחלה, שעון ישראל', required), end: dt('סיום, שעון ישראל (יכול להיות ביום מאוחר יותר)', required), price: num(0, 100000, 'מחיר לכרטיס, 0 חינם'),
   maxPerOrder: { type: 'int', min: 1, max: 20, ...(required ? { default: 5 } : {}), he: 'עד כמה כרטיסים בהזמנה' }, capacity: { type: 'int', min: 0, max: 100000, ...(required ? { default: 0 } : {}), he: 'מקומות, 0 בלי הגבלה' },
   open: bool('פתוח להרשמה'), published: bool('מפורסם לאורחים'),
@@ -385,7 +391,7 @@ const EVENT_NOTES = [
 /** ManageEvents.tsx save(): a published event has a calendar entry "event_<id>" (time "HH:mm–HH:mm"), an unpublished one none. */
 function eventCalendar(c: Ctx, id: string, e: Record<string, unknown>): Write {
   if (!e.published) return c.fs.remove('calendar', `event_${id}`);
-  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: farmTime(String(e.start)).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
+  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: farmTime(String(e.start)).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, audience: 'all', kind: 'event', refId: id, createdAt: nowIso() });
 }
 // saveEventV2() (src/app/v2/data/events.ts) -> saveEvent() (new) + upsertCalendarRef, with the fields of the N11 form
 def('events.create', 'events:write', 'יצירת אירוע', eventFields(true), async (c) => {
@@ -396,8 +402,9 @@ def('events.create', 'events:write', 'יצירת אירוע', eventFields(true),
   const id = autoId();
   const now = nowIso();
   const published = i.published ?? false;
+  if (published && Date.parse(end) <= Date.now()) throw invalid('end', 'publication requires a future end');
   const e = {
-    title: i.title, description: i.description || '', image: i.image || '', location: i.location ?? DEFAULT_LOCATION, start, end,
+    title: i.title, description: i.description || '', ...(i.shareWords ? { shareWords: i.shareWords } : {}), image: i.image || '', location: i.location ?? DEFAULT_LOCATION, start, end,
     price: i.price ?? 0, maxPerOrder: i.maxPerOrder, capacity: i.capacity, open: i.open ?? true, published,
     questions: questionsOf(c, []) || [], entry: i.entry ?? true, stall: i.stall ?? true, files: [],
     ...(published ? { publishedAt: now } : {}), createdBy: c.me, createdAt: now, updatedAt: now,
@@ -411,7 +418,7 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   const ev = await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event');
   fresh(ev, c.input.ifUpdatedAt);
   const i = c.input;
-  const patch: Record<string, unknown> = given(i, ['title', 'description', 'location', 'price', 'maxPerOrder', 'capacity', 'open', 'published', 'entry', 'stall', 'image']);
+  const patch: Record<string, unknown> = given(i, ['title', 'description', 'shareWords', 'location', 'price', 'maxPerOrder', 'capacity', 'open', 'published', 'entry', 'stall', 'image']);
   if ('image' in patch) storedImage('image', patch.image);
   if (i.start !== null) patch.start = isoFromIL(i.start);
   if (i.end !== null) patch.end = isoFromIL(i.end);
@@ -421,6 +428,7 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   // times older API writes left in farm time are stored as ISO UTC on the next edit, like the app's
   for (const k of ['start', 'end']) if (!(k in patch) && ev.data[k] && eventIso(ev.data[k]) !== ev.data[k]) patch[k] = eventIso(ev.data[k]);
   const next = { ...ev.data, ...patch };
+  if (next.published && (!next.end || !next.start || (!ev.data.published && Date.parse(eventIso(next.end)) <= Date.now()))) throw invalid('end', 'publication requires a future end');
   if (Date.parse(eventIso(next.end)) <= Date.parse(eventIso(next.start))) throw invalid('end', 'end must be after start');
   const action = patch.published !== undefined && patch.published !== !!ev.data.published ? (patch.published ? 'published' : 'unpublished') : 'edited';
   const now = nowIso();
@@ -651,7 +659,7 @@ def('visits.setStatus', 'visits:write', 'אישור, דחייה או ביטול 
     c.fs.patch('visits', v.id, { status: st, managerNote: note, handledBy: c.me, updatedAt: now }, v.updateTime),
     activity(c.fs, c.me, 'visit', v.id, st, `${v.data.name} · ${v.data.date}${time ? ' · ' + time : ''}${note ? ' · ' + note : ''}`, { subjectUid: String(v.data.uid) }),
   ];
-  if (st === 'approved') writes.push(c.fs.set('calendar', `visit_${v.id}`, { title: `ביקור: ${v.data.name} · ${v.data.people}`, date: v.data.date, time, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'visit', refId: v.id, createdAt: now }));
+  if (st === 'approved') writes.push(c.fs.set('calendar', `visit_${v.id}`, { title: `ביקור: ${v.data.name} · ${v.data.people}`, date: v.data.date, time, ownerUid: c.me.uid, ownerName: c.me.name, audience: 'all', kind: 'visit', refId: v.id, createdAt: now }));
   else writes.push(c.fs.remove('calendar', `visit_${v.id}`));
   // back to "new": its inbox items return to the queue; any other decision closes them
   if (st === 'new') writes.push(...(await whereEq(c.fs, 'notifications', { refId: v.id, handled: true })).map((n) => c.fs.patch('notifications', n.id, { handled: false, handledBy: null, handledAt: null })));

@@ -3,7 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go, useExternal, useRemove, waUrl, telUrl } from '../../core';
 import {
-  Avatar, BottomBar, Button, Card, Chip, ChipRow, DataTable, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, MoreMenu, PageTitle, PickerSheet, Row,
+  Avatar, BottomBar, Button, Card, Checkbox, IconButton, Chip, ChipRow, DataTable, DetailList, DetailRow, EmptyState, Field, FormHeader, ListCard, MoreMenu, PageTitle, PickerSheet, Row,
   SearchField, SectionHeader, Segmented, Sheet, Tag, TextAreaField, TextLink, TopBar, type ActionItem,
   MoreDetails,
 } from '../../kit';
@@ -22,31 +22,47 @@ import {
 } from '../../data/manage';
 import { lnk, HistorySheet, LinkCard, Loading, NotFound } from './shared';
 import { directoryGuest, useContactGuest, useContactGuests } from '../../data/contact';
-import { useTeamLinks } from '../../data/invite';
+import { birthQuestion, storedBirthYear } from '../../data/system';
+import { useAllTeamLinks, directoryInvitations } from '../../data/invite';
 import { MessagesSegment, MESSAGES_PATH } from '../broadcast';
 
 // ---------- Q23 ----------
 /** The two segments of "אנשים והודעות": people (Q23) and messages (Q25, ?tab=messages, screens/broadcast/Sent.tsx).
  *  The top bar holds ⋯ on people and the primary "הודעה חדשה" on messages (rule 5, as designed). */
 type Seg = 'people' | 'messages';
-type PFilter = 'all' | 'team' | 'guests' | 'debt' | 'blocked';
+const DIRECTORY_ROLES: Role[] = ['owner', 'manager', 'staff', 'vendor', 'guest'];
+const ROLE_GROUPS: Record<Role, string> = { owner: 'בעלים', manager: 'מנהלים', staff: 'מתנדבים', vendor: 'בעלי דוכן', guest: 'אורחים' };
+type DirectoryFilter = { sort: 'name' | 'role'; roles: Role[]; status: 'all' | 'debt' | 'blocked' };
+function initialFilter(value?: string): DirectoryFilter {
+  return { sort: 'name', roles: value === 'team' ? ['owner', 'manager', 'staff'] : value === 'guests' ? ['guest'] : [...DIRECTORY_ROLES],
+    status: value === 'debt' || value === 'blocked' ? value : 'all' };
+}
 
 export function PeopleScreen({ ctx, params }: ScreenProps) {
   const all = usePeople(true);
   const contacts = useContactGuests();
   const contactIds = new Set(contacts.items.map((c) => c.id));
   const personPath = (uid: string) => contactIds.has(uid) ? `/manage/people/contact/${uid}` : `/manage/people/${uid}`;
-  const fields = ctx.settings.registrationFields;
-  const groups = useMemo(() => letterGroups([...all.items.filter((p) => p.role !== 'vendor'), ...contacts.items.map(directoryGuest)], fields), [all.items, contacts.items, fields]);
-  const people = groups.flatMap(([, members]) => members);
+  const fields = ctx.settings.registrationFields.filter((f) => !birthQuestion(f));
+  const people = useMemo(() => [...all.items, ...contacts.items.map(directoryGuest)], [all.items, contacts.items]);
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<DirectoryFilter>(() => initialFilter(params.filter));
+  const [draft, setDraft] = useState<DirectoryFilter | null>(null);
   const openTickets = useOpenTickets(true).items;
   const legacy = useLegacyTicketActivity(openTickets);
   const debts = debtsByPerson(registeredTickets(openTickets, legacy.items), useOpenTabs(true).items);
+  const alphabetical = letterGroups(people.filter((p) => filter.roles.includes(p.role) && personMatches(p, q) &&
+    (filter.status === 'all' || (filter.status === 'debt' ? debts.has(p.uid) : p.status === 'blocked'))), fields);
+  const byName = alphabetical.flatMap(([, members]) => members);
+  const groups: [string, Profile[]][] = filter.sort === 'name' ? alphabetical
+    : DIRECTORY_ROLES.map((role): [string, Profile[]] => [ROLE_GROUPS[role], byName.filter((p) => p.role === role)]).filter(([, members]) => members.length);
+  const visible = groups.flatMap(([, members]) => members);
+  const invites = directoryInvitations(all.items, useRoleInvites(true).items, useAllTeamLinks(true).items);
   const table = useTableView({
     title: 'אנשים', filename: 'אנשים.csv', headers: ['User ID', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'נרשם', 'חוב', ...fields.map((f) => f.label)],
-    rows: () => people.map((p) => [userNumber(p.customerNumber), p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status === 'blocked' ? 'חסום' : 'פעיל', tableCell.date(p.createdAt), debts.get(p.uid) ? tableCell.money(debts.get(p.uid)) : '', ...fields.map((f) => p.fields?.[f.id] || '')]),
+    rows: () => visible.map((p) => [userNumber(p.customerNumber), p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status === 'blocked' ? 'חסום' : 'פעיל', tableCell.date(p.createdAt), debts.get(p.uid) ? tableCell.money(debts.get(p.uid)) : '', ...fields.map((f) => p.fields?.[f.id] || '')]),
     renderCell: (value, column, i) => column === 0 && value
-      ? <a className="manage-id-link" {...lnk(personPath(people[i].uid))} aria-label={`User ID ${value} · ${people[i].displayName}`}>{value}</a>
+      ? <a className="manage-id-link" {...lnk(personPath(visible[i].uid))} aria-label={`User ID ${value} · ${visible[i].displayName}`}>{value}</a>
       : (column === 0 ? 'טרם הוקצה' : value),
   });
   if (table.active) return table.screen;
@@ -66,21 +82,32 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
       <PageTitle>אנשים והודעות</PageTitle>
       <Segmented size="lg" label="תצוגה" value={seg} onChange={setSeg}
         options={[{ value: 'people', label: <>אנשים · <span className="k-num">{people.length}</span></> }, { value: 'messages', label: 'הודעות' }]} />
-      {seg === 'messages' ? <MessagesSegment ctx={ctx} /> : <PeopleSegment people={people} groups={groups} personPath={personPath} debts={debts} initial={params.filter} />}
+      {seg === 'messages' ? <MessagesSegment ctx={ctx} /> : <>
+        <div className="manage-directory-search"><SearchField label="שם, טלפון, מייל או מספר" value={q} onChange={(e) => setQ(e.target.value)} />
+          <IconButton icon="sliders" label="סינון ומיון אנשים" onClick={() => setDraft(filter)} /></div>
+        <span className="k-meta" role="status">{visible.length} אנשים · {filter.sort === 'role' ? 'לפי סוג צוות' : 'לפי שם משפחה'}</span>
+        {invites.count > 0 && !q && <LinkCard path="/manage/people/invite" title={`${invites.count} נוספו מראש ועוד לא נכנסו`} />}
+        <DirectoryList groups={groups} personPath={personPath} debts={debts} q={q} />
+        <Sheet open={!!draft} onClose={() => setDraft(null)} title="סינון ומיון">
+          {draft && <div className="manage-sheet">
+            <Segmented label="סדר התוצאות" value={draft.sort} onChange={(sort) => setDraft({ ...draft, sort })}
+              options={[{ value: 'name', label: 'שם משפחה ואז פרטי' }, { value: 'role', label: 'לפי סוג צוות' }]} />
+            <fieldset className="manage-directory-roles"><legend>תפקידים</legend>
+              {DIRECTORY_ROLES.map((role) => <Checkbox key={role} label={ROLE_GROUPS[role]} checked={draft.roles.includes(role)}
+                onChange={(on) => setDraft({ ...draft, roles: on ? [...draft.roles, role] : draft.roles.filter((r) => r !== role) })} />)}
+            </fieldset>
+            <Segmented label="מצב" value={draft.status} onChange={(status) => setDraft({ ...draft, status })}
+              options={[{ value: 'all', label: 'כל המצבים' }, { value: 'debt', label: 'עם חוב' }, { value: 'blocked', label: 'חסומים' }]} />
+            <Button variant="outline" onClick={() => setDraft(initialFilter())}>איפוס</Button>
+            <Button onClick={() => { setFilter(draft); setDraft(null); }}>הצגת תוצאות</Button>
+          </div>}
+        </Sheet>
+      </>}
     </AppScreen>
   );
 }
 
-function PeopleSegment({ people, groups, personPath, debts, initial }: { people: Profile[]; personPath: (uid: string) => string; groups: [string, Profile[]][]; debts: Map<string, number>; initial?: string }) {
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt', 'blocked'] as string[]).includes(initial || '') ? (initial as PFilter) : 'all');
-  const invites = [...useRoleInvites(true).items, ...useTeamLinks(true).items]; // Q27: added ahead by e-mail or by phone
-  const team = people.filter(isTeam);
-  const withDebt = people.filter((p) => debts.has(p.uid));
-  const blockedN = people.filter((p) => p.status === 'blocked').length;
-  const visible = groups.map(([letter, members]): [string, Profile[]] => [letter, members
-    .filter((p) => (filter === 'team' ? isTeam(p) : filter === 'guests' ? p.role === 'guest' : filter === 'debt' ? debts.has(p.uid) : filter === 'blocked' ? p.status === 'blocked' : true))
-    .filter((p) => personMatches(p, q))]).filter(([, members]) => members.length);
+function DirectoryList({ groups, personPath, debts, q }: { groups: [string, Profile[]][]; personPath: (uid: string) => string; debts: Map<string, number>; q: string }) {
   const tag = (p: Profile) => {
     if (p.status === 'blocked') return <Tag tone="urgent">חסום</Tag>;
     const d = debts.get(p.uid);
@@ -91,18 +118,9 @@ function PeopleSegment({ people, groups, personPath, debts, initial }: { people:
   };
   return (
     <>
-      <SearchField label="שם, טלפון, מייל או מספר" value={q} onChange={(e) => setQ(e.target.value)} />
-      <ChipRow label="סינון">
-        <Chip selected={filter === 'all'} onClick={() => setFilter('all')}>הכל</Chip>
-        <Chip selected={filter === 'team'} onClick={() => setFilter('team')}>צוות · {team.length}</Chip>
-        <Chip selected={filter === 'guests'} onClick={() => setFilter('guests')}>אורחים</Chip>
-        <Chip selected={filter === 'debt'} onClick={() => setFilter('debt')}>{withDebt.length ? `עם חוב · ${withDebt.length}` : 'עם חוב'}</Chip>
-        <Chip selected={filter === 'blocked'} onClick={() => setFilter('blocked')}>{blockedN ? `חסומים · ${blockedN}` : 'חסומים'}</Chip>
-      </ChipRow>
-      {invites.length > 0 && !q && filter === 'all' && <LinkCard path="/manage/people/invite" title={`${invites.length} נוספו מראש ועוד לא נכנסו`} />}
-      {visible.length ? (
+      {groups.length ? (
         <ListCard aria-label="אנשים">
-          {visible.flatMap(([letter, ps]) => [
+          {groups.flatMap(([letter, ps]) => [
             <li key={'l' + letter} className="manage-letter" aria-hidden="true">{letter}</li>,
             ...ps.map((p) => (
               <Row key={p.uid} {...lnk(personPath(p.uid))} leading={<Avatar name={p.displayName} />} title={p.displayName} tags={tag(p)}
@@ -168,7 +186,7 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
       meta: relDay(t.createdAt), path: `/manage/events/${t.eventId}/tabs/${t.id}` })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const itemRow = (r: ItemRow) => <Row key={r.key} {...lnk(r.path)} title={r.title} tags={r.tag} meta={r.meta} />;
-  const extra = ctx.settings.registrationFields.map((f) => ({ f, v: p.fields?.[f.id] || (f.id === 'city' ? p.town || '' : '') })).filter((x) => x.v);
+  const extra = ctx.settings.registrationFields.filter((f) => !birthQuestion(f)).map((f) => ({ f, v: p.fields?.[f.id] || (f.id === 'city' ? p.town || '' : '') })).filter((x) => x.v);
   const ticketRefs = new Set(tickets.flatMap((t) => [JSON.stringify([t.eventId, t.orderId]), JSON.stringify([t.eventId, t.id])]));
   const history = [
     ...log.filter((a) => a.subjectUid === uid && (a.kind !== 'ticket' || ticketRefs.has(JSON.stringify([a.eventId, a.refId])))).map((a) => ({ key: a.id, at: a.at, title: `${ACTION_LABELS[a.action] || a.action}: ${a.text}`, meta: `${dayTime(a.at)}${a.by.uid !== p.uid ? ` · ${firstName(a.by.name)}` : ''}` })),
@@ -177,7 +195,9 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
   const joined = { key: 'joined', at: p.createdAt, title: gw(p.displayName, 'נרשם', 'נרשמה'), meta: `${ddmm(p.createdAt)}.${keyOf(p.createdAt).slice(0, 4)}` };
   const latest = history[0] || joined;
   const town = p.town || p.fields?.city;
-  const partialHistory = ownTickets.some((t) => t.selfRegistered === undefined && !t.walkIn) && tickets.length < ownTickets.length;
+  const verifiedIds = new Set(tickets.map((t) => t.id));
+  const partialHistory = ownTickets.some((t) => t.selfRegistered === undefined && !t.walkIn && !verifiedIds.has(t.id));
+  const birthYear = storedBirthYear(p, ctx.settings.registrationFields);
   const actions: ActionItem[] = [
     { label: blocked ? 'שחרור חסימה' : 'חסימה', icon: 'blocked', meta: blocked ? undefined : gw(p.displayName, 'לא יוכל להזמין כרטיסים', 'לא תוכל להזמין כרטיסים'), hidden: !canBlock(me, p), onSelect: block },
     { label: 'מחיקה', icon: 'trash', tone: 'danger', hidden: !canDeletePerson(me, p), confirm: {
@@ -208,6 +228,7 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
         <DetailRow term="User ID">{userNumber(p.customerNumber) || 'טרם הוקצה'}</DetailRow>
         <DetailRow term="טלפון"><span dir="ltr">{p.phone || '—'}</span></DetailRow>
         <DetailRow term="מייל"><span dir="ltr">{p.email || '—'}</span></DetailRow>
+        {birthYear && <DetailRow term="שנת לידה">{birthYear}</DetailRow>}
         <DetailRow term="יישוב">{town || '—'}</DetailRow>
         <DetailRow term="הצטרפות">{tableCell.date(p.createdAt) || '—'}</DetailRow>
         <DetailRow term="מצב">{{ active: 'פעיל', pending: 'ממתין', blocked: 'חסום' }[p.status]}</DetailRow>

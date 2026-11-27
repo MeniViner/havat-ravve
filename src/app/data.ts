@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD } from './types';
 import { nowMs } from './clock';
+import { isoFromLocal } from './v2/screens/events/logic';
 
 export const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
 export const fillTemplate = (t: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`[${k}]`, String(v)), t);
@@ -44,8 +45,14 @@ export const useUpcomingEvents = () => useList<FarmEvent>('events', { where: [['
 export const useAllEvents = (enabled: boolean) => useList<FarmEvent>('events', { orderBy: [['start', 'desc']] }, enabled);
 export const useEvent = (id: string, enabled = true) => useDoc<FarmEvent>('events/' + (id || '_'), enabled && !!id);
 export type EventInput = Omit<FarmEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'publishedAt'>;
+/** Old API events may use Jerusalem wall time; current entries carry an explicit time zone. */
+const eventMillis = (value: string) => !value ? NaN : /(Z|[+-]\d\d:\d\d)$/i.test(value)
+  ? Date.parse(value) : Date.parse(isoFromLocal(value.slice(0, 10), value.slice(11, 16)));
 export async function saveEvent(actor: Actor, data: EventInput, existing?: FarmEvent) {
   const now = nowIso();
+  const end = eventMillis(data.end), start = eventMillis(data.start);
+  if (data.published && (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)) throw new Error('לפרסום צריך מועד סיום אחרי ההתחלה.');
+  if (data.published && !existing?.published && end <= nowMs()) throw new Error('מועד הסיום כבר חלף.');
   const publication = data.published && !existing?.published ? { publishedAt: now } : {};
   if (existing) {
     await write.update('events', existing.id, { ...data, ...publication, updatedAt: now });
@@ -73,6 +80,9 @@ export async function restoreOrder(actor: Actor, before: Ticket[]) {
 }
 export const useOpenTickets = (enabled: boolean) => useList<Ticket>('tickets', { where: [['paymentStatus', 'in', ['pending', 'claimed']]], orderBy: [['createdAt', 'desc']], limit: 500 }, enabled);
 export async function orderTickets(profile: Profile, event: FarmEvent, count: number, holders: string[], answers: Record<string, string>) {
+  const end = eventMillis(event.end);
+  if (!event.published || !event.open || (event as FarmEvent & { closed?: unknown }).closed || !Number.isFinite(end) || end <= nowMs()) throw new Error('ההרשמה לאירוע הסתיימה או סגורה.');
+  if (!Number.isInteger(count) || count < 1 || count > event.maxPerOrder) throw new Error('כמות הכרטיסים אינה מתאימה להזמנה.');
   const orderId = newId('tickets');
   const now = nowIso();
   const paymentStatus: PaymentStatus = event.price > 0 ? 'pending' : 'free';
@@ -170,7 +180,7 @@ export async function decideVisit(v: Visit, actor: Actor, status: VisitStatus, m
   await write.batch([
     { op: 'update', col: 'visits', id: v.id, data: { status, managerNote, handledBy: actor, updatedAt: now } },
     status === 'approved'
-      ? { op: 'set', col: 'calendar', id: `visit_${v.id}`, data: { title: `ביקור: ${v.name} · ${v.people}`, date: v.date, time, ownerUid: actor.uid, ownerName: actor.name, kind: 'visit', refId: v.id, createdAt: now } }
+      ? { op: 'set', col: 'calendar', id: `visit_${v.id}`, data: { title: `ביקור: ${v.name} · ${v.people}`, date: v.date, time, ownerUid: actor.uid, ownerName: actor.name, audience: 'all', kind: 'visit', refId: v.id, createdAt: now } }
       : { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
     ...open.filter((n) => n.refId === v.id).map((n) => ({ op: 'update' as const, col: 'notifications', id: n.id, data: status === 'new' ? { handled: false, handledBy: null, handledAt: null } : { handled: true, handledBy: actor, handledAt: now } })),
   ]);
@@ -338,7 +348,7 @@ export async function saveCalendarItem(owner: Actor, data: CalendarDraft, existi
 }
 export const deleteCalendarItem = (id: string) => write.remove('calendar', id);
 export async function upsertCalendarRef(actor: Actor, kind: 'visit' | 'event', refId: string, data: { title: string; date: string; time: string }) {
-  await write.set('calendar', `${kind}_${refId}`, { ...data, ownerUid: actor.uid, ownerName: actor.name, kind, refId, createdAt: nowIso() });
+  await write.set('calendar', `${kind}_${refId}`, { ...data, ownerUid: actor.uid, ownerName: actor.name, audience:'all', kind, refId, createdAt: nowIso() });
 }
 export const deleteCalendarRef = (kind: 'visit' | 'event', refId: string) => write.remove('calendar', `${kind}_${refId}`).catch(() => {});
 
