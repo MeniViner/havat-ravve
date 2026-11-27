@@ -1,5 +1,5 @@
 // E2-Scan, E3-Ok, E4-Pay, E5-Bad (one route, full-bleed, no AppScreen) and E6-Search.
-// A valid ticket is let in at once (optimistic; the transaction refuses a second gate's copy -> X1). Unpaid shows E4,
+// A valid ticket shows a green result after server acknowledgement or a confirmed local scan. Unpaid shows E4,
 // cancelled or unknown shows E5 and is logged as a rejected scan. Works offline: the ticket list is on the phone. A scan saved on
 // the phone (no reception, or weak reception: db.ts transact `queue`) shows as the "previous" line with "נשמר בטלפון, יישלח כשתהיה
 // קליטה" until it is sent; the offline queue (C8) lists it too (admit logs the activity).
