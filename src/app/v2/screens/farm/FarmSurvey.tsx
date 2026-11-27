@@ -378,9 +378,9 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const acknowledged =
     !!session && (trails.some((t) => t.id === session.id) || queue.some((j) => j.review?.trail.id === session.id));
   useEffect(() => {
-    if (session?.state === 'review' && acknowledged && gps.grant && !lock.current)
+    if (session?.state === 'review' && acknowledged && (gps.grant || gps.browserReady) && !lock.current)
       void gps.control('saved', session).catch((e) => setError(e.message));
-  }, [session?.id, session?.state, acknowledged, gps.grant]);
+  }, [session?.id, session?.state, acknowledged, gps.grant, gps.browserReady]);
   const fixText =
     q === 'fresh'
       ? 'מדידה עדכנית'

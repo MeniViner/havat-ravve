@@ -89,6 +89,17 @@ try {
     () => JSON.parse(localStorage.getItem('farm-demo-overrides')).farmMap.home
   );
   assert.ok(Number.isInteger(savedHome.zoom));
+  await page.locator('.leaflet-control-zoom-in').click();
+  await button('מבט על החווה').click();
+  await button('הגדרת מבט הפתיחה').click();
+  const readout = () => page.getByLabel('מרכז וזום').innerText();
+  const expectHome = savedHome.lat.toFixed(5) + ', ' + savedHome.lng.toFixed(5) + ' · זום ' + savedHome.zoom;
+  assert.equal(await readout(), expectHome);
+  await page.locator('.leaflet-control-zoom-in').click();
+  await button('סגירה').click();
+  await button('הגדרת מבט הפתיחה').click();
+  assert.equal(await readout(), expectHome);
+  await button('סגירה').click();
   await button('מקומות').click();
   await button('בחירה ידנית במפה').click();
   await clickPoint();
@@ -111,21 +122,26 @@ try {
   await button('שער ידני לבדיקה').and(page.locator('.survey-hit')).click();
   await button('תיקון במפה').click();
   await clickPoint(132, 205);
-  await page
-    .locator('input[type=file]')
-    .setInputFiles({
-      name: 'dot.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMwLg8FAAHgAQDtKhqNAAAAAElFTkSuQmCC',
-        'base64'
-      ),
-    });
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'dot.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMwLg8FAAHgAQDtKhqNAAAAAElFTkSuQmCC',
+      'base64'
+    ),
+  });
   await page.getByRole('radio', { name: 'תמונה ממוזערת', exact: true }).check();
   await button('שמירת המקום').click();
   await page.locator('.survey-place-button img').first().waitFor();
   await button('שבילים והקלטה').click();
   await button('לאפשר גישה למיקום').click();
+  await page.evaluate(() => window.feedTestFix('timeout'));
+  await heading('הזמן לקבלת מדידה חלף').waitFor();
+  await page.evaluate(() => window.feedTestFix('unavailable'));
+  await heading('המיקום אינו זמין').waitFor();
+  await page.evaluate(() => window.feedTestFix('denied'));
+  await heading('הגישה למיקום חסומה').waitFor();
+  await button('בדיקת מיקום מחדש').click();
   await page.evaluate(() => window.feedTestFix('weak'));
   await page
     .getByText(/דיוק משוער 45/)
@@ -145,7 +161,14 @@ try {
   await button('שמירת מקום כאן').click();
   await page.getByLabel('שם המקום', { exact: true }).fill('לאורך השביל');
   await button('שמירת המקום').click();
+  await page.reload();
+  await button('חידוש ההקלטה').waitFor();
+  await openEdit();
+  await button('שבילים והקלטה').click();
+  await button('לאפשר גישה למיקום').click();
   await page.evaluate(() => window.feedTestFix('fresh', 0.00003));
+  await button('חידוש ההקלטה').click();
+  await page.evaluate(() => window.feedTestFix('fresh', 0.00004));
   await button('סיום וסקירה').click();
   await button('פתיחת הסקירה').click();
   await heading('סקירת השביל').waitFor();

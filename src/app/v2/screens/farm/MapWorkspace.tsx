@@ -44,6 +44,7 @@ export function MapWorkspace({
   const [view, setView] = useState<View | null>(null),
     [message, setMessage] = useState(''),
     [saving, setSaving] = useState(false);
+  const [previewCamera, setPreviewCamera] = useState<MapHome | null>(null);
   const [homeOverride, setHomeOverride] = useState<MapHome | null>(null);
   const [locHint, setLocHint] = useState(() => {
     try {
@@ -205,6 +206,7 @@ export function MapWorkspace({
           view={view}
           onCamera={(c) => {
             camera.current = c;
+            if (sheet === 'home') setPreviewCamera(c);
           }}
           onManual={() => setFollow(false)}
           onPlace={showPlace}
@@ -443,6 +445,14 @@ export function MapWorkspace({
             {sheet === 'home' && (
               <>
                 <h2>מבט הפתיחה של החווה</h2>
+                {previewCamera && (
+                  <output aria-label="מרכז וזום">
+                    <bdi>
+                      {previewCamera.lat.toFixed(5)}, {previewCamera.lng.toFixed(5)}
+                    </bdi>{' '}
+                    · זום {previewCamera.zoom}
+                  </output>
+                )}
                 <p>הזיזו את המפה וכוונו את הזום. זה המבט שייפתח לכולם בכניסה ובלחיצה על „מבט על החווה”.</p>
                 <Button disabled={saving || !map.online} onClick={saveHome}>
                   {saving ? 'שומר…' : map.online ? 'שמירת המבט הזה' : 'נדרש חיבור לשמירת המבט'}
@@ -456,6 +466,7 @@ export function MapWorkspace({
                 icon="map"
                 onClick={() => {
                   beforeHome.current = camera.current;
+                  setPreviewCamera(camera.current);
                   setFollow(false);
                   setSheet('home');
                 }}

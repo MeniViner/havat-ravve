@@ -435,7 +435,6 @@
   text-align: center;
 }
 
-.map-feedback:not(:empty),
 .map-feedback button,
 .map-dock button {
   color: inherit;
