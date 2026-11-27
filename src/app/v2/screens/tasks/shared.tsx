@@ -140,7 +140,7 @@ export function TaskRow({ t, view, placeName, strip, extraTags }: { t: Task; vie
 /** The swipe's "העברה": who takes the task, those at the farm now first. Mounted only while open (one presence read). */
 function MoveSheet({ t, title, onClose, onPick }: { t: Task; title: string; onClose: () => void; onPick: (to: Actor | null) => void }) {
   const ctx = useV2();
-  const presence = usePresenceToday(ctx.today);
+  const presence = usePresenceToday(ctx.today, ctx.manager);
   const uid = ctx.user.uid;
   const current = t.assignee?.uid || null;
   const nowHHMM = hhmm(now());

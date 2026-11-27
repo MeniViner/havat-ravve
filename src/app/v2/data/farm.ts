@@ -2,6 +2,7 @@
 // event prep for the team (events, tasks, staffing) and teammate cards. Everything goes through db.ts, so the same code runs on
 // demo data and on Firestore, and every write is offline-first (nothing waits for the server). See docs/redesign-data/farm.md.
 import { useMemo } from 'react';
+import { useTeamCalendarRange } from './teamCalendar';
 import { useList, useDoc, write, newId, transact, readOnce, ConflictError } from '../../db';
 import { nowIso, nowMs } from '../../clock';
 import { activityOp, logActivity, taskKind } from '../../activity';
@@ -14,11 +15,7 @@ import { israelIso, kindToSave, presencePlan, remindAt, timeText, type Act, type
 export type FarmCalItem = CalendarItem & { remindAt?: string; reminderSentAt?: string | null; updatedAt?: string };
 
 // ---------- reads ----------
-/** Calendar items between two dates (inclusive). Volunteers do not see items marked "מנהלים בלבד" (a display filter: see the data doc). */
-export function useCalendarRange(from: string, to: string, manager: boolean, enabled = true) {
-  const r = useList<FarmCalItem>('calendar', { where: [['date', '>=', from], ['date', '<=', to]], orderBy: [['date', 'asc']] }, enabled);
-  return useMemo(() => ({ ...r, items: manager ? r.items : r.items.filter((i) => i.audience !== 'managers') }), [r, manager]);
-}
+export const useCalendarRange = useTeamCalendarRange;
 export const useCalItem = (id: string, enabled = true) => useDoc<FarmCalItem>(`calendar/${id || '_'}`, enabled && !!id);
 
 /** Feed activity (team kinds only, which volunteers may read) between two instants, newest first. */
@@ -61,7 +58,7 @@ export const useStepsOn = (projectId: string, uid: string, enabled: boolean) =>
 export async function savePresence(actor: Actor, who: Actor, days: string[], items: CalItem[], hours: Hours, note: string) {
   const ops = presencePlan(days, items, who, hours, note, () => newId('calendar'), nowIso());
   await write.batch(ops.flatMap((o) => [
-    { op: o.op, col: 'calendar', id: o.id, data: o.data },
+    { op: o.op, col: 'calendar', id: o.id, data: o.op === 'set' ? { ...o.data, audience: 'all' } : o.data },
     activityOp(actor, 'calendar', o.id, o.op === 'set' ? 'created' : 'edited', `נוכחות · ${o.data.date}`, { subjectUid: who.uid }),
   ]));
   return ops.length;

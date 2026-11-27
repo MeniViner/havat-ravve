@@ -3,6 +3,7 @@
 // demo sandbox and on Firestore, and every write is applied locally at once (offline first). Take / release / assign use
 // transact(); a ConflictError is shown by the screen as X1.
 import { useMemo } from 'react';
+import { useTeamCalendarRange } from './teamCalendar';
 import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
@@ -488,7 +489,10 @@ export const useTasksAt = (placeId: string, manager: boolean) => {
   const r = useList<Task>('tasks', { where: [...staffOnly(manager), ['location.placeId', '==', placeId], ['done', '==', false]] }, !!placeId);
   return { items: useMemo(() => norm(r.items), [r.items]), loading: r.loading };
 };
-export const usePresenceToday = (today: string) => useList<CalendarItem>('calendar', { where: [['kind', '==', 'presence'], ['date', '==', today]] });
+export function usePresenceToday(today: string, manager: boolean) {
+  const calendar = useTeamCalendarRange(today, today, manager);
+  return useMemo(() => ({ ...calendar, items: calendar.items.filter(item => item.kind === 'presence') }), [calendar]);
+}
 export const useShoppingDoc = (id: string) => useDoc<ShoppingItem>('shopping/' + (id || '_'), !!id);
 /** Start of today in Israel as an ISO instant (Israel is UTC+2 or +3; the earliest of the two is safe for a ">=" query). */
 export const startOfTodayIso = () => new Date(Date.parse(todayKey() + 'T00:00:00+03:00')).toISOString();
