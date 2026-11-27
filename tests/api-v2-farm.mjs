@@ -129,7 +129,7 @@ try {
     check(s.status === 201 && s.json.data.created === 2 && s.json.data.updated === 0 && s.json.data.verified, 'staff registers two days → 201, two entries', s.json);
     [presA, presB] = s.json.data.itemIds;
     const a = await docOf('calendar/' + presA);
-    check(sameKeys(a, ['from', 'to', 'time', 'note', 'title', 'date', 'kind', 'ownerUid', 'ownerName', 'refId', 'createdAt']) && a.date === d1 && a.time === '08:00–13:00' && a.title === 'רונית בחווה' && a.kind === 'presence' && a.ownerUid === 'syn-staff' && a.ownerName === 'רונית לוי' && a.refId === '' && a.note === 'מביאה עוגה',
+    check(sameKeys(a, ['from', 'to', 'time', 'note', 'title', 'date', 'kind', 'audience', 'ownerUid', 'ownerName', 'refId', 'createdAt']) && a.audience === 'all' && a.date === d1 && a.time === '08:00–13:00' && a.title === 'רונית בחווה' && a.kind === 'presence' && a.ownerUid === 'syn-staff' && a.ownerName === 'רונית לוי' && a.refId === '' && a.note === 'מביאה עוגה',
       'stored exactly as presencePlan() writes it (days sorted, title "<first name> בחווה")', a);
     const again = await w(STAFF, 'presence.save', { dates: [d2, d1, d1], from: '08:00', to: '13:00', note: 'מביאה עוגה' }, key);
     check(again.status === 200 && again.json.data.replayed === true && (await where('calendar', 'ownerUid', 'syn-staff')).length === 2, 'replay with the same key: same answer, nothing new');
@@ -918,7 +918,8 @@ try {
     await tryIt('presence (volunteer creates it)', setDoc(doc(staff, 'calendar', 'copy-presence'), pres));
     const cal = await docOf('calendar/' + itemId);
     await tryIt('team calendar item (manager)', setDoc(doc(mgr, 'calendar', 'copy-item'), cal));
-    await tryIt('staff reads the calendar', getDocs(collection(staff, 'calendar')));
+    await tryIt('staff reads shared calendar rows', getDocs(query(collection(staff, 'calendar'), filter('audience', '==', 'all'))));
+    await assertFails(getDocs(collection(staff, 'calendar')));
     const b = await docOf('broadcasts/' + bAll);
     await tryIt('broadcast (manager)', setDoc(doc(mgr, 'broadcasts', 'copyb'), { ...b, id: 'copyb', resentAt: null }));
     const bn = await docOf(`users/syn-staff/notifications/b_${bAll}`);
