@@ -83,7 +83,6 @@ export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
         {sign.error && <span className="k-field__error" role="alert">{sign.error}</span>}
         <span className="guest-signin__fine">בהרשמה ממלאים שם בעברית וטלפון. <button type="button" className="guest-inlinelink" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
       </main>
-      <div className="guest-signin__demo"><Button variant="quiet" onClick={() => go('/demo')}>לראות איך האפליקציה עובדת, בנתוני הדגמה</Button></div>
     </AppScreen>
   );
 }
@@ -132,7 +131,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
         <Row leading={<IconTile icon="bell" />} title="התראות ועדכונים" meta="התראות במכשיר ועדכונים על אירועים" onClick={() => navigate('/me/account?notifications=1', false, true)} />
         <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
         {canChooseReceipt(p) && <Row leading={<IconTile icon="message" />} title="אישור תשלום" meta={method ? `נשלח אליי ב${RECEIPT_WORD[method]}` : 'עוד לא בחרת לאן'} onClick={() => setSheet('receipt')} />}
-        <Row leading={<IconTile icon="phone" />} title="פנייה לחווה" onClick={() => go('/contact')} />
+        <Row leading={<IconTile icon="phone" />} title="הודעות לחווה" onClick={() => go('/contact')} />
       </ListCard>
       <div className="guest-foot">
         <Button variant="outline" onClick={() => signOutEverywhere(demo.on, p)}>יציאה מהחשבון</Button>

@@ -239,7 +239,8 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export type NotificationType = 'visit' | 'donation' | 'join' | 'order' | 'receipt' | 'tab' | 'claim' | 'contact';
-export type AppNotification = { id: string; type: NotificationType; title: string; text: string; link: string; refId: string; createdAt: string; handled: boolean; handledBy: Actor | null; handledAt: string | null };
+export type ContactGuest = { id: string; accountUid: string; customerNumber?: number; method: 'email' | 'phone'; reply: string; createdAt: string };
+export type AppNotification = { id: string; contactId?: string; type: NotificationType; title: string; text: string; link: string; refId: string; createdAt: string; handled: boolean; handledBy: Actor | null; handledAt: string | null };
 
 export type CalendarKind = 'manual' | 'visit' | 'event' | 'presence' | 'meeting' | 'planning';
 export type CalendarItem = { id: string; ownerUid: string; ownerName: string; title: string; date: string; time: string; kind: CalendarKind; refId: string; createdAt: string;

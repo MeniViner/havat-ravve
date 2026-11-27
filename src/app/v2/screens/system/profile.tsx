@@ -81,7 +81,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
         <Button variant="quiet" onClick={() => window.open('/', '_blank', 'noopener')}>האתר של החווה</Button>
         <Button variant="quiet" onClick={() => go('/terms')}>תנאי שימוש</Button>
         {/* the demo link (parity): a quiet link too, only while the demo is off */}
-        {!demo.on && <Button variant="quiet" onClick={() => go('/demo')}>הדגמה</Button>}
+        {!demo.on && !vendor && <Button variant="quiet" onClick={() => go('/demo')}>לראות איך האפליקציה עובדת</Button>}
       </div>
       <NotificationsSheet open={notifs} onClose={() => navigate('/me', true, true)} ctx={ctx} />
     </AppScreen>

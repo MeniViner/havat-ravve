@@ -21,6 +21,7 @@ import {
   changeRole, toggleBlock, inviteRole, cancelInvite, useRun, deletePerson, canDeletePerson, type InviteRole,
 } from '../../data/manage';
 import { lnk, HistorySheet, LinkCard, Loading, NotFound } from './shared';
+import { directoryGuest, useContactGuest, useContactGuests } from '../../data/contact';
 import { useTeamLinks } from '../../data/invite';
 import { MessagesSegment, MESSAGES_PATH } from '../broadcast';
 
@@ -32,8 +33,11 @@ type PFilter = 'all' | 'team' | 'guests' | 'debt' | 'blocked';
 
 export function PeopleScreen({ ctx, params }: ScreenProps) {
   const all = usePeople(true);
+  const contacts = useContactGuests();
+  const contactIds = new Set(contacts.items.map((c) => c.id));
+  const personPath = (uid: string) => contactIds.has(uid) ? `/manage/people/contact/${uid}` : `/manage/people/${uid}`;
   const fields = ctx.settings.registrationFields;
-  const groups = useMemo(() => letterGroups(all.items.filter((p) => p.role !== 'vendor'), fields), [all.items, fields]);
+  const groups = useMemo(() => letterGroups([...all.items.filter((p) => p.role !== 'vendor'), ...contacts.items.map(directoryGuest)], fields), [all.items, contacts.items, fields]);
   const people = groups.flatMap(([, members]) => members);
   const openTickets = useOpenTickets(true).items;
   const legacy = useLegacyTicketActivity(openTickets);
@@ -42,7 +46,7 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
     title: 'אנשים', filename: 'אנשים.csv', headers: ['User ID', 'שם', 'טלפון', 'מייל', 'תפקיד', 'מצב', 'נרשם', 'חוב', ...fields.map((f) => f.label)],
     rows: () => people.map((p) => [userNumber(p.customerNumber), p.displayName, p.phone, p.email, ROLE_LABELS[p.role], p.status === 'blocked' ? 'חסום' : 'פעיל', tableCell.date(p.createdAt), debts.get(p.uid) ? tableCell.money(debts.get(p.uid)) : '', ...fields.map((f) => p.fields?.[f.id] || '')]),
     renderCell: (value, column, i) => column === 0 && value
-      ? <a className="manage-id-link" {...lnk(`/manage/people/${people[i].uid}`)} aria-label={`User ID ${value} · ${people[i].displayName}`}>{value}</a>
+      ? <a className="manage-id-link" {...lnk(personPath(people[i].uid))} aria-label={`User ID ${value} · ${people[i].displayName}`}>{value}</a>
       : (column === 0 ? 'טרם הוקצה' : value),
   });
   if (table.active) return table.screen;
@@ -62,12 +66,12 @@ export function PeopleScreen({ ctx, params }: ScreenProps) {
       <PageTitle>אנשים והודעות</PageTitle>
       <Segmented size="lg" label="תצוגה" value={seg} onChange={setSeg}
         options={[{ value: 'people', label: <>אנשים · <span className="k-num">{people.length}</span></> }, { value: 'messages', label: 'הודעות' }]} />
-      {seg === 'messages' ? <MessagesSegment ctx={ctx} /> : <PeopleSegment people={people} groups={groups} debts={debts} initial={params.filter} />}
+      {seg === 'messages' ? <MessagesSegment ctx={ctx} /> : <PeopleSegment people={people} groups={groups} personPath={personPath} debts={debts} initial={params.filter} />}
     </AppScreen>
   );
 }
 
-function PeopleSegment({ people, groups, debts, initial }: { people: Profile[]; groups: [string, Profile[]][]; debts: Map<string, number>; initial?: string }) {
+function PeopleSegment({ people, groups, personPath, debts, initial }: { people: Profile[]; personPath: (uid: string) => string; groups: [string, Profile[]][]; debts: Map<string, number>; initial?: string }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<PFilter>((['team', 'guests', 'debt', 'blocked'] as string[]).includes(initial || '') ? (initial as PFilter) : 'all');
   const invites = [...useRoleInvites(true).items, ...useTeamLinks(true).items]; // Q27: added ahead by e-mail or by phone
@@ -101,7 +105,7 @@ function PeopleSegment({ people, groups, debts, initial }: { people: Profile[]; 
           {visible.flatMap(([letter, ps]) => [
             <li key={'l' + letter} className="manage-letter" aria-hidden="true">{letter}</li>,
             ...ps.map((p) => (
-              <Row key={p.uid} {...lnk(`/manage/people/${p.uid}`)} leading={<Avatar name={p.displayName} />} title={p.displayName} tags={tag(p)}
+              <Row key={p.uid} {...lnk(personPath(p.uid))} leading={<Avatar name={p.displayName} />} title={p.displayName} tags={tag(p)}
                 meta={<span dir="ltr">{p.phone || p.email}</span>} trailing={<span className="manage-num">{userNumber(p.customerNumber) ? <bdi>User ID {p.customerNumber}</bdi> : 'טרם הוקצה'}</span>} />
             )),
           ])}
@@ -256,6 +260,23 @@ export function PersonScreen({ ctx, params }: ScreenProps) {
         options={(['guest', 'staff', 'manager', 'owner'] as Role[]).map((r) => ({ value: r, label: roleWord(r, female), disabled: r !== p.role && !allowed.includes(r) }))} />
     </AppScreen>
   );
+}
+
+export function ContactPersonScreen({ params }: ScreenProps) {
+  const { item, loading, error } = useContactGuest(params.id);
+  const parent = { label: 'אנשים', path: '/manage/people' };
+  if (loading) return <Loading back={parent} />;
+  if (!item || item.accountUid || error) return <NotFound back={parent} title="פרטי הפונה אינם זמינים" />;
+  return <AppScreen variant="detail" gap={12}>
+    <TopBar back={{ label: 'אנשים', ...lnk(parent.path) }} />
+    <PageTitle>אורח מפנייה</PageTitle>
+    <DetailList className="manage-dl48">
+      <DetailRow term="User ID">{userNumber(item.customerNumber) || 'טרם הוקצה'}</DetailRow>
+      <DetailRow term={item.method === 'email' ? 'מייל למענה' : 'טלפון למענה'}><bdi>{item.reply}</bdi></DetailRow>
+      <DetailRow term="תאריך פנייה">{tableCell.time(item.createdAt)}</DetailRow>
+    </DetailList>
+    <LinkCard path={`/manage/inbox/${item.id}`} title="פתיחת ההודעה לחווה" />
+  </AppScreen>;
 }
 
 // N13 / Q27 moved to Invite.tsx

@@ -23,7 +23,7 @@ export const PERSONA_ROLE: Record<Persona, string> = {
 export const PERSONA_HINTS: Partial<Record<Persona, string>> = {
   owner: 'רואה הכול, כולל כסף ומנהלים', manager: 'ניהול, אירועים ואנשים', staff: 'משימות, קניות והחווה', vendor: 'ההזמנה, האירוע והדוכן שלו', guest: 'כרטיסים, ביקור ותרומה',
 };
-/** The personas listed on the start page and in the switch sheet; the others are reachable by URL (?demo=helper, blocked, anon, new). */
+/** Team accounts can choose their role and the roles below it in the manual chooser. */
 export const LISTED_PERSONAS: Persona[] = ['owner', 'manager', 'staff', 'vendor', 'guest'];
 export const NEW_DEMO_SESSION = { uid: 'demo-u-new', email: 'guest@example.test', displayName: '' };
 export const PERSONA_UID: Record<Persona, string> = {
@@ -51,22 +51,22 @@ const normalize = (s: DemoState, fallback: Persona = 'owner'): DemoState => {
   if (!s.on) return { ...OFF, scenario };
   return { on: true, persona: s.persona === 'real' || !(s.persona in PERSONA_LABELS) ? fallback : s.persona, scenario };
 };
-let state: DemoState = read(KEY, OFF);
-// a state saved by an older build (examples on top of the real account) goes back to the real account
-if (state.on && state.persona === 'real') { state = { ...OFF }; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ } }
-state = normalize(state);
-// ?demo=owner (or manager / staff / vendor / helper / guest / blocked / anon / new / on / off) and ?day=regular|eventDay|afterEvent switch from the address bar.
-const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
-const q = params.get('demo');
-const day = params.get('day');
-if (q !== null || day !== null) {
-  if (q === 'off' || q === '0') state = { ...OFF };
-  else if (q === '' || q === 'on' || q === '1') state = normalize({ ...state, on: true });
-  else if (q && (Object.keys(PERSONA_LABELS) as Persona[]).includes(q as Persona)) state = normalize({ ...state, on: true, persona: q as Persona });
-  if (day && day in SCENARIOS && state.on) state = { ...state, scenario: day as Scenario };
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode */ }
-  const rest = new URLSearchParams(location.search); rest.delete('demo'); rest.delete('day');
-  history.replaceState(history.state, '', location.pathname + (rest.toString() ? '?' + rest.toString() : ''));
+export type DemoAccessRole = 'owner' | 'manager' | 'staff';
+let access: { uid: string; role: DemoAccessRole } | null = null;
+export const allowedDemoPersonas = (role: DemoAccessRole | null): Persona[] => role ? LISTED_PERSONAS.slice(LISTED_PERSONAS.indexOf(role)) : [];
+export const currentDemoRole = () => access?.role || null;
+export function setDemoAccess(uid: string, role: DemoAccessRole | null) { access = uid && role ? { uid, role } : null; }
+export function checkDemoSession(uid: string | undefined) {
+  if (access && access.uid !== uid) { setDemoAccess('', null); if (state.on) setDemo({ on: false }); }
+}
+// Only the dedicated button starts a sandbox. Old bookmarks and saved sessions cannot turn it on at startup.
+let state: DemoState = { ...OFF };
+if (typeof location !== 'undefined') {
+  const params = new URLSearchParams(location.search);
+  if (params.has('demo') || params.has('day')) {
+    params.delete('demo'); params.delete('day');
+    history.replaceState(history.state, '', location.pathname + (params.size ? '?' + params.toString() : '') + location.hash);
+  }
 }
 const syncClock = () => freezeClock(state.on ? SCENARIOS[state.scenario].now : null);
 syncClock();
@@ -86,7 +86,13 @@ export const useDemo = () => useSyncExternalStore((l) => { listeners.add(l); ret
 export const useDemoVersion = () => useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => version);
 
 /** Choosing the persona 'real' leaves demo. Turning demo on without a persona starts as `fallback`. */
-export function setDemo(next: Partial<DemoState>, fallback: Persona = 'owner') {
+export function setDemo(next: Partial<DemoState>, fallback: Persona = currentDemoRole() || 'guest') {
+  if (next.on || (state.on && next.on !== false && next.persona !== 'real')) {
+    if (!access) return;
+    const persona = next.persona || (state.on ? state.persona : fallback);
+    const tier = persona === 'helper' ? 'vendor' : ['new', 'blocked', 'anon'].includes(persona) ? 'guest' : persona;
+    if (!allowedDemoPersonas(access.role).includes(tier)) return;
+  }
   state = next.persona === 'real' ? { ...OFF, scenario: state.scenario } : normalize({ ...state, ...next }, fallback);
   if (!state.on) states = { ...NO_STATES };
   syncClock(); persist(); emit();

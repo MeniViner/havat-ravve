@@ -300,6 +300,10 @@ try{
  const confirmation={paymentConfirmation:{by:actor('beni'),at:now},updatedAt:now};
  await assertFails(setDoc(doc(anon,'tickets','t0'),tk('anon')));
  await assertSucceeds(setDoc(doc(guest,'tickets','t1'),tk('guest')));
+ await assertFails(setDoc(doc(anon,'contact_people','spoof'),{accountUid:'',method:'phone',reply:'050-000-0000'}));
+ await assertFails(getDoc(doc(guest,'contact_people','any')));
+ await assertFails(getDocs(collection(vol,'contact_people')));
+ await assertSucceeds(getDocs(collection(beni,'contact_people')));
  await assertSucceeds(setDoc(doc(guest,'tickets','self-marked'),tk('guest',{selfRegistered:true})));
  await assertSucceeds(setDoc(doc(beni,'tickets','manual-marked'),tk('beni',{selfRegistered:false})));
  await assertFails(setDoc(doc(guest,'tickets','foreign-marked'),tk('other',{selfRegistered:true})));

@@ -64,11 +64,13 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, newId, push, inc, syncState, setDemoAccess, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
 assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'an old mixed state loads as "demo off"');
+
+setDemoAccess('local-test-owner', 'owner');
 
 // ---- demo on: every kind of write stays local, whatever the id looks like
 for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest', 'blocked', 'anon', 'new']) {

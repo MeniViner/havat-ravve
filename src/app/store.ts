@@ -4,7 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
-import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
+import { checkDemoSession, useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
@@ -21,6 +21,7 @@ function startAuth() {
   authStarted = true;
   void readyAuth().then((auth) => onAuthStateChanged(auth, (user) => {
     authState = { loading: false, user: isGoogleUser(user) ? user : null };
+    checkDemoSession(authState.user?.uid);
     authListeners.forEach((listener) => listener());
   }));
 }

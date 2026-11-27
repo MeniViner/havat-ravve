@@ -93,7 +93,7 @@ export function QRow({ title, meta, tag, children }: { title: ReactNode; meta: R
 export const many = (n: number, one: string, other: string) => (n === 1 ? one : `${fmt(n)} ${other}`);
 
 /** A link out of the console (to the app, the site editor, the full log). In the demo it stays in the demo. */
-export const outHref = (path: string) => (source.demo ? `${path}${path.includes('?') ? '&' : '?'}${path.startsWith('/app') ? 'demo=owner' : 'demo'}` : path);
+export const outHref = (path: string) => (source.demo ? (path.startsWith('/app') ? '/app/demo' : `${path}${path.includes('?') ? '&' : '?'}demo`) : path);
 
 /** A stored field by its Hebrew name, with the stored name small beside it; a field we have no name for stays as stored. */
 export function FieldName({ k }: { k: string }) {

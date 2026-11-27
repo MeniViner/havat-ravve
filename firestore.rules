@@ -548,6 +548,8 @@ service cloud.firestore {
    allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
+  // The write-only contact Worker creates correspondence records. Only managers can read their reply details.
+  match /contact_people/{id} { allow read: if isManager(); }
   match /notifications/{id} {
    allow read: if isManager();
    allow create: if signed() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim','contact'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && (incoming().type != 'contact' || (incoming().refId == uid() && incoming().link == '/manage/inbox' && incoming().title.size() > 0 && incoming().text.size() > 0 && isoTime(incoming().createdAt))) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;

@@ -9,7 +9,6 @@ import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces
 import { useAllEvents, useNotifications } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { leaveDemoTarget } from '../demo/intro';
-import { DemoIntro } from './DemoIntro';
 import { todayKey, useClockVersion } from '../clock';
 import { sweepPrivateTaskActivity } from '../activity';
 import type { Profile, Settings, Staffing } from '../types';
@@ -157,16 +156,6 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
 /** Entry used by src/app/App.tsx. */
 export function V2Root(props: { user: Session; profile: Profile; settings: Settings }) {
   const isVendor = props.profile.role === 'vendor';
-  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}<IntroV2 {...props} /></ToastProvider>;
-}
-/** First visits in demo, for the real account only (the demo personas never see it). */
-function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
-  const demo = useDemo(); const toast = useToast();
-  // C10 right after the first entry comes first: the first-visit demo starts once it is answered ("אחר כך" or installing)
-  const route = useRoute(); const search = useSearch();
-  const params = new URLSearchParams(search);
-  const firstInstall = route === '/install' && params.get('first') === '1';
-  if (demo.on || firstInstall || params.get('notifications') === '1') return null;
-  return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user.email)} manager={canManage(profile, user.email)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
+  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}</ToastProvider>;
 }
 export { canManage };

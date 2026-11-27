@@ -110,6 +110,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/people', manage.PeopleScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/invite', manage.InviteScreen, 'manage', 'page', { manager: true }),
   R('/manage/people/messages/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }), // B3 under People (Q25)
+  R('/manage/people/contact/:id', manage.ContactPersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/:uid', manage.PersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports', manage.ReportsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports/:section', manage.ReportsScreen, 'manage', 'tab', { manager: true }), // Q14 drill-ins: people, events

@@ -228,7 +228,7 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
 
   if (n.type === 'contact') {
     const sender = peopleByUid.get(n.refId);
-    const phone = sender?.phone || '';
+    const phone = n.contactId ? '' : sender?.phone || '';
     return (
       <CardShell icon="phone" done={handled} oneLine over={`פנייה · ${agoLong(n.createdAt)}${by}`} title={n.title}
         meta={<>{sender ? sender.displayName : 'פרטי השולח אינם זמינים'}{n.text ? ` · ${n.text}` : ''}</>}>

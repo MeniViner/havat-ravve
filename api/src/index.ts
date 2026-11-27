@@ -10,6 +10,7 @@ import { getResource, listResource, matchResource } from './resources';
 import { WRITE_DEFS } from './writes';
 import { getSettings, overview } from './overview';
 import { whoami } from './whoami';
+import { handleContact } from './contact';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
 import { runAccountDeletions } from './accounts';
@@ -177,6 +178,7 @@ export default {
     const meta: Meta = { requestId: 'req_' + autoId(16), started: Date.now() };
     const url = new URL(req.url);
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
+    if (url.pathname === '/v1/contact') return handleContact(req, env);
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
     // the site's and the app's visit counter (traffic.ts): public, no sign-in, counters only, always 204
     if (url.pathname === '/v1/hit') return handleHit(req, env, () => new Firestore(env, faultsOf(req, env)));
