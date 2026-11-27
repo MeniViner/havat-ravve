@@ -13,14 +13,15 @@ import { back, param } from '../../../router';
 import { getPosition } from '../../../store';
 import { useAllEvents } from '../../../data';
 import { nowIso } from '../../../clock';
-import { dayName, ddmm, DAY_LETTERS } from '../../format';
+import { israelIso } from '../farm/logic';
+import { dayName, ddmm, hhmm, keyOf, DAY_LETTERS } from '../../format';
 import type { Actor, ShoppingCategory, ShoppingItem, Task, TaskLocation, Template } from '../../../types';
 import {
   useTaskV2, useShoppingDoc, parseShopping, parseTaskText, guessKind, suggestPlace, nearestPlace, endOfWeek, addDays,
-  createTask, updateTask, createShopping, updateShopping, SHOP_LISTS, canDeleteTask, canEditTask, deleteTaskV2, saveTemplateV2, removeTemplate,
+  createTask, updateTask, createShopping, updateShopping, canDeleteTask, canEditTask, deleteTaskV2, saveTemplateV2, removeTemplate,
   type TaskInput,
 } from '../../data/tasks';
-import { catOfKey, suggestions, useShopping, SUGGESTED, deleteShopItem } from '../../data/shopping';
+import { catOfKey, useShoppingCategories, addShoppingCategory, listLabel as categoryLabel, suggestions, useShopping, SUGGESTED, deleteShopItem } from '../../data/shopping';
 import { useFail, usePhotoPicker, takeStashedPhoto, dictate } from './shared';
 import { deleteItem } from './Task';
 import './tasks.css';
@@ -74,7 +75,6 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   const [kind, setKind] = useState<Kind>(item ? 'shopping' : task || fromRecurring ? 'task' : param('kind') === 'shopping' ? 'shopping' : initialText ? guessKind(initialText) : 'task');
   const [photo, setPhoto] = useState(() => task?.photo ?? item?.photo ?? (param('photo') || param('camera') ? takeStashedPhoto() : ''));
   const [note, setNote] = useState(template?.note ?? task?.note ?? item?.note ?? '');
-  const [showNote, setShowNote] = useState(!!item?.note);
   const [urgent, setUrgent] = useState<boolean | null>(task ? task.urgent : item ? item.urgent : null);
   const [busy, setBusy] = useState(false);
   const remove = useRemove();
@@ -112,7 +112,7 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
     return allEvents.items.filter((e) => (e.end || e.start) >= now || e.id === eventId).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
   }, [allEvents.items, eventId]);
   const [managersOnly, setManagersOnly] = useState(!!(task?.managersOnly || template?.managersOnly));
-  const [sheet, setSheet] = useState<'' | 'place' | 'who' | 'event' | 'note'>('');
+  const [sheet, setSheet] = useState<'' | 'place' | 'who' | 'event' | 'note' | 'category'>('');
   // a picker closed without a choice puts its chip group back (PickerSheet calls onChange, then onClose, in one event)
   const chose = useRef(false);
   const openSheet = (k: typeof sheet) => { chose.current = false; setSheet(k); };
@@ -123,6 +123,16 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   const [qty, setQty] = useState<string | null>(item ? item.qty : null);
   const [link, setLink] = useState(item?.link ?? '');
   const [showLink, setShowLink] = useState(!!item?.link);
+  const categories = useShoppingCategories(kind === 'shopping');
+  const [newCategory, setNewCategory] = useState('');
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [deadline, setDeadline] = useState(item?.urgentDueAt ? `${keyOf(item.urgentDueAt)}T${hhmm(item.urgentDueAt)}` : '');
+  const createCategory = async () => {
+    if (categorySaving || !newCategory.trim()) return;
+    setCategorySaving(true);
+    try { setList(await addShoppingCategory(newCategory)); setNewCategory(''); setSheet(''); } catch (e) { fail(e); }
+    finally { setCategorySaving(false); }
+  };
   const listNow: ShoppingCategory = list ?? parsed.category ?? 'super';
   // "קונים בדרך כלל" in the add form too (old S5): the list's usual items, a tap fills the text
   const shop = useShopping(kind === 'shopping' && !item);
@@ -199,7 +209,7 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
   const dueNow = () => (when === 'today' ? ctx.today : when === 'tomorrow' ? addDays(ctx.today, 1) : when === 'week' ? (task?.dueDate && task.dueDate > addDays(ctx.today, 1) ? task.dueDate : endOfWeek(ctx.today)) : when === 'date' ? date : '');
 
   // the event stays: several tasks for one event are added in a row (old form)
-  const reset = () => { setText(''); setPhoto(''); setNote(''); setShowNote(false); setUrgent(null); setQty(null); setList(null); setLink(''); setShowLink(false); setWhere(''); setWho('free'); setWhen('none'); };
+  const reset = () => { setText(''); setPhoto(''); setNote(''); setDeadline(''); setUrgent(null); setQty(null); setList(null); setLink(''); setShowLink(false); setWhere(''); setWho('free'); setWhen('none'); };
   const timeBad = !!time && !/^\d{1,2}:\d{2}$/.test(time);
   const blocked = !text.trim() || busy || (recurring && (!days.length || timeBad));
   const leave = (fallback: string) => back(fromRecurring ? '/manage/recurring' : fallback);
@@ -228,17 +238,17 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
         toast.show({ text: `נוספה משימה: ${title}` });
       } else {
         const title = item ? text.trim() : parsed.title || text.trim();
-        const data = { title, qty: qtyNow, note, link, category: listNow, urgent: urgentNow, photo };
+        const data = { title, qty: qtyNow, note, link, category: listNow, urgent: urgentNow, urgentDueAt: urgentNow && deadline ? israelIso(deadline.slice(0,10), deadline.slice(11,16)) : null, photo };
         if (item) { await updateShopping(ctx.actor, item, data); toast.show({ text: 'נשמר' }); back(`/shopping/${item.id}`); return; }
         await createShopping(ctx.actor, data, ctx.team, forTask || undefined);
-        toast.show({ text: `נוסף ל${SHOP_LISTS.find((l) => l.id === listNow)?.label}: ${title}` });
+        toast.show({ text: `נוסף ל${categoryLabel(listNow)}: ${title}` });
       }
       if (more) { reset(); setBusy(false); return; }
       back(kind === 'task' ? '/tasks' : forTask ? `/tasks/${forTask}` : '/shopping');
     } catch (e) { fail(e); setBusy(false); }
   };
 
-  const listLabel = SHOP_LISTS.find((l) => l.id === listNow)?.label || '';
+  const listLabel = categoryLabel(listNow) || '';
   const bar = (
     <BottomBar column={!editing && !recurring}>
       <Button size="bar" block disabled={blocked} onClick={() => submit(false)}>
@@ -347,7 +357,8 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
         </>
       ) : (
         <>
-          <ChoiceGroup label="לאיזו רשימה" value={listNow} onChange={setList} options={SHOP_LISTS.map((l) => ({ value: l.id, label: l.label }))} />
+          <ChoiceGroup label="לאיזו קטגוריה" value={listNow} onChange={setList} options={categories.map(l => ({ value: l.cat, label: l.label }))} />
+          <Button variant="link" onClick={() => setSheet('category')}>קטגוריה חדשה</Button>
           {!text.trim() && usual.length > 0 && (
             <div className="k-group">
               <span className="k-group__label">קונים בדרך כלל</span>
@@ -358,13 +369,13 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
             <Field label="כמות" size="sm" value={qtyNow} onChange={(e) => setQty(e.target.value)} />
             <ChoiceGroup label="דחיפות" value={urgentNow ? 'u' : 'n'} onChange={(v) => setUrgent(v === 'u')} options={[{ value: 'n', label: 'רגיל' }, { value: 'u', label: 'דחוף' }]} />
           </div>
+          {urgentNow && <Field label="מועד יעד (לא חובה)" type="datetime-local" ltr value={deadline} onChange={e => setDeadline(e.target.value)} />}
+          <TextAreaField label="הערה" value={note} onChange={e => setNote(e.target.value)} />
           <Inline gap={8}>
             <Button variant="neutral" size="tall" grow icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'בלי תמונה' : 'תמונה'}</Button>
             <Button variant="neutral" size="tall" grow icon="link" iconSize={20} aria-pressed={showLink} onClick={() => setShowLink(!showLink)}>קישור</Button>
-            <Button variant="neutral" size="tall" grow aria-pressed={showNote} onClick={() => setShowNote(!showNote)}>הערה</Button>
           </Inline>
           {photo && <img className="tasks-photo-thumb" src={photo} alt="התמונה שנבחרה" />}
-          {showNote && <TextAreaField label="הערה" value={note} onChange={(e) => setNote(e.target.value)} />}
           {showLink && <Field label="קישור" ltr type="url" inputMode="url" placeholder="https://" value={link} onChange={(e) => setLink(e.target.value)} />}
         </>
       )}
@@ -377,6 +388,10 @@ export function AddForm({ ctx, task, item, template, recurringStart, below }: Fo
         options={[{ value: '', label: 'לא קשור לאירוע' },
           ...eventOptions.map((e) => ({ value: e.id, label: e.title, meta: e.start ? `${dayName(e.start)} ${ddmm(e.start)}` : undefined })),
           ...(eventId && !eventOptions.some((e) => e.id === eventId) ? [{ value: eventId, label: eventLabel(eventId) }] : [])]} />
+      <Sheet open={sheet === 'category'} onClose={() => setSheet('')} title="קטגוריה חדשה">
+        <Field label="שם הקטגוריה" maxLength={60} value={newCategory} onChange={e => setNewCategory(e.target.value)} />
+        <Button size="bar" block disabled={categorySaving || !newCategory.trim()} onClick={createCategory}>יצירה ובחירה</Button>
+      </Sheet>
       <Sheet open={sheet === 'note'} onClose={() => setSheet('')} title={recurring ? 'הערה' : 'הערה ותמונה'}>
         <div className="tasks-notesheet">
           <TextAreaField label={recurring ? 'הסבר קצר (לא חובה)' : 'הערה'} height={96} value={note} onChange={(e) => setNote(e.target.value)} />

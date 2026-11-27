@@ -620,7 +620,7 @@ export function deleteTaskLater(actor: Actor, t: Task, templates: Template[], ms
   return deferDelete(t.id, () => { deleteTaskV2(actor, t, templates).catch(() => {}); }, ms);
 }
 
-export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
+export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; urgentDueAt?: string | null; photo?: string };
 /** S5 add: the existing ShoppingItem shape plus an optional taskId; the task gets shoppingId back (C3). */
 /** The shopping area owns the shopping collection: adding goes through its addShopItem (urgent items tell the team,
  *  taskId is kept); here only the task side of the link (shoppingId) is written. */

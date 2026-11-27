@@ -16,14 +16,16 @@ import { useUpcomingEvents, contactPhoneOk } from '../../../data';
 import type { AppNotification, Donation, Tab, Ticket, Visit, VendorRequest } from '../../../types';
 import {
   useNotifications, useHandledNotifications, useVendorRequests, usePeople, useVisits, useDonations, useOpenTabs, useOpenTickets,
-  inboxIn, inboxSummary, donationTotals, approvedSoon, gw, timeFromNote, needsReceipt, fillTemplate, payTarget,
+  inboxSummary, donationTotals, approvedSoon, gw, timeFromNote, needsReceipt, fillTemplate, payTarget,
   approvePayment, paymentNotArrived, undoApproval, approveMany, setHandled, decide, markReceipt, useRun, deleteInboxItem, type PayItem, type InboxFilter,
 } from '../../data/manage';
+import { inboxRows, rowIn } from './inboxRows';
+import { write } from '../../../db';
 import { lnk, LinkCard } from './shared';
 
 // ---------- Q1 ----------
 export function ManageRoot({ ctx }: ScreenProps) {
-  const inbox = useNotifications(true).items;
+  const inbox = inboxRows(useNotifications(true).items).map(row => row.note);
   const vreq = useVendorRequests(ctx.eventToday?.id || '', !!ctx.eventToday).items;
   const people = usePeople(true).items.filter((p) => p.role !== 'vendor');
   const visits = useVisits(true).items;
@@ -102,10 +104,12 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const run = useRun();
   const pay = usePayConfirm();
-  const count = (f: Filter) => open.filter((n) => inboxIn(n, f)).length;
-  const list = handledView ? handled : open.filter((n) => inboxIn(n, filter));
-  const total = open.length + vreq.length;
-  const bulk = !handledView && filter === 'payments' ? list.map((n) => resolve(n, maps).pay).filter((p): p is PayItem => payOpen(p)) : [];
+  const rows = inboxRows(open);
+  const pendingDonations = new Set(rows.map(row => row.donationId).filter(Boolean));
+  const count = (f: Filter) => rows.filter(row => rowIn(row, f)).length;
+  const list = handledView ? inboxRows(handled).filter(row => !pendingDonations.has(row.donationId)) : rows.filter(row => rowIn(row, filter));
+  const total = rows.length + vreq.length;
+  const bulk = !handledView && filter === 'payments' ? list.map(row => resolve(row.note, maps).pay).filter((p): p is PayItem => payOpen(p)) : [];
   const chip = (f: Filter, label: string, n: number) => <Chip key={f} selected={filter === f} onClick={() => setFilter(f)}>{n ? `${label} · ${n}` : label}</Chip>;
 
   if (handledView) {
@@ -114,7 +118,7 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
         <TopBar back={{ label: 'לטיפול', ...lnk('/manage/inbox') }} />
         <PageTitle>מה שטופל</PageTitle>
         {!list.length && <EmptyState variant="fill" icon="check" title="עוד לא טופל כלום" />}
-        {list.map((n) => <InboxCard key={n.id} n={n} r={resolve(n, maps)} handled open={open} />)}
+        {list.map(({note:n,members}) => <InboxCard key={n.id} n={n} members={members} r={resolve(n, maps)} handled open={open} />)}
       </AppScreen>
     );
   }
@@ -138,7 +142,7 @@ export function InboxScreen({ ctx, params }: ScreenProps) {
           </Button>
         )}
         {filter === 'all' && vreq.map((r) => <VendorCard key={r.id} r={r} eventId={ctx.eventToday?.id || ''} />)}
-        {list.map((n) => <InboxCard key={n.id} n={n} r={resolve(n, maps)} open={open} />)}
+        {list.map(({note:n,members}) => <InboxCard key={n.id} n={n} members={members} r={resolve(n, maps)} open={open} />)}
         {!list.length && !(filter === 'all' && vreq.length) && <EmptyState variant="fill" icon="check" title="אין כלום שמחכה" text="כשאורח פונה, מבקש ביקור או מסמן שהעביר כסף, זה מופיע כאן." />}
       </AppScreen>
       {pay.sheet}
@@ -202,8 +206,9 @@ function VendorCard({ r, eventId }: { r: VendorRequest; eventId: string }) {
   );
 }
 
-function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+function InboxCard(p: { n: AppNotification; members: AppNotification[]; r: Resolved; open: AppNotification[]; handled?: boolean }) {
   const { actor } = useV2();
+  if (p.members.length > 1 && p.r.donation) return <Opens path={`/manage/donations/${p.r.donation.id}`}><InboxCardBody {...p} /></Opens>;
   if (p.n.type === 'contact') return <Opens path={`/manage/inbox/${p.n.id}`}><InboxCardBody {...p} /></Opens>; // W1
   return (
     <WithSheet title={p.n.title} sub={agoLong(p.n.createdAt)} open={detailOf(p.n, p.r) || undefined}
@@ -212,12 +217,15 @@ function InboxCard(p: { n: AppNotification; r: Resolved; open: AppNotification[]
     </WithSheet>
   );
 }
-function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolved; open: AppNotification[]; handled?: boolean }) {
+function InboxCardBody({ n, members, r, open, handled }: { n: AppNotification; members: AppNotification[]; r: Resolved; open: AppNotification[]; handled?: boolean }) {
   const { actor, peopleByUid, settings } = useV2();
   const run = useRun();
   const ext = useExternal();
   const askPay = useContext(AskPay);
-  const done = () => run(() => setHandled(n, actor, !handled), { text: handled ? 'חזר לתור' : 'סומן טופל', undo: () => setHandled(n, actor, !!handled) });
+  const markGroup = (value: boolean) => members.length === 1 ? setHandled(n, actor, value) : write.batch(members.map(x => ({
+    op: 'update' as const, col: 'notifications', id: x.id, data: { handled:value, handledBy:value ? actor : null, handledAt:value ? nowIso() : null },
+  })));
+  const done = () => run(() => markGroup(!handled), { text: handled ? 'חזר לתור' : 'סומן טופל', undo: () => markGroup(!!handled) });
   const back = handled ? <Button variant="quiet" onClick={done}>החזרה לתור</Button> : null;
   const by = handled && n.handledBy ? ` · ${firstName(n.handledBy.name)}` : '';
   const approve = async (p: PayItem, label: string) => {
@@ -259,17 +267,6 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
       </CardShell>
     );
   }
-  if (n.type === 'receipt' && r.donation) {
-    const d = r.donation;
-    return (
-      <CardShell icon="file" done={handled} over={`בקשה לקבלה${by}`} title={`${money(d.amount)} · ${d.receiptName || d.name}`} meta={d.receiptSent ? 'הקבלה נשלחה' : undefined}>
-        {handled ? back : <>
-          {!d.receiptSent && <Button onClick={() => run(async () => { await markReceipt(actor, d, true); await setHandled(n, actor, true); }, 'סומן: הקבלה נשלחה')}>הקבלה נשלחה</Button>}
-          <Button variant="quiet" {...lnk(`/manage/donations/${d.id}`)}>פרטים</Button>
-        </>}
-      </CardShell>
-    );
-  }
   if (r.pay && r.donation) {
     const d = r.donation; const p = r.pay;
     const status = d.paymentStatus === 'claimed' ? gw(d.name, 'סימן שהעביר', 'סימנה שהעבירה') : d.paymentStatus === 'pending' ? 'עוד לא שולמה' : d.paymentStatus === 'cancelled' ? 'בוטלה' : 'שולמה';
@@ -280,6 +277,8 @@ function InboxCardBody({ n, r, open, handled }: { n: AppNotification; r: Resolve
           <Button onClick={() => approve(p, `${money(d.amount)} · ${d.name}`)}>אישור תשלום</Button>
           {d.paymentStatus === 'claimed' && <Button variant="quiet" onClick={() => notYet(p)}>עוד לא הגיע</Button>}
         </> : <><Button variant="quiet" {...lnk(`/manage/donations/${d.id}`)}>פרטים</Button><Button variant="quiet" onClick={done}>טופל</Button></>}
+        {!handled && !d.receiptSent && members.some(x => x.type === 'receipt') &&
+          <Button variant="quiet" onClick={() => run(async () => { await markReceipt(actor, d, true); await Promise.all(members.filter(x => x.type === 'receipt').map(x => setHandled(x, actor, true))); }, 'סומן: הקבלה נשלחה')}>הקבלה נשלחה</Button>}
       </CardShell>
     );
   }

@@ -6,6 +6,7 @@ import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
 import { flush, scopeOf } from '../survey/local';
 import { useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
+import { inboxRows } from './screens/manage/inboxRows';
 import { useAllEvents, useNotifications } from '../data';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { leaveDemoTarget } from '../demo/intro';
@@ -124,7 +125,7 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
 
   // nav badges (RULES.md rule 11): a red count only on ניהול (what waits in "לטיפול", the manage root's count). Not on משימות,
   // קניות or החווה; the bell carries the personal count in each root header.
-  const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
+  const inbox = inboxRows(useNotifications(ctx.manager).items).length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
   const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx

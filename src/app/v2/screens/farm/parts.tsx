@@ -1,5 +1,5 @@
 // Shared bits of the farm screens: the clock in minutes, names and gender of people, the day picker, and calendar item wording.
-import { useState, type ReactNode } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { now, nowMs, useClockVersion } from '../../../clock';
 import { DAY_LETTERS, hhmm } from '../../format';
 import { BackLink, Button, Field, IconButton } from '../../kit';
@@ -8,9 +8,24 @@ import type { V2Ctx } from '../../ctx';
 import { dayNum, firstOf, hoursOf, isFemale, teamKindLabel, weekdayOf, type CalItem } from './logic';
 import './farm.css';
 
+const timeListeners = new Set<() => void>();
+let minuteTimer: number | undefined;
+function tickMinutes() {
+  for (const update of timeListeners) update();
+  minuteTimer = window.setTimeout(tickMinutes, 60_000 - Date.now() % 60_000);
+}
+function subscribeMinute(update: () => void) {
+  timeListeners.add(update);
+  if (timeListeners.size === 1) minuteTimer = window.setTimeout(tickMinutes, 60_000 - Date.now() % 60_000);
+  return () => {
+    timeListeners.delete(update);
+    if (!timeListeners.size) window.clearTimeout(minuteTimer);
+  };
+}
 /** Minutes since midnight in Israel, now (re-renders with the demo clock). */
 export function useNowMin() {
   useClockVersion();
+  useSyncExternalStore(subscribeMinute, () => Math.floor(nowMs()/60_000));
   const t = hhmm(now());
   return Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
 }
