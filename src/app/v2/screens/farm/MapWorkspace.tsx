@@ -45,7 +45,6 @@ export function MapWorkspace({
     [message, setMessage] = useState(''),
     [saving, setSaving] = useState(false);
   const [previewCamera, setPreviewCamera] = useState<MapHome | null>(null);
-  const [homeOverride, setHomeOverride] = useState<MapHome | null>(null);
   const [locHint, setLocHint] = useState(() => {
     try {
       return !localStorage.getItem('farm-map-location-hint');
@@ -65,7 +64,7 @@ export function MapWorkspace({
     searchInput = useRef<HTMLInputElement>(null);
   const lastView = useRef(map.view);
   const homeDoc = useDoc<MapHome>('farmMap/home');
-  const home = homeOverride || (validHome(homeDoc.item) ? homeDoc.item : null);
+  const home = validHome(homeDoc.item) ? homeDoc.item : null;
   const external = useExternal();
   useEffect(() => {
     if (map.view && map.view !== lastView.current) {
@@ -154,7 +153,6 @@ export function MapWorkspace({
     setSaving(true);
     try {
       await write.batch([{ op: 'set', col: 'farmMap', id: 'home', data: { ...c } }], { wait: true });
-      setHomeOverride({ ...c });
       setMessage('מבט הפתיחה נשמר');
       setSheet(null);
       beforeHome.current = null;

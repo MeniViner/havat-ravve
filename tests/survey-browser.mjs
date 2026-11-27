@@ -5,6 +5,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 const origin = process.env.SURVEY_WEB_ORIGIN || 'http://localhost:5194';
 const browser = await chromium.launch({ headless: true });
+let currentPage;
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   // Serve the built app in-process. No farm, tile or authentication request leaves this context.
@@ -49,6 +50,7 @@ try {
     };
   });
   const page = await ctx.newPage();
+  currentPage = page;
   const exceptions = [];
   page.on('pageerror', (e) => exceptions.push(e.message));
   await page.goto(origin + '/app/farm/map?demo=owner');
@@ -161,6 +163,12 @@ try {
   await button('שמירת מקום כאן').click();
   await page.getByLabel('שם המקום', { exact: true }).fill('לאורך השביל');
   await button('שמירת המקום').click();
+  await page.waitForFunction(() =>
+    Object.values(JSON.parse(localStorage.getItem('farm-demo-overrides') || '{}').places || {}).some(
+      (p) => p.name === 'לאורך השביל'
+    )
+  );
+  await page.getByLabel('שם המקום', { exact: true }).waitFor({ state: 'hidden' });
   await page.reload();
   await button('חידוש ההקלטה').waitFor();
   await openEdit();
@@ -264,6 +272,18 @@ try {
   console.log(
     'PASS map journeys, recording, draft recovery, public roles, owner edits, center tab and desktop/mobile layout'
   );
+} catch (err) {
+  if (currentPage)
+    console.error(
+      'Visible map state:',
+      (
+        await currentPage
+          .locator('.map-stage')
+          .innerText()
+          .catch(() => '')
+      ).slice(-1400)
+    );
+  throw err;
 } finally {
   await browser.close();
 }

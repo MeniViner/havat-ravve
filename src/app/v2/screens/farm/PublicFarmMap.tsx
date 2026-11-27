@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { demoOnly } from '../../../demo/store';
+import { demoItems, demoOnly, useDemoVersion } from '../../../demo/store';
 import { usePlaces, useOnline } from '../../../store';
 import { apiBase } from '../../../upload';
 import { useSurveyLocation } from '../../../survey/useLocation';
@@ -31,6 +31,25 @@ export function PublicFarmMap() {
     online = useOnline(),
     gps = useSurveyLocation('', false),
     fixtures = usePlaces(demo);
+  const demoVersion = useDemoVersion();
+  const fixtureTrails = useMemo(() => {
+    if (!demo) return [];
+    const drawn: Layers['trails'] = [];
+    for (const trail of demoItems('farmTrails') as Trail[]) {
+      if (trail.status !== 'confirmed') continue;
+      const chunks = demoItems('farmTrails/' + trail.id + '/versions/' + trail.geometry + '/chunks') as {
+        index: number;
+        points: Vertex[];
+      }[];
+      const points = unpack(
+        trail,
+        chunks.sort((a, b) => a.index - b.index)
+      );
+      if (points)
+        drawn.push({ trail: { id: trail.id, name: trail.name, status: 'confirmed', modes: trail.modes }, points });
+    }
+    return drawn;
+  }, [demo, demoVersion]);
   const [layers, setLayers] = useState<Layers>({ places: [], trails: [] }),
     [loading, setLoading] = useState(!demo),
     [error, setError] = useState('');
@@ -98,7 +117,7 @@ export function PublicFarmMap() {
       feedback={error ? <button onClick={() => refresh((n) => n + 1)}>{error} · ניסיון נוסף</button> : undefined}
       map={{
         places,
-        trails: layers.trails,
+        trails: demo ? fixtureTrails : layers.trails,
         live: gps.fix,
         clock: gps.clock,
         raw: [],
