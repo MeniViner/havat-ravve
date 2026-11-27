@@ -1,3 +1,4 @@
+import { currentStaffingEvent, useStationRegistry } from '../../data/workStations';
 import { eventMillis } from './logic';
 // M4-M7: one event, four stages chosen by ?tab (הכנה / נרשמים / יום האירוע / סיכום). Opens on the stage that fits the time.
 // Top bar, one control (rule 5): the outlined "עריכה" on הכנה and יום האירוע (details keep it); ⋯ on נרשמים (table view,
@@ -94,7 +95,8 @@ function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const products = useProducts(e.id, ctx.manager && e.stall !== false);
   const staffing = useStaffing(e.id, ctx.manager);
   const files = useFiles(e.id, ctx.manager);
-  const st = staffingStats(stationsOf(e, staffing.items), [], []);
+  const registry = useStationRegistry();
+  const st = staffingStats(stationsOf(e, staffing.items, currentStaffingEvent(e) ? registry.item || undefined : undefined), [], []);
   const fileNames = [...files.items.map((f) => f.name), ...(e.files || []).map((f) => f.name)];
   return (
     <>

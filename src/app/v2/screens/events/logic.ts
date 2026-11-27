@@ -1,3 +1,4 @@
+import { defaultStations, emptyRegistry, type StationRegistry } from '../../../../../shared/work-stations';
 // Events area: pure helpers (no data access), shared by the screens and tests/v2-events.mjs.
 import { isFemale as sharedIsFemale } from '../../gender';
 import { registeredTickets } from '../manage/calc';
@@ -342,15 +343,14 @@ export function boardCard(e: FarmEvent & { closed?: unknown }, tickets: Ticket[]
 // ---------- staffing (V4, M4) ----------
 export type Station = Staffing & { virtual?: boolean };
 /** Stations of the event: the saved ones, plus the usual gate / stall / parking when they were never saved. */
-export function stationsOf(e: Pick<FarmEvent, 'entry' | 'stall'>, saved: Staffing[]): Station[] {
-  const defaults: Station[] = [
-    ...(e.entry !== false ? [{ id: 'gate', station: 'שער', people: [], needed: 1, virtual: true }] : []),
-    ...(e.stall !== false ? [{ id: 'stall', station: 'דוכן', people: [], needed: 1, virtual: true }] : []),
-    { id: 'parking', station: 'חניה', people: [], needed: 1, virtual: true },
-  ];
+export function stationsOf(e: Pick<FarmEvent, 'entry' | 'stall'>, saved: Staffing[], registry: StationRegistry = emptyRegistry): Station[] {
+  const defaults = Object.entries(defaultStations)
+    .filter(([id]) => !(id === 'gate' && e.entry === false || id === 'stall' && e.stall === false))
+    .map(([id, station]) => ({ id, station, people: [], needed: 1, virtual: true }));
   const out: Station[] = defaults.map((d) => saved.find((s) => s.id === d.id) || d);
   for (const s of saved) if (!out.some((x) => x.id === s.id)) out.push(s);
-  return out;
+  return out.filter((s) => !registry.stations[s.id]?.archived)
+    .map((s) => registry.stations[s.id]?.name ? { ...s, station: registry.stations[s.id].name } : s);
 }
 export const stationMissing = (s: Staffing) => s.people.length < Math.max(1, s.needed || 0);
 /** V4 tiles: assigned people, stations short of people, team members at the farm that day who are not assigned. */

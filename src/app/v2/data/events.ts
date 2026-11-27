@@ -1,3 +1,4 @@
+import { assignmentKey, emptyRegistry, stationCollection, stationRegistryId, stationWritable, type StationRegistry } from '../../../../shared/work-stations';
 import { eventMillis } from '../screens/events/logic';
 // Events area data: listeners and writes for M3-M7, N9-N12, V3-V5. Everything goes through db.ts (offline-first writes,
 // transact for read-modify-write) and reuses the shared helpers in data.ts so the guest app and site keep reading the same fields.
@@ -171,10 +172,12 @@ type Person = Staffing['people'][number];
 async function changeStation(eventId: string, station: { id: string; station: string; needed?: number }, fn: (people: Person[]) => Person[]) {
   const col = `events/${eventId}/staffing`;
   await transact(async (tx) => {
+    const registry = await tx.get<StationRegistry>(stationCollection, stationRegistryId) || emptyRegistry;
+    if (!stationWritable(registry, station.id)) throw new ConflictError('התחנה עוברת או הוסרה. בחרו תחנה אחרת.');
     const cur = await tx.get<Staffing>(col, station.id);
     const people = fn(cur?.people ? [...cur.people] : []);
-    tx.set(col, station.id, { station: cur?.station || station.station, people, needed: cur?.needed ?? station.needed ?? 1 });
-  });
+    tx.set(col, station.id, { station: registry.stations[station.id]?.name || cur?.station || station.station, people, needed: cur?.needed ?? station.needed ?? 1 });
+  }, { serverOnly: true });
 }
 export async function assignToStation(actor: Actor, e: FarmEvent, station: { id: string; station: string; needed?: number }, person: Person) {
   await changeStation(e.id, station, (people) => {
@@ -187,12 +190,16 @@ export async function assignToStation(actor: Actor, e: FarmEvent, station: { id:
     link: `/farm/events/${e.id}`, refId: e.id, by: actor,
   }).catch(() => {});
 }
-export async function updateStationPerson(actor: Actor, e: FarmEvent, station: { id: string; station: string }, uid: string, hours: string) {
-  await changeStation(e.id, station, (people) => people.map((p) => (p.uid === uid ? { ...p, hours } : p)));
+export async function updateStationPerson(actor: Actor, e: FarmEvent, station: { id: string; station: string }, uid: string, hours: string, assignmentId?:string) {
+  await changeStation(e.id, station, (people) => {
+    const matches=people.filter((p)=>p.uid===uid && (!assignmentId || assignmentKey(p)===assignmentId));
+    if (matches.length!==1) throw new ConflictError('בחרו שיבוץ אחד מהרשימה המעודכנת.');
+    return people.map((p)=>p===matches[0] ? {...p,hours} : p);
+  });
   logActivity(actor, 'event', e.id, 'edited', `${e.title}: שעות ב${station.station} עודכנו`, { eventId: e.id, subjectUid: uid });
 }
 export async function removeFromStation(actor: Actor, e: FarmEvent, station: { id: string; station: string }, person: Person) {
-  await changeStation(e.id, station, (people) => people.filter((p) => p.uid !== person.uid));
+  await changeStation(e.id, station, (people) => people.filter((p) => assignmentKey(p) !== assignmentKey(person)));
   logActivity(actor, 'event', e.id, 'edited', `${e.title}: ${person.name} הוסר/ה מ${station.station}`, { eventId: e.id, subjectUid: person.uid });
 }
 
@@ -209,16 +216,18 @@ export async function saveEventAssignment(actor: Actor, event: FarmEvent, statio
   if (!previous) return assignToStation(actor, event, station, person);
   const col = 'events/' + event.id + '/staffing';
   await transact(async (tx) => {
+    const registry = await tx.get<StationRegistry>(stationCollection, stationRegistryId) || emptyRegistry;
+    if (!stationWritable(registry, previous.id) || !stationWritable(registry, station.id)) throw new ConflictError('רשימת התחנות השתנתה. פתחו את השיבוץ מחדש.');
     const from = await tx.get<Staffing>(col, previous.id);
-    if (!from?.people.some((p) => p.uid === person.uid)) throw new ConflictError('השיבוץ השתנה. פתחו אותו מחדש.');
+    if (!from?.people.some((p) => assignmentKey(p) === assignmentKey(person))) throw new ConflictError('השיבוץ השתנה. פתחו אותו מחדש.');
     if (station.id === previous.id) {
-      tx.update(col, previous.id, { people: from.people.map((p) => p.uid === person.uid ? {...p, ...person} : p) });
+      tx.update(col, previous.id, { people: from.people.map((p) => assignmentKey(p) === assignmentKey(person) ? {...p, ...person} : p) });
       return;
     }
     const target = await tx.get<Staffing>(col, station.id);
-    if (target?.people.some((p) => p.uid === person.uid)) throw new ConflictError('האדם כבר משובץ בתחנה שבחרתם.');
-    tx.update(col, previous.id, {people:from.people.filter((p) => p.uid !== person.uid)});
-    tx.set(col, station.id, {station:target?.station || station.station, needed:target?.needed ?? station.needed, people:[...(target?.people || []),person]});
-  });
+    if (target?.people.some((p) => assignmentKey(p) === assignmentKey(person))) throw new ConflictError('האדם כבר משובץ בתחנה שבחרתם.');
+    tx.update(col, previous.id, {people:from.people.filter((p) => assignmentKey(p) !== assignmentKey(person))});
+    tx.set(col, station.id, {station:registry.stations[station.id]?.name || target?.station || station.station, needed:target?.needed ?? station.needed, people:[...(target?.people || []),person]});
+  }, { serverOnly: true });
   logActivity(actor, 'event', event.id, 'edited', 'עודכן שיבוץ של ' + person.name + ' בתחנת ' + station.station, {eventId:event.id,subjectUid:person.uid});
 }

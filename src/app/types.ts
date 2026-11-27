@@ -316,7 +316,7 @@ export type GateScan = { id: string; eventId: string; ticketId: string; orderId:
 export type LiveCounters = { entered: number; paidAtGate: number; payLater: number; payLaterAmount: number; rejected: number; scans: number; perHalfHour: Record<string, number> };
 
 /** events/{id}/staffing/{station} (V4). */
-export type Staffing = { id: string; station: string; people: { uid: string; name: string; hours: string; role?: string; startsAt?: string; endsAt?: string }[]; needed: number };
+export type Staffing = { id: string; station: string; people: import('../../shared/work-stations').StationPerson[]; needed: number };
 
 /** Event close (Y5). Stored on the event document as `closed`. */
 /** events/{id}.closed. Public with the event, so it holds no money: the cash counts live in events/{id}/counters/cash (managers only). */

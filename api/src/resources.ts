@@ -89,6 +89,9 @@ const managerReads = { restrict: (c: Caller) => isManager(c) ? [] : null, visibl
 export const RESOURCES: ResourceDef[] = [
   { name: 'vendorApplications', col: 'vendor_applications', path: '/v1/vendor-applications', scope: 'vendors:read', he: 'בקשות רישום דוכנים', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
   { name: 'eventVendorApplications', col: 'vendor_applications', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/vendor-applications', scope: 'vendors:read', he: 'בקשות השתתפות לדוכנים באירוע', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
+  { name: 'workStations', col: 'work_stations', path: '/v1/work-stations', scope: 'events:read',
+    he: 'מאגר תחנות העבודה הקבוע והעברה פעילה של שיבוצים', order: { field: 'moving', dir: 'ASCENDING' },
+    notes: ['Read id farm for stable station IDs, current names, retirements and a move in progress. Before the first edit, gate, stall and parking are available by default. Use eventStaffing for people and shift details.'] },
   { name: 'farmCatalogs', col: 'farm_catalogs', path: '/v1/farm-catalogs', scope: 'events:read', he: 'קטלוגים לדוכן החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
   { name: 'farmCatalogProducts', col: 'products', parent: { param: 'catalogId', col: 'farm_catalogs' }, path: '/v1/farm-catalogs/{catalogId}/products', scope: 'events:read', he: 'מוצרים ומחירים בקטלוג החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
   { name: 'eventShopping', col: 'shopping', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/shopping', scope: 'events:read', he: 'רשימת הקניות של האירוע', order: { field: 'createdAt', dir: 'DESCENDING' } },
@@ -181,7 +184,7 @@ export const RESOURCES: ResourceDef[] = [
   {
     name: 'eventStaffing', col: 'staffing', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/staffing', scope: 'events:read',
     he: 'שיבוץ הצוות לעמדות באירוע (שער, דוכן, חניה): מי, באילו שעות, כמה צריך', order: { field: 'station', dir: 'ASCENDING' },
-    notes: ['id = the station (gate, stall, parking or another). people: [{uid, name, hours}], hours "" = the whole event; needed = how many the station needs. A station nobody saved yet is missing (the app shows gate, stall and parking anyway).'],
+    notes: ['Each row is an event snapshot with a stable work station id. People retain their uid, role, hours and dated shift. When someone has multiple assignments at a station, use their assignmentId (or their uid for the original shift) for a single edit. Active shifts move to the chosen replacement before retirement. Closed events keep their snapshots.'],
   },
   {
     name: 'eventFiles', col: 'files', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/files', scope: 'events:read',

@@ -7,6 +7,9 @@ import { useEvent } from '../../../data';
 import { dayName, ddmm, hhmm, keyOf } from '../../format';
 import { useStaffing, usePresenceOn, saveEventAssignment, removeFromStation, type EventAssignment } from '../../data/events';
 import { stationsOf, staffingStats, stationMissing, hoursText, isoFromLocal, localOf, type Station } from './logic';
+import { StationNameForm } from './workStations';
+import { catalogStations, currentStaffingEvent, emptyRegistry, useLegacyStations, useStationRegistry, type WorkStation } from '../../data/workStations';
+import { assignmentKey, stationWritable } from '../../../../../shared/work-stations';
 import { Loading, Missing, backTo, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
 
@@ -22,10 +25,17 @@ const shiftText = (p:EventAssignment) => p.startsAt && p.endsAt
 type Edit = { station:Station; person?:EventAssignment };
 export function EventCrew({ctx,event:e}:{ctx:V2Ctx;event:FarmEvent}) {
   const staffing = useStaffing(e.id), presence = usePresenceOn(keyOf(e.start), ctx.manager);
-  const stations = stationsOf(e, staffing.items);
+  const source = useStationRegistry();
+  const registry = source.item || emptyRegistry;
+  const live = currentStaffingEvent(e);
+  const stations = stationsOf(e, staffing.items, live ? registry : undefined);
   const stats = staffingStats(stations,presence,ctx.team.map((p) => p.uid));
   const [edit,setEdit] = useState<Edit | null>(null);
   const close = useCallback(() => setEdit(null), []);
+  const discovery = useLegacyStations(ctx.manager && !!edit, e.id);
+  const known = catalogStations(registry, [...discovery.rows, ...staffing.items.map((s) => ({id:s.id,name:s.station}))]);
+  const choices = known.filter((s) => stationWritable(registry,s.id)).map((s) =>
+    stations.find((row) => row.id===s.id) || {id:s.id, station:s.name, people:[], needed:1});
   const send = () => {
     const lines = stations.map((s) => s.station + ': ' + s.people.map((p) => p.name + ' ' + shiftText(p)).join(', '));
     go('/manage/broadcasts/new?audience=crew&event=' + encodeURIComponent(e.id) + '&text=' + encodeURIComponent((e.title + '\n' + lines.join('\n')).slice(0,200)));
@@ -34,18 +44,25 @@ export function EventCrew({ctx,event:e}:{ctx:V2Ctx;event:FarmEvent}) {
     <TopBar back={backTo(e.title,(ctx.manager ? '/manage/events/' : '/farm/events/') + e.id)} />
     <PageTitle>צוות</PageTitle>
     <StatRow><StatTile value={stats.assigned} label="שיבוצים" /><StatTile value={stats.missing} label="תחנות שחסר בהן צוות" /></StatRow>
-    {ctx.manager && <Button variant="outline" icon="plus" onClick={() => setEdit({station:stations[0]})}>הוסף משובץ</Button>}
+    {ctx.manager && <div className="events-btnrow">
+      {live && <Button variant="outline" icon="plus" disabled={source.loading} onClick={() => setEdit({station:choices[0] || {id:'',station:'',people:[],needed:1}})}>הוסף משובץ</Button>}
+      <Button variant="outline" onClick={() => go('/manage/work-stations?event=' + encodeURIComponent(e.id))}>ניהול תחנות עבודה</Button>
+    </div>}
     {stations.map((s) => <ListCard key={s.id} title={s.station} count={s.people.length}>
-      {s.people.map((p) => <Row key={p.uid} title={p.name} meta={shiftText(p) || 'השעות טרם נקבעו'} onClick={ctx.manager ? () => setEdit({station:s,person:p}) : undefined} />)}
+      {s.people.map((p) => <Row key={assignmentKey(p)} title={p.name} meta={shiftText(p) || 'השעות טרם נקבעו'} onClick={ctx.manager && live && stationWritable(registry,s.id) ? () => setEdit({station:s,person:p}) : undefined} />)}
       {stationMissing(s) && <Row title="חסר שיבוץ" tags={<Tag tone="waiting">חסר</Tag>} />}
     </ListCard>)}
-    {edit && ctx.manager && <AssignmentForm ctx={ctx} event={e} edit={edit} stations={stations} close={close} />}
+    {edit && ctx.manager && <AssignmentForm ctx={ctx} event={e} edit={edit} stations={choices} close={close} />}
   </AppScreen>;
 }
 const fieldTime = (v:string) => { const p = localOf(v); return p.date + 'T' + p.time.padStart(5,'0'); };
 const toIso = (v:string) => { const [d,t] = v.split('T'); return d && t ? isoFromLocal(d,t) : ''; };
 function AssignmentForm({ctx,event:e,edit,stations,close}:{ctx:V2Ctx;event:FarmEvent;edit:Edit;stations:Station[];close:()=>void}) {
   const p = edit.person;
+  const [addingStation,setAddingStation] = useState(false);
+  const [added,setAdded] = useState<WorkStation | null>(null);
+  const closeNew = useCallback(() => setAddingStation(false),[]);
+  const choices = added && !stations.some((s)=>s.id===added.id) ? [...stations,{id:added.id,station:added.name,people:[],needed:1}] : stations;
   const [stationId,setStation] = useState(edit.station.id), [uid,setUid] = useState(p?.uid || '');
   const [role,setRole] = useState(p?.role || '');
   const [a,b] = (p?.hours || '').split(/\s*[-–]\s*/);
@@ -53,22 +70,28 @@ function AssignmentForm({ctx,event:e,edit,stations,close}:{ctx:V2Ctx;event:FarmE
   const [end,setEnd] = useState(p?.endsAt ? fieldTime(p.endsAt) : b ? keyOf(e.end || e.start) + 'T' + b.padStart(5,'0') : e.end ? fieldTime(e.end) : '');
   const [busy,setBusy] = useState(false);
   const run = useRun();
-  const station = stations.find((s) => s.id === stationId)!;
-  const team = ctx.team.filter((t) => t.status === 'active' && (t.uid === p?.uid || !station.people.some((a) => a.uid === t.uid)));
+  const station = choices.find((s) => s.id === stationId);
+  const team = ctx.team.filter((t) => t.status === 'active' && (t.uid === p?.uid || !station?.people.some((a) => a.uid === t.uid)));
   const startsAt = toIso(start), endsAt = toIso(end);
   const save = async () => {
-    const member = team.find((m) => m.uid === uid); if (!member || !role.trim() || !(endsAt > startsAt) || !startsAt || busy) return;
+    const member = team.find((m) => m.uid === uid); if (!station || !member || !role.trim() || !(endsAt > startsAt) || !startsAt || busy) return;
     setBusy(true);
-    const ok = await run(async () => { await saveEventAssignment(ctx.actor,e,station,{uid,name:member.displayName,role:role.trim(),startsAt,endsAt,hours:hhmm(startsAt)+'-'+hhmm(endsAt)}, p ? edit.station : undefined); return true; });
+    const ok = await run(async () => { await saveEventAssignment(ctx.actor,e,station,{uid,...(p?.assignmentId ? {assignmentId:p.assignmentId}:{}),name:member.displayName,role:role.trim(),startsAt,endsAt,hours:hhmm(startsAt)+'-'+hhmm(endsAt)}, p ? edit.station : undefined); return true; });
     setBusy(false); if (ok) close();
   };
   return <Sheet open onClose={close} title={p ? 'עריכת שיבוץ' : 'הוסף משובץ'}><div className="events-sheet">
-    <label className="k-field"><span className="k-field__label">תחנה</span><select className="k-input" value={stationId} onChange={(e) => setStation(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.station}</option>)}</select></label>
+    <div className="events-station-picker"><label className="k-field"><span className="k-field__label">תחנה</span>
+      <select className="k-input" aria-label="תחנה" value={stationId} onChange={(e) => setStation(e.target.value)}>
+        {!stationId && <option value="">בחירת תחנה</option>}{choices.map((s) => <option key={s.id} value={s.id}>{s.station}</option>)}
+      </select></label>
+      <Button variant="outline" icon="plus" aria-label="הוספת תחנה לשיבוץ" onClick={() => setAddingStation(true)}>תחנה</Button>
+    </div>
     <label className="k-field"><span className="k-field__label">איש צוות</span><select className="k-input" value={uid} disabled={!!p} onChange={(e) => setUid(e.target.value)}><option value="">בחירת אדם</option>{team.map((t) => <option key={t.uid} value={t.uid}>{t.displayName}</option>)}</select></label>
     <Field label="תפקיד בתחנה" value={role} maxLength={80} onChange={(e) => setRole(e.target.value)} />
     <Field label="הגעה" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
     <Field label="עד" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} error={endsAt && endsAt <= startsAt ? 'הסיום צריך להיות אחרי ההגעה' : undefined} />
-    <Button size="bar" disabled={busy || !uid || !role.trim() || !startsAt || endsAt <= startsAt} onClick={save}>שמירת השיבוץ</Button>
+    <Button size="bar" disabled={busy || !stationId || !uid || !role.trim() || !startsAt || endsAt <= startsAt} onClick={save}>שמירת השיבוץ</Button>
     {p && <Button variant="danger" disabled={busy} onClick={async () => { const ok = await run(async () => { await removeFromStation(ctx.actor,e,edit.station,p); return true; }); if (ok) close(); }}>הסרה מהשיבוץ</Button>}
+    {addingStation && <StationNameForm known={choices.map((s)=>({id:s.id,name:s.station}))} close={closeNew} saved={(station)=>{setAdded(station);setStation(station.id);closeNew();}} />}
   </div></Sheet>;
 }

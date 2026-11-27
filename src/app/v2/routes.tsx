@@ -96,6 +96,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/events/:id/tabs/:tid', events.TabScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'tab', { manager: true }), // Q12 shows the nav like its siblings
   R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/work-stations', events.WorkStationsScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/debts', events.DebtsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/live/scans/:sid', eventday.RejectedScan, 'manage', 'page', { manager: true }),

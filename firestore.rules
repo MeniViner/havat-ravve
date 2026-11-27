@@ -384,6 +384,36 @@ service cloud.firestore {
    allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment','demoIntro'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk()) && (!changed().hasAny(['demoIntro']) || demoIntroOk());
    allow delete: if isOwner() && name == 'app';
   }
+  function stationAvailable(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return !exists(registry) || (
+     !get(registry).data.stations.get(sid, {}).get('archived', false)
+     && (get(registry).data.moving == null || get(registry).data.moving.from != sid));
+  }
+  function movingStation(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return exists(registry) && get(registry).data.moving != null && get(registry).data.moving.from == sid
+     && get(registry).data.moving.to != '';
+  }
+  function transferredPeople(eventId,sid){
+   let destination = get(/databases/$(database)/documents/work_stations/farm).data.moving.to;
+   let target = /databases/$(database)/documents/events/$(eventId)/staffing/$(destination);
+   let previousCount = exists(target) ? get(target).data.people.size() : 0;
+   return getAfter(target).data.people.size() == previousCount + resource.data.people.size();
+  }
+  function stationSizeOk(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return incoming().people.size() <= 30 || (request.method == 'update' && incoming().people.size() <= resource.data.people.size())
+    || (exists(registry) && get(registry).data.moving != null && get(registry).data.moving.to == sid);
+  }
+  match /work_stations/{registry} {
+   allow get: if registry == 'farm' && isStaff();
+   allow create, update: if registry == 'farm' && isManager()
+      && incoming().keys().hasOnly(['stations','moving']) && incoming().stations is map
+      && (incoming().moving == null || (incoming().moving is map && incoming().moving.keys().hasOnly(['from','to','startedAt'])
+        && str(incoming().moving.from,140) && incoming().moving.from.size()>0 && str(incoming().moving.to,140)
+        && incoming().moving.from != incoming().moving.to && isoTime(incoming().moving.startedAt)));
+  }
   match /farm_catalogs/{catalog} {
    allow read: if isManager();
    allow create, update: if isManager() && incoming().keys().hasOnly(['name','createdAt','updatedAt']) && str(incoming().name, 120) && incoming().name.size() > 0 && isoTime(incoming().createdAt) && isoTime(incoming().updatedAt);
@@ -521,7 +551,8 @@ service cloud.firestore {
    // V4: stations, their people and hours. The crew (F6) and the broadcast audience read it
    match /staffing/{sid} {
     allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['station','people','needed']) && str(incoming().station, 60) && incoming().station.size() >= 1 && incoming().people is list && incoming().people.size() <= 30 && incoming().needed is int && incoming().needed >= 1 && incoming().needed <= 30));
+    allow delete: if isManager() && (resource.data.people.size() == 0 || (movingStation(sid) && transferredPeople(id,sid)));
+    allow create, update: if isManager() && stationAvailable(sid) && stationSizeOk(sid) && (incoming().keys().hasOnly(['station','people','needed']) && str(incoming().station, 60) && incoming().station.size() >= 1 && incoming().people is list && incoming().needed is int && incoming().needed >= 1 && incoming().needed <= 30);
    }
    // E2-E6, Y1-Y3: the gate log. Create-only: two gates that let in the same entry write the same id ("<ticket>-<n>"),
    // so the second (also a late offline one) is refused. Managers only mark a rejected scan reopened or kept, once.

@@ -1,3 +1,4 @@
+import { assignmentKey, defaultStations, emptyRegistry, stationCollection, stationRegistryId, stationWritable, type StationRegistry, type StationPerson } from '../../../shared/work-stations';
 // Events management in the redesigned app (M3-M7, N9-N12, V3-V5): src/app/v2/data/events.ts, closeEvent/reopenEvent in
 // src/app/v2/data/eventday.ts and the shared writes in src/app/data.ts. Each operation writes what the app's function writes
 // (fields, activity, notifications), in one transaction with the idempotency record. events.create/update/saveProduct and the
@@ -163,7 +164,7 @@ def('events.removeFile', 'events:write', 'מחיקת קובץ מהאירוע', {
 
 // ======================= staffing (V4) =======================
 
-type Staff = { uid: string; name: string; hours: string; role?:string; startsAt?:string; endsAt?:string };
+type Staff = StationPerson;
 const dutyFields = { role:str(80,'התפקיד בתחנה'), startsAt:str(40,'תחילת השיבוץ, ISO עם אזור זמן'), endsAt:str(40,'סיום השיבוץ, ISO עם אזור זמן') };
 function dutyOf(c:Ctx) {
   const {role,startsAt,endsAt}=c.input;
@@ -173,7 +174,7 @@ function dutyOf(c:Ctx) {
   return {role:role.trim(),startsAt:new Date(startsAt).toISOString(),endsAt:new Date(endsAt).toISOString()};
 }
 /** logic.ts stationsOf(): the usual three stations, shown even before anyone saved them. */
-const STATION_NAMES: Record<string, string> = { gate: 'שער', stall: 'דוכן', parking: 'חניה' };
+const STATION_NAMES: Record<string, string> = defaultStations;
 /** logic.ts hoursText(): "16:00-20:00" -> "16:00–20:00". */
 const hoursText = (h: string) => h.replace(/\s*-\s*/, '–');
 const HOURS = str(40, 'שעות, למשל "16:00-20:00"; ריק = כל האירוע');
@@ -181,13 +182,16 @@ function hoursOk(h: string | null) { if (h && !/^\d{1,2}:\d{2}\s*[-–]\s*\d{1,2
 /** changeStation(): read, change and write the station inside the transaction, so two managers never overwrite each other. */
 async function station(c: Ctx, eventId: string, sid: string, name: string | null, needed: number | null, mustExist: boolean) {
   const col = `events/${eventId}/staffing`;
+  const registryDoc = await c.fs.get(stationCollection, stationRegistryId, c.tx);
+  const registry = (registryDoc?.data as StationRegistry | undefined) || emptyRegistry;
+  if (!stationWritable(registry, sid)) throw invalid('station', 'this station was removed or is being transferred');
   const cur = await c.fs.get(col, sid, c.tx);
   if (!cur && mustExist) throw notFound('station');
-  const title = String(cur?.data.station || name || STATION_NAMES[sid] || '');
+  const title = String(registry.stations[sid]?.name || cur?.data.station || name || STATION_NAMES[sid] || '');
   if (!title) throw invalid('stationName', 'a new station needs stationName');
   const people = ((cur?.data.people as Staff[]) || []).map((p) => ({ ...p, hours: p.hours || '' }));
   const write = (next: Staff[]) => {
-    if (next.length > 30) throw invalid('uid', 'a station holds at most 30 people');
+    if (next.length > Math.max(30, people.length)) throw invalid('uid', 'a station holds at most 30 people');
     return c.fs.set(col, sid, { station: title, people: next, needed: Number(cur?.data.needed ?? needed ?? 1) });
   };
   return { col, title, people, write };
@@ -214,28 +218,37 @@ def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמד
     refs: [{ col: st.col, id: c.input.station }],
   };
 }, ['Adds one in-app notification and queues a phone push for the assignee, including a self-assignment.']);
+function selectedAssignment(people:Staff[],uid:string,id?:string): Staff {
+  const matches = people.filter((p) => p.uid === uid && (!id || assignmentKey(p) === id));
+  if (!matches.length) throw notFound('person on this station');
+  if (matches.length > 1) throw invalid('assignmentId','select the individual shift using its assignmentId');
+  return matches[0];
+}
 // updateStationPerson()
-def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS, ...dutyFields }, async (c) => {
+def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS, ...dutyFields,
+  assignmentId: str(240,'מזהה שיבוץ כשיש לאדם יותר מתפקיד אחד בתחנה'),
+}, async (c) => {
   managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   hoursOk(c.input.hours);
   const st = await station(c, ev.id, c.input.station, null, null, true);
-  if (!st.people.some((p) => p.uid === c.input.uid)) throw notFound('person on this station');
+  const selected = selectedAssignment(st.people,c.input.uid,c.input.assignmentId);
   return {
-    writes: [st.write(st.people.map((p) => (p.uid === c.input.uid ? { ...p, ...(c.input.hours !== undefined && c.input.hours !== null ? {hours:c.input.hours} : {}), ...dutyOf(c) } : p))),
+    writes: [st.write(st.people.map((p) => (assignmentKey(p) === assignmentKey(selected) ? { ...p, ...(c.input.hours !== undefined && c.input.hours !== null ? {hours:c.input.hours} : {}), ...dutyOf(c) } : p))),
       activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: שעות ב${st.title} עודכנו`, { eventId: ev.id, subjectUid: c.input.uid })],
     refs: [{ col: st.col, id: c.input.station }],
   };
 });
 // removeFromStation()
-def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמדה באירוע', { eventId: req(), station: req('מזהה העמדה'), uid: req() }, async (c) => {
+def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמדה באירוע', { eventId: req(), station: req('מזהה העמדה'), uid: req(),
+  assignmentId: str(240,'מזהה שיבוץ כשיש לאדם יותר מתפקיד אחד בתחנה'),
+}, async (c) => {
   managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   const st = await station(c, ev.id, c.input.station, null, null, true);
-  const p = st.people.find((x) => x.uid === c.input.uid);
-  if (!p) throw notFound('person on this station');
+  const p = selectedAssignment(st.people,c.input.uid,c.input.assignmentId);
   return {
-    writes: [st.write(st.people.filter((x) => x.uid !== p.uid)), activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: ${p.name} הוסר/ה מ${st.title}`, { eventId: ev.id, subjectUid: p.uid })],
+    writes: [st.write(st.people.filter((x) => assignmentKey(x) !== assignmentKey(p))), activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: ${p.name} הוסר/ה מ${st.title}`, { eventId: ev.id, subjectUid: p.uid })],
     refs: [{ col: st.col, id: c.input.station }],
   };
 });
