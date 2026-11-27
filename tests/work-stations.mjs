@@ -50,9 +50,9 @@ try {
   const station=(name,people) => ({station:name,needed:1,people});
   await env.withSecurityRulesDisabled(async ctx => {
     const db=ctx.firestore();const jobs=[['users/manager',role('manager','manager')],['users/staff',role('staff','staff')],['users/guest',role('guest','guest')]];
-    for (const eid of ['a','b','past']) {
+    for (const eid of ['00-empty','a','b','past']) {
       jobs.push(['events/'+eid,{title:eid,entry:true,stall:true,start:eid==='past'?'2029-05-01T08:00:00.000Z':at,end:eid==='past'?'2029-05-01T10:00:00.000Z':activeEnd}]);
-      jobs.push(['events/'+eid+'/staffing/gate',station('שער מקורי',eid==='b'?[other]:[first])]);
+      jobs.push(['events/'+eid+'/staffing/gate',station('שער מקורי',eid==='00-empty'?[]:eid==='b'?[other]:[first])]);
     }
     jobs.push(['events/a/staffing/parking',station('חניה',[samePerson])]);
     await Promise.all(jobs.map(([p,x])=>setDoc(doc(db,p),x)));
@@ -69,6 +69,7 @@ try {
   await assertFails(deleteDoc(doc(manager,'events/a/staffing/gate')));
   await assert.rejects(S.retireWorkStation({id:'gate',name:'שער'},null),/חלופית/);
   assert.equal((await seen(manager,'work_stations/farm')).moving,null);
+  assert(await seen(manager,'events/00-empty/staffing/gate'), 'refusing a removal also preserves previously empty event rows');
   failOnce='events/b/staffing';
   const old={id:'gate',name:'שער'},target={id:'parking',name:'חניה'};
   await assert.rejects(S.retireWorkStation(old,target),/interrupted fixture/);

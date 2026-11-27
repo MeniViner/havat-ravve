@@ -90,8 +90,21 @@ export async function retireWorkStation(source: WorkStation, target: WorkStation
   }, {serverOnly:true});
   if (!active) return;
   const events = await readOnce<FarmEvent>('events', {});
+  const eligible = events.filter((e) => currentStaffingEvent(e));
   let needsTarget = false;
-  for (const event of events.filter((e) => currentStaffingEvent(e))) {
+  // The removal sheet can be stale. Inspect every active event before deleting even an empty row.
+  if (!target) {
+    for (const event of eligible) {
+      needsTarget = await transact(async (tx) => {
+        const current = await tx.get<FarmEvent>('events', event.id);
+        if (!current || !currentStaffingEvent(current)) return false;
+        const station = await tx.get<Staffing>(eventStaffingPath(event.id), from);
+        return !!station?.people.length;
+      }, {serverOnly:true});
+      if (needsTarget) break;
+    }
+  }
+  for (const event of needsTarget ? [] : eligible) {
     const needsOne = await transact(async (tx) => {
       const registry = await tx.get<StationRegistry>(stationCollection, stationRegistryId) || emptyRegistry;
       if (registry.moving?.from !== from || registry.moving.to !== to) return false;
