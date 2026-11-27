@@ -59,6 +59,23 @@ try {
   const map = page.getByRole('region', { name: 'מפת החווה' });
   const heading = (name) => page.getByRole('heading', { name, exact: true });
   const search = page.getByRole('searchbox', { name: 'חיפוש במפה' });
+  const checkTypingFocus = async (input, frame = input) => {
+    const border = (el) => el.evaluate((node) => getComputedStyle(node).borderTopColor);
+    const idleBorder = await border(frame);
+    const idleHeight = (await frame.boundingBox()).height;
+    await input.click();
+    assert.ok(await input.evaluate((node) => node === document.activeElement));
+    const style = await input.evaluate((node) => {
+      const s = getComputedStyle(node);
+      return [s.outlineStyle, s.boxShadow];
+    });
+    assert.deepEqual(style, ['none', 'none']);
+    assert.equal(await border(frame), 'rgba(0, 0, 0, 0)');
+    assert.equal((await frame.boundingBox()).height, idleHeight);
+    await input.press('Tab');
+    assert.notEqual(idleBorder, 'rgba(0, 0, 0, 0)');
+    assert.equal(await border(frame), idleBorder);
+  };
   const openEdit = () => button('עריכת המפה').click();
   const clickPoint = async (x = 120, y = 215) => {
     await map.click({ position: { x, y } });
@@ -76,6 +93,7 @@ try {
     assert.ok(await heading(name).evaluate((el) => el === document.activeElement));
     await button('סגירה').click();
   }
+  await checkTypingFocus(search, page.locator('.map-search'));
   await search.fill(name);
   await button(name).and(page.locator('.survey-hit')).click();
   await heading(name).waitFor();
@@ -105,7 +123,9 @@ try {
   await button('מקומות').click();
   await button('בחירה ידנית במפה').click();
   await clickPoint();
-  await page.getByLabel('שם המקום', { exact: true }).fill('טיוטה לביטול');
+  const placeName = page.getByLabel('שם המקום', { exact: true });
+  await checkTypingFocus(placeName);
+  await placeName.fill('טיוטה לביטול');
   await button('ביטול').click();
   await button('בחירה ידנית במפה').click();
   await clickPoint();

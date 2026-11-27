@@ -308,6 +308,23 @@
   font: inherit;
   color: inherit;
 }
+.map-search:focus-within {
+  border-color: transparent;
+}
+.map-search:focus-within > svg {
+  background: var(--map-pine);
+  color: white;
+  border-radius: 4px;
+}
+.v2 .map-workspace :is(.map-search input, .k-input, .k-textarea):focus {
+  border-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+.map-workspace .k-field:focus-within .k-field__label {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 .map-head .k-btn {
   white-space: nowrap;
   background: var(--map-pine);
