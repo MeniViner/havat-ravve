@@ -8,6 +8,8 @@ import type {
 } from './types';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD } from './types';
 import { nowMs } from './clock';
+import { needsSignedStallSale, localStallLog, submitStallCart, type CheckoutOptions } from './v2/data/stallCheckout';
+import type { SaleLine } from '../../shared/stall-sale';
 import { isoFromLocal } from './v2/screens/events/logic';
 
 export const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -239,11 +241,7 @@ export async function saveProduct(eventId: string, data: Omit<Product, 'id'>, ex
   return id;
 }
 export const deleteProduct = (eventId: string, id: string) => write.remove(`events/${eventId}/products`, id);
-/** Copies products into another event as new documents, placed after the ones that event already has. */
-export async function copyProducts(_fromEventId: string, toEventId: string, products: Product[], after = 0) {
-  const sorted = [...products].sort((x, y) => x.sort - y.sort);
-  await write.batch(sorted.map((p, i) => ({ op: 'set' as const, col: `events/${toEventId}/products`, id: newId('products'), data: { name: p.name, price: p.price, active: p.active, sort: after + i + 1 } })));
-}
+export { copyFarmProducts as copyProducts } from './v2/data/farmCatalogs';
 /** Saves the whole order in one write, so two taps can never leave two products with the same place. */
 export async function setProductOrder(eventId: string, ordered: Product[]) {
   await write.batch(ordered.map((p, i) => ({ op: 'update' as const, col: `events/${eventId}/products`, id: p.id, data: { sort: i + 1 } })));
@@ -290,13 +288,26 @@ export async function openTab(actor: Actor, event: FarmEvent, guest: StallGuest)
   return { ...tab, id };
 }
 
-/** Adds to the tab without reading it first: works without reception, and two volunteers can add to the same tab at once. */
-export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[]) {
+/** Catalog sales commit their verified snapshots together. One-off events keep their offline atomic increments. */
+export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[], options: CheckoutOptions = {}, snapshotItems?: SaleLine[]) {
+  if (!items.length) return 0;
+  const lines = snapshotItems || items.map(({productId,qty,price})=>({productId,qty,price}));
+  const request = {eventId:tab.eventId,tabId:tab.id,items:lines};
+  if (await needsSignedStallSale(actor,request,options)) return (await submitStallCart(actor,request,options)).total;
   // each line gets its own moment, so two identical products added together stay two lines
   const base = nowMs();
-  const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString() }));
+  const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString(), ...(options.operationId ? {saleOperation:options.operationId.toLowerCase()} : {}) }));
+  if (options.operationId) {
+    const {id,result}=await localStallLog(actor,options.operationId,{eventId:tab.eventId,tabId:tab.id,items:lines});
+    if (result) return result.total;
+    const history=activityOp(actor,'tab',tab.id,'item',tab.guestName+': '+items.map(i=>i.name+(i.qty>1?' ×'+i.qty:'')).join(', ')+' · '+sum(stamped)+' ₪',{subjectUid:tab.guestUid,eventId:tab.eventId});
+    // This activity is create-only. Replaying the same offline batch cannot increment the account twice.
+    await write.batch([{op:'update',col:'tabs',id:tab.id,data:{items:push(...stamped),total:inc(sum(stamped)),updatedAt:nowIso()}},{...history,id}]);
+    return sum(stamped);
+  }
   await write.update('tabs', tab.id, { items: push(...stamped), total: inc(sum(stamped)), updatedAt: nowIso() });
   logActivity(actor, 'tab', tab.id, 'item', `${tab.guestName}: ${items.map((i) => `${i.name}${i.qty > 1 ? ' ×' + i.qty : ''}`).join(', ')} · ${sum(items)} ₪`, { subjectUid: tab.guestUid, eventId: tab.eventId });
+  return sum(stamped);
 }
 /** Removes exactly that line, whatever the other phones added meanwhile. */
 export async function removeTabItem(actor: Actor, tab: Tab, index: number, reason = '') {

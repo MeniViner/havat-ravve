@@ -1,16 +1,18 @@
 import { eventMillis } from '../screens/events/logic';
 // Event day and live event data (E1-E9, Y1-Y5): tickets at the gate, the scan log, the live counters, stall tabs and closing.
-// Everything goes through db.ts, so the same code runs on the demo store and on Firestore, and every write works offline.
+// Firestore and the local demo share the event data layer. Catalog sales recheck availability when the cashier submits.
 // Collections (docs/redesign-data/eventday.md):
 //   tickets (existing, + payLater, cancelledAt/By/Note, walkIn)        events/{id}/scans/{sid} (GateScan)
 //   events/{id}/counters/live (LiveCounters + per10m)                    events/{id}/counters/cash (cash counted before closing)
 //   events/{id}/staffing/{station} (read only here)                      events.closed (EventClose)       tabs (existing)
-import { useMemo } from 'react';
+import { hasCatalogReference } from '../../../../shared/farm-catalogs';
+import { useSaleAvailability } from './saleAvailability';
 import { useList, useDoc, readOnce, write, newId, push, inc, serverNow, transact, ConflictError, type Tx } from '../../db';
 import { nowIso, nowMs, dateKeyOf } from '../../clock';
 import { activityOp, logActivity } from '../../activity';
 import { contactPhoneOk, openTab, addTabItems, removeTabItem, setTabStatus, parseQr, qrPayload, randomSecret, hasTabPurchases, type StallGuest } from '../../data';
 import { ddmm, hhmm } from '../format';
+import { cartSnapshot, needsSignedStallSale, localStallLog, submitStallCart, type CheckoutOptions } from './stallCheckout';
 import type { Actor, Activity, EventClose, FarmEvent, GateScan, LiveCounters, Product, ScanResult, Staffing, Tab, TabItem, Ticket } from '../../types';
 
 // ---------- types (local extensions; every new field is optional) ----------
@@ -59,8 +61,11 @@ export const useEventTabs = (eventId: string, enabled = true) =>
   useList<Tab>('tabs', { where: [['eventId', '==', eventId]], orderBy: [['createdAt', 'desc']] }, enabled && !!eventId);
 export const useTab = (id: string) => useDoc<Tab>('tabs/' + (id || '_'), !!id);
 export function useStallProducts(eventId: string, enabled = true) {
-  const r = useList<Product>(`events/${eventId || '_'}/products`, { orderBy: [['sort', 'asc']] }, enabled && !!eventId);
-  return useMemo(() => ({ ...r, items: r.items.filter((p) => p.active !== false) }), [r]);
+  const on = enabled && !!eventId;
+  const r = useList<Product>(`events/${eventId || '_'}/products`, { orderBy: [['sort', 'asc']] }, on);
+  const config = useDoc<{enabled:boolean}>(`events/${eventId || '_'}/stall_config/catalog`, on);
+  const available = useSaleAvailability(r, on);
+  return { ...available, catalogEnabled: config.item?.enabled === true || r.items.some(hasCatalogReference) };
 }
 /** The scan log, newest first. Y2 shows it; E2 reads the latest line. */
 export const useScans = (eventId: string, max = 300, enabled = true) =>
@@ -308,19 +313,28 @@ export function findOpenTab(tabs: Tab[], g: StallGuest) {
 /** The guest's open account id, or '' when there is none yet. Picking a buyer creates nothing: the account is opened by the
  *  first "רישום לחשבון" (sellToGuest), as in the old stall, so a guest never sees an empty "0 ₪ · פתוח" account. */
 export const tabFor = (tabs: Tab[], g: StallGuest) => findOpenTab(tabs, g)?.id || '';
-/** E8 "רישום לחשבון": adds the cart to the account without reading it first (works offline, two phones may add at once). */
-export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product; qty: number }[]) {
-  const items: TabItem[] = cart.filter((c) => c.qty > 0).map((c) => ({ productId: c.product.id, name: c.product.name, price: c.product.price, qty: c.qty, at: nowIso(), by: actor }));
-  if (!items.length) return 0;
-  await addTabItems(actor, tab, items);
-  return items.reduce((s, i) => s + i.price * i.qty, 0);
+/** E8 "רישום לחשבון": carry the price and catalog generations the cashier saw into checkout. */
+export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product; qty: number }[], options: CheckoutOptions = {}) {
+  const rows=cart.filter(c=>c.qty>0);
+  const items: TabItem[] = rows.map(({product,qty}) => ({productId:product.id,name:product.name,price:product.price,qty,at:nowIso(),by:actor}));
+  return addTabItems(actor,tab,items,options,rows.map(c=>cartSnapshot(c.product,c.qty)));
 }
 /** The first sale to a buyer without an account: opens it (the rules need the empty account before its first item), then adds
  *  the cart. An account another phone opened meanwhile is used instead. */
-export async function sellToGuest(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest, cart: { product: Product; qty: number }[]) {
-  if (!cart.some((c) => c.qty > 0)) return { tab: null, total: 0 };
+export async function sellToGuest(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest, cart: { product: Product; qty: number }[], options: CheckoutOptions = {}) {
+  const lines=cart.filter(c=>c.qty>0).map(c=>cartSnapshot(c.product,c.qty));
+  if (!lines.length) return { tab: null, total: 0 };
+  const request = {eventId:event.id,guest:g,items:lines};
+  if (await needsSignedStallSale(actor,request,options)) {
+    const sale=await submitStallCart(actor,request,options);
+    return {tab:{id:sale.tabId},total:sale.total};
+  }
+  if (options.operationId) {
+    const {result}=await localStallLog(actor,options.operationId,{eventId:event.id,guest:g,items:lines});
+    if (result) return {tab:{id:result.tabId},total:result.total};
+  }
   const tab = findOpenTab(tabs, g) || await openTab(actor, event, g);
-  const total = await sellToTab(actor, tab, cart);
+  const total = await sellToTab(actor, tab, cart, options);
   return { tab, total };
 }
 /** The buyer picked on E7 for a first sale, kept on this phone until "רישום לחשבון" opens the account (route /event/stall/new). */

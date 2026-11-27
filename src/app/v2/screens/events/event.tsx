@@ -76,9 +76,8 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
       : <Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/manage/events/${e.id}/edit`)}>עריכה</Button>;
   return (
     <AppScreen variant="detail" gap={tab === 'prep' ? 12 : 10}>
-      <TopBar back={backTo('אירועים', '/manage/events')} end={end} />
+      <TopBar back={backTo('אירועים', '/manage/events')} end={<>{end}<OfflineStatus /></>} />
       <TitleBlock over={eventSubtitle(e, now)} title={e.title} />
-      <OfflineStatus ctx={ctx} eventId={e.id} />
       <Segmented mode="tabs" className="events-tabs" label="שלבי האירוע" options={EVENT_TABS} value={tab} onChange={(v) => go(`/manage/events/${e.id}?tab=${v}`, true)} />
       {tab === 'prep' && <Prep ctx={ctx} e={e} />}
       {tab === 'guests' && <><RegistrantsReport event={e} rows={report} /><Guests ctx={ctx} e={e} tickets={tickets.items} peopleByOrder={peopleByOrder} /><EventTestTickets ctx={ctx} eventId={e.id} /></>}

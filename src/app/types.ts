@@ -202,8 +202,8 @@ export type Donation = {
 
 export type Vendor = { id: string; name: string; phone: string; product: string; external: boolean; notes: string; createdAt: string; updatedAt: string };
 export type EventVendor = { id: string; vendorId: string; name: string; confirmed: boolean; notes: string };
-export type Product = { id: string; catalogId?: string; catalogProductId?: string; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
-export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor };
+export type Product = { id: string; catalogId?: string; catalogProductId?: string; catalogGeneration?: number; catalogProductGeneration?: number; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
+export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor; saleOperation?: string };
 export type TabStatus = 'open' | 'claimed' | 'paid' | 'waived';
 export const TAB_LABELS: Record<TabStatus, string> = { open: 'פתוח', claimed: 'הועבר, ממתין לאישור', paid: 'שולם', waived: 'נמחל' };
 export type Tab = {

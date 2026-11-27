@@ -2,10 +2,11 @@
 // The same questions and rules as the old RegistrationFields.tsx; a required question carries " *" as it did.
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { now } from '../../../clock';
-import { Button, Checkbox, Field, ChoiceGroup } from '../../kit';
+import { Button, Checkbox, CheckboxBox, Field, ChoiceGroup } from '../../kit';
 import type { RegistrationField } from '../../../types';
 import { href } from '../../../router';
 import { answerOf } from '../../data/system';
+import './registrationTerms.css';
 
 export function RegistrationQuestions({ questions, answers, onChange, missing = [] }: {
   questions: RegistrationField[];
@@ -39,10 +40,21 @@ export function RegistrationQuestions({ questions, answers, onChange, missing = 
 
 /** A fresh account confirms reading the terms. The separately opened policy keeps the registration draft in place. */
 export function RegistrationTerms({ read, onChange, invalid }: { read: boolean; onChange: (read: boolean) => void; invalid: boolean }) {
-  return <div className="k-stack">
-    <a className="guest-inlinelink" href={href('/terms')} target="_blank" rel="noopener">קריאת תנאי השימוש והפרטיות (ייפתח בחלון חדש)</a>
-    <Checkbox label="קראתי את תנאי השימוש והפרטיות" checked={read} onChange={onChange} required aria-invalid={invalid || undefined} />
-    {invalid && <span className="k-field__error" role="alert">כדי להיכנס, צריך לסמן שקראת את התנאים.</span>}
+  const id = useId();
+  const local = location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator') ? '?emulator' : '';
+  return <div className="registration-terms">
+    <div className="registration-terms__line">
+      <label className="k-checkbox registration-terms__toggle" htmlFor={id}>
+        <input id={id} className="k-checkbox__input" type="checkbox" checked={read} onChange={(event) => onChange(event.target.checked)}
+          required aria-labelledby={id + '-label'} aria-invalid={invalid || undefined} aria-describedby={invalid ? id + '-error' : undefined} />
+        <CheckboxBox checked={read} />
+      </label>
+      <span id={id + '-label'}><label htmlFor={id}>קראתי את</label>{' '}
+        <a href={href('/terms') + local} target="_blank" rel="noopener">תנאי השימוש</a>{' ואת '}
+        <a href={href('/privacy') + local} target="_blank" rel="noopener">מדיניות הפרטיות</a>
+      </span>
+    </div>
+    {invalid && <span className="k-field__error" id={id + '-error'} role="alert">כדי להיכנס, צריך לסמן שקראת את התנאים.</span>}
   </div>;
 }
 

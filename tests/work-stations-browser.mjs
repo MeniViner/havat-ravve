@@ -42,7 +42,15 @@ try {
   await p.goto(base+'/app/manage/events/demo-e-festival/staffing');await button('הוסף משובץ').click();
   const form=dialog();await form.getByLabel('תפקיד בתחנה').fill('סידור קהל');await form.getByRole('combobox').nth(1).selectOption({index:1});
   await form.getByLabel('הגעה').fill('2026-11-28T16:00');await form.getByLabel('עד',{exact:true}).fill('2026-11-28T19:00');
-  await form.getByLabel('תחנה',{exact:true}).selectOption({label:'＋ הוספת תחנת עבודה'});await dialog().getByLabel('שם התחנה').fill('רחבה');await button('הוספת התחנה',dialog()).click();
+  const station = form.getByLabel('תחנה',{exact:true});
+  await station.click();
+  const picker = p.locator('dialog.farm-choice-menu');
+  await picker.getByRole('listbox',{name:'תחנה'}).waitFor();
+  await p.keyboard.press('End'); await p.keyboard.press('Escape');
+  assert.equal(await form.getByLabel('תפקיד בתחנה').inputValue(),'סידור קהל');
+  assert.equal(await p.getByRole('dialog').count(),1);
+  await station.focus(); await p.keyboard.press('Enter');
+  await picker.getByRole('option',{name:'＋ הוספת תחנת עבודה'}).click();await dialog().getByLabel('שם התחנה').fill('רחבה');await button('הוספת התחנה',dialog()).click();
   await p.waitForFunction(()=>document.querySelectorAll('[role="dialog"]').length===1);
   assert.equal(await dialog().getByLabel('תפקיד בתחנה').inputValue(),'סידור קהל');
   assert.equal(await dialog().getByLabel('תחנה',{exact:true}).locator('option:checked').innerText(),'רחבה');

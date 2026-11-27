@@ -78,7 +78,8 @@ try {
  await assertSucceeds(getDoc(doc(staff,'events/e/supplier_passes/'+token)));
  await assertFails(getDoc(doc(other,'events/e/supplier_passes/'+token)));
  await assertSucceeds(put(mgr,'farm_catalogs/drinks',{name:'משקאות',createdAt:now,updatedAt:now}));
- await assertFails(getDoc(doc(staff,'farm_catalogs/drinks')));
+ await assertSucceeds(getDoc(doc(staff,'farm_catalogs/drinks'))); // Cashier verifies an event item's master.
+ await assertFails(getDoc(doc(guest,'farm_catalogs/drinks')));
  const visit={uid:'g',name:'g',phone:'0500000000',date:'2031-01-02',people:1,type:'סיור',note:'',status:'new',managerNote:'',handledBy:null,createdAt:now,updatedAt:now};
  await assertSucceeds(put(guest,'visits/g',visit));
  await assertFails(put(guest,'visits/selfApproved',{...visit,replyText:'אושר',approvedDate:'2031-01-02'}));

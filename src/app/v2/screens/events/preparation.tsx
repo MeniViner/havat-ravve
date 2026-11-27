@@ -8,6 +8,7 @@ import { usePrepTasks, markTaskDone, takeTask } from '../../data/farm';
 import { useProjects, useSteps, type ProjectDoc } from '../../data/projects';
 import { BottomBar, Button, CheckButton, Chip, ChipRow, EmptyState, ListCard, PageTitle, Row, Sheet, Tag, TopBar } from '../../kit';
 import { backTo, useRun } from './shared';
+import { OfflineStatus } from './offline';
 import { dayName, ddmm } from '../../format';
 
 export const sectionPath = (id:string, section:string) => '/farm/events/' + encodeURIComponent(id) + '?section=' + section;
@@ -26,7 +27,7 @@ export function EventTasks({ctx,event}:{ctx:V2Ctx;event:FarmEvent}) {
   const rows = sortedTasks(result.items.filter((t) => !mine || t.assignee?.uid === ctx.user.uid));
   const run = useRun();
   return <AppScreen variant="detail" bar={ctx.manager && <BottomBar><Button size="bar" grow onClick={() => go('/tasks/new?event='+encodeURIComponent(event.id))}>הוספת משימה</Button></BottomBar>}>
-    <TopBar back={backTo(event.title,(ctx.manager ? '/manage/events/' : '/farm/events/') + event.id)} /><PageTitle>משימות האירוע</PageTitle>
+    <TopBar back={backTo(event.title,(ctx.manager ? '/manage/events/' : '/farm/events/') + event.id)} end={<OfflineStatus />} /><PageTitle>משימות האירוע</PageTitle>
     <ChipRow label="סינון משימות"><Chip selected={!mine} onClick={() => setMine(false)}>כל המשימות</Chip><Chip selected={mine} onClick={() => setMine(true)}>שלי</Chip></ChipRow>
     {rows.length ? <ListCard>{rows.map((t) => <Row key={t.id} title={t.title} tags={t.urgent && <Tag tone="urgent">דחוף</Tag>} meta={[t.assignee?.name,t.dueDate && ddmm(t.dueDate)].filter(Boolean).join(' · ')} onClick={() => go('/tasks/'+t.id)}
       check={<CheckButton checked={false} label={'סימון בוצע '+t.title} onChange={() => void run(() => markTaskDone(ctx.actor,t,true))} />}

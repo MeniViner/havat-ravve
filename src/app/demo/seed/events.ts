@@ -150,6 +150,18 @@ function rosh(seed: Seed) {
 }
 
 const slice: Slice = (seed, scenario) => {
+  const dates = { createdAt: ago(24), updatedAt: ago(24) };
+  put(seed, 'farm_catalogs', [
+    { id:'demo-catalog-bakery', name:'קפה ומאפים', ...dates },
+    { id:'demo-catalog-produce', name:'תוצרת החווה', ...dates },
+  ]);
+  put(seed, 'farm_catalogs/demo-catalog-bakery/products', [
+    { id:'demo-catalog-tea', name:'תה צמחים', price:8, ...dates },
+    { id:'demo-catalog-bread', name:'לחם מחמצת', price:18, ...dates },
+  ]);
+  put(seed, 'farm_catalogs/demo-catalog-produce/products', [
+    { id:'demo-catalog-oil', name:'שמן זית', price:28, ...dates },
+  ]);
   festival(seed, scenario);
   october(seed, scenario);
   rosh(seed);

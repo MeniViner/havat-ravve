@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { Button } from '../../kit';
 import type { Profile } from '../../../types';
 
@@ -36,10 +36,12 @@ export function TripRecipients({
   team,
   ids,
   setIds,
+  children,
 }: {
   team: Profile[];
   ids: string[];
   setIds: (ids: string[]) => void;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const included = new Set(ids);
@@ -52,16 +54,19 @@ export function TripRecipients({
     setIds([...next]);
   };
   return (
-    <div className="shopping-recipient-picker">
+    <div className="shopping-depart">
+      {children}
       <Button
+        className="shopping-audience-bell"
         variant="outline"
+        icon="bell"
         disabled={!people.length}
         aria-expanded={open}
         aria-controls="trip-recipient-options"
         onClick={() => setOpen(!open)}
         aria-label={`בחירת נמענים, ${ids.length} נבחרו`}
       >
-        נמענים · {ids.length}
+        <bdi>{ids.length}</bdi>
       </Button>
       <section id="trip-recipient-options" hidden={!open} aria-label="למי להודיע?">
         <div className="shopping-recipient-list">

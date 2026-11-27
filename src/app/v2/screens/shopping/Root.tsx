@@ -13,6 +13,7 @@ import {
 } from '../../data/shopping';
 import { TripRecipients } from './TripRecipients';
 import { agoLong, link, useMarkBought, UrgencyTag } from './common';
+import { ddmm, hhmm } from '../../format';
 
 const TO_BUY: Record<ShoppingCategory, string> = { super: 'לקנות', building: 'לקנות', online: 'להזמין', giveaway: 'מחפשים, בלי לקנות' };
 const DONE: Record<ShoppingCategory, string> = { super: 'נקנה היום', building: 'נקנה היום', online: 'הוזמן היום', giveaway: 'נמצא החודש' };
@@ -62,6 +63,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
     addShopItem(ctx.actor, { ...c, category: cat }).catch(fail);
     toast.show({ text: `נוסף ל${listLabel(cat)}: ${c.title}`, duration: 2500 });
   };
+  const depart = <Button size="bar" icon="cart" block onClick={begin} disabled={starting || trips.loading || !!trips.error || (!running && !rosterReady)}>{running ? 'המשך קנייה' : 'יצאתי לקניות'}</Button>;
 
   return (
     <AppScreen variant="root" capture={
@@ -73,7 +75,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
       <RootHead overline={openOverline(openToBuy(open))} title="קניות" />
       <Tabs className="shopping-categories" label="סוג הרשימה" value={key} onChange={(k) => go(k === 'super' ? '/shopping' : `/shopping?list=${k}`, true)}
         options={lists.map((l) => ({ value: l.key, label: l.label, count: counts[l.key] }))} />
-      {cat === 'super' && <div className="shopping-depart">{!running && <TripRecipients team={ctx.team} ids={ids} setIds={setSelection} />}<Button size="bar" icon="cart" block onClick={begin} disabled={starting || trips.loading || !!trips.error || (!running && !rosterReady)}>{running ? 'המשך קנייה' : 'יצאתי לקניות'}</Button></div>}
+      {cat === 'super' && (running ? depart : <TripRecipients team={ctx.team} ids={ids} setIds={setSelection}>{depart}</TripRecipients>)}
       {chips.length > 0 && (
         <div className="k-chips shopping-chips" role="group" aria-label="קונים בדרך כלל">
           {chips.map((c) => <AddChip key={c.title} onClick={() => quick(c)}>{c.title}</AddChip>)}
@@ -83,18 +85,24 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
         <ListCard title={TO_BUY[cat] || 'לקנות'} count={rows.length}>
           {rows.map((i) => {
             const going = leaving.has(i.id);
+            const due = i.urgent && i.urgentDueAt && Number.isFinite(Date.parse(i.urgentDueAt)) ? i.urgentDueAt : '';
             return (
-              <Row key={i.id} className={going ? 'shopping-leaving' : undefined} done={going}
+              <Row key={i.id} className={`shopping-list-row${going ? ' shopping-leaving' : ''}`} minHeight={48} done={going}
                 check={<><CheckButton checked={going} onChange={() => mark(i)} label={`${doneWord(i.category)}: ${i.title}`} />
                   {i.photo && <button type="button" className="shopping-thumbnail" aria-label={`הגדלת תמונה של ${i.title}`} onClick={() => setPhoto(i)}><img loading="lazy" alt="" src={i.photo} /></button>}</>}
                 {...link(`/shopping/${i.id}`)} chevron={false}
-                title={i.title} tags={i.urgent ? <UrgencyTag item={i} /> : undefined}
-                meta={<>{i.note?.trim() && <span className="shopping-note">{i.note}</span>}{[first(i.createdBy?.name || ''), agoLong(i.createdAt)].filter(Boolean).join(' · ')}</>}
-                value={i.qty || undefined}
                 swipe={going ? undefined : {
                   right: { label: doneWord(i.category), icon: 'check', tone: 'done', onAction: () => mark(i) },
                   left: { label: 'מחיקה', icon: 'close', tone: 'danger', onAction: () => remove(i) },
-                }} />
+                }}>
+                <span className="shopping-line-head"><span className="k-row__title">{i.title}</span>{i.urgent && <UrgencyTag item={i} compact />}</span>
+                {i.note?.trim() && <span className="shopping-note">{i.note}</span>}
+                <span className="shopping-line-meta">
+                  {i.qty && <strong>{i.qty}</strong>}
+                  <span>{[first(i.createdBy?.name || ''), agoLong(i.createdAt)].filter(Boolean).join(' · ')}</span>
+                  {due && <time dateTime={due} aria-label={`מועד יעד ${ddmm(due)} ${hhmm(due)}`}><bdi>{ddmm(due)} {hhmm(due)}</bdi></time>}
+                </span>
+              </Row>
             );
           })}
         </ListCard>

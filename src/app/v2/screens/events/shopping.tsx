@@ -36,7 +36,7 @@ export function EventShopping({ctx,event}:{ctx:V2Ctx;event:FarmEvent}) {
   };
   const options=choosing ? exactOptions(choosing,regular.items) : [];
   return <>
-    <ListCard title="קניות לאירוע" count={items.items.filter((i)=>!i.bought).length}>
+    <ListCard title="נשאר לקנות" count={items.items.filter((i)=>!i.bought).length}>
       {items.items.map((item)=><Row key={item.id} title={item.title} value={item.qty} done={item.bought} tags={<Tag tone={item.category==='online' ? 'neutral' : item.category==='super' ? 'paid' : 'warm'}>{listLabel(item.category)}</Tag>}
         check={<CheckButton checked={item.bought} label={(item.bought ? 'ביטול קנייה ' : 'נקנה ')+item.title} onChange={()=>start(item)}/>}
         swipe={{right:{label:item.bought ? 'להחזיר' : 'נקנה',icon:item.bought ? 'back' : 'check',tone:'done',onAction:()=>start(item)}}} />)}

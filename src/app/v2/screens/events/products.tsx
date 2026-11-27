@@ -5,13 +5,17 @@ import type { ScreenProps, V2Ctx } from '../../ctx';
 import { AppScreen, go, useToast } from '../../core';
 import { TopBar, PageTitle, Toggle, Button, Sheet, ListCard, Row, FormHeader, Field, FieldRow, BottomBar, EmptyState, RadioList, RadioRow, MoreMenu, DragHandle, useReorder } from '../../kit';
 import { useEvent, useProducts, useAllEvents, useEventTabs, copyProducts, deleteProduct } from '../../../data';
+import { useSaleAvailability } from '../../data/saleAvailability';
+import { OfflineStatus } from './offline';
+import { hasCatalogPair, hasCatalogReference } from '../../../../../shared/farm-catalogs';
 import { nowMs } from '../../../clock';
 import { money, ddmm } from '../../format';
 import { back } from '../../../router';
 import { logActivity } from '../../../activity';
 import { useTabsIn, saveProductV2, setProductActive, reorderProducts, type ProductV2 } from '../../data/events';
 import { unitsSold, phaseOf } from './logic';
-import { EventCatalogs } from './catalogs';
+import { selectCatalogProduct } from '../../data/farmCatalogs';
+import { catalogManagementPath, EventCatalogs } from './catalogs';
 import { FormEnd, Loading, Missing, backTo, link, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
 
@@ -28,30 +32,38 @@ function Products({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const products = useProducts(e.id, ctx.manager);
   const [copying, setCopying] = useState(false);
   const list = products.items as ProductV2[];
-  const order = useReorder(list, (next) => { run(() => reorderProducts(ctx.actor, e.id, next)); });
+  const sellable = useSaleAvailability(products, ctx.manager);
+  const selling = new Set(sellable.items.map((p) => p.id));
+  const displayed = list.filter((p) => !hasCatalogReference(p) || selling.has(p.id));
+  const pending = [...sellable.status.values()].some((s) => s === 'checking' || s === 'connection');
+  const order = useReorder(displayed, (next) => { run(() => reorderProducts(ctx.actor, e.id, next)); });
   return (
     <AppScreen variant="detail">
-      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<MoreMenu title="מוצרי הדוכן" items={[{ label: 'העתקה מאירוע קודם', icon: 'calendar', onSelect: () => setCopying(true) }]} />} />
+      <TopBar back={backTo(e.title, `/manage/events/${e.id}`)} end={<><MoreMenu title="מוצרי הדוכן" items={[{ label: 'העתקה מאירוע קודם', icon: 'calendar', onSelect: () => setCopying(true) }]} /><OfflineStatus /></>} />
       <PageTitle>מוצרי דוכן החווה</PageTitle>
+      <p className="k-note">{e.title}</p>
       <EventCatalogs event={e} chosen={list} />
       <h2>מוצרים באירוע</h2>
-      {list.length > 0 ? (
+      {displayed.length > 0 ? (
         <section className="k-card k-card--list" aria-label="מוצרי הדוכן">
           <div className="events-prodhead" aria-hidden="true"><span>מוצר ומחיר</span><span>מוצג בדוכן</span></div>
           <ul className="k-list">
-            {list.map((p, i) => (
-              <li key={p.id} className={p.active ? 'events-prodrow' : 'events-prodrow events-prodrow--off'} style={order.rowStyle(i)}>
+            {displayed.map((p, i) => (
+              <li key={p.id} className={p.active !== false ? 'events-prodrow' : 'events-prodrow events-prodrow--off'} style={order.rowStyle(i)}>
                 <DragHandle {...order.handle(i, p.name)} />
                 <a className="events-prodrow__link" {...link(`/manage/events/${e.id}/products/${p.id}`)}>
                   <span className="events-prodrow__name">{p.name}</span>
                   <b className="events-value">{money(p.price)}</b>
                 </a>
-                <Toggle checked={p.active} onChange={(v) => run(() => setProductActive(ctx.actor, e.id, p, v))} label={`מוצג בדוכן: ${p.name}`} />
+                <Toggle checked={p.active !== false} onChange={(active) => run(async () => {
+                  if (p.catalogId && p.catalogProductId) await selectCatalogProduct(e.id, p.catalogId, p.catalogProductId, active, p.sort, p.id);
+                  else await setProductActive(ctx.actor, e.id, p, active);
+                })} label={`מוצג בדוכן: ${p.name}`} />
               </li>
             ))}
           </ul>
         </section>
-      ) : !products.loading && <EmptyState variant="card" icon="cart" title="עוד אין מוצרים" text="מוסיפים מוצר, או מעתיקים את המוצרים מאירוע קודם." />}
+      ) : pending ? <p className="k-note" role="status">{sellable.online ? 'בודקים אילו מוצרים זמינים באירוע.' : 'נדרש חיבור כדי לבדוק אילו מוצרי קטלוג זמינים.'}</p> : !products.loading && <EmptyState variant="card" icon="cart" title="עוד אין מוצרים" text="מוסיפים מוצר, או מעתיקים את המוצרים מאירוע קודם." />}
       <Button variant="dashed" size="tall" icon="plus" onClick={() => go(`/manage/events/${e.id}/products/new`)}>מוצר חד־פעמי לאירוע</Button>
       <CopySheet ctx={ctx} e={e} open={copying} onClose={() => setCopying(false)} after={list.reduce((m, p) => Math.max(m, p.sort || 0), 0)} />
     </AppScreen>
@@ -67,10 +79,10 @@ function CopySheet({ ctx, e, open, onClose, after }: { ctx: V2Ctx; e: FarmEvent;
   const source = useProducts(chosen, open && !!chosen);
   const go2 = async () => {
     const src = others.find((x) => x.id === chosen); if (!src || !source.items.length) return;
-    const done = await run(async () => { await copyProducts(chosen, e.id, source.items, after); return true; });
+    const done = await run(async () => ({ count: await copyProducts(chosen, e.id, source.items, after) }));
     if (!done) return;
-    logActivity(ctx.actor, 'event', e.id, 'edited', `הועתקו ${source.items.length} מוצרים מ${src.title}`, { eventId: e.id });
-    toast.show({ text: `הועתקו ${source.items.length} מוצרים מ${src.title}`, check: true });
+    if (done.count) logActivity(ctx.actor, 'event', e.id, 'edited', `הועתקו ${done.count} מוצרים מ${src.title}`, { eventId: e.id });
+    toast.show({ text: done.count ? `הועתקו ${done.count} מוצרים מ${src.title}` : 'אין מוצרים נוספים שאפשר להעתיק.', check: true });
     onClose();
   };
   return (
@@ -82,7 +94,7 @@ function CopySheet({ ctx, e, open, onClose, after }: { ctx: V2Ctx; e: FarmEvent;
           </RadioList>
         ) : <p className="events-sheet__meta">אין אירועים קודמים</p>}
         <Button size="bar" block disabled={!source.items.length} onClick={go2}>
-          {source.items.length ? `העתקת ${source.items.length} מוצרים` : 'אין מוצרים באירוע הזה'}
+          {source.items.length ? 'העתקת המוצרים הזמינים' : 'אין מוצרים באירוע הזה'}
         </Button>
       </div>
     </Sheet>
@@ -98,7 +110,23 @@ export function ProductForm({ ctx, params }: ScreenProps) {
   if ((loading && !e) || (pid && products.loading && !p)) return <Loading backLabel="מוצרי הדוכן" parent={`/manage/events/${params.id}/products`} />;
   if (!e) return <Missing backLabel="אירועים" parent="/manage/events" />;
   if (pid && !p) return <Missing backLabel="מוצרי הדוכן" parent={`/manage/events/${e.id}/products`} title="המוצר לא נמצא" />;
+  if (p && hasCatalogReference(p) && !hasCatalogPair(p)) return <Missing backLabel="מוצרי האירוע" parent={'/manage/events/'+e.id+'/products'} title="פרטי הקטלוג של המוצר חסרים" />;
+  if (p?.catalogId && p.catalogProductId) return <LinkedProduct ctx={ctx} event={e} product={p} />;
   return <Product key={p?.id || 'new'} ctx={ctx} e={e} existing={p} nextSort={products.items.reduce((m, x) => Math.max(m, x.sort || 0), 0) + 1} />;
+}
+
+function LinkedProduct({ctx, event, product}: {ctx: V2Ctx; event: FarmEvent; product: ProductV2}) {
+  const list = useMemo(() => ({items:[product], loading:false, error:''}), [product]);
+  const availability = useSaleAvailability(list, ctx.manager);
+  const state = availability.status.get(product.id);
+  const sales = useSalesLine(ctx, event, product);
+  return <AppScreen variant="detail">
+    <TopBar back={backTo('מוצרי האירוע','/manage/events/'+event.id+'/products')} /><PageTitle>{product.name}</PageTitle>
+    <p>{event.title} · {money(product.price)}</p>
+    <p className="k-note" role="status">{state === 'available' ? 'המוצר מוצע למכירה באירוע.' : state === 'unavailable' ? 'המוצר אינו נמכר כרגע באירוע.' : state === 'connection' ? 'נדרש חיבור לבדיקת זמינות המוצר.' : 'בודקים את זמינות המוצר.'}</p>
+    {sales && <p>{sales}</p>}
+    <Button variant="outline" onClick={() => go(catalogManagementPath(event.id,product.catalogId))}>ניהול המוצר בקטלוג החווה</Button>
+  </AppScreen>;
 }
 
 function Product({ ctx, e, existing, nextSort }: { ctx: V2Ctx; e: FarmEvent; existing?: ProductV2; nextSort: number }) {

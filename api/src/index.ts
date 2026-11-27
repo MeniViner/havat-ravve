@@ -13,6 +13,7 @@ import { whoami } from './whoami';
 import { teamCalendar } from './team-calendar';
 import { handleContact } from './contact';
 import { operationalMessageRoute } from './operationalMessages';
+import { stallSaleRoute } from './stallSales';
 import { publicEventShare } from './v2/eventShare';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
@@ -36,7 +37,7 @@ const WRITES: Record<string, typeof createTask> = {
   'shopping.add': addShopping, 'shopping.setBought': setBought,
 };
 
-async function readBody(req: Request): Promise<Record<string, unknown>> {
+async function readBody(req: Request, maximum = MAX_BODY): Promise<Record<string, unknown>> {
   const reader = req.body?.getReader();
   const decoder = new TextDecoder();
   let text = '', bytes = 0;
@@ -45,7 +46,7 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
       const chunk = await reader.read();
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
-      if (bytes > MAX_BODY) {
+      if (bytes > maximum) {
         await reader.cancel();
         throw new ApiError('VALIDATION_FAILED', 'body too large', { field: 'body' });
       }
@@ -202,7 +203,7 @@ export default {
       try { eventId = decodeURIComponent(share[1]); } catch { return new Response(null, { status: 404 }); }
       return publicEventShare(req, env, eventId);
     }
-    if (url.pathname === '/v1/event-reminders' || url.pathname === '/v1/visit-notices') {
+    if (url.pathname === '/v1/event-reminders' || url.pathname === '/v1/visit-notices' || url.pathname === '/v1/stall-sales') {
       const origin = req.headers.get('origin') || '';
       const local = !!env.FIRESTORE_EMULATOR_HOST && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
       const headers = { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'authorization,content-type', 'access-control-allow-methods': 'POST, OPTIONS', vary: 'Origin' };
@@ -211,10 +212,22 @@ export default {
       if (req.method !== 'POST') return new Response(null, { status: 405, headers });
       let res: Response;
       try {
-        if (env.AUTH_LIMITER && !(await env.AUTH_LIMITER.limit({ key: 'operational:' + (req.headers.get('cf-connecting-ip') || 'local') })).success) throw new ApiError('RATE_LIMITED', 'too many requests');
-        const source = url.pathname === '/v1/event-reminders' ? 'event' : 'visit';
-        res = ok(meta, await operationalMessageRoute(req, env, source, await readBody(req)));
-      } catch (e) { res = fail(meta, toApiError(e)); }
+        if (url.pathname === '/v1/stall-sales') {
+          res = ok(meta, await stallSaleRoute(req, env, await readBody(req, 2 * 1024 * 1024), new Firestore(env, faultsOf(req, env))));
+        } else {
+          if (env.AUTH_LIMITER && !(await env.AUTH_LIMITER.limit({ key: 'operational:' + (req.headers.get('cf-connecting-ip') || 'local') })).success) throw new ApiError('RATE_LIMITED', 'too many requests');
+          const source = url.pathname === '/v1/event-reminders' ? 'event' : 'visit';
+          res = ok(meta, await operationalMessageRoute(req, env, source, await readBody(req)));
+        }
+      } catch (e) {
+        let error = toApiError(e);
+        if (url.pathname === '/v1/stall-sales' && error.code === 'UNAUTHENTICATED' && env.AUTH_LIMITER) {
+          const ip = req.headers.get('cf-connecting-ip') || 'local';
+          if (!(await env.AUTH_LIMITER.limit({ key:'pos-auth:' + ip })).success)
+            error = new ApiError('RATE_LIMITED', 'too many sign-in attempts', {}, { 'retry-after':'60' });
+        }
+        res = fail(meta, error);
+      }
       for (const [k, v] of Object.entries(headers)) res.headers.set(k, v);
       return res;
     }

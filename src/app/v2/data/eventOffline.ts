@@ -7,9 +7,10 @@ import { nowIso } from '../../clock';
 type LocalRow = { id: string; holderName?: string; ownerName?: string; secret?: string; status?: string };
 type Part = { title: string; path: string; spec: Spec };
 type Mark = { at: string; lists: (string | null)[]; denied?: boolean[] };
-type State = { tone: 'good' | 'partial' | 'bad'; title: string; at: string; counts: { label:string; count:number; valid:boolean; denied:boolean }[]; names: string[] };
-const waiting: State = {tone:'partial',title:'בודקים את הרשימות',at:'',counts:[],names:[]};
-const noCopy: State = {tone:'bad',title:'עוד אין עותק במכשיר',at:'',counts:[],names:[]};
+type Status = 'checking' | 'ready' | 'offline' | 'partial' | 'denied' | 'error';
+type State = { status: Status; title: string; at: string; counts: { label:string; count:number; valid:boolean; denied:boolean }[]; names: string[] };
+const waiting: State = {status:'checking',title:'בודקים את הרשימות',at:'',counts:[],names:[]};
+const noCopy: State = {status:'offline',title:'אין חיבור ואין עדיין עותק מאומת במכשיר',at:'',counts:[],names:[]};
 
 function loadMark(key: string): Mark | null {
   try { const m = JSON.parse(localStorage.getItem(key) || 'null'); return m && typeof m.at === 'string' && Array.isArray(m.lists) ? m : null; } catch { return null; }
@@ -28,7 +29,7 @@ async function signature(rows: LocalRow[]) {
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), (n) => n.toString(16).padStart(2, '0')).join('');
 }
-export function useEventOffline(eventId: string, uid: string, manager: boolean, refreshKey = 0): State {
+export function useEventOffline(eventId: string, uid: string, manager: boolean, refreshKey = 0): State & { online: boolean } {
   const online = useOnline();
   const demo = useDemo();
   const demoState = useDemoStates();
@@ -60,14 +61,25 @@ export function useEventOffline(eventId: string, uid: string, manager: boolean, 
       const names=tickets.filter((t)=>t.status==='valid').map((t)=>t.holderName || t.ownerName || 'ללא שם');
       const usable = counts.some((c)=>c.valid);
       const denied = counts.some((c)=>c.denied);
-      const tone = !usable ? 'bad' : complete && !refreshFailed ? 'good' : 'partial';
-      const title = !usable && denied ? 'אין גישה לרשימות האירוע'
-        : denied ? 'חלק מהרשימות אינו פתוח לתפקיד שלך'
-        : !usable ? 'מחכים לחיבור כדי לשמור את הרשימות'
-        : !complete ? 'חלק מהרשימות חסר במכשיר'
-        : refreshFailed ? 'עותק מקומי · מחכים לחיבור'
-        : available ? 'הרשימות נשמרו במכשיר' : 'הרשימות במכשיר · אין חיבור';
-      const value: State = {tone,title,counts,names,at:mark.at};
+      let status: Status;
+      let title: string;
+      if (denied) {
+        status = 'denied';
+        title = usable ? 'חלק מהרשימות אינו פתוח לתפקיד שלך' : 'אין גישה לרשימות האירוע';
+      } else if (!available) {
+        status = 'offline';
+        title = complete ? 'הרשימות במכשיר · אין חיבור' : usable ? 'אין חיבור · חלק מהרשימות שמור במכשיר' : noCopy.title;
+      } else if (refreshFailed) {
+        status = 'error';
+        title = usable ? 'הרענון נכשל · מוצג העותק השמור' : 'הרענון נכשל · אין עדיין עותק מאומת';
+      } else if (complete) {
+        status = 'ready';
+        title = 'הרשימות נשמרו במכשיר';
+      } else {
+        status = 'partial';
+        title = 'חלק מהרשימות חסר במכשיר';
+      }
+      const value: State = {status,title,counts,names,at:mark.at};
       if (active) setSnapshot({key,value});
     };
     const update = async () => {
@@ -75,13 +87,15 @@ export function useEventOffline(eventId: string, uid: string, manager: boolean, 
       running=true;
       try {
         const previous=loadMark(key);
-        if (previous) await inspectCache(previous,false);
         if (!available) {
-          if (!previous && active) setSnapshot({key,value:{...noCopy,title:'מחכים לחיבור כדי לשמור את הרשימות'}});
+          if (previous) await inspectCache(previous, false);
+          else if (active) setSnapshot({key, value:noCopy});
           return;
         }
+        // Recheck access before showing any names or counts from this device.
+        if (active) setSnapshot({key,value:waiting});
         const results = await Promise.allSettled(lists.map((part)=>readOnce<LocalRow>(part.path,part.spec)));
-        const denied = results.map((r,i)=>r.status==='rejected' && ((r.reason as {code?:string})?.code==='permission-denied' || !!previous?.denied?.[i]));
+        const denied = results.map((r,i)=>r.status==='rejected' && (['permission-denied','unauthenticated'].includes((r.reason as {code?:string})?.code || '') || !!previous?.denied?.[i]));
         const digests = await Promise.all(results.map((r,i)=>r.status==='fulfilled' ? signature(r.value) : denied[i] ? null : previous?.lists[i] || null));
         const fresh = results.every((r)=>r.status==='fulfilled');
         const at = fresh || !previous && results.some((r)=>r.status==='fulfilled') ? nowIso() : previous?.at || '';
@@ -89,7 +103,7 @@ export function useEventOffline(eventId: string, uid: string, manager: boolean, 
         if (!active) return;
         if (digests.some(Boolean) || denied.some(Boolean)) saveMark(key,mark);
         await inspectCache(mark,!fresh);
-      } catch {if (active)setSnapshot({key,value:{...noCopy,title:'לא הצלחנו לבדוק את העותק'}});}
+      } catch {if (active)setSnapshot({key,value:{...noCopy,status:'error',title:'לא הצלחנו לבדוק את העותק במכשיר'}});}
       finally {running=false;if(active && pending){pending=false;void update();}}
     };
     const visible=()=>{if(document.visibilityState==='visible') void update();};
@@ -98,5 +112,5 @@ export function useEventOffline(eventId: string, uid: string, manager: boolean, 
     const timer=available ? window.setInterval(visible,60000) : undefined;
     return ()=>{active=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
   }, [eventId, uid, manager, key, available, refreshKey]);
-  return snapshot.key === key ? snapshot.value : waiting;
+  return { ...(snapshot.key === key ? snapshot.value : waiting), online: available };
 }

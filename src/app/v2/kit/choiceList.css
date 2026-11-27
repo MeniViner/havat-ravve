@@ -1,0 +1,171 @@
+/* Closed controls use the existing field and label. Keyboard focus stays inside its border. */
+html[data-farm-choices] select:not([multiple]):not([size]),
+html[data-farm-choices] select[size="1"] {
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  min-inline-size: 0;
+  padding-inline-end: 32px;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23545b64' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-size: 16px 16px;
+  background-position: left 9px center;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+html[data-farm-choices] select:dir(ltr) { background-position: right 9px center; }
+html[data-farm-choices] select:focus {
+  outline: none;
+  box-shadow: none;
+}
+html[data-farm-choices] select:focus-visible {
+  outline: 2px solid var(--action, #1f5a4a);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+html[data-farm-choices] select:disabled { cursor: default; }
+
+dialog.farm-choice-menu {
+  box-sizing: border-box;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 4px;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line, #dde0e3);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--ink, #14171b);
+  box-shadow: 0 6px 20px rgb(20 23 27 / 13%);
+  font: 400 16px/1.4 'IBM Plex Sans Hebrew', Arial, sans-serif;
+  text-align: start;
+}
+dialog.farm-choice-menu::backdrop { background: transparent; }
+.farm-choice-menu [role="option"] {
+  box-sizing: border-box;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  overflow-wrap: anywhere;
+}
+.farm-choice-menu [role="option"][aria-selected="true"] {
+  color: var(--selected, #4e433d);
+  background: var(--bg, #f3f4f2);
+  font-weight: 600;
+}
+.farm-choice-menu [aria-selected="true"]::after {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 11px;
+  margin-inline: 4px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.farm-choice-menu [role="option"]:focus, dialog.farm-choice-menu:not([data-keyboard]) [role="option"]:focus-visible { outline: none; }
+.farm-choice-menu[data-keyboard] [role="option"]:focus-visible {
+  outline: 2px solid var(--action, #1f5a4a);
+  outline-offset: -2px;
+}
+.farm-choice-menu [aria-disabled="true"] { opacity: .55; cursor: default; }
+.farm-choice-group { padding: 6px 10px 3px; color: var(--soft, #545b64); font-size: 13px; font-weight: 600; }
+@media (hover: hover) {
+  .farm-choice-menu [role="option"]:not([aria-disabled="true"]):hover { background: var(--bg, #f3f4f2); }
+}
+
+html[data-farm-choices] input[type="checkbox"]:not(.k-checkbox__input):not([role="switch"]) {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 21px;
+  height: 21px;
+  min-height: 21px;
+  padding: 0;
+  border: 1.5px solid var(--line-strong, #8a9099);
+  border-radius: 5px;
+  background: var(--surface, #fff);
+  color: #fff;
+  vertical-align: middle;
+  cursor: pointer;
+}
+html[data-farm-choices] input[type="checkbox"]:not(.k-checkbox__input):is(:checked,:indeterminate) {
+  border-color: var(--selected-fill, #4e433d);
+  background: var(--selected-fill, #4e433d);
+}
+html[data-farm-choices] input[type="checkbox"]:not(.k-checkbox__input):checked::after {
+  content: '';
+  width: 5px;
+  height: 10px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+html[data-farm-choices] input[type="checkbox"]:not(.k-checkbox__input):indeterminate::after {
+  content: '';
+  width: 11px;
+  height: 0;
+  transform: none;
+  border: 0;
+  border-top: 2px solid currentColor;
+}
+html[data-farm-choices] input[type="checkbox"]:disabled { opacity: .55; cursor: default; }
+html[data-farm-choices] :is(.k-check-select, .many-pick) {
+  border: 1px solid var(--line-strong, #8a9099);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary::-webkit-details-marker { display: none; }
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary > :first-child {
+  margin: 0;
+  color: var(--soft, #545b64);
+  font-size: 13px;
+  font-weight: 500;
+}
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary > :nth-child(2) {
+  grid-column: 1;
+  color: var(--ink, #14171b);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary::after {
+  content: '';
+  grid-area: 1 / 2 / 3 / 3;
+  width: 7px;
+  height: 7px;
+  margin-inline: 3px;
+  border: solid var(--soft, #545b64);
+  border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+html[data-farm-choices] :is(.k-check-select, .many-pick)[open] > summary::after { transform: translateY(2px) rotate(225deg); }
+html[data-farm-choices] :is(.k-check-select, .many-pick) > summary:focus-visible { outline-offset: -2px; border-radius: 7px; }
+html[data-farm-choices] :is(.k-check-select, .many-pick)[open] > div { border-top: 1px solid var(--line, #dde0e3); }
+@media (forced-colors: active) {
+  html[data-farm-choices] input[type="checkbox"]:not(.k-checkbox__input):not([role="switch"]) { appearance: auto; }
+  html[data-farm-choices] input[type="checkbox"]::after { display: none; }
+  .farm-choice-menu[data-keyboard] [role="option"]:focus-visible { outline-color: Highlight; }
+}

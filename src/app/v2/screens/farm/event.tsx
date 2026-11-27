@@ -31,7 +31,7 @@ export function FarmEventScreen({ ctx, params }: ScreenProps) {
   if (params.section === 'staffing') return <EventCrew ctx={ctx} event={e} />;
   if (params.section === 'tasks') return <EventTasks ctx={ctx} event={e} />;
   if (params.section === 'shopping') return <AppScreen variant="detail" noNav>
-    <TopRow flat onBack={() => back((ctx.manager ? '/manage/events/' : '/farm/events/') + encodeURIComponent(id))} />
+    <TopRow flat onBack={() => back((ctx.manager ? '/manage/events/' : '/farm/events/') + encodeURIComponent(id))} end={<OfflineStatus />} />
     <PageTitle>קניות לאירוע</PageTitle><EventShopping event={e} ctx={ctx} />
   </AppScreen>;
   const bar = (e.entry !== false || e.stall !== false) ? (
@@ -43,7 +43,7 @@ export function FarmEventScreen({ ctx, params }: ScreenProps) {
 
   return (
     <AppScreen variant="detail" bar={bar} noNav>
-      <TopRow flat onBack={() => back('/farm')} />
+      <TopRow flat onBack={() => back('/farm')} end={<OfflineStatus />} />
       <Hero className="farm-ev">
         <div className="farm-ev__top">
           <div className="farm-ev__titles">
@@ -55,7 +55,6 @@ export function FarmEventScreen({ ctx, params }: ScreenProps) {
         </div>
         {(e.entry !== false || e.stall !== false) && <div className="farm-ev__tags">{e.entry !== false && <span className="farm-ev__tag">כניסה בסריקה</span>}{e.stall !== false && <span className="farm-ev__tag">אירוע עם דוכנים</span>}</div>}
       </Hero>
-      <OfflineStatus eventId={id} ctx={ctx} />
       <PrepTaskCard event={e} ctx={ctx} />
       <EventShoppingLink event={e} />
       <ListCard><Row title="צוות" meta={crew.map((p) => p.name).slice(0,4).join(', ')} onClick={() => go(sectionPath(id,'staffing'))} /></ListCard>

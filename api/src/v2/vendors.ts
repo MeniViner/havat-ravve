@@ -1,3 +1,5 @@
+import { archivedGeneration, catalogSelectionId, isCurrentCatalogSelection } from '../../../shared/farm-catalogs';
+import { activeCatalogProduct, stallMarkerWrites } from '../farmCatalog';
 // Stall owners and vendors in the redesigned app (V1, V2, V6, V7, N8): the pool (vendors/{vid} plus the team's notes in
 // vendors/{vid}/private/main), the per-event record (events/{eid}/vendors/{vid}), the brief an invited vendor reads
 // (events/{eid}/vendor_info/main), access links (vendor_invites/{code}) and event-day requests. As src/app/v2/data/vendor.ts
@@ -368,32 +370,54 @@ def('farmCatalogs.save', 'events:write', 'הוספת קטלוג לדוכן הח�
   const id=c.input.catalogId || autoId(), at=nowIso(), name=c.input.name.trim();
   if (!name) throw invalid('name','a catalog name is required');
   const current=c.input.catalogId ? await mustGet(c.fs,farmCatalogs,id,c.tx,'catalog') : null;
+  if (current?.data.archived) throw invalid('catalogId','restore the archived catalog before editing it');
   const action=current ? c.fs.patch(farmCatalogs,id,{name,updatedAt:at},current.updateTime) : c.fs.create(farmCatalogs,id,{name,createdAt:at,updatedAt:at});
   return {writes:[action],refs:[{col:farmCatalogs,id,expected:{name}}],data:{catalogId:id}};
 });
 def('farmCatalogs.saveProduct','events:write','הוספת מוצר לקטלוג בחווה או עדכון שם ומחיר',{
   catalogId:req(),productId:{type:'id'},name:str(100,'שם המוצר',true,1),price:cost,
 },async(c)=>{
-  managers(c);await mustGet(c.fs,farmCatalogs,c.input.catalogId,c.tx,'catalog');
+  managers(c);
+  const parent=await mustGet(c.fs,farmCatalogs,c.input.catalogId,c.tx,'catalog');
+  if(parent.data.archived) throw invalid('catalogId','restore the archived catalog before editing products');
   const col=farmCatalogs+'/'+c.input.catalogId+'/products',id=c.input.productId || autoId(),at=nowIso();
   const name=c.input.name.trim(),price=Math.round(c.input.price*100)/100;
   if (!name) throw invalid('name','a product name is required');
   const current=c.input.productId ? await mustGet(c.fs,col,id,c.tx,'catalog product') : null;
+  if(current?.data.archived) throw invalid('productId','restore the archived product before editing it');
   const action=current ? c.fs.patch(col,id,{name,price,updatedAt:at},current.updateTime) : c.fs.create(col,id,{name,price,createdAt:at,updatedAt:at});
   return {writes:[action],refs:[{col,id,expected:{name,price}}],data:{catalogProductId:id}};
+});
+def('farmCatalogs.setArchived', 'events:write', 'העברה לארכיון או החזרה של קטלוג או מוצר בדוכן החווה', {
+  catalogId: req(), productId: { type: 'id' }, archived: bool('להעביר לארכיון', true),
+}, async (c) => {
+  managers(c);
+  const parent = await mustGet(c.fs, farmCatalogs, c.input.catalogId, c.tx, 'catalog');
+  if (c.input.productId && parent.data.archived) throw invalid('catalogId', 'restore the catalog before changing a product');
+  const col = c.input.productId ? farmCatalogs + '/' + parent.id + '/products' : farmCatalogs;
+  const entry = c.input.productId ? await mustGet(c.fs, col, c.input.productId, c.tx, 'catalog product') : parent;
+  const archived = c.input.archived;
+  if (!!entry.data.archived === archived) return { writes: [], refs: [], data: { changed: false } };
+  return { writes: [c.fs.patch(col, entry.id, { archived, generation: archivedGeneration(entry.data, archived), updatedAt: nowIso() }, entry.updateTime)],
+    refs: [{ col, id: entry.id, expected: { archived } }], data: { changed: true } };
 });
 def('farmCatalogs.selectForEvent','events:write','בחירת מוצר מקטלוג למכירה באירוע', {
   eventId:req(),catalogId:req(),productId:req(),active:bool('נבחר למכירה באירוע',true),
 },async(c)=>{
   managers(c);
   const ev=await eventFor(c,c.input.eventId), cid=c.input.catalogId, pid=c.input.productId;
-  const master=await mustGet(c.fs,farmCatalogs+'/'+cid+'/products',pid,c.tx,'catalog product');
-  const col='events/'+ev.id+'/products',id='catalog_'+cid.length+'_'+cid+'_'+pid;
+  const col='events/'+ev.id+'/products',id=catalogSelectionId(cid,pid);
   const old=await c.fs.get(col,id,c.tx), active=c.input.active===true;
-  if (old?.data.active===active || (!old&&!active)) return {writes:[],refs:[],data:{changed:false}};
-  const data={name:master.data.name,price:master.data.price,active,sort:old?.data.sort || Date.now(),catalogId:cid,catalogProductId:pid};
-  const action=old ? c.fs.patch(col,id,active?data:{active:false},old.updateTime) : c.fs.create(col,id,data);
-  return {writes:[action],refs:[{col,id,expected:{active}}],data:{changed:true,eventProductId:id}};
+  if (old && (old.data.catalogId!==cid || old.data.catalogProductId!==pid)) throw invalid('productId','the existing event product has a different source');
+  if (!active && !old?.data.active) return {writes:[],refs:[],data:{changed:false}};
+  if (!active && old) return {writes:[c.fs.patch(col,id,{active:false},old.updateTime)],refs:[{col,id,expected:{active:false}}],data:{changed:true,eventProductId:id}};
+  const master=await activeCatalogProduct(c.fs,cid,pid,c.tx);
+  if (!master) throw invalid('productId','choose an active catalog product');
+  const marker=await stallMarkerWrites(c.fs,ev.id,c.tx);
+  if (old && isCurrentCatalogSelection(old.data,master.parent,master.data)) return {writes:marker,refs:[],data:{changed:false}};
+  const data={...master.generations,name:master.data.name,price:master.data.price,active:true,sort:old?.data.sort ?? Date.now(),catalogId:cid,catalogProductId:pid};
+  const action=old ? c.fs.patch(col,id,data,old.updateTime) : c.fs.create(col,id,data);
+  return {writes:[...marker,action],refs:[{col,id,expected:{active}}],data:{changed:true,eventProductId:id}};
 });
 def('eventVendorApplications.approve','vendors:write','אישור בקשה שהגיש בעל דוכן לאירוע', {
   eventId:req(),applicantUid:{type:'uid',required:true},

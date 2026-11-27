@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Button } from '../../kit';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Button, Icon } from '../../kit';
 import { go } from '../../core';
 import type { ScreenProps } from '../../ctx';
 import type { FarmCalItem } from '../../data/farm';
@@ -7,6 +7,54 @@ import { hourLabel, plannedAt, staffingSummary, workStart, workEnd } from './sta
 
 const roles = { management: 'מנהלים', volunteer: 'מתנדבים', other: 'תפקיד לא צוין' };
 const roleText = { management: 'ניהול', volunteer: 'התנדבות', other: 'תפקיד לא צוין' };
+
+function VolunteerNames({ people }: { people: { uid: string; name: string }[] }) {
+  const rail = useRef<HTMLDivElement>(null);
+  const names = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<'fit' | 'more' | 'end'>('fit');
+  useEffect(() => {
+    const frame = rail.current, scroller = names.current, content = strip.current;
+    if (!frame || !scroller || !content) return;
+    const measure = () => {
+      const fits = content.offsetWidth <= frame.clientWidth + 1;
+      const atEnd = Math.abs(scroller.scrollLeft) + scroller.clientWidth >= scroller.scrollWidth - 1;
+      setPosition(fits ? 'fit' : atEnd ? 'end' : 'more');
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame); observer.observe(content);
+    scroller.addEventListener('scroll', measure, { passive: true });
+    return () => { observer.disconnect(); scroller.removeEventListener('scroll', measure); };
+  }, []);
+  const move = () => {
+    const el = names.current;
+    if (el) el.scrollTo({ left: position === 'end' ? 0 : el.scrollLeft - el.clientWidth * 0.8 });
+  };
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    if (event.target !== el) return;
+    const positions: Record<string, number> = {
+      Home: 0, End: -el.scrollWidth,
+      ArrowLeft: el.scrollLeft - el.clientWidth * 0.8, ArrowRight: el.scrollLeft + el.clientWidth * 0.8,
+    };
+    if (positions[event.key] !== undefined) {
+      event.preventDefault();
+      el.scrollTo({ left: positions[event.key] });
+    }
+  };
+  const label = position === 'end' ? 'חזרה לשם הראשון' : 'הצגת עוד שמות מתנדבים';
+  return <div ref={rail} className="staffing-volunteers">
+    <div ref={names} className="staffing-names" role="region" tabIndex={0} aria-label="שמות מתנדבים" onKeyDown={onKey}>
+      <div ref={strip} className="staffing-name-strip">
+        {people.length ? people.map(p => <button key={p.uid} type="button" onClick={() => go(`/people/${p.uid}`)}>{p.name}</button>) : 'אין שיבוץ'}
+      </div>
+    </div>
+    {position !== 'fit' && <button type="button" className="staffing-more-names" aria-label={label} title={label} onClick={move}>
+      <Icon name={position === 'end' ? 'back' : 'chevron'} size={17} />
+    </button>}
+  </div>;
+}
 export function StaffingSummary({
   items,
   ctx,
@@ -43,7 +91,7 @@ export function StaffingSummary({
                   <span>
                     {roles[role]} · {list.length}
                   </span>
-                  <div className="staffing-names" tabIndex={0} aria-label={`שמות ${roles[role]}`}>
+                  {role === 'volunteer' ? <VolunteerNames people={list} /> : <div className="staffing-names" tabIndex={0} aria-label={`שמות ${roles[role]}`}>
                     {list.length
                       ? list.map(p => (
                           <button type="button" key={p.uid} onClick={() => go(`/people/${p.uid}`)}>
@@ -51,7 +99,7 @@ export function StaffingSummary({
                           </button>
                         ))
                       : 'אין שיבוץ'}
-                  </div>
+                  </div>}
                 </div>
               );
             })}

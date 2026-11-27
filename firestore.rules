@@ -414,14 +414,33 @@ service cloud.firestore {
         && str(incoming().moving.from,140) && incoming().moving.from.size()>0 && str(incoming().moving.to,140)
         && incoming().moving.from != incoming().moving.to && isoTime(incoming().moving.startedAt)));
   }
+  function catalogEntryTimes() {
+   return isoTime(incoming().createdAt) && isoTime(incoming().updatedAt) && incoming().get('archived', false) is bool
+    && incoming().get('generation',0) is int && incoming().get('generation',0) >= 0;
+  }
+  function catalogEditAllowed() {
+   let before = resource.data.get('archived',false);
+   let after = incoming().get('archived',false);
+   let oldGeneration = resource.data.get('generation',0);
+   return incoming().createdAt == resource.data.createdAt
+    && (after == before
+        ? incoming().get('generation',0) == oldGeneration && (!before || changed().hasOnly(['updatedAt']))
+        : changed().hasOnly(['archived','generation','updatedAt'])
+          && incoming().get('generation',0) == oldGeneration + ((after || !('generation' in resource.data)) ? 1 : 0));
+  }
   match /farm_catalogs/{catalog} {
-   allow read: if isManager();
-   allow create, update: if isManager() && incoming().keys().hasOnly(['name','createdAt','updatedAt']) && str(incoming().name, 120) && incoming().name.size() > 0 && isoTime(incoming().createdAt) && isoTime(incoming().updatedAt);
-   allow delete: if isManager();
+   function catalogShape(){return incoming().keys().hasOnly(['name','createdAt','updatedAt','archived','generation']) && str(incoming().name, 120) && incoming().name.size() > 0 && catalogEntryTimes();}
+   allow get: if isStaff();
+   allow list: if isManager();
+   allow create: if isManager() && catalogShape() && incoming().get('generation',0) == 0 && !incoming().get('archived',false);
+   allow update: if isManager() && catalogShape() && catalogEditAllowed();
    match /products/{product} {
-    allow read: if isManager();
-    allow create, update: if isManager() && incoming().keys().hasOnly(['name','price','createdAt','updatedAt']) && str(incoming().name, 200) && incoming().name.size() > 0 && incoming().price is number && incoming().price >= 0 && isoTime(incoming().createdAt) && isoTime(incoming().updatedAt);
-    allow delete: if isManager();
+    function parentActive(){return !getAfter(/databases/$(database)/documents/farm_catalogs/$(catalog)).data.get('archived', false);}
+    function masterShape(){return incoming().keys().hasOnly(['name','price','createdAt','updatedAt','archived','generation']) && str(incoming().name, 200) && incoming().name.size() > 0 && incoming().price is number && incoming().price >= 0 && catalogEntryTimes();}
+    allow get: if isStaff();
+    allow list: if isManager();
+    allow create: if isManager() && parentActive() && masterShape() && incoming().get('generation',0) == 0 && !incoming().get('archived',false);
+    allow update: if isManager() && parentActive() && masterShape() && catalogEditAllowed();
    }
   }
   function applicationDetails(person){return incoming().ownerUid == person && str(incoming().name, 200) && incoming().name.size() > 0
@@ -544,9 +563,35 @@ service cloud.firestore {
     allow read: if isManager();
     allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','url','kind','by','at','mime','size']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().url, 700000) && (incoming().url.matches('https://.*') || incoming().url.matches('data:(image/(jpeg|webp|png)|application/pdf);base64,[A-Za-z0-9+/=]+')) && incoming().kind in ['doc','image'] && actorOf(incoming().by) && str(incoming().at, 40) && str(incoming().get('mime', ''), 60) && incoming().get('size', 0) is int));
    }
+   // Permanent after the first catalog selection, including when the event's catalog is emptied.
+   match /stall_config/catalog {
+    allow get: if isStaff();
+    allow create, update: if isManager() && incoming() == {'enabled':true};
+   }
    match /products/{pid} {
+    function referenced(d){return d.keys().hasAny(['catalogId','catalogProductId']);}
+    function linked(d){return d.get('catalogId','') is string && d.get('catalogProductId','') is string
+     && d.get('catalogId','').matches('[^/]+') && d.get('catalogProductId','').matches('[^/]+');}
+    function eventProductShape(){return incoming().keys().hasOnly(['name','price','active','sort','unit','catalogId','catalogProductId','catalogGeneration','catalogProductGeneration']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number && str(incoming().get('catalogId', ''), 80) && str(incoming().get('catalogProductId', ''), 80) && str(incoming().get('unit', ''), 20);}
+    function currentSelection(d){
+     let catalog = getAfter(/databases/$(database)/documents/farm_catalogs/$(d.catalogId)).data;
+     let master = getAfter(/databases/$(database)/documents/farm_catalogs/$(d.catalogId)/products/$(d.catalogProductId)).data;
+     return existsAfter(/databases/$(database)/documents/events/$(id)/stall_config/catalog)
+      && !catalog.get('archived',false) && !master.get('archived',false)
+      && d.get('catalogGeneration',0) == catalog.get('generation',0) && d.get('catalogProductGeneration',0) == master.get('generation',0)
+      && d.name == master.name && d.price == master.price;
+    }
+    function catalogChangeAllowed(){
+     let updatedSelection = changed().hasAny(['name','price','catalogGeneration','catalogProductGeneration']);
+     let reselected = (!resource.data.active || incoming().get('catalogGeneration',0) != resource.data.get('catalogGeneration',0)
+        || incoming().get('catalogProductGeneration',0) != resource.data.get('catalogProductGeneration',0));
+     return !changed().hasAny(['catalogId','catalogProductId'])
+      && (!referenced(resource.data) || (linked(resource.data) && ((updatedSelection || (!resource.data.active && incoming().active)) ? incoming().active && reselected && currentSelection(incoming()) : true)));
+    }
     allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','price','active','sort','unit','catalogId','catalogProductId']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number && str(incoming().get('catalogId', ''), 80) && str(incoming().get('catalogProductId', ''), 80) && str(incoming().get('unit', ''), 20)));
+    allow create: if isManager() && eventProductShape() && (!referenced(incoming()) || (linked(incoming()) && incoming().active && currentSelection(incoming())));
+    allow update: if isManager() && eventProductShape() && catalogChangeAllowed();
+    allow delete: if isManager() && !referenced(resource.data);
    }
    // V4: stations, their people and hours. The crew (F6) and the broadcast audience read it
    match /staffing/{sid} {
@@ -677,9 +722,30 @@ service cloud.firestore {
   }
   match /tabs/{id} {
    function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','paymentConfirmation','paidAt','createdAt','updatedAt','reminderSentAt','claimedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && optIso('reminderSentAt') && optIso('claimedAt');}
+   function standaloneLine(eid, row) {
+    let product = get(/databases/$(database)/documents/events/$(eid)/products/$(row.productId)).data;
+    return product.get('active',true) == true && !product.keys().hasAny(['catalogId','catalogProductId'])
+      && row.price == product.price && row.name == product.name && row.qty is int && row.qty > 0 && actorOk(row.by);
+   }
+   function addsOneStandalone(eid, before, after) {
+    let last = after[after.size()-1];
+    return resource.data.status == 'open' && incoming().status == 'open' && after == before.concat([last]) && standaloneLine(eid,last)
+      && incoming().total >= resource.data.total + last.qty*last.price - 0.005
+      && incoming().total <= resource.data.total + last.qty*last.price + 0.005;
+   }
+   function saleChangeAllowed() {
+    let before = resource.data.items;
+    let after = incoming().items;
+    let eid = resource.data.eventId;
+    return !changed().hasAny(['items','total'])
+      || !existsAfter(/databases/$(database)/documents/events/$(eid)/stall_config/catalog)
+      || (after.size() < before.size() && after == before.removeAll(before.removeAll(after)) && incoming().total <= resource.data.total)
+      || (after.size() == before.size()+1 && addsOneStandalone(eid,before,after));
+   }
    allow read: if isStaff() || mine('guestUid');
    allow create: if isStaff() && tabShape() && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && !incoming().keys().hasAny(['reminderSentAt','claimedAt']) && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0 && (isManager() || eventOpen(incoming().eventId));
-   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow update: if tabShape() && incoming().eventId == resource.data.eventId && saleChangeAllowed()
+    && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
   // The write-only contact Worker creates correspondence records. Only managers can read their reply details.

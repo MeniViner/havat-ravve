@@ -47,10 +47,10 @@ export function useMarkBought(actor: Actor, trip?: ShoppingTrip | null) {
   return { leaving, mark, unmark, fail };
 }
 
-export function UrgencyTag({ item }: { item: ShoppingItem }) {
+export function UrgencyTag({ item, compact = false }: { item: ShoppingItem; compact?: boolean }) {
   useNowMin();
   if (!item.urgent || item.bought) return null;
   const due = item.urgentDueAt;
   const valid = due && Number.isFinite(Date.parse(due));
-  return <Tag tone="urgent">{valid && Date.parse(due) < nowMs() ? 'דחוף · באיחור' : 'דחוף'}{valid && ` · ${ddmm(due)} ${hhmm(due)}`}</Tag>;
+  return <Tag tone="urgent">{valid && Date.parse(due) < nowMs() ? 'דחוף · באיחור' : 'דחוף'}{valid && !compact && ` · ${ddmm(due)} ${hhmm(due)}`}</Tag>;
 }

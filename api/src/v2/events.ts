@@ -1,3 +1,5 @@
+import { catalogSelectionId, copiedEventItemId, hasCatalogPair, hasCatalogReference, isCurrentCatalogSelection } from '../../../shared/farm-catalogs';
+import { activeCatalogProduct, stallMarkerWrites } from '../farmCatalog';
 import { assignmentKey, defaultStations, emptyRegistry, stationCollection, stationRegistryId, stationWritable, type StationRegistry, type StationPerson } from '../../../shared/work-stations';
 // Events management in the redesigned app (M3-M7, N9-N12, V3-V5): src/app/v2/data/events.ts, closeEvent/reopenEvent in
 // src/app/v2/data/eventday.ts and the shared writes in src/app/data.ts. Each operation writes what the app's function writes
@@ -83,7 +85,7 @@ def('events.reopen', 'events:write', 'פתיחה מחדש של אירוע שנס
 
 // ======================= stall products (N9) =======================
 
-const productsOf = async (c: Ctx, eventId: string) => c.fs.query({ from: [{ collectionId: 'products' }], limit: 500 }, `events/${eventId}`);
+const productsOf = async (c: Ctx, eventId: string) => c.fs.query({ from: [{ collectionId: 'products' }], limit: 500 }, `events/${eventId}`, c.tx);
 const bySort = (a: Doc, b: Doc) => (Number(a.data.sort) || 0) - (Number(b.data.sort) || 0);
 
 // reorderProducts()
@@ -111,15 +113,39 @@ def('events.copyProducts', 'events:write', 'העתקת מוצרי הדוכן מ�
   if (src.id === ev.id) throw invalid('fromEventId', 'copy from another event');
   const from = (await productsOf(c, src.id)).sort(bySort);
   if (!from.length) throw invalid('fromEventId', 'that event has no products');
-  const after = (await productsOf(c, ev.id)).reduce((m, p) => Math.max(m, Number(p.data.sort) || 0), 0);
-  const col = `events/${ev.id}/products`;
-  const made = from.map((p, i) => ({ id: autoId(), data: { name: p.data.name, price: p.data.price, active: p.data.active, sort: after + i + 1 } }));
-  return {
-    status: 201,
-    writes: [...made.map((m) => c.fs.create(col, m.id, m.data)), activity(c.fs, c.me, 'event', ev.id, 'edited', `הועתקו ${from.length} מוצרים מ${src.data.title}`, { eventId: ev.id })],
-    refs: made.map((m) => ({ col, id: m.id, expected: m.data })), data: { productIds: made.map((m) => m.id) },
-  };
-}, ['New products, placed after the ones the event already has. As in the app, the name, price and availability are copied (not the unit).']);
+  const existing = await productsOf(c, ev.id);
+  const after = existing.reduce((m, p) => Math.max(m, Number(p.data.sort) || 0), 0);
+  const col = `events/${ev.id}/products`, writes: Write[] = [];
+  const refs: {col: string; id: string; expected: Data}[] = [];
+  const handled = new Set<string>();
+  let hasCatalogSelection = false;
+  for (const p of from) {
+    const cid = String(p.data.catalogId || ''), pid = String(p.data.catalogProductId || '');
+    if (hasCatalogReference(p.data) && (!hasCatalogPair(p.data) || !p.data.active)) continue;
+    const id = cid && pid ? catalogSelectionId(cid, pid) : copiedEventItemId(src.id, p.id);
+    if (handled.has(id)) continue;
+    handled.add(id);
+    const old = existing.find((item) => item.id === id);
+    if (old && (!cid || !pid || old.data.catalogId !== cid || old.data.catalogProductId !== pid)) continue;
+    let name = p.data.name, price = p.data.price;
+    let catalogFields = {};
+    if (cid && pid) {
+      const master = await activeCatalogProduct(c.fs, cid, pid, c.tx);
+      if (!master || !isCurrentCatalogSelection(p.data, master.parent, master.data)) continue;
+      hasCatalogSelection = true;
+      if (old && isCurrentCatalogSelection(old.data, master.parent, master.data)) continue;
+      name = master.data.name; price = master.data.price;
+      catalogFields = {catalogId: cid, catalogProductId: pid, ...master.generations};
+    }
+    const data = { name, price, active: p.data.active !== false, sort: old?.data.sort ?? after + refs.length + 1,
+      ...catalogFields };
+    writes.push(old ? c.fs.patch(col, id, data, old.updateTime) : c.fs.create(col, id, data));
+    refs.push({col, id, expected: data});
+  }
+  if (writes.length) writes.push(activity(c.fs, c.me, 'event', ev.id, 'edited', `הועתקו ${refs.length} מוצרים מ${src.data.title}`, {eventId: ev.id}));
+  if (hasCatalogSelection) writes.push(...await stallMarkerWrites(c.fs, ev.id, c.tx));
+  return {status: refs.length ? 201 : 200, writes, refs, data: {productIds: refs.map((r) => r.id)}};
+}, ['Copies one-off products and current selections from active farm catalogs. Existing selections keep their event price.']);
 
 // ======================= files (V3) =======================
 

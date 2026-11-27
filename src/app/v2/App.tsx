@@ -22,6 +22,7 @@ import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet } from './screens/system';
 import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
 import { useVendorRequests } from './data/manage';
+import { EventOfflineProvider } from './screens/events/offline';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
 import { AppScreen as Frame2 } from './core';
@@ -133,7 +134,10 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
   else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <AppScreen variant="plain" noNav><legacy.NotFound /></AppScreen>;
-  return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
+  const offlineEvent = !redirect && allowed && hit?.route.eventOffline ? hit.params.id : '';
+  return <V2Provider value={ctx}><EventOfflineProvider eventId={offlineEvent} ctx={ctx}>
+    <Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame>
+  </EventOfflineProvider></V2Provider>;
 }
 
 // ---------- vendors and helpers ----------

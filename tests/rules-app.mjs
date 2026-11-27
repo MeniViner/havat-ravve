@@ -431,6 +431,37 @@ try{
  const savedPurchase=(await assertSucceeds(getDoc(firstPurchase))).data();
  assert.deepEqual(savedPurchase.items,[firstItem]);
  assert.equal(savedPurchase.total,40);
+ // The first linked selection enables authoritative checkout, even for an older open register.
+ const saleEvent='guarded-stall', guardedTab=doc(vol,'tabs','guarded-buyer');
+ const marker=doc(beni,'events',saleEvent,'stall_config','catalog');
+ const prior={productId:'coffee',name:'קפה',price:8,qty:1,at:now,by:actor('vol')};
+ const second={...prior,at:'2030-01-02T00:00:00.000Z'};
+ const plain={...second,productId:'standalone',name:'עוגה',price:4};
+ await env2.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,'events',saleEvent),{closed:null});
+  await setDoc(doc(db,'events',saleEvent,'products','coffee'),{name:'קפה',price:8,active:true,catalogId:'drinks',catalogProductId:'coffee'});
+  // Older one-off products can predate the active flag.
+  await setDoc(doc(db,'events',saleEvent,'products','standalone'),{name:'עוגה',price:4,sort:0});
+  await setDoc(doc(db,'events',saleEvent,'products','retired'),{name:'עוגה',price:4,active:false});
+  await setDoc(doc(db,'tabs','guarded-buyer'),{...tb,eventId:saleEvent,items:[prior],total:8});
+  await setDoc(doc(db,'tabs','settled-buyer'),{...tb,eventId:saleEvent,items:[prior],total:8,status:'paid',paidAt:now});
+ });
+ await assertSucceeds(setDoc(marker,{enabled:true}));
+ await assertSucceeds(getDoc(doc(vol,'events',saleEvent,'stall_config','catalog')));
+ await assertFails(getDoc(doc(guest,'events',saleEvent,'stall_config','catalog')));
+ await assertFails(deleteDoc(marker));
+ await assertFails(updateDoc(marker,{enabled:false}));
+ await assertFails(updateDoc(guardedTab,{total:16,updatedAt:now}));
+ await assertFails(updateDoc(guardedTab,{items:arrayUnion(second),total:increment(8),updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'tabs','guarded-buyer'),{items:arrayUnion(second),total:increment(8),updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'tabs','guarded-buyer'),{eventId:'e1',items:arrayUnion(second),total:increment(8)}));
+ await assertFails(updateDoc(guardedTab,{items:[prior,plain,second],total:20,updatedAt:now}));
+ await assertFails(updateDoc(guardedTab,{items:arrayUnion({...plain,productId:'retired'}),total:increment(4),updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'tabs','settled-buyer'),{items:arrayUnion(plain),total:increment(4),updatedAt:now}));
+ await assertSucceeds(updateDoc(guardedTab,{items:arrayUnion(plain),total:increment(4),updatedAt:now}));
+ await assertSucceeds(updateDoc(guardedTab,{items:[prior],total:8,updatedAt:now}));
+ assert.deepEqual((await getDoc(guardedTab)).data().items,[prior]);
  await assertFails(setDoc(doc(guest,'tabs','tb1'),{...tb,createdBy:actor('guest')}));
  await assertSucceeds(setDoc(doc(vol,'tabs','tb1'),tb));
  await assertFails(setDoc(doc(vol,'tabs','forged-send'),{...tb,...confirmation}));

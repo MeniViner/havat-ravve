@@ -44,6 +44,7 @@ const stub = {
         calls.push(['tx.commit']);
         return out;
       };
+      export const getDocFromServer = async (r) => { calls.push(['get', r.path]); return snap(r.path, (globalThis.__serverDocs || {})[r.path]); };
       export const getDocFromCache = async (r) => { const d = (globalThis.__cacheDocs || {})[r.path]; if (d === undefined) throw Object.assign(new Error('not cached'), { code: 'unavailable' }); return snap(r.path, d); };
     ` }));
     b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {};' }));

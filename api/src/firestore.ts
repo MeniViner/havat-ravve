@@ -354,9 +354,9 @@ export class Firestore {
   trash: { keep(name: string): boolean; put(docs: RawDoc[]): Promise<void> } | null = null;
 
   /** Documents by full resource name, as the REST API returns them (missing ones are left out). */
-  async rawGet(names: string[], mask?: string[], compact = false): Promise<RawDoc[]> {
+  async rawGet(names: string[], mask?: string[], compact = false, transaction?: string): Promise<RawDoc[]> {
     if (!names.length) return [];
-    const rows = await this.call<{ found?: RawDoc }[]>('POST', ':batchGet' + (compact ? '?prettyPrint=false' : ''), { documents: names, ...(mask ? { mask: { fieldPaths: mask } } : {}) });
+    const rows = await this.call<{ found?: RawDoc }[]>('POST', ':batchGet' + (compact ? '?prettyPrint=false' : ''), { documents: names, ...(mask ? { mask: { fieldPaths: mask } } : {}), ...(transaction ? {transaction} : {}) });
     return rows.filter((r) => r.found).map((r) => r.found!);
   }
 

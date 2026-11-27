@@ -1,3 +1,6 @@
+import { hasCatalogPair, hasCatalogReference, isCurrentCatalogSelection } from '../../shared/farm-catalogs';
+import { activeCatalogProduct, stallMarkerWrites } from './farmCatalog';
+import { readStallProducts } from './stallSales';
 // Every other action of the app. Each one writes exactly what the app's function writes (named in its
 // comment, in src/app/store.ts or src/app/data.ts), including the activity record and side effects such as
 // the calendar entry or closing notifications, but atomically in one transaction with an idempotency key.
@@ -461,11 +464,25 @@ def('events.saveProduct', 'events:write', 'הוספה או עדכון של מו�
     const p = await mustGet(c.fs, col, i.productId, c.tx, 'product');
     const patch: Record<string, unknown> = given(i, ['name', 'price', 'active', 'sort']);
     if ('price' in patch) patch.price = price(Number(patch.price));
+    const marker: Write[] = [];
+    if (hasCatalogReference(p.data) && !hasCatalogPair(p.data)) throw invalid('productId', 'the catalog reference is incomplete');
+    if (p.data.catalogId && p.data.catalogProductId) {
+      if (('name' in patch && patch.name !== p.data.name) || ('price' in patch && patch.price !== p.data.price))
+        throw invalid('productId', 'edit the name or price in the farm catalog');
+      if (patch.active === true) {
+        const source = await activeCatalogProduct(c.fs, String(p.data.catalogId), String(p.data.catalogProductId), c.tx);
+        if (!source) throw invalid('productId', 'the catalog or product is archived or missing');
+        marker.push(...await stallMarkerWrites(c.fs, ev.id, c.tx));
+        if (!isCurrentCatalogSelection(p.data, source.parent, source.data)) {
+          Object.assign(patch, source.generations, {name: source.data.name, price: source.data.price});
+        }
+      }
+    }
     // an empty unit removes the field, as saving N10 with an empty unit does
     if (i.unit !== null) patch.unit = i.unit || undefined;
     needSome(patch);
     const onlyActive = Object.keys(patch).length === 1 && 'active' in patch;
-    const writes: Write[] = [c.fs.patch(col, p.id, patch, p.updateTime)];
+    const writes: Write[] = [...marker, c.fs.patch(col, p.id, patch, p.updateTime)];
     if (!onlyActive) writes.push(activity(c.fs, c.me, 'event', ev.id, 'edited', `מוצר עודכן: ${patch.name ?? p.data.name} · ${money(Number(patch.price ?? p.data.price))}`, { eventId: ev.id }));
     return { writes, refs: [{ col, id: p.id, expected: Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) }], data: { productId: p.id } };
   }
@@ -483,6 +500,11 @@ def('events.saveProduct', 'events:write', 'הוספה או עדכון של מו�
 def('events.deleteProduct', 'events:write', 'מחיקת מוצר מדוכן האירוע', { eventId: req(), productId: req() }, async (c) => {
   const col = `events/${c.input.eventId}/products`;
   const p = await mustGet(c.fs, col, c.input.productId, c.tx, 'product');
+  if (hasCatalogReference(p.data)) {
+    const active = false;
+    return { writes: p.data.active ? [c.fs.patch(col, p.id, { active }, p.updateTime)] : [],
+      refs: [{ col, id: p.id, expected: { active } }], data: { productId: p.id, active } };
+  }
   return {
     writes: [c.fs.remove(col, p.id, p.updateTime), activity(c.fs, c.me, 'event', c.input.eventId, 'edited', `מוצר נמחק: ${p.data.name}`, { eventId: c.input.eventId })],
     refs: [{ col, id: p.id, gone: true }], data: { deleted: project(col, p.id, p.data) },
@@ -592,13 +614,13 @@ def('tabs.addItem', 'tabs:write', 'רישום מוצר (או כמה) שאורח 
   if (!cart.length) throw invalid('items', 'items is empty');
   // each line gets its own moment, so two identical products added together stay two lines (addTabItems)
   const base = Date.now();
-  const added: TabItem[] = [];
-  for (const [k, [pid, qty]] of cart.entries()) {
-    const p = await mustGet(c.fs, `events/${tab.data.eventId}/products`, pid, c.tx, 'product');
-    // the stall screen only offers active products; an inactive one is not for sale
-    if (p.data.active === false) throw invalid(c.input.productId ? 'productId' : 'items', `product ${pid} is not active (not for sale)`);
-    added.push({ productId: p.id, name: String(p.data.name), price: Number(p.data.price), qty, at: new Date(base + k).toISOString(), by: c.me });
-  }
+  const {products, available} = await readStallProducts(c.fs, String(tab.data.eventId), cart.map(([pid]) => pid), c.tx);
+  const added: TabItem[] = cart.map(([pid, qty], index) => {
+    const product = products.get(pid);
+    if (!product) throw notFound('product');
+    if (!available.has(pid)) throw invalid(c.input.productId ? 'productId' : 'items', `product ${pid} is not active (not for sale)`);
+    return { productId: pid, name: String(product.name), price: Number(product.price), qty, at: new Date(base + index).toISOString(), by: c.me };
+  });
   const items = [...((tab.data.items as TabItem[]) || []), ...added];
   return {
     writes: [c.fs.patch('tabs', tab.id, { items, total: sum(items), updatedAt: nowIso() }, tab.updateTime),

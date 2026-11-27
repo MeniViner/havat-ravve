@@ -8,6 +8,7 @@ import { dayName, ddmm, hhmm, keyOf } from '../../format';
 import { useStaffing, usePresenceOn, saveEventAssignment, removeFromStation, type EventAssignment } from '../../data/events';
 import { stationsOf, staffingStats, stationMissing, hoursText, isoFromLocal, localOf, type Station } from './logic';
 import { StationNameForm, StationPicker } from './workStations';
+import { OfflineStatus } from './offline';
 import { catalogStations, currentStaffingEvent, emptyRegistry, useLegacyStations, useStationRegistry, type WorkStation } from '../../data/workStations';
 import { assignmentKey, stationWritable } from '../../../../../shared/work-stations';
 import { Loading, Missing, backTo, useRun } from './shared';
@@ -41,7 +42,7 @@ export function EventCrew({ctx,event:e}:{ctx:V2Ctx;event:FarmEvent}) {
     go('/manage/broadcasts/new?audience=crew&event=' + encodeURIComponent(e.id) + '&text=' + encodeURIComponent((e.title + '\n' + lines.join('\n')).slice(0,200)));
   };
   return <AppScreen variant="detail" bar={ctx.manager && <BottomBar><Button grow size="bar" icon="megaphone" onClick={send}>לשלוח לצוות את השיבוץ</Button></BottomBar>}>
-    <TopBar back={backTo(e.title,(ctx.manager ? '/manage/events/' : '/farm/events/') + e.id)} />
+    <TopBar back={backTo(e.title,(ctx.manager ? '/manage/events/' : '/farm/events/') + e.id)} end={<OfflineStatus />} />
     <PageTitle>צוות</PageTitle>
     <StatRow><StatTile value={stats.assigned} label="שיבוצים" /><StatTile value={stats.missing} label="תחנות שחסר בהן צוות" /></StatRow>
     {ctx.manager && <div className="events-btnrow">
