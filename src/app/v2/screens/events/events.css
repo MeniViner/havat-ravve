@@ -34,6 +34,13 @@
   background: transparent; border: 0; font: inherit; color: var(--ink); text-align: start;
 }
 
+/* The person link is a separate touch target from the button that opens the order. */
+.events-guestrow__person {
+  flex: none; min-width: 44px; min-height: 44px; display: flex; flex-direction: column; justify-content: center;
+  align-items: center; gap: 0; padding: 0; line-height: 1.25; text-decoration: underline;
+}
+.events-guestrow__person > span { font-size: 13px; }
+
 /* sheets */
 .events-sheet { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
 .events-sheet__meta { margin: 0; font-size: 15px; line-height: 1.6; color: var(--soft); }

@@ -18,6 +18,34 @@ let passed = 0;
 const t = (name, fn) => { try { fn(); passed += 1; } catch (e) { console.error('FAIL', name); throw e; } };
 const of = (sc, id) => { const s = L.seedFor(sc); return { s, tickets: s.collections.tickets.filter((x) => x.eventId === id), tabs: s.collections.tabs.filter((x) => x.eventId === id), allTickets: s.collections.tickets, allTabs: s.collections.tabs }; };
 
+t('an event links an order only to its proven registrant', () => {
+  const attendee = { uid: 'person', customerNumber: 109 };
+  const cashier = { uid: 'cashier', customerNumber: 207 };
+  const people = new Map([[attendee.uid, attendee], [cashier.uid, cashier]]);
+  const ticket = (orderId, ownerUid, extra = {}) => ({ eventId: 'market', orderId, ownerUid, ...extra });
+  const orderReceipt = (eventId, refId, subjectUid, actorUid = subjectUid) => ({
+    kind: 'ticket', action: 'ordered', eventId, refId, subjectUid, by: { uid: actorUid },
+  });
+  const tickets = [
+    ticket('current', 'person', { selfRegistered: true }),
+    ticket('current', 'cashier', { eventId: 'different-event', selfRegistered: false }),
+    ticket('old', 'person'), ticket('old', 'person', { status: 'cancelled' }),
+    ticket('manual', 'cashier', { selfRegistered: false }), ticket('old-manual', 'cashier'),
+    ticket('unproven', 'person'), ticket('missing-profile', 'gone', { selfRegistered: true }),
+    ticket('walk-in', 'cashier', { walkIn: true }), ticket('mixed', 'person', { selfRegistered: true }),
+    ticket('mixed', 'cashier', { selfRegistered: true }), ticket('partly-proven', 'person', { selfRegistered: true }),
+    ticket('partly-proven', 'person', { selfRegistered: false }), ticket('staff-self-order', 'cashier', { selfRegistered: true }),
+  ];
+  const proof = [orderReceipt('market', 'old', 'person'), orderReceipt('market', 'old-manual', '', 'cashier'),
+    orderReceipt('market', 'manual', 'cashier'), orderReceipt('other-event', 'unproven', 'person'), orderReceipt('market', 'walk-in', 'cashier')];
+  const linked = L.eventOrderPeople('market', tickets, proof, people);
+  assert.equal(linked.get('current'), attendee);
+  assert.equal(linked.get('old'), attendee);
+  assert.equal(linked.get('staff-self-order'), cashier);
+  for (const id of ['manual', 'old-manual', 'unproven', 'missing-profile', 'walk-in', 'mixed', 'partly-proven'])
+    assert.equal(linked.get(id), undefined, id);
+});
+
 // ---------- phases and tabs ----------
 const fest = { start: '2026-11-28T14:00:00.000Z', end: '2026-11-28T19:00:00.000Z' };
 t('phaseOf', () => {

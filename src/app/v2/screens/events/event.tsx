@@ -13,20 +13,21 @@ import {
   useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
   cancelOrder, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
 } from '../../../data';
+import { useLegacyTicketActivity, userNumber } from '../../data/manage';
 import { nowIso, nowMs, useClockVersion } from '../../../clock';
 import { gw } from '../../gender';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
 import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
-  filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
+  eventOrderPeople, filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
   isPaid, cancelledOrdersOf, scansFromTickets, summaryExtras, type EventTab, type GuestFilter, type Order,
 } from './logic';
 import { PayConfirmStatus } from './payconfirm';
 import { tableCell, usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
 import { useCounters, useScans, useCash, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
-import { DEFAULT_SETTINGS, PAYMENT_LABELS, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
+import { DEFAULT_SETTINGS, PAYMENT_LABELS, type Profile, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
 
 export function EventScreen({ ctx, params }: ScreenProps) {
   useClockVersion();
@@ -133,6 +134,7 @@ const STATUS_TAG: Record<Order['status'], { tone: 'waiting' | 'neutral' | 'paid'
 };
 /** "סימן שהעביר" / "סימנה שהעבירה" follows the guest (as Q4, Q6 and Q13 word it). */
 const statusTag = (o: Order) => (o.status === 'claimed' ? { ...STATUS_TAG.claimed, text: gw(o.name, 'סימן שהעביר', 'סימנה שהעבירה') } : STATUS_TAG[o.status]);
+const personPath = (p: Profile) => `/manage/people/${encodeURIComponent(p.uid)}`;
 const payTarget = (e: FarmEvent, o: Order): PayConfirmTarget => ({
   collection: 'tickets', ids: o.tickets.map((t) => t.id), uid: o.ownerUid, name: o.name, phone: o.phone, amount: o.total, purpose: `כרטיסים לאירוע ${e.title}`, event: e.title,
 });
@@ -140,6 +142,8 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
   const toast = useToast(); const run = useRun();
   const pay = usePayConfirm();
   const notes = useNotifications(ctx.manager);
+  const legacy = useLegacyTicketActivity(tickets);
+  const peopleByOrder = useMemo(() => eventOrderPeople(e.id, tickets, legacy.items, ctx.peopleByUid), [e.id, tickets, legacy.items, ctx.peopleByUid]);
   const orders = useMemo(() => ordersOf(tickets), [tickets]);
   const cancelled = useMemo(() => cancelledOrdersOf(tickets), [tickets]);
   const allOrders = useMemo(() => [...orders, ...cancelled], [orders, cancelled]);
@@ -193,6 +197,8 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
           )}
           <ul className="k-list">
             {list.map((o) => {
+              const person = peopleByOrder.get(o.orderId);
+              const number = userNumber(person?.customerNumber);
               const tag = o.cancelled ? { tone: 'neutral' as const, text: 'בוטל' } : statusTag(o);
               return (
                 <li key={o.orderId} className="events-guestrow">
@@ -204,6 +210,11 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
                     </span>
                     <b className="events-value">{money(o.owed || o.total)}</b>
                   </button>
+                  {person && number !== undefined && (
+                    <a {...link(personPath(person))} className="k-textlink events-guestrow__person" aria-label={`User ID ${number} · פתיחת התיק של ${person.displayName}`}>
+                      <span dir="ltr">User ID</span><bdi>{number}</bdi>
+                    </a>
+                  )}
                 </li>
               );
             })}
@@ -215,7 +226,7 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
       <ButtonRow>
         <Button variant="outline" size="tall" icon="plus" onClick={() => setAdding(true)}>הוספת נרשם</Button>
       </ButtonRow>
-      <OrderSheet ctx={ctx} e={e} order={opened} onClose={() => setSheet(null)} onApprove={(o) => approve([o])} onConfirm={(o) => pay.ask(payTarget(e, o))}
+      <OrderSheet ctx={ctx} e={e} order={opened} peopleByOrder={peopleByOrder} onClose={() => setSheet(null)} onApprove={(o) => approve([o])} onConfirm={(o) => pay.ask(payTarget(e, o))}
         onCancel={setCancelling} notes={notes.items} />
       <CancelSheet ctx={ctx} order={cancelling} onClose={() => setCancelling(null)} />
       <AddGuestSheet ctx={ctx} e={e} open={adding} onClose={() => setAdding(false)} />
@@ -225,8 +236,8 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
 }
 
 /** The order's row sheet (Q11): what it is, then its actions; cancel and delete in red at the bottom (rule 6). */
-function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, notes }: {
-  ctx: V2Ctx; e: FarmEvent; order: Order | null; onClose: () => void; onApprove: (o: Order) => void; onConfirm: (o: Order) => void; onCancel: (o: Order) => void; notes: AppNotification[];
+function OrderSheet({ ctx, e, order, peopleByOrder, onClose, onApprove, onConfirm, onCancel, notes }: {
+  ctx: V2Ctx; e: FarmEvent; order: Order | null; peopleByOrder: ReadonlyMap<string, Profile | undefined>; onClose: () => void; onApprove: (o: Order) => void; onConfirm: (o: Order) => void; onCancel: (o: Order) => void; notes: AppNotification[];
 }) {
   const open = useExternal(); const toast = useToast(); const run = useRun();
   const remove = useRemove();
@@ -235,6 +246,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
   if (order) last.current = order;
   const o = order || last.current;
   if (!o) return null;
+  const person = peopleByOrder.get(o.orderId);
   const t0 = o.tickets[0];
   const owing = o.owed > 0;
   const paidAll = o.tickets.every((t) => isPaid(t.paymentStatus));
@@ -266,7 +278,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
     { label: 'תזכורת בוואטסאפ', icon: 'message', hidden: !owing || !o.phone, onSelect: remind },
     { label: confirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום', icon: 'mail', hidden: o.cancelled || !paidAll || o.total <= 0, onSelect: () => onConfirm(o) },
     { label: 'התקשרות', icon: 'phone', hidden: !o.phone, onSelect: () => open(telUrl(o.phone)) },
-    { label: `הכרטיס של ${firstName(o.name)}`, icon: 'people', hidden: o.ownerUid === ctx.user.uid, onSelect: () => go(`/manage/people/${o.ownerUid}`) },
+    ...(person ? [{ label: `הכרטיס של ${firstName(person.displayName)}`, icon: 'people' as const, onSelect: () => go(personPath(person)) }] : []),
     { label: 'ביטול ההזמנה', icon: 'close', tone: 'danger', hidden: o.cancelled, onSelect: () => onCancel(o) },
     { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
       title: 'למחוק את ההזמנה?', text: `ההזמנה של ${o.name} (${ticketsWord(o.tickets.length)}) תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.`,

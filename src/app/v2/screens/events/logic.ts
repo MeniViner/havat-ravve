@@ -1,7 +1,8 @@
 // Events area: pure helpers (no data access), shared by the screens and tests/v2-events.mjs.
 import { isFemale as sharedIsFemale } from '../../gender';
+import { registeredTickets } from '../manage/calc';
 // Numbers here are what the screens show: summary sums (M7), debts (V5, M3, M7), guests (M5), staffing (V4, M4), live (M6).
-import type { FarmEvent, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
+import type { Activity, FarmEvent, Profile, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
 import { MONTHS, dayName, ddmm, hhmm, inDays, money, firstName, keyOf } from '../../format';
 
 const TZ = 'Asia/Jerusalem';
@@ -110,6 +111,19 @@ export type Order = {
   /** Every ticket of the order was cancelled (the "בוטלו" chip); ordersOf never returns these. */
   cancelled?: boolean;
 };
+/** A link describes the whole order. A manual, unproven or mixed-owner order has no person target. */
+export function eventOrderPeople(eventId: string, tickets: Ticket[], activity: Activity[], people: ReadonlyMap<string, Profile>) {
+  const registered = new Set(registeredTickets(tickets, activity));
+  const result = new Map<string, Profile | undefined>();
+  for (const t of tickets) {
+    if (t.eventId !== eventId || !t.orderId) continue;
+    const person = registered.has(t) ? people.get(t.ownerUid) : undefined;
+    if (!result.has(t.orderId)) result.set(t.orderId, person);
+    else if (result.get(t.orderId) !== person) result.set(t.orderId, undefined);
+  }
+  return result;
+}
+
 function orderOf(list: Ticket[], cancelled: boolean): Order {
   const t = list[0];
   const owing = cancelled ? [] : list.filter((x) => isOwing(x.paymentStatus));
