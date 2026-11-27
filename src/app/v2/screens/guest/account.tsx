@@ -189,7 +189,8 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const [name, setName] = useState(p.displayName || '');
   const [phone, setPhone] = useState(p.phone || '');
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(p.fields, questions));
-  const [optIn, setOptIn] = useState(!!p.updatesOptIn);
+  const [updatesChoice, setOptIn] = useState<boolean>();
+  const optIn = updatesChoice ?? !!p.updatesOptIn;
   const [birthYear, setBirthYear] = useState<number>();
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -204,7 +205,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]));
     try {
       const changedBirth = birthChange(p, birthYear, ctx.settings.registrationFields);
-      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), ...changedBirth, fields: { ...(changedBirth.fields || p.fields || {}), ...given }, updatesOptIn: optIn, updatedAt: nowIso() });
+      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), ...changedBirth, fields: { ...(changedBirth.fields || p.fields || {}), ...given }, ...(updatesChoice === undefined ? {} : { updatesOptIn: updatesChoice }), updatedAt: nowIso() });
       toast.show({ text: 'נשמר', duration: 2500 }); done();
     } catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); }
     finally { setBusy(false); }

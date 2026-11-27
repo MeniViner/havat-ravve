@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { build } from 'esbuild';
 const emulator = process.env.FIRESTORE_EMULATOR_HOST;
 if (!/^(?:127\.0\.0\.1|localhost):\d+$/.test(emulator || '')) throw Error('Local Firestore emulator required.');
-await build({ entryPoints: ['api/src/contact.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.build/contact-worker-test.mjs' });
-const { handleContact } = await import('../.build/contact-worker-test.mjs');
+await build({ stdin: { contents:"export {handleContact} from './api/src/contact'; export {default as gateway} from './api/src/index';", resolveDir:process.cwd(), loader:'ts' }, bundle: true, platform: 'node', format: 'esm', outfile: '.build/contact-worker-test.mjs' });
+const { handleContact, gateway } = await import('../.build/contact-worker-test.mjs');
 const env = { FIRESTORE_EMULATOR_HOST: emulator, FIRESTORE_PROJECT_ID: 'demo-contact-check' };
 const origin = 'http://localhost:5197';
 const base = 'http://' + emulator + '/v1/projects/demo-contact-check/databases/(default)/documents/';
@@ -16,6 +16,14 @@ const data = { id: randomUUID(), subject: 'פניית בדיקה', message: 'ה�
 assert.equal((await send(data, { origin: 'https://example.invalid' })).status, 403);
 const native = new Request('http://localhost/v1/contact', { method:'OPTIONS', headers:{ origin:'https://localhost' } });
 assert.equal((await handleContact(native, {})).headers.get('access-control-allow-origin'), 'https://localhost');
+for (const name of ['event-reminders','visit-notices']) {
+  const path = 'http://localhost/v1/' + name;
+  const allowed = await gateway.fetch(new Request(path, { method:'OPTIONS', headers:{ origin:'https://localhost' } }), {});
+  assert.equal(allowed.status,204);
+  assert.equal(allowed.headers.get('access-control-allow-origin'),'https://localhost');
+  assert.equal((await gateway.fetch(new Request(path, {method:'POST', headers:{origin:'https://localhost'}, body:'{}'}), {})).status,401);
+  assert.equal((await gateway.fetch(new Request(path, {method:'OPTIONS', headers:{origin:'https://foreign.invalid'}}), {})).status,403);
+}
 assert.equal((await send({ ...data, role: 'owner' })).status, 400);
 assert.equal((await send({ ...data, reply: 'invalid' })).status, 400);
 assert.equal((await send('א'.repeat(4500))).status, 413); // actual bytes, even without Content-Length

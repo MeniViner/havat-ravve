@@ -46,8 +46,15 @@ export const useAllEvents = (enabled: boolean) => useList<FarmEvent>('events', {
 export const useEvent = (id: string, enabled = true) => useDoc<FarmEvent>('events/' + (id || '_'), enabled && !!id);
 export type EventInput = Omit<FarmEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'publishedAt'>;
 /** Old API events may use Jerusalem wall time; current entries carry an explicit time zone. */
-const eventMillis = (value: string) => !value ? NaN : /(Z|[+-]\d\d:\d\d)$/i.test(value)
-  ? Date.parse(value) : Date.parse(isoFromLocal(value.slice(0, 10), value.slice(11, 16)));
+function eventMillis(value: string) {
+  if (!value) return NaN;
+  if (/(Z|[+-]\d\d:\d\d)$/i.test(value)) return Date.parse(value);
+  const wall = /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)(?::([0-5]\d)(?:[.](\d{3}))?)?$/.exec(value);
+  if (!wall || !Number.isFinite(Date.parse(wall[1] + 'T00:00:00Z'))) return NaN;
+  const day = new Date(wall[1] + 'T00:00:00Z');
+  if (day.toISOString().slice(0,10) !== wall[1]) return NaN;
+  return Date.parse(isoFromLocal(wall[1], wall[2])) + Number(wall[3] || 0) * 1000 + Number(wall[4] || 0);
+}
 export async function saveEvent(actor: Actor, data: EventInput, existing?: FarmEvent) {
   const now = nowIso();
   const end = eventMillis(data.end), start = eventMillis(data.start);
