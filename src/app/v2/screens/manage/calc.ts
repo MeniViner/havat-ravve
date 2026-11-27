@@ -187,18 +187,57 @@ export function personMatches(p: Pick<Profile, 'displayName' | 'email' | 'phone'
   const s = q.trim().toLowerCase();
   if (!s) return true;
   const digits = s.replace(/\D/g, '');
-  return p.displayName.toLowerCase().includes(s) || (p.email || '').toLowerCase().includes(s) || (!!digits && (p.phone || '').replace(/\D/g, '').includes(digits)) || String(p.customerNumber) === s.replace(/^#/, '')
+  return p.displayName.toLowerCase().includes(s) || (p.email || '').toLowerCase().includes(s) || (!!digits && (p.phone || '').replace(/\D/g, '').includes(digits)) || (!!userNumber(p.customerNumber) && String(p.customerNumber) === s.replace(/^#/, ''))
     // the answers to the registration questions (town, how they heard of us…)
     || Object.values(p.fields || {}).some((v) => String(v || '').toLowerCase().includes(s));
 }
-/** Alphabetical groups by first letter (Hebrew order). */
-export function letterGroups<T extends { displayName: string }>(people: T[]) {
-  const sorted = [...people].sort((a, b) => a.displayName.localeCompare(b.displayName, 'he'));
-  const m = new Map<string, T[]>();
-  for (const p of sorted) { const l = p.displayName.trim()[0] || '?'; m.set(l, [...(m.get(l) || []), p]); }
-  return [...m.entries()];
+/** Existing numbers are display identifiers; an absent/invalid number must never become a route. */
+export const userNumber = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+
+type NamedPerson = { displayName: string; uid?: string; fields?: Record<string, string> };
+export function letterGroups<T extends NamedPerson>(people: T[], questions: RegistrationField[] = []) {
+  const firstId = questions.find((q) => q.type === 'text' && q.label.trim() === 'שם פרטי')?.id;
+  const lastId = questions.find((q) => q.type === 'text' && q.label.trim() === 'שם משפחה')?.id;
+  const named = people.map((person) => {
+    // Old profiles have a single display name. Keep all words after the first together (e.g. בן דוד).
+    const [given, ...rest] = person.displayName.trim().split(/\s+/);
+    const first = (firstId && person.fields?.[firstId]?.trim()) || given;
+    const last = (lastId && person.fields?.[lastId]?.trim()) || rest.join(' ') || given;
+    return { person, first, last };
+  });
+  named.sort((a, b) => a.last.localeCompare(b.last, 'he') || a.first.localeCompare(b.first, 'he') || (a.person.uid || '').localeCompare(b.person.uid || ''));
+  const groups = new Map<string, T[]>();
+  for (const { person, last } of named) {
+    const letter = last[0] || '?';
+    const group = groups.get(letter);
+    if (group) group.push(person); else groups.set(letter, [person]);
+  }
+  return [...groups.entries()];
 }
 
+const orderKey = (eventId: string, orderId: string) => JSON.stringify([eventId, orderId]);
+/** Legacy ownerUid may be the cashier. Only self-order receipts identify their actual registrant. */
+export function registeredTickets(tickets: Ticket[], activity: Activity[]) {
+  const receipts = new Set(activity
+    .filter((a) => a.kind === 'ticket' && a.action === 'ordered' && a.subjectUid && a.subjectUid === a.by.uid && a.eventId && a.refId)
+    .map((a) => JSON.stringify([a.subjectUid, a.eventId, a.refId])));
+  return tickets.filter((t) => t.ownerUid && !t.walkIn && (t.selfRegistered === true ||
+    (t.selfRegistered === undefined && receipts.has(JSON.stringify([t.ownerUid, t.eventId, t.orderId])))));
+}
+
+/** One row per purchase, including cancelled purchases. Repeat entry scans count as one attendee. */
+export function personOrders(tickets: Ticket[]) {
+  const orders = new Map<string, Ticket[]>();
+  for (const t of tickets) {
+    const key = orderKey(t.eventId, t.orderId);
+    const order = orders.get(key);
+    if (order) order.push(t); else orders.set(key, [t]);
+  }
+  return [...orders.values()].map((order) => {
+    const first = order.reduce((a, b) => a.createdAt < b.createdAt ? a : b);
+    return { first, tickets: order, arrived: order.filter((t) => t.entries > 0).length };
+  }).sort((a, b) => b.first.createdAt.localeCompare(a.first.createdAt) || a.first.orderId.localeCompare(b.first.orderId));
+}
 // ---------- activity (N14) ----------
 export type ActivityFilter = 'all' | 'money' | 'people' | 'tasks' | 'events' | 'shopping' | 'settings' | 'messages';
 export function activityGroup(kind: Activity['kind']): Exclude<ActivityFilter, 'all'> | 'other' {

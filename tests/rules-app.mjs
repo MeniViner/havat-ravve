@@ -300,6 +300,12 @@ try{
  const confirmation={paymentConfirmation:{by:actor('beni'),at:now},updatedAt:now};
  await assertFails(setDoc(doc(anon,'tickets','t0'),tk('anon')));
  await assertSucceeds(setDoc(doc(guest,'tickets','t1'),tk('guest')));
+ await assertSucceeds(setDoc(doc(guest,'tickets','self-marked'),tk('guest',{selfRegistered:true})));
+ await assertSucceeds(setDoc(doc(beni,'tickets','manual-marked'),tk('beni',{selfRegistered:false})));
+ await assertFails(setDoc(doc(guest,'tickets','foreign-marked'),tk('other',{selfRegistered:true})));
+ await assertFails(setDoc(doc(guest,'tickets','invalid-marker'),tk('guest',{selfRegistered:'yes'})));
+ await assertFails(updateDoc(doc(beni,'tickets','manual-marked'),{selfRegistered:true}));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{selfRegistered:true}));
  await assertFails(setDoc(doc(guest,'tickets','forged-send'),tk('guest',confirmation)));
  await assertFails(updateDoc(doc(beni,'tickets','t1'),confirmation));
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('other')));                                   // not own

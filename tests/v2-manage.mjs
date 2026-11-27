@@ -136,6 +136,35 @@ assert.equal(c.isFemale('משה כהן'), false);
 assert.equal(c.isFemale('יהודה לוי'), false);
 assert.equal(c.gw('נועה שחר', 'שינה', 'שינתה'), 'שינתה');
 assert.deepEqual(c.letterGroups([{ displayName: 'בני' }, { displayName: 'אורלי' }, { displayName: 'אליה' }]).map(([l, xs]) => [l, xs.length]), [['א', 2], ['ב', 1]]);
+{
+  const people = [
+    { uid: 'z', displayName: 'תמר כהן' }, { uid: 'b', displayName: 'אייל בן דוד' },
+    { uid: 'a', displayName: 'ארז כהן' }, { uid: 'c', displayName: 'שרה רבקה זיו', fields: { given: 'שרה רבקה', family: 'זיו' } },
+  ];
+  const groups = c.letterGroups(people, [{ id: 'given', type: 'text', label: 'שם פרטי' }, { id: 'family', type: 'text', label: 'שם משפחה' }]);
+  assert.deepEqual(groups.map(([letter, rows]) => [letter, rows.map((p) => p.uid)]), [['ב', ['b']], ['ז', ['c']], ['כ', ['a', 'z']]]);
+  assert.deepEqual([0, null, undefined, '5', 12].map(c.userNumber), [undefined, undefined, undefined, undefined, 12]);
+  const { planCustomerNumbers } = await import('../scripts/plan-customer-numbers.mjs');
+  const local = { counter: { value: 12 }, users: [
+    { uid: 'old', customerNumber: 14 }, { uid: 'same', customerNumber: 14 }, { uid: 'missing' },
+    { uid: 'b', createdAt: '2025-01-01T10:00:00+02:00' }, { uid: 'a', createdAt: '2025-01-01T08:00:00Z' },
+    { uid: 'earlier', createdAt: '2024-01-01T08:00:00Z' },
+  ] };
+  const plan = planCustomerNumbers(local);
+  assert.deepEqual(plan.assignments, [{ uid: 'earlier', customerNumber: 15 }, { uid: 'a', customerNumber: 16 }, { uid: 'b', customerNumber: 17 }]);
+  assert.deepEqual(plan.review.map((row) => row.uid), ['same', 'missing']);
+  assert.deepEqual(planCustomerNumbers({ counter: { value: plan.proposedCounter }, users: local.users.map((p) => ({ ...p, ...plan.assignments.find((x) => x.uid === p.uid) })) }).assignments, []);
+
+  const t = (id, eventId, orderId, opts = {}) => ({ id, eventId, orderId, ownerUid: 'manager', ownerName: 'שם זהה', createdAt: '2026-01-01', entries: 0, ...opts });
+  const receipt = (eventId, refId, subjectUid, byUid) => ({ kind: 'ticket', action: 'ordered', eventId, refId, subjectUid, by: { uid: byUid } });
+  const rows = [t('self', 'a', 'same', { selfRegistered: true, entries: 3 }), t('old', 'b', 'same'), t('old2', 'b', 'same', { entries: 1 }),
+    t('manual', 'a', 'manual', { selfRegistered: false }), t('walk', 'a', 'walk', { walkIn: true }), t('unknown', 'c', 'same'), t('forged', 'x', 'forged')];
+  const proof = [receipt('b', 'same', 'manager', 'manager'), receipt('a', 'manual', 'manager', 'manager'), receipt('a', 'walk', 'manager', 'manager'),
+    receipt('c', 'same', '', 'manager'), receipt('x', 'forged', 'manager', 'other')];
+  const attributable = c.registeredTickets(rows, proof);
+  assert.deepEqual(attributable.map((row) => row.id), ['self', 'old', 'old2']);
+  assert.deepEqual(c.personOrders(attributable).map((o) => [o.first.eventId, o.tickets.length, o.arrived]), [['a', 1, 1], ['b', 2, 1]]);
+}
 assert.equal(c.personMatches({ displayName: 'דוד כהן', email: 'd@x.com', phone: '052-000-0130', customerNumber: 130 }, '0130'), true);
 // registration answers are searched too
 assert.equal(c.personMatches({ displayName: 'דוד כהן', email: 'd@x.com', phone: '', customerNumber: 130, fields: { city: 'רחובות' } }, 'רחוב'), true);

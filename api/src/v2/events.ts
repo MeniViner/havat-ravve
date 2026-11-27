@@ -247,7 +247,7 @@ def('tickets.addGuestOrder', 'tickets:write', 'הוספת נרשם לאירוע 
   const name = c.input.name as string, count = c.input.count as number;
   const ids = Array.from({ length: count }, () => autoId());
   const writes: Write[] = ids.map((id, i) => withServerTime(c.fs.create('tickets', id, {
-    eventId: e.id, eventTitle: e.data.title, orderId, index: i + 1, total: count, ownerUid: c.me.uid, ownerName: name, ownerPhone: c.input.phone || '',
+    eventId: e.id, eventTitle: e.data.title, orderId, index: i + 1, total: count, ownerUid: c.me.uid, selfRegistered: false, ownerName: name, ownerPhone: c.input.phone || '',
     holderName: '', secret: randomSecret(), price, paymentStatus: paid ? 'paid' : price > 0 ? 'pending' : 'free', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: now, updatedAt: now,
   }), paid ? ['paidAt'] : []));
   writes.push(activity(c.fs, c.me, 'ticket', orderId, 'ordered', `${name} · ${count} כרטיסים · ${e.data.title} · נוסף/ה על ידי ${c.me.name}`, { eventId: e.id }));

@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from 'react';
 import { back, navigate, useRoute, useSearch } from '../router';
 import { AppScreen, useExternal, useToast, useV2, waUrl } from './core';
-import { Button, DataTable, PageTitle, PayConfirmSheet, TopBar, type ActionItem, type PayChannel, type TableCell } from './kit';
+import { Button, DataTable, PageTitle, PayConfirmSheet, TopBar, type ActionItem, type PayChannel, type TableCell, type TableCellRenderer } from './kit';
 import { downloadCsv } from './data/manage';
 import { fillTemplate, markPaymentConfirmation, receiptDestination, receiptPreference } from '../data';
 import { DEFAULT_SETTINGS } from '../types';
@@ -24,6 +24,8 @@ export type TableViewSpec = {
   headers: string[];
   /** Read when the table opens or the file downloads, so it always follows the current filter. */
   rows: () => Cell[][];
+  /** Optional screen links. CSV and sorting continue to use the raw scalar values. */
+  renderCell?: TableCellRenderer;
 };
 /**
  * The one way a table view and its CSV write dates and money (Q9), so every list exports alike:
@@ -70,7 +72,7 @@ function TableScreen({ spec, onBack, onDownload }: { spec: TableViewSpec; onBack
         <PageTitle size="detail">{spec.filter ? `${spec.title} · ${spec.filter}` : spec.title}</PageTitle>
         <span className="k-titleblock__sub">{rows.length} שורות · {spec.headers.length} עמודות · כך זה ייראה בקובץ</span>
       </div>
-      <DataTable headers={spec.headers} rows={rows} label={spec.title} />
+      <DataTable headers={spec.headers} rows={rows} label={spec.title} renderCell={spec.renderCell} />
       <p className="k-note">גוררים הצידה כדי לראות את שאר העמודות.</p>
     </AppScreen>
   );

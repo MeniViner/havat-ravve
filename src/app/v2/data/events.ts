@@ -89,7 +89,7 @@ export async function addGuestOrder(actor: Actor, e: FarmEvent, g: { name: strin
   const ops = Array.from({ length: g.count }, (_, i) => {
     const id = newId('tickets'); ids.push(id);
     const t: Omit<Ticket, 'id'> = {
-      eventId: e.id, eventTitle: e.title, orderId, index: i + 1, total: g.count, ownerUid: actor.uid, ownerName: g.name.trim(), ownerPhone: g.phone.trim(),
+      eventId: e.id, eventTitle: e.title, orderId, index: i + 1, total: g.count, ownerUid: actor.uid, selfRegistered: false, ownerName: g.name.trim(), ownerPhone: g.phone.trim(),
       holderName: '', secret: randomSecret(), price: e.price, paymentStatus: status, status: 'valid', scans: [], entries: 0, answers: {}, createdAt: now, updatedAt: now,
     };
     return { op: 'set' as const, col: 'tickets', id, data: t as unknown as Record<string, unknown> };

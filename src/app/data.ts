@@ -81,7 +81,7 @@ export async function orderTickets(profile: Profile, event: FarmEvent, count: nu
     const id = newId('tickets'); ids.push(id);
     const t: Omit<Ticket, 'id'> = {
       eventId: event.id, eventTitle: event.title, orderId, index: i + 1, total: count,
-      ownerUid: profile.uid, ownerName: profile.displayName, ownerPhone: profile.phone, holderName: (holders[i] || '').trim(),
+      ownerUid: profile.uid, selfRegistered: true, ownerName: profile.displayName, ownerPhone: profile.phone, holderName: (holders[i] || '').trim(),
       secret: randomSecret(), price: event.price, paymentStatus, status: 'valid', scans: [], entries: 0, answers, createdAt: now, updatedAt: now,
     };
     return { op: 'set' as const, col: 'tickets', id, data: t as unknown as Record<string, unknown> };

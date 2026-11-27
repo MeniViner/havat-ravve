@@ -19,7 +19,7 @@ import {
   afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
-import { RegistrationQuestions } from './fields';
+import { RegistrationQuestions, RegistrationTerms } from './fields';
 import { forgetVendorInvite } from '../../data/vendor';
 import './system.css';
 
@@ -30,6 +30,7 @@ import './system.css';
 export function WelcomeForm({ user, profile, invite, fields, link }: { user: Session; profile: Profile | null; invite: RoleInvite | null; fields?: RegistrationField[]; link?: string }) {
   const toast = useToast();
   const [name, setName] = useState(profile?.displayName || '');
+  const [termsRead, setTermsRead] = useState(false);
   const [phone, setPhone] = useState(profile?.phone || '');
   const questions = registrationQuestions(fields);
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(profile?.fields, questions));
@@ -40,7 +41,7 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
   const phoneErr = tried && !contactPhoneOk(phone) ? 'מספר טלפון לא תקין' : '';
   const submit = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || (!profile && !termsRead) || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
     try {
@@ -85,7 +86,8 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
           </li>
         </MoreDetails>
       )}
-      <span className="system-note">השם יופיע ליד כל משימה שתבצע. <button type="button" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
+      <span className="system-note">השם יופיע ליד כל משימה שתבצע.</span>
+      {!profile && <RegistrationTerms read={termsRead} onChange={setTermsRead} invalid={tried && !termsRead} />}
     </AppScreen>
   );
 }

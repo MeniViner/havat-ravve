@@ -173,6 +173,9 @@ export type TicketScan = { at: string; by: Actor };
 export type Ticket = {
   id: string; eventId: string; eventTitle: string; orderId: string; index: number; total: number;
   ownerUid: string; ownerName: string; ownerPhone: string; holderName: string;
+  /** Whether the signed-in owner registered personally. Absent on older tickets. */
+  selfRegistered?: boolean;
+  walkIn?: boolean;
   secret: string; price: number; paymentStatus: PaymentStatus; status: 'valid' | 'cancelled';
   scans: TicketScan[]; entries: number; answers: Record<string, string>;
   paymentConfirmation?: PaymentConfirmation;

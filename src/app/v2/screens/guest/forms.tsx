@@ -7,16 +7,14 @@ import { createVisit, createDonation, contactPhoneOk, notify } from '../../../da
 import { createProfile } from '../../../store';
 import { authErrorMessage, signOutUser, type Session } from '../../../firebase';
 import { useDemo, setDemo } from '../../../demo/store';
-import { write } from '../../../db';
-import { nowIso, todayKey } from '../../../clock';
+import { todayKey } from '../../../clock';
 import { back, param } from '../../../router';
 import { DAY_LETTERS, MONTHS, dayName, longDate, money } from '../../format';
 import { registrationQuestions, answersFor, missingAnswers } from '../../data/system';
-import { RegistrationQuestions } from '../system/fields';
+import { RegistrationQuestions, RegistrationTerms } from '../system/fields';
 import type { Settings } from '../../../types';
 import { type GuestCtx, paths, useSignIn, useReceiptChoice, saveReceipt, payWays } from './data';
 import { StepperCard, TotalBlock, ReceiptSelect, Note } from './parts';
-import { UpdatesSwitch } from './account';
 
 // ---------- the date picker (U8) ----------
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -187,7 +185,7 @@ export function ContactForm({ ctx }: { ctx: GuestCtx }) {
 }
 
 // ---------- U13 ----------
-/** First sign-in of a guest: name, phone, the farm's registration questions and the updates switch (off). */
+/** First sign-in of a guest: name, phone, the farm's registration questions and acknowledgement of the terms. */
 export function GuestRegister({ user, settings }: { user: Session; settings: Settings }) {
   return <ToastProvider><Register user={user} settings={settings} /></ToastProvider>;
 }
@@ -197,7 +195,7 @@ function Register({ user, settings }: { user: Session; settings: Settings }) {
   const [name, setName] = useState(user.displayName || '');
   const [phone, setPhone] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor({}, questions));
-  const [optIn, setOptIn] = useState(false);
+  const [termsRead, setTermsRead] = useState(false);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const missing = missingAnswers(answers, questions);
@@ -205,12 +203,11 @@ function Register({ user, settings }: { user: Session; settings: Settings }) {
   const phoneErr = tried && !contactPhoneOk(phone) ? 'מספר טלפון לא תקין' : '';
   const submit = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !termsRead || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
     try {
       await createProfile(user, { displayName: name, phone, fields: given });
-      if (optIn) void write.update('users', user.uid, { updatesOptIn: true, updatedAt: nowIso() }, { quiet: true }).catch(() => {});
     } catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); setBusy(false); }
   };
   return (
@@ -219,8 +216,7 @@ function Register({ user, settings }: { user: Session; settings: Settings }) {
       <Field label="השם שלך בעברית" placeholder="שם פרטי ומשפחה" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" placeholder="05" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
       <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
-      <UpdatesSwitch checked={optIn} onChange={setOptIn} />
-      <Note>בכניסה מסכימים ל<button type="button" className="guest-inlinelink" onClick={() => go('/terms')}>תנאי השימוש והפרטיות</button>.</Note>
+      <RegistrationTerms read={termsRead} onChange={setTermsRead} invalid={tried && !termsRead} />
       <Note>נכנסים עם <bdi>{user.email}</bdi> · <button type="button" className="guest-inlinelink" onClick={() => demo.on ? setDemo({ persona: 'anon' }) : void signOutUser()}>לא אני</button></Note>
     </AppScreen>
   );

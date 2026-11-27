@@ -64,6 +64,41 @@ export function useList<T extends Row>(path: string, spec: Spec, enabled = true)
     return fs;
   }, [fs, local, path, specKey, enabled, v]);
 }
+/** Subscribe to exactly these values, even when they exceed Firestore's 30-value "in" limit. */
+export function useListByValues<T extends Row>(path: string, field: string, ids: string[]): ListState<T> {
+  const local = useDemo().on;
+  const version = useDemoVersion();
+  const key = JSON.stringify([...new Set(ids)].sort());
+  const values = useMemo<string[]>(() => JSON.parse(key), [key, path, field]);
+  const [result, setResult] = useState<{ values: string[]; state: ListState<T> }>();
+  useEffect(() => {
+    if (local || !values.length) return;
+    let active = true;
+    const parts = new Map<number, T[]>();
+    const total = Math.ceil(values.length / 30);
+    const stop = Array.from({ length: total }, (_, i) => {
+      const q = query(collection(db, path), where(field, 'in', values.slice(i * 30, (i + 1) * 30)));
+      return onSnapshot(q, (snap) => {
+        if (!active) return;
+        parts.set(i, snap.docs.map((d) => ({ id: d.id, ...d.data() }) as unknown as T));
+        if (parts.size === total) setResult({ values, state: { items: [...parts.values()].flat(), loading: false, error: '' } });
+      }, (error) => {
+        if (!active) return;
+        active = false;
+        setResult({ values, state: { items: [], loading: false, error: readError(error) } });
+      });
+    });
+    return () => { active = false; stop.forEach((unsubscribe) => unsubscribe()); };
+  }, [local, path, field, values]);
+  return useMemo(() => {
+    if (!values.length) return { items: [], loading: false, error: '' };
+    if (local) {
+      const wanted = new Set(values);
+      return { items: (demoItems(path) as T[]).filter((r) => wanted.has(String(r[field]))), loading: false, error: '' };
+    }
+    return result?.values === values ? result.state : { items: [], loading: true, error: '' };
+  }, [local, version, path, field, values, result]);
+}
 /**
  * The owners' switches (settings/switches). A copy from the phone's offline store may be hours old, so maintenance and
  * read-only count only once the server confirms them: a phone in the field never stays locked after the owners turn
