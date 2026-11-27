@@ -16,7 +16,7 @@ import * as broadcast from './screens/broadcast';
 import * as system from './screens/system';
 import { AppearanceScreen } from './screens/system/appearance';
 
-export type NavTab = 'tasks' | 'shopping' | 'farm' | 'manage' | 'event' | 'vendorEvents' | 'vendorStall' | null;
+export type NavTab = 'map' | 'tasks' | 'shopping' | 'farm' | 'manage' | 'event' | 'vendorEvents' | 'vendorStall' | null;
 type Screen = (p: ScreenProps) => ReactNode;
 /** kind: 'tab' = the bottom nav shows under the screen; 'page' = no nav (detail screens, forms, sheets, gate), exactly as each design shows.
  *  Capture bars are part of the screens that have them (T1, F1, S1 ...), rendered with the kit's CaptureBar. */
@@ -53,7 +53,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/shopping/:id', shopping.ShopItemScreen, 'shopping', 'page'),
   // Farm tab
   R('/farm', farm.FarmRoot, 'farm', 'tab'),
-  R('/farm/map', FarmSurvey, 'farm', 'tab', { owner: true }),
+  R('/farm/map', FarmSurvey, 'map', 'tab'),
   R('/farm/calendar', farm.CalendarScreen, 'farm', 'tab'),
   R('/farm/calendar/new', farm.CalItemForm, 'farm', 'page'),
   R('/farm/calendar/:id/edit', farm.CalItemForm, 'farm', 'page'),
@@ -136,6 +136,7 @@ export const TEAM_ROUTES: Route[] = [
 
 /** Vendors and vendor helpers: only their own world. */
 export const VENDOR_ROUTES: Route[] = [
+  R('/farm/map', FarmSurvey, 'map', 'tab'),
   R('/vendor', vendor.VendorHome, 'vendorEvents', 'tab'),
   R('/vendor/invite/:eventId', vendor.VendorInvite, null, 'page'),
   R('/vendor/events/:id/needs', vendor.VendorNeeds, null, 'page'),
@@ -161,7 +162,7 @@ export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['
   // the guest account page is for guests only: signing in from it (or a bookmark) lands the team and vendors on their profile
   if (route === '/me/account') return search.get('notifications') === '1' ? '/me?notifications=1' : '/me';
   // vendors: their own world, plus the terms, account deletion and contact pages their profile links to (legacy fallback)
-  if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/notifications', '/install', ...VENDOR_LEGACY].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
+  if (role === 'vendor') return route === '/' || !route.startsWith('/vendor') && !['/farm/map', '/notifications', '/install', ...VENDOR_LEGACY].includes(route) && !route.startsWith('/me') ? '/vendor' : null;
   if (route === '/') return '/tasks';
   if (route === '/more') return '/me';
   // the query comes along: ?event=<id> (an event's preparations) and the old ?c=<category> (giveaway is the v2 list "wish")

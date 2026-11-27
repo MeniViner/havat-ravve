@@ -837,3 +837,6 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-titleblock__sub { font-size: 14px; color: var(--soft); }
 /* soft note under a card (Q9, Q12, Q20) */
 .k-note { margin: 0; font-size: 14px; color: var(--soft); line-height: 1.45; }
+
+.k-nav__side { display:flex; flex:1 1 0; min-width:0; }
+.k-nav:has(> .k-nav__side) > .k-nav__item { flex:0 0 clamp(44px, 16%, 90px); }

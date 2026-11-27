@@ -41,7 +41,7 @@ export type Trail = {
   updatedAt: number;
 };
 export type PlacePoint = Fix & { source: 'gps' | 'manual' | 'legacy' };
-export type PlaceDraft = {
+export type PlaceDraft = import('../../../shared/farm-map').MarkerStyle & {
   id: string;
   editing: boolean;
   point: PlacePoint;
@@ -101,4 +101,17 @@ export function unpack(trail: Trail, chunks: { index: number; points: Vertex[] }
     out.push(...chunks[i].points);
   }
   return out.length === trail.count ? out : null;
+}
+
+/** Measured distance and observed time never bridge a pause, a weak fix or a missing segment. */
+export function surveyMetrics(samples: Sample[]) {
+  let meters=0, seconds=0;
+  const rad=Math.PI/180;
+  for(let i=1;i<samples.length;i++){
+    const a=samples[i-1], b=samples[i], dt=b.at-a.at;
+    if(a.segment!==b.segment||a.seq+1!==b.seq||dt<=0||dt>15000||a.quality!=='ok'||b.quality!=='ok')continue;
+    const h=Math.sin((b.lat-a.lat)*rad/2)**2 + Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin((b.lng-a.lng)*rad/2)**2;
+    meters+=12742000*Math.asin(Math.sqrt(Math.min(1,h)));seconds+=dt/1000;
+  }
+  return {meters,seconds:Math.floor(seconds)};
 }

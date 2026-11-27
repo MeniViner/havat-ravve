@@ -301,14 +301,13 @@ export interface NavItem extends Target {
 export interface BottomNavProps extends Base {
   /** 2 to 5 items: vendor 2, staff 3, manager 4, plus "אירוע" on event days. */
   items: NavItem[];
+  center?: string;
   label?: string;
 }
 /** Bottom navigation, 66 high; active = 3px ink top border, bold ink label, aria-current="page". T1, M1. */
-export function BottomNav({ items, label = 'ניווט ראשי', className, style }: BottomNavProps) {
-  return (
-    <nav aria-label={label} className={cx('k-nav', className)} style={style}>
-      {items.map((it) => (
-        <Press
+export function BottomNav({ items, center, label = 'ניווט ראשי', className, style }: BottomNavProps) {
+  const item = (it: NavItem) => (
+    <Press
           key={it.key}
           href={it.href}
           onClick={it.onClick}
@@ -322,9 +321,15 @@ export function BottomNav({ items, label = 'ניווט ראשי', className, sty
           {it.label}
           {!!it.badge && <span className="k-sr">, {it.badge} חדשים</span>}
         </Press>
-      ))}
-    </nav>
   );
+  const at = items.findIndex(it => it.key === center);
+  return <nav aria-label={label} className={cx('k-nav', className)} style={style}>
+    {at < 0 ? items.map(item) : <>
+      <div className="k-nav__side">{items.slice(0, at).map(item)}</div>
+      {item(items[at])}
+      <div className="k-nav__side">{items.slice(at + 1).map(item)}</div>
+    </>}
+  </nav>;
 }
 
 export interface CaptureBarProps extends Base {

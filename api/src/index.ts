@@ -1,5 +1,6 @@
 // Havat Ravve API: a thin gateway between a personal assistant and the farm's Firestore.
 // Stage 1 is synthetic only: synthetic actors, emulator or a separate test project, never production.
+import { publicMap } from './public-map';
 import { CATALOG, CATALOG_VERSION } from './catalog';
 import { authenticate } from './auth';
 import { ApiError, type Meta, fail, ok } from './http';
@@ -176,6 +177,7 @@ export default {
   async fetch(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const meta: Meta = { requestId: 'req_' + autoId(16), started: Date.now() };
     const url = new URL(req.url);
+    if (url.pathname === '/v1/public/map') return publicMap(req, env);
     // the app's images and event files (R2): its own sign-in and CORS, apart from the assistant API below
     if (isFilesPath(url.pathname)) return handleFiles(req, env, url, meta);
     // the site's and the app's visit counter (traffic.ts): public, no sign-in, counters only, always 204

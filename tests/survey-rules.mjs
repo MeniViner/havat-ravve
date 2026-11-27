@@ -45,6 +45,23 @@ try {
   await yes(updateDoc(ref(staff, 'places/gate'), { lat: 51, source: null, measuredAt: null, accuracy: 8 }));
   await no(updateDoc(ref(staff, 'places/gate'), { source: 'gps', measuredAt: 110 }));
   await no(updateDoc(ref(owner, 'places/gate'), { lat: 91 }));
+  const home = {lat:31,lng:35,zoom:15};
+  await yes(setDoc(ref(owner,'farmMap/home'),home));
+  for(const viewer of [guest,staff,manager,identity('vendor'),identity('helper')]){
+    await yes(getDoc(ref(viewer,'farmMap/home')));
+    await no(setDoc(ref(viewer,'farmMap/home'),{...home,zoom:12}));
+    await no(updateDoc(ref(viewer,'places/gate'),{markerIcon:'tree'}));
+  }
+  await no(setDoc(ref(owner,'farmMap/home'),{...home,zoom:20}));
+  await no(setDoc(ref(owner,'farmMap/home'),{...home,privateField:'no'}));
+  await no(getDoc(ref(guest,'places/gate')));
+  await yes(updateDoc(ref(owner,'places/gate'),{markerIcon:'tree',markerDisplay:'icon'}));
+  await no(updateDoc(ref(owner,'places/gate'),{markerIcon:'unsupported'}));
+  await no(updateDoc(ref(owner,'places/gate'),{markerDisplay:'photo'}));
+  await yes(updateDoc(ref(owner,'places/gate'),{markerDisplay:'photo',photo:'data:image/jpeg;base64,YQ=='}));
+  await yes(setDoc(ref(owner,'farmMap/setup'),{entrance:'gate'}));
+  await no(setDoc(ref(staff,'farmMap/setup'),{entrance:'gate'}));
+  await no(getDoc(ref(guest,'farmMap/setup')));
   await no(deleteDoc(ref(owner, 'places/gate')));
   await yes(updateDoc(ref(manager, 'places/gate'), { archived: true }));
   assert.equal((await getDoc(ref(staff, 'places/gate'))).data().archived, true);

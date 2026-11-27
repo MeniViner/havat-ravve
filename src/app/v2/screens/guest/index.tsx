@@ -25,6 +25,7 @@ import { TicketsPage, OrderDetail, PastPage } from './tickets';
 import { AccountPage, SignInPage, ItemsPage, EditPage, MessagesPage, VisitPage, DonationPage, StallPage } from './account';
 import { VisitForm, DonateForm, ContactForm } from './forms';
 import { TermsPage, DeleteAccountPage } from './pages';
+import { PublicFarmMap } from '../farm/PublicFarmMap';
 import './guest.css';
 
 export { GuestRegister } from './forms';
@@ -59,9 +60,9 @@ export function guestScreen(route: string, ctx: GuestCtx): ReactNode | null {
   return null;
 }
 
-type Tab = 'home' | 'tickets' | 'account';
+type Tab = 'map' | 'home' | 'tickets' | 'account';
 const tabOf = (route: string): Tab => (
-  route === '/' || route.startsWith('/events') || ['/visit', '/donate', '/contact'].includes(route) ? 'home'
+  route === '/farm/map' ? 'map' : route === '/' || route.startsWith('/events') || ['/visit', '/donate', '/contact'].includes(route) ? 'home'
     : route === '/me' || route.startsWith('/me/orders') || route === '/me/past' ? 'tickets' : 'account'
 );
 const isCalendarRoute = (route: string) => /^(?:\/manage)?\/calendar(?:\/|$)/.test(route);
@@ -81,18 +82,15 @@ function Shell({ ctx }: { ctx: GuestCtx }) {
     {offline && <Strip icon="offline">{sync.pending ? `אין קליטה. ${sync.pending} פעולות שמורות בטלפון` : 'אין קליטה. הכרטיסים שלך עובדים גם בלי קליטה'}</Strip>}
   </> : null;
   const tab = tabOf(route);
-  const nav = <BottomNav items={[
+  const nav = <BottomNav center="map" items={[
     { key: 'home', label: 'בית', icon: 'home', active: tab === 'home', onClick: () => navigate('/') },
     { key: 'tickets', label: 'הכרטיסים שלי', icon: 'ticket', active: tab === 'tickets', onClick: () => navigate('/me') },
+    { key: 'map', label: 'מפה', icon: 'map', active: tab === 'map', onClick: () => navigate('/farm/map') },
     { key: 'account', label: 'החשבון שלי', icon: 'user', active: tab === 'account', onClick: () => navigate('/me/account') },
   ]} />;
   let screen = guestScreen(route, ctx);
   if (!screen && route === '/install') screen = <InstallScreen ctx={null as never} params={{}} />;
-  if (!screen && route === '/farm/map') {
-    screen = ctx.user
-      ? <AppScreen variant="detail"><TopBar className="guest-pull" back={{ label: 'בית', onClick: () => navigate('/') }} /><EmptyState variant="fill" icon="pin" title="מפת החווה זמינה לבעלים" /></AppScreen>
-      : <SignInPage ctx={ctx} next="/farm/map" />;
-  }
+  if (!screen && route === '/farm/map') screen = <PublicFarmMap />;
   if (!screen && isCalendarRoute(route)) screen = (
     <AppScreen variant="detail"><TopBar className="guest-pull" back={{ label: 'בית', onClick: () => navigate('/') }} /><EmptyState variant="fill" icon="calendar" title="היומן זמין לצוות החווה" /></AppScreen>
   );

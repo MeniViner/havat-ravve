@@ -15,7 +15,7 @@ try {
   if (q && /^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(q)) sessionStorage.setItem(LOCAL_KEY, q);
 } catch { /* storage blocked */ }
 
-function apiBase(): string | null {
+export function apiBase(): string | null {
   if (getDemo().on) return null;
   if (emulatorMode) { try { return sessionStorage.getItem(LOCAL_KEY); } catch { return null; } }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;

@@ -29,6 +29,7 @@ type Props = {
   canUndo: boolean;
   save: (confirm: boolean) => void;
   close: () => void;
+  discard: () => void;
   busy: boolean;
 };
 export function TrailReview({
@@ -45,6 +46,7 @@ export function TrailReview({
   canUndo,
   save,
   close,
+  discard,
   busy,
 }: Props) {
   const t = r.trail,
@@ -178,6 +180,7 @@ export function TrailReview({
       )}
       <fieldset>
         <legend>למי השביל מתאים?</legend>
+        <p>סמנו רק אפשרויות שנבדקו בשטח. עבור השאר, ההתאמה טרם נקבעה.</p>
         <div className="survey-modes">
           {(Object.keys(MODES) as Mode[]).map((m) => (
             <label key={m}>
@@ -298,6 +301,9 @@ export function TrailReview({
         </Button>
         <Button variant="outline" disabled={busy || !t.name.trim()} onClick={() => save(false)}>
           שמירת טיוטה
+        </Button>
+        <Button variant="quiet" disabled={busy} onClick={discard}>
+          ויתור על הטיוטה
         </Button>
         <Button variant="quiet" onClick={close}>
           חזרה לסקר

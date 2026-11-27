@@ -48,7 +48,7 @@ export function PlacesScreen({ ctx }: ScreenProps) {
     <AppScreen variant="detail">
       <TopBar back={placesBack()} end={<MoreMenu title="מקומות" items={table.items.map((i) => ({ ...i, hidden: !ctx.manager || !ctx.places.length }))} />} />
       <PageTitle size="root">מקומות בחווה</PageTitle>
-      {ctx.owner && <Button block icon="pin" onClick={()=>go('/farm/map')}>פתיחת מפת החווה</Button>}
+      <Button block icon="pin" onClick={()=>go('/farm/map')}>פתיחת מפת החווה</Button>
       {point ? <Card><Field label="שם המקום" maxLength={120} value={name} onChange={e=>setName(e.target.value)}/><Button disabled={busy||!name.trim()} onClick={confirm}>שמירת המקום</Button><Button variant="quiet" onClick={()=>setPoint(null)}>ביטול</Button></Card> : <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>}
       {ctx.places.length > 0 ? (
         <Card as="section">

@@ -113,6 +113,9 @@ export default function App() {
   // Z1: the demo start page works for everyone, signed in or not, demo on or off
   if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
+  // A direct public-map link works during onboarding or account restrictions, using only the visitor shell.
+  if (route === '/farm/map' && ((sw.maintenance && !owner && !demo.on) || (user && (!profile || deletion.item || profile.status !== 'active'))))
+    return <GuestRoot user={null} profile={null} settings={settings} />;
   if (sw.maintenance && !owner && !demo.on && route !== '/terms' && route !== '/privacy') return <MaintenancePage text={sw.maintenanceText} />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   const teamLink = isTeamLink(invite);

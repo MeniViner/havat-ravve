@@ -268,14 +268,30 @@ service cloud.firestore {
    allow delete: if false;
   }
   // L3, L4: anyone on the team saves a place where they stand and names it; only managers delete one
+  match /farmMap/setup {
+   allow get: if isOwner();
+   allow create, update: if isOwner() && incoming().keys().hasOnly(['entrance']) && str(incoming().entrance,150)
+     && get(/databases/$(database)/documents/places/$(incoming().entrance)).data.get('archived',false) == false;
+  }
+  match /farmMap/home {
+   allow get: if true;
+   allow create, update: if isOwner() && incoming().keys().hasOnly(['lat','lng','zoom'])
+     && incoming().lat is number && incoming().lat >= -85.05113 && incoming().lat <= 85.05113
+     && incoming().lng is number && incoming().lng >= -180 && incoming().lng <= 180
+     && incoming().zoom is int && incoming().zoom >= 0 && incoming().zoom <= 19;
+   allow delete: if isOwner();
+  }
   match /places/{id} {
    function coordinates(p){return p.lat is number && p.lat >= -90 && p.lat <= 90 && p.lng is number && p.lng >= -180 && p.lng <= 180;}
    function placeExtras(){let p=incoming(); let a=p.get('accuracy',null); return photoOk(p.get('photo','')) && (a == null || (a is number && a >= 0)) && coordinates(p)
+     && p.get('markerIcon','pin') in ['pin','farm','gate','tree','water','bench','parking','view']
+     && p.get('markerDisplay','icon') in ['icon','photo'] && (p.get('markerDisplay','icon')!='photo' || p.get('photo','')!='')
      && str(p.name,120) && p.name.size()>0 && ((p.get('source',null) == null && p.get('measuredAt',null) == null) || (p.source in ['gps','manual'] && p.measuredAt is int && p.measuredAt > 0));}
    allow read: if isStaff();
-   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt'])
-     && (!incoming().keys().hasAny(['source','measuredAt']) || isOwner()) && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
-   allow update: if isStaff() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt'])
+   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt','markerIcon','markerDisplay'])
+     && (!incoming().keys().hasAny(['source','measuredAt','markerIcon','markerDisplay']) || isOwner()) && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
+   allow update: if isStaff() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt','markerIcon','markerDisplay'])
+     && (!changed().hasAny(['markerIcon','markerDisplay']) || isOwner())
      && (isOwner() || (!changed().hasAny(['source','measuredAt']) && (!changed().hasAny(['lat','lng']) || resource.data.get('source',null) == null))
        || (changed().hasAny(['lat','lng']) && incoming().get('source',null) == null && incoming().get('measuredAt',null) == null));
    allow update: if isManager() && changed().hasOnly(['archived']) && incoming().archived is bool;

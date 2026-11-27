@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useBrowserRecording } from './browserRecording';
 import { App } from '@capacitor/app';
 import { demoOnly } from '../demo/store';
 import { connectSurvey, hasSurveyRecorder, recorder, type Level, type Status } from './native';
 import type { Fix, Recording, Sample } from './model';
 
 const blank: Status = { level: 'prompt', enabled: true, notifications: true };
-export function useSurveyLocation(uid: string) {
-  const native = hasSurveyRecorder && !demoOnly();
+export function useSurveyLocation(uid: string, owner = true) {
+  const native = owner && hasSurveyRecorder && !demoOnly();
   const [grant, setGrant] = useState<{ key: string } | null>(null);
   const [status, setStatus] = useState<Status>(blank);
   const [statusReady, setStatusReady] = useState(!native);
@@ -17,6 +18,7 @@ export function useSurveyLocation(uid: string) {
   const [retry, setRetry] = useState(0);
   const [requested, setRequested] = useState(false);
   const [clock, setClock] = useState(Date.now);
+  const browser = useBrowserRecording((demoOnly()?'demo:':'user:')+uid,uid,fix,owner&&!native);
   const position = useRef<{ id: string; items: Sample[] }>({ id: '', items: [] });
   const wake = useCallback(() => refresh((x) => x + 1), []);
   useEffect(() => {
@@ -183,6 +185,7 @@ export function useSurveyLocation(uid: string) {
     }
   }
   async function control(action: 'start' | 'resume' | 'pause' | 'finish' | 'saved', session?: Recording) {
+    if (!native) return browser.control(action,session);
     if (!grant) throw new Error('הקלטת שביל זמינה באפליקציית Android בחשבון בעלים');
     if ((action === 'start' || action === 'resume') && !status.notifications) {
       const s = await recorder.askNotifications(grant);
@@ -196,12 +199,13 @@ export function useSurveyLocation(uid: string) {
   return {
     native,
     grant,
-    status,
+    status: native ? status : {...status,session:browser.session},
+    browserReady: browser.writable,
     statusReady,
     fix,
-    raw,
+    raw: native ? raw : browser.samples,
     clock,
-    issue,
+    issue: issue || browser.issue,
     ask,
     control,
     refresh: () => {
