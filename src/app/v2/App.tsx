@@ -2,6 +2,7 @@
 // refused-write toast (X1), toasts, redirects from old routes, and the centred 390-480 column on wide screens.
 // The guest side has its own shell (screens/guest); a team member reaches guest pages through legacy.teamFallback.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { centeredTab } from '../../../shared/farm-map';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
 import { flush, scopeOf } from '../survey/local';
@@ -32,6 +33,7 @@ export const setViewAsStaff = (on: boolean) => { try { on ? sessionStorage.setIt
 const viewAsStaffOn = () => { try { return sessionStorage.getItem(VIEW_AS_STAFF) === '1'; } catch { return false; } };
 
 type NavItem = { key: Exclude<NavTab, null>; label: string; icon: IconName; href: string; badge?: number };
+const mapTab: NavItem = {key:'map', label:'מפה', icon:'map', href:'/farm/map'};
 const TEAM_NAV: Record<string, NavItem> = {
   tasks: { key: 'tasks', label: 'משימות', icon: 'tasks', href: '/tasks' },
   shopping: { key: 'shopping', label: 'קניות', icon: 'cart', href: '/shopping' },
@@ -61,7 +63,7 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
   </> : null;
-  const navNode = showNav ? <BottomNav items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
+  const navNode = showNav ? <BottomNav center={mapTab.key} items={centeredTab(nav,mapTab).map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   const route = useRoute();
   return (
     <ChromeProvider value={{ top, nav: navNode }}>

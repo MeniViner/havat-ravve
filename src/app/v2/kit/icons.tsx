@@ -7,6 +7,7 @@ import type { CSSProperties } from 'react';
 type El = [tag: 'path' | 'circle' | 'rect', attrs: Record<string, string | number>];
 
 const ICONS = {
+  'map': [['path',{d:'m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15'}]],
   /** person silhouette (photo placeholder) (A1-Photo, A2-Crop) */
   'user': [["circle",{"cx":12,"cy":9,"r":3.5}],["path",{"d":"M5 20a7 7 0 0 1 14 0"}]],
   /** take a photo (A1-Photo, B4-Receive, C12-Profile) */

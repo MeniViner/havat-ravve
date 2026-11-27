@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useList, newId } from '../../../db';
+import { useList, newId, write } from '../../../db';
 import { useOnline, compressPhoto } from '../../../store';
-import { demoOnly, setDemo } from '../../../demo/store';
+import { demoOnly } from '../../../demo/store';
 import type { Place } from '../../../types';
 import { useSurveyLocation } from '../../../survey/useLocation';
 import {
@@ -10,7 +10,7 @@ import {
   geometryOf,
   quality,
   connectionCurrent,
-  MODES,
+  surveyMetrics,
   unpack,
   type PlaceDraft,
   type PlacePoint,
@@ -30,10 +30,13 @@ import {
   scopeOf,
   type Review,
 } from '../../../survey/local';
-import { AppScreen, go, mapsUrl, useExternal } from '../../core';
-import { Button, Field, Icon, TopBar } from '../../kit';
+import { MapWorkspace } from './MapWorkspace';
+import { Setup } from './MapSetup';
+import { PublicFarmMap } from './PublicFarmMap';
+import { markerIcons, type MarkerIcon } from '../../../../../shared/farm-map';
+import { Button, Field, Icon } from '../../kit';
 import type { ScreenProps } from '../../ctx';
-import { SurveyMap, type View } from './SurveyMap';
+import { type View } from './SurveyMap';
 import { TrailReview } from './TrailReview';
 import './survey.css';
 
@@ -53,12 +56,12 @@ function Geometry({ trail, update }: { trail: Trail; update: (key: string, layer
   return null;
 }
 export function FarmSurvey({ ctx }: ScreenProps) {
+  if (!ctx.owner || ctx.viewAsStaff) return <PublicFarmMap />;
   return <Survey key={scopeOf(ctx.user.uid)} ctx={ctx} />;
 }
 function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const scope = scopeOf(ctx.user.uid),
-    online = useOnline(),
-    ext = useExternal();
+    online = useOnline();
   const gps = useSurveyLocation(ctx.user.uid),
     { session } = gps.status;
   const q = quality(gps.fix, gps.clock),
@@ -80,24 +83,17 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const [busy, setBusy] = useState(false),
     lock = useRef(false);
   const [error, setError] = useState(''),
-    [note, setNote] = useState(''),
-    [guide, setGuide] = useState(false);
-  const [selection, setSelection] = useState<'new' | 'place' | 'vertex' | null>(null),
+    [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [tool, setTool] = useState<'menu' | 'places' | 'trails' | 'location' | 'setup'>('menu');
+  const [candidate, setCandidate] = useState<Point | null>(null);
+  const [remove, setRemove] = useState(false);
+  const [selection, setSelection] = useState<'new' | 'place' | 'vertex' | 'draw' | null>(null),
     [anchor, setAnchor] = useState(0);
-  const [selected, setSelected] = useState(''),
-    [search, setSearch] = useState(''),
-    [list, setList] = useState(false);
+  const [selected, setSelected] = useState('');
   const [view, setView] = useState<View | null>(null),
     [undo, setUndo] = useState<Review | null>(null);
-  const mapTop = useRef<HTMLDivElement>(null);
-  const focusPlaceTitle = useCallback((title: HTMLHeadingElement | null) => {
-    title?.focus({ preventScroll: true });
-  }, []);
-  useEffect(() => {
-    if (selection) mapTop.current?.scrollIntoView({ block: 'start' });
-  }, [selection]);
-  const photo = useRef<HTMLInputElement>(null),
-    panel = useRef<HTMLDivElement>(null);
+  const photo = useRef<HTMLInputElement>(null);
   const placeKey = scope + ':place',
     reviewKey = scope + ':review';
   const updateLayer = useCallback((key: string, layer: Layer) => setLayers((v) => ({ ...v, [key]: layer })), []);
@@ -176,9 +172,6 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       })),
     [trails, queue, layers]
   );
-  const query = search.trim(),
-    matches = useMemo(() => places.filter((p) => p.name.includes(query)), [places, query]);
-  const shown = useMemo(() => drawn.filter((t) => t.trail.name.includes(query)), [drawn, query]);
   const active = places.find((p) => p.id === selected);
   const act = async (fn: () => void | Promise<void>) => {
     if (lock.current) return;
@@ -196,12 +189,17 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
     }
   };
   const focus = (point?: Point, points?: Point[]) => setView((v) => ({ id: (v?.id || 0) + 1, point, points }));
-  const reveal = () => setTimeout(() => panel.current?.scrollIntoView({ block: 'nearest' }), 80);
   function beginPlace(point: PlacePoint, p?: Place) {
+    if (place && (!p || place.id !== p.id)) {
+      setError('יש טיוטת מקום פתוחה. שמרו או בטלו אותה לפני עריכת מקום נוסף.');
+      return;
+    }
+    if (place && p?.id === place.id) return;
+    setRemove(false);
+    setTool('places');
     setSelected('');
     setSelection(null);
     setWorkingReview(false);
-    setList(false);
     setDraft({
       id: p?.id || newId('places'),
       editing: !!p,
@@ -209,9 +207,10 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       point,
       name: p?.name || '',
       photo: p?.photo || '',
+      markerIcon: p?.markerIcon || 'pin',
+      markerDisplay: p?.markerDisplay || 'icon',
       selected: true,
     });
-    reveal();
   }
   function chooseVertex(seq: number) {
     setAnchor(seq);
@@ -230,7 +229,55 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
     setAnchor(points.find((p) => p.seq === anchor)?.seq ?? points[0]?.seq ?? 0);
     setNote('הגאומטריה עודכנה. יש לאשר מחדש את אפשרויות המעבר והחיבורים.');
   }
+  function newDrawing() {
+    if (review) {
+      setWorkingReview(true);
+      return;
+    }
+    const id = newId('farmTrails');
+    setWork({
+      trail: {
+        id,
+        name: '',
+        ownerUid: ctx.user.uid,
+        recordingId: id,
+        revision: '',
+        geometry: crypto.randomUUID(),
+        status: 'draft',
+        modes: [],
+        connections: [],
+        count: 0,
+        chunks: 0,
+        updatedAt: 0,
+      },
+      base: '',
+      points: [],
+      dirtyGeometry: true,
+    });
+    setSelection('draw');
+    setWorkingReview(true);
+    setTool('trails');
+    setCandidate(null);
+  }
   function pick(p: Point) {
+    if (selection === 'draw' && review) {
+      setUndo(review);
+      const seq = (review.points.at(-1)?.seq || 0) + 1;
+      setWork({
+        ...review,
+        dirtyGeometry: true,
+        trail: { ...review.trail, geometry: crypto.randomUUID(), status: 'draft', modes: [], connections: [] },
+        points: [...review.points, { ...p, seq, segment: review.points.at(-1)?.segment || 1 }],
+      });
+      setAnchor(seq);
+      return;
+    }
+    setCandidate(p);
+  }
+  function confirmPick() {
+    const p = candidate;
+    if (!p) return;
+    setCandidate(null);
     const point: PlacePoint = { ...p, at: Date.now(), source: 'manual', accuracy: null };
     if (selection === 'new') beginPlace(point);
     if (selection === 'place' && place) setDraft({ ...place, point, selected: true });
@@ -239,11 +286,12 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
     setSelection(null);
   }
   async function savePlace() {
-    if (!place || !place.name.trim() || !coordinate(place.point)) return;
+    if (!editing || !place || !place.name.trim() || !coordinate(place.point)) return;
     await enqueue(scope, { place: { draft: place, actor: ctx.actor, at: new Date().toISOString() } }, placeKey);
     setQueue(await jobs(scope));
     setPlace(null);
     setSelected(place.id);
+    setTool(session ? 'trails' : 'menu');
     setSelection(null);
     setNote('המקום נשמר במכשיר');
     retrySync();
@@ -262,10 +310,8 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
     setUndo(null);
     setSelected('');
     setWorkingReview(true);
-    setList(false);
     setAnchor(d.points[0]?.seq || 0);
     focus(undefined, d.points);
-    reveal();
   }
   function recordingReview() {
     if (!session || session.state !== 'review' || gps.raw.length !== session.count) return;
@@ -299,10 +345,9 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
     setSelected('');
     setAnchor(points[0]?.seq || 0);
     focus(undefined, points);
-    reveal();
   }
   async function saveReview(confirm: boolean) {
-    if (!review) return;
+    if (!editing || !review) return;
     const { points, trail } = review;
     if (confirm && trail.connections.some((c) => !connectionCurrent(c, places, trails))) {
       throw new Error('אחד היעדים השתנה או טרם נטען. בדקו את החיבורים לפני אישור השביל.');
@@ -371,492 +416,662 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       else gps.refresh();
     });
   const prompting = perm === 'prompt' || perm === 'denied' || needsSettings;
+  const startPlace = (id: string) => {
+    const p = places.find((x) => x.id === id);
+    if (p)
+      beginPlace(
+        { lat: p.lat, lng: p.lng, accuracy: p.accuracy, at: p.measuredAt || 0, source: p.source || 'legacy' },
+        p
+      );
+  };
+  const cancelPick = () => {
+    setCandidate(null);
+    setSelection(null);
+  };
+  const gpsPanel = (
+    <section className="survey-panel survey-location">
+      <div className="survey-row">
+        <h2>{statusText}</h2>
+        <i className={'survey-dot ' + (q === 'fresh' ? 'good' : '')} aria-hidden="true" />
+      </div>
+      {gps.statusReady && perm === 'prompt' && (
+        <p>כדי לשמור את המקום שבו עומדים ולהקליט שביל, אפשרו גישה למיקום המדויק בזמן השימוש.</p>
+      )}
+      {(!gps.status.enabled || perm === 'blocked' || perm === 'approximate') && (
+        <p>
+          {!gps.status.enabled
+            ? 'בהגדרות המכשיר הפעילו את שירותי המיקום וחזרו למפה.'
+            : native
+              ? 'בהגדרות האפליקציה בחרו הרשאות ← מיקום ← בזמן השימוש, והפעילו מיקום מדויק.'
+              : 'בהגדרות האתר בדפדפן, אפשרו גישה למיקום וחזרו למפה.'}
+        </p>
+      )}
+      {gps.fix && (
+        <p>
+          {statusText !== fixText && fixText + ' · '}
+          {gps.fix.accuracy != null ? `דיוק משוער ${Math.round(gps.fix.accuracy)} מ׳` : 'הדיוק לא דווח'} ·{' '}
+          {age(gps.fix.at, gps.clock)}
+        </p>
+      )}
+      {!prompting && !gps.fix && <p>ממתינים למדידה מהמכשיר. אפשר לסמן מקום גם ידנית.</p>}
+      {native && !gps.grant && !gps.issue && <p>מאמתים את חשבון הבעלים…</p>}
+      {gps.issue && !['timeout', 'unavailable'].includes(gps.issue) && <p role="alert">{gps.issue}</p>}
+      <Button
+        variant={prompting ? 'primary' : 'quiet'}
+        disabled={busy || (!gps.statusReady && !gps.issue)}
+        onClick={locationAction}
+      >
+        {native && needsSettings ? 'פתיחת ההגדרות' : perm === 'prompt' ? 'לאפשר גישה למיקום' : 'בדיקת מיקום מחדש'}
+      </Button>
+    </section>
+  );
+  const feedback =
+    error ||
+    syncError ||
+    ctx.placesError ||
+    cloud.error ||
+    (Object.values(layers).some((l) => l.error) ? 'חלק מהשבילים עדיין לא נטענו' : '') ||
+    note;
+  const recordingMetrics = useMemo(() => surveyMetrics(gps.raw), [gps.raw]);
+  const seconds =
+    !native && session && 'elapsedMs' in session
+      ? Math.floor(
+          (Number(session.elapsedMs) +
+            (session.state === 'recording' && 'activeSince' in session
+              ? Math.max(0, gps.clock - Number(session.activeSince))
+              : 0)) /
+            1000
+        )
+      : recordingMetrics.seconds;
+  const dock = session && (
+    <div>
+      <b>
+        {
+          { recording: '● מקליט שביל', paused: 'Ⅱ מושהה', interrupted: 'ההקלטה נקטעה', review: 'מוכן לסקירה' }[
+            session.state
+          ]
+        }
+      </b>
+      <span>
+        {' '}
+        · {native ? 'זמן מדוד' : 'זמן הקלטה'}{' '}
+        <bdi>
+          {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+        </bdi>{' '}
+        ·{' '}
+        {recordingMetrics.seconds > 0 ? Math.round(recordingMetrics.meters) + ' מ׳ מדודים' : 'ממתינים למדידת מרחק'}{' '}
+        · {gps.fix?.accuracy != null ? 'דיוק משוער ' + Math.round(gps.fix.accuracy) + ' מ׳' : 'דיוק לא ידוע'}
+      </span>
+      {session.state === 'recording' &&
+        (q === 'stale' || gps.issue === 'timeout' || gps.issue === 'unavailable') && (
+          <strong> · אין עדכון מיקום</strong>
+        )}
+      {session.state === 'recording' && (
+        <button disabled={busy} onClick={() => act(() => gps.control('pause', session))}>
+          השהיית ההקלטה
+        </button>
+      )}
+      {['paused', 'interrupted'].includes(session.state) && (
+        <button
+          disabled={busy || q !== 'fresh' || !current}
+          onClick={() => act(() => gps.control('resume', session))}
+        >
+          חידוש ההקלטה
+        </button>
+      )}
+      {session.state !== 'review' && (
+        <button
+          disabled={busy}
+          onClick={() =>
+            act(async () => {
+              await gps.control('finish', session);
+              setEditing(true);
+              setTool('trails');
+            })
+          }
+        >
+          סיום וסקירה
+        </button>
+      )}
+      {session.state === 'review' && !place && (
+        <button
+          disabled={gps.raw.length !== session.count}
+          onClick={() => {
+            setEditing(true);
+            setTool('trails');
+            recordingReview();
+          }}
+        >
+          פתיחת הסקירה
+        </button>
+      )}
+    </div>
+  );
   return (
-    <AppScreen variant="detail" className="survey-screen">
+    <>
       {cloud.items.map((t) => (
         <Geometry key={t.id + '@' + t.geometry} trail={t} update={updateLayer} />
       ))}
-      <TopBar
-        back={{ label: 'החווה', onClick: () => go('/farm') }}
-        end={
-          <Button variant="quiet" onClick={() => setGuide((v) => !v)}>
-            מדריך הסקר
-          </Button>
-        }
-      />
-      <header className="survey-title">
-        <div>
-          <h1>מפת החווה</h1>
-          <p>
-            {places.length === 1 ? 'מקום אחד' : places.length + ' מקומות'} ·{' '}
-            {trails.length === 1 ? 'שביל אחד' : trails.length + ' שבילים'}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          icon={list ? 'pin' : 'search'}
-          onClick={() => {
-            setList((v) => !v);
-            setSelection(null);
-          }}
-        >
-          {list ? 'מפה' : 'חיפוש ורשימה'}
-        </Button>
-      </header>
-      {demoOnly() && (
-        <section className="survey-panel">
-          <h2>מפת הדגמה</h2>
-          <p>כאן מוצגים מקומות לדוגמה. למדידה ולשמירה במפת החווה, עברו לחשבון שלכם.</p>
-          <Button
-            onClick={() => {
-              setDemo({ on: false });
-              go('/farm/map', true);
-            }}
-          >
-            מעבר לחשבון שלי לסקר שטח
-          </Button>
-        </section>
-      )}
-      {guide && (
-        <section className="survey-panel">
-          <h2>סקר החווה</h2>
-          <ol>
-            <li>פתחו גישה למיקום ובדקו את הדיוק.</li>
-            <li>שמרו מקום בשם שיהיה קל לזהות.</li>
-            <li>התחילו הקלטה והלכו לאורך השביל. אפשר להוסיף מקומות בדרך.</li>
-            <li>בסיום, בדקו את המקטעים ואשרו את המעברים בשטח.</li>
-          </ol>
-          <Button variant="quiet" onClick={() => setGuide(false)}>
-            חזרה למפה
-          </Button>
-        </section>
-      )}
-      {list && (
-        <Field
-          label="חיפוש במפה"
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="שם מקום או שביל"
-        />
-      )}
-      <div ref={mapTop} />
-      <SurveyMap
-        places={matches}
-        trails={shown}
-        live={gps.fix}
-        clock={gps.clock}
-        raw={gps.raw}
-        draft={place?.point}
-        selected={selected}
-        edit={workingReview ? review?.points : undefined}
-        anchor={anchor}
-        selecting={!!selection}
-        online={online}
-        view={view}
-        onPick={pick}
-        onVertex={chooseVertex}
-        onPlace={(id) => {
-          setSelected(id);
-          setList(false);
+      <MapWorkspace
+        gps={gps}
+        editing={editing}
+        toggleEdit={() => {
+          setEditing(!editing);
+          cancelPick();
+          setTool('menu');
         }}
-        onTrail={openTrail}
-      />
-      <div className="survey-tools">
-        <Button variant="quiet" icon="pin" disabled={!gps.fix} onClick={() => gps.fix && focus(gps.fix)}>
-          {q === 'stale' ? 'המדידה האחרונה' : 'המיקום שלי'}
-        </Button>
-        <Button
-          variant="quiet"
-          icon="farm"
-          onClick={() => focus(undefined, [...places, ...drawn.flatMap((t) => t.points)])}
-        >
-          מבט על החווה
-        </Button>
-      </div>
-      {selection && (
-        <section className="survey-panel survey-pick">
-          <b>געו בנקודה הרצויה במפה</b>
-          <Button variant="quiet" onClick={() => setSelection(null)}>
-            ביטול הבחירה
-          </Button>
-        </section>
-      )}
-      {error && (
-        <p className="survey-error" role="alert">
-          {error}
-        </p>
-      )}
-      {note && (
-        <p role="status" className="survey-note">
-          {note}
-        </p>
-      )}
-      {ctx.placesError && <p role="alert">{ctx.placesError}</p>}
-      {cloud.error && <p role="alert">לא ניתן לקרוא את השבילים · {cloud.error}</p>}
-      {Object.values(layers).some((l) => l.error) && <p role="status">חלק מהמקטעים עדיין אינם זמינים במכשיר.</p>}
-      {(ctx.placesLoading || cloud.loading) && <p role="status">טוען מקומות ושבילים…</p>}
-      {list && (
-        <section className="survey-panel">
-          <h2>מקומות ושבילים</h2>
-          {matches.map((p) => (
+        dock={dock}
+        loading={ctx.placesLoading || cloud.loading}
+        feedback={
+          feedback ? (
             <button
-              className="survey-hit"
-              key={p.id}
               onClick={() => {
-                setSelected(p.id);
-                setList(false);
-                if (coordinate(p)) focus(p);
+                setError('');
+                setNote('');
+                if (syncError) retrySync();
               }}
             >
-              <Icon name="pin" />
-              {p.name}
+              {feedback}
             </button>
-          ))}
-          {shown.map((d) => (
-            <button className="survey-hit" key={d.trail.id} onClick={() => openTrail(d.trail.id)}>
-              <Icon name="nav" />
-              {d.trail.name} · {d.trail.status === 'draft' ? 'טיוטה' : 'מאושר'}
-            </button>
-          ))}
-          {!matches.length && !shown.length && (
-            <p>{query ? 'אין תוצאות לחיפוש הזה' : 'עדיין אין מקומות או שבילים שמורים'}</p>
-          )}
-        </section>
-      )}
-      <div ref={panel} />
-      {place && (
-        <section className="survey-panel">
-          <h2>{place.editing ? 'עריכת מקום' : 'שמירת מקום'}</h2>
-          <p>
-            {place.point.source === 'manual'
-              ? 'נקודה שנבחרה במפה'
-              : place.point.source === 'legacy'
-                ? 'נקודה שמורה'
-                : 'נקודה שנמדדה בשטח'}{' '}
-            ·{' '}
-            <bdi>
-              {place.point.lat.toFixed(6)}, {place.point.lng.toFixed(6)}
-            </bdi>
-            {place.point.accuracy != null && ` · דיוק משוער ${Math.round(place.point.accuracy)} מ׳`}
-          </p>
-          <Field
-            label="שם המקום"
-            maxLength={120}
-            value={place.name}
-            onChange={(e) => setDraft({ ...place, name: e.target.value })}
-            placeholder="למשל, שער הכניסה"
-          />
-          {place.photo && <img className="survey-photo" src={place.photo} alt="תמונת המקום" />}
-          <input
-            ref={photo}
-            hidden
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f)
-                void act(async () => {
-                  const image = await compressPhoto(f);
-                  setDraft({ ...place, photo: image });
-                });
-            }}
-          />
-          <div className="survey-actions">
-            <Button variant="quiet" icon="camera" onClick={() => photo.current?.click()}>
-              {place.photo ? 'החלפת תמונה' : 'הוספת תמונה'}
-            </Button>
-            <Button
-              variant="quiet"
-              onClick={() => {
-                setSelection('place');
-                focus(place.point);
-              }}
-            >
-              תיקון במפה
-            </Button>
-            {current && (
-              <Button variant="quiet" onClick={() => setDraft({ ...place, point: { ...current, source: 'gps' } })}>
-                שימוש במדידה הנוכחית
-              </Button>
+          ) : undefined
+        }
+        editPlace={startPlace}
+        editTrail={(id) => {
+          setTool('trails');
+          openTrail(id);
+        }}
+        map={{
+          places,
+          trails: drawn,
+          live: gps.fix,
+          clock: gps.clock,
+          raw: gps.raw,
+          draft: editing ? candidate || place?.point : undefined,
+          selected,
+          edit: editing && workingReview ? review?.points : undefined,
+          anchor,
+          selecting: editing && !!selection,
+          online,
+          view,
+          onPick: pick,
+          onVertex: chooseVertex,
+          onPlace: startPlace,
+          onTrail: openTrail,
+        }}
+      >
+        {editing && (
+          <>
+            {selection && (
+              <section className="survey-panel">
+                <h2>{selection === 'draw' ? 'שרטוט שביל' : 'בחירת נקודה במפה'}</h2>
+                <p>
+                  {selection === 'draw'
+                    ? 'לחצו על המפה להוספת נקודות לפי הסדר.'
+                    : candidate
+                      ? 'הנקודה מסומנת. אפשר לבחור נקודה אחרת או לאשר.'
+                      : 'געו בנקודה הרצויה ואז אשרו את המיקום.'}
+                </p>
+                {selection === 'draw' ? (
+                  <>
+                    <Button disabled={(review?.points.length || 0) < 2} onClick={() => setSelection(null)}>
+                      סקירת התוואי
+                    </Button>
+                    <Button
+                      variant="quiet"
+                      disabled={!review?.points.length}
+                      onClick={() => review && setWork({ ...review, points: review.points.slice(0, -1) })}
+                    >
+                      ביטול נקודה אחרונה
+                    </Button>
+                  </>
+                ) : (
+                  <Button disabled={!candidate} onClick={confirmPick}>
+                    אישור המיקום
+                  </Button>
+                )}
+                <Button
+                  variant="quiet"
+                  onClick={() => {
+                    cancelPick();
+                    if (selection === 'draw') setWorkingReview(false);
+                  }}
+                >
+                  חזרה לכלים
+                </Button>
+              </section>
             )}
-          </div>
-          <div className="survey-actions">
-            <Button disabled={busy || !place.name.trim()} onClick={() => act(savePlace)}>
-              שמירת המקום
-            </Button>
-            <Button
-              variant="quiet"
-              onClick={() => {
-                setDraft(null);
-                setSelection(null);
-              }}
-            >
-              ביטול
-            </Button>
-          </div>
-        </section>
-      )}
-      {!place && workingReview && review && (
-        <TrailReview
-          review={review}
-          places={places}
-          trails={drawn}
-          anchor={anchor}
-          onAnchor={chooseVertex}
-          change={setWork}
-          locate={(p) => {
-            focus(p);
-            mapTop.current?.scrollIntoView({ block: 'start' });
-          }}
-          edit={changeGeometry}
-          move={() => {
-            setSelection('vertex');
-            chooseVertex(anchor);
-          }}
-          undo={() => {
-            if (undo) {
-              setWork(undo);
-              setUndo(null);
-              setNote('התיקון בוטל');
-            }
-          }}
-          canUndo={!!undo}
-          save={(c) => act(() => saveReview(c))}
-          close={() => {
-            setWorkingReview(false);
-            setSelection(null);
-          }}
-          busy={busy}
-        />
-      )}
-      {!place && !workingReview && active && (
-        <section className="survey-panel">
-          <div className="survey-row">
-            <h2 key={active.id} ref={focusPlaceTitle} tabIndex={-1}>{active.name}</h2>
-            <Button variant="quiet" onClick={() => setSelected('')}>
-              סגירה
-            </Button>
-          </div>
-          {drawn
-            .filter((d) => d.trail.status === 'confirmed')
-            .flatMap((d) =>
-              d.trail.connections
-                .filter(
-                  (c) => c.target === 'place' && c.targetId === active.id && connectionCurrent(c, places, trails)
-                )
-                .map((c, i) => {
-                  const entry = d.points.find((v) => v.seq === c.at);
-                  return (
-                    entry && (
-                      <Button
-                        key={d.trail.id + i}
-                        variant="quiet"
-                        icon="pin"
-                        onClick={() => {
-                          focus(entry);
-                          mapTop.current?.scrollIntoView({ block: 'start' });
-                        }}
-                      >
-                        כניסה ל{MODES[c.mode]} · {d.trail.name}
+            {!selection && !place && !workingReview && (
+              <>
+                {tool !== 'menu' && (
+                  <Button variant="quiet" onClick={() => setTool('menu')}>
+                    כל כלי העריכה
+                  </Button>
+                )}
+                {tool === 'menu' && (
+                  <>
+                    <h2>עריכת המפה</h2>
+                    <Button icon="pin" variant="outline" onClick={() => setTool('places')}>
+                      מקומות
+                    </Button>
+                    <Button icon="nav" variant="outline" onClick={() => setTool('trails')}>
+                      שבילים והקלטה
+                    </Button>
+                    <Button variant="quiet" onClick={() => setTool('setup')}>
+                      הגדרה ראשונית
+                    </Button>
+                    {review && <Button onClick={() => setWorkingReview(true)}>המשך טיוטת השביל</Button>}
+                  </>
+                )}
+                {tool === 'places' && (
+                  <>
+                    <h2>מקומות בחווה</h2>
+                    <Button
+                      disabled={!ready || !current}
+                      onClick={() => current && beginPlace({ ...current, source: 'gps' })}
+                    >
+                      שמירת מקום כאן
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={!ready}
+                      onClick={() => {
+                        setSelection('new');
+                        setCandidate(null);
+                      }}
+                    >
+                      בחירה ידנית במפה
+                    </Button>
+                    {!current && (
+                      <Button variant="quiet" onClick={() => setTool('location')}>
+                        בדיקת גישה למיקום
                       </Button>
-                    )
-                  );
-                })
+                    )}
+                    {places.map((p) => (
+                      <button className="survey-hit" key={p.id} onClick={() => startPlace(p.id)}>
+                        <Icon name="edit" />
+                        {p.name}
+                      </button>
+                    ))}
+                  </>
+                )}
+                {(tool === 'location' || tool === 'trails') && gpsPanel}
+                {tool === 'setup' && (
+                  <Setup
+                    scope={scope}
+                    places={places}
+                    trails={trails}
+                    gpsPanel={gpsPanel}
+                    onPlaces={() => setTool('places')}
+                    onTrails={() => setTool('trails')}
+                  />
+                )}
+              </>
             )}
-          {active.photo && <img className="survey-photo" src={active.photo} alt={active.name} />}
-          <div className="survey-actions">
-            <Button
-              variant="outline"
-              onClick={() =>
-                beginPlace(
-                  {
-                    lat: active.lat,
-                    lng: active.lng,
-                    accuracy: active.accuracy,
-                    at: active.measuredAt || 0,
-                    source: active.source || 'legacy',
-                  },
-                  active
-                )
-              }
-            >
-              עריכת מקום
-            </Button>
-            <Button variant="quiet" onClick={() => go('/places/' + active.id)}>
-              פרטי המקום ומשימות
-            </Button>
-            <Button variant="quiet" onClick={() => ext(mapsUrl(active.lat, active.lng))}>
-              ניווט חיצוני ב־Google Maps
-            </Button>
-          </div>
-        </section>
-      )}
-      <section className="survey-panel survey-location">
-        <div className="survey-row">
-          <h2>{statusText}</h2>
-          <i className={'survey-dot ' + (q === 'fresh' ? 'good' : '')} aria-hidden="true" />
-        </div>
-        {gps.statusReady && perm === 'prompt' && (
-          <p>כדי לשמור את המקום שבו עומדים ולהקליט שביל, אפשרו גישה למיקום המדויק בזמן השימוש.</p>
-        )}
-        {(!gps.status.enabled || perm === 'blocked' || perm === 'approximate') && (
-          <p>
-            {!gps.status.enabled
-              ? 'בהגדרות המכשיר הפעילו את שירותי המיקום וחזרו למפה.'
-              : native
-                ? 'בהגדרות האפליקציה בחרו הרשאות ← מיקום ← בזמן השימוש, והפעילו מיקום מדויק.'
-                : 'בהגדרות האתר בדפדפן, אפשרו גישה למיקום וחזרו למפה.'}
-          </p>
-        )}
-        {gps.fix && (
-          <p>
-            {statusText !== fixText && fixText + ' · '}
-            {gps.fix.accuracy != null ? `דיוק משוער ${Math.round(gps.fix.accuracy)} מ׳` : 'הדיוק לא דווח'} ·{' '}
-            {age(gps.fix.at, gps.clock)}
-          </p>
-        )}
-        {!prompting && !gps.fix && <p>ממתינים למדידה מהמכשיר. אפשר לסמן מקום גם ידנית.</p>}
-        {native && !gps.grant && !gps.issue && <p>מאמתים את חשבון הבעלים…</p>}
-        {gps.issue && !['timeout', 'unavailable'].includes(gps.issue) && <p role="alert">{gps.issue}</p>}
-        <Button
-          variant={prompting ? 'primary' : 'quiet'}
-          disabled={busy || (!gps.statusReady && !gps.issue)}
-          onClick={locationAction}
-        >
-          {native && needsSettings ? 'פתיחת ההגדרות' : perm === 'prompt' ? 'לאפשר גישה למיקום' : 'בדיקת מיקום מחדש'}
-        </Button>
-      </section>
-      {!place && !workingReview && (
-        <section className="survey-panel">
-          <h2>{session ? 'הסקר הנוכחי' : places.length ? 'המשך הסקר' : 'המקום הראשון בחווה'}</h2>
-          {session && (
-            <p>
-              <b>
-                {
-                  {
-                    recording: 'מקליט שביל',
-                    paused: 'ההקלטה מושהית',
-                    interrupted: 'ההקלטה נקטעה',
-                    review: 'ההקלטה מוכנה לסקירה',
-                  }[session.state]
-                }
-              </b>{' '}
-              · {session.count === 1 ? 'מדידה אחת שמורה' : session.count + ' מדידות שמורות'} במכשיר
-              {session.lastAt && ' · מדידה אחרונה ' + age(session.lastAt, gps.clock)}
-            </p>
-          )}
-          {session?.state === 'interrupted' && <p>המשך ההקלטה יפתח מקטע חדש. המדידות הקודמות שמורות.</p>}
-          <div className="survey-actions">
-            {!session && !review && native && (
+            {place && !selection && (
+              <section className="survey-panel">
+                <h2>{place.editing ? 'עריכת מקום' : 'שמירת מקום'}</h2>
+                <p>
+                  {place.point.source === 'manual'
+                    ? 'נקודה שנבחרה במפה'
+                    : place.point.source === 'legacy'
+                      ? 'נקודה שמורה'
+                      : 'נקודה שנמדדה בשטח'}{' '}
+                  ·{' '}
+                  <bdi>
+                    {place.point.lat.toFixed(6)}, {place.point.lng.toFixed(6)}
+                  </bdi>
+                  {place.point.accuracy != null && ` · דיוק משוער ${Math.round(place.point.accuracy)} מ׳`}
+                </p>
+                <Field
+                  label="שם המקום"
+                  maxLength={120}
+                  value={place.name}
+                  onChange={(e) => setDraft({ ...place, name: e.target.value })}
+                  placeholder="למשל, שער הכניסה"
+                />
+                {place.photo && <img className="survey-photo" src={place.photo} alt="תמונת המקום" />}
+                <input
+                  ref={photo}
+                  hidden
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f)
+                      void act(async () => {
+                        const image = await compressPhoto(f);
+                        setDraft({ ...place, photo: image });
+                      });
+                  }}
+                />
+                <fieldset>
+                  <legend>סמן במפה</legend>
+                  <label className="map-choice">
+                    <input
+                      type="radio"
+                      checked={place.markerDisplay !== 'photo'}
+                      onChange={() => setDraft({ ...place, markerDisplay: 'icon' })}
+                    />
+                    אייקון
+                  </label>
+                  <label className="map-choice">
+                    <input
+                      type="radio"
+                      disabled={!place.photo}
+                      checked={place.markerDisplay === 'photo'}
+                      onChange={() => setDraft({ ...place, markerDisplay: 'photo' })}
+                    />
+                    תמונה ממוזערת{!place.photo && ' · יש להוסיף תמונה'}
+                  </label>
+                  {place.markerDisplay !== 'photo' && (
+                    <label>
+                      אייקון המקום{' '}
+                      <select
+                        aria-label="אייקון המקום"
+                        value={place.markerIcon || 'pin'}
+                        onChange={(e) => setDraft({ ...place, markerIcon: e.target.value as MarkerIcon })}
+                      >
+                        {Object.entries(markerIcons).map(([k, v]) => (
+                          <option key={k} value={k}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </fieldset>
+                {place.editing && (
+                  <div>
+                    {remove ? (
+                      <>
+                        <p>
+                          להסיר את „{place.name}” מהמפה? הפניות היסטוריות יישמרו.{' '}
+                          {
+                            trails.filter((t) =>
+                              t.connections.some((c) => c.target === 'place' && c.targetId === place.id)
+                            ).length
+                          }{' '}
+                          שבילים מקושרים למקום.
+                        </p>
+                        <Button
+                          disabled={busy}
+                          onClick={() =>
+                            act(async () => {
+                              await write.batch(
+                                [{ op: 'update', col: 'places', id: place.id, data: { archived: true } }],
+                                { wait: true }
+                              );
+                              setDraft(null);
+                              setSelected('');
+                              setRemove(false);
+                              setTool('menu');
+                              setNote('המקום הוסר מהמפה');
+                            })
+                          }
+                        >
+                          אישור הסרת המקום
+                        </Button>
+                        <Button variant="quiet" onClick={() => setRemove(false)}>
+                          ביטול הסרה
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="quiet" onClick={() => setRemove(true)}>
+                        הסרת המקום מהמפה
+                      </Button>
+                    )}
+                  </div>
+                )}
+                <div className="survey-actions">
+                  <Button variant="quiet" icon="camera" onClick={() => photo.current?.click()}>
+                    {place.photo ? 'החלפת תמונה' : 'הוספת תמונה'}
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    onClick={() => {
+                      setSelection('place');
+                      focus(place.point);
+                    }}
+                  >
+                    תיקון במפה
+                  </Button>
+                  {current && (
+                    <Button
+                      variant="quiet"
+                      onClick={() => setDraft({ ...place, point: { ...current, source: 'gps' } })}
+                    >
+                      שימוש במדידה הנוכחית
+                    </Button>
+                  )}
+                </div>
+                <div className="survey-actions">
+                  <Button disabled={busy || !place.name.trim()} onClick={() => act(savePlace)}>
+                    שמירת המקום
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    onClick={() => {
+                      setDraft(null);
+                      setSelection(null);
+                    }}
+                  >
+                    ביטול
+                  </Button>
+                </div>
+              </section>
+            )}
+            {!place && !selection && workingReview && review && (
               <Button
-                variant={places.length ? 'primary' : 'outline'}
-                disabled={busy || !ready || !gps.grant || perm !== 'precise' || !gps.status.enabled}
-                onClick={() => act(() => gps.control('start'))}
-              >
-                התחלת הקלטת שביל
-              </Button>
-            )}
-            {session?.state === 'recording' && (
-              <Button variant="outline" disabled={busy} onClick={() => act(() => gps.control('pause', session))}>
-                השהיה
-              </Button>
-            )}
-            {(session?.state === 'paused' || session?.state === 'interrupted') && (
-              <Button
-                disabled={busy || perm !== 'precise' || !gps.status.enabled}
-                onClick={() => act(() => gps.control('resume', session))}
-              >
-                המשך הקלטה
-              </Button>
-            )}
-            {session && session.state !== 'review' && (
-              <Button variant="outline" disabled={busy} onClick={() => act(() => gps.control('finish', session))}>
-                סיום ההקלטה
-              </Button>
-            )}
-            {session?.state === 'review' && !review && (
-              <Button disabled={busy || gps.raw.length !== session.count} onClick={recordingReview}>
-                סקירה ושמירה
-              </Button>
-            )}
-            {review && (
-              <Button
+                variant="outline"
                 onClick={() => {
-                  setWorkingReview(true);
-                  focus(undefined, review.points);
+                  setSelection('draw');
+                  setCandidate(null);
                 }}
               >
-                חזרה לעריכת השביל
+                הוספת נקודות לתוואי
               </Button>
             )}
-            <Button
-              variant={places.length ? 'outline' : 'primary'}
-              icon="pin"
-              disabled={!ready || !current}
-              onClick={() => current && beginPlace({ ...current, source: 'gps' })}
-            >
-              שמירת מקום כאן
-            </Button>
-            <Button
-              variant="quiet"
-              disabled={!ready}
-              onClick={() => {
-                setSelection('new');
-                setList(false);
-                setSelected('');
-              }}
-            >
-              בחירה ידנית במפה
-            </Button>
-          </div>
-          {!native && (
-            <p>
-              {demoOnly()
-                ? 'הקלטת הליכה זמינה באפליקציית Android אחרי כניסה לחשבון הבעלים.'
-                : 'להקלטה בזמן נעילת המסך, פתחו את המפה באפליקציית Android של החווה.'}
-            </p>
-          )}
-          {native && !gps.status.notifications && (
-            <Button variant="quiet" onClick={() => act(() => gps.settings('notifications'))}>
-              הגדרות התראות להקלטה
-            </Button>
-          )}
-        </section>
-      )}
-      {native && session?.state === 'recording' && (place || workingReview) && (
-        <p className="survey-note" role="status">
-          הקלטת השביל נמשכת · {session.count === 1 ? 'מדידה אחת שמורה' : session.count + ' מדידות שמורות'}
-        </p>
-      )}
-      {queue.length > 0 && (
-        <section className="survey-panel">
-          <h2>{queue.length === 1 ? 'שמירה אחת ממתינה לסנכרון' : queue.length + ' שמירות ממתינות לסנכרון'}</h2>
-          <p>{syncError || 'הנתונים שמורים במכשיר ויישלחו כשיהיה חיבור.'}</p>
-          <Button variant="outline" onClick={retrySync}>
-            ניסיון סנכרון נוסף
-          </Button>
-          {syncError.includes('השתנה') && (
-            <Button
-              variant="quiet"
-              onClick={() =>
-                act(async () => {
-                  await recoverJob(scope, queue[0].key);
-                  setPlace((await readDraft<PlaceDraft>(placeKey)) ?? null);
-                  retrySync();
-                })
-              }
-            >
-              שמירה כעותק נפרד
-            </Button>
-          )}
-        </section>
-      )}
-      {!queue.length && note.includes('נשמר') && (
-        <p className="survey-note">{demoOnly() ? 'נשמר במצב ההדגמה' : 'הסנכרון הושלם'}</p>
-      )}
-    </AppScreen>
+            {!place && !selection && workingReview && review && (
+              <TrailReview
+                review={review}
+                places={places}
+                trails={drawn}
+                anchor={anchor}
+                onAnchor={chooseVertex}
+                change={setWork}
+                locate={(p) => {
+                  focus(p);
+                }}
+                edit={changeGeometry}
+                move={() => {
+                  setSelection('vertex');
+                  chooseVertex(anchor);
+                }}
+                undo={() => {
+                  if (undo) {
+                    setWork(undo);
+                    setUndo(null);
+                    setNote('התיקון בוטל');
+                  }
+                }}
+                canUndo={!!undo}
+                save={(c) => act(() => saveReview(c))}
+                close={() => {
+                  setTool('trails');
+                  setWorkingReview(false);
+                  setSelection(null);
+                }}
+                discard={() =>
+                  act(async () => {
+                    if (!window.confirm('לוותר על טיוטת השביל במכשיר?')) return;
+                    if (session?.state === 'review' && session.id === review.trail.id)
+                      await gps.control('saved', session);
+                    setWork(null);
+                    setWorkingReview(false);
+                    setTool('trails');
+                  })
+                }
+                busy={busy}
+              />
+            )}
+            {!place && !workingReview && !selection && tool === 'trails' && (
+              <section className="survey-panel">
+                <h2>{session ? 'הסקר הנוכחי' : places.length ? 'המשך הסקר' : 'המקום הראשון בחווה'}</h2>
+                {session && (
+                  <p>
+                    <b>
+                      {
+                        {
+                          recording: 'מקליט שביל',
+                          paused: 'ההקלטה מושהית',
+                          interrupted: 'ההקלטה נקטעה',
+                          review: 'ההקלטה מוכנה לסקירה',
+                        }[session.state]
+                      }
+                    </b>{' '}
+                    · {session.count === 1 ? 'מדידה אחת שמורה' : session.count + ' מדידות שמורות'} במכשיר
+                    {session.lastAt && ' · מדידה אחרונה ' + age(session.lastAt, gps.clock)}
+                  </p>
+                )}
+                {session?.state === 'interrupted' && <p>המשך ההקלטה יפתח מקטע חדש. המדידות הקודמות שמורות.</p>}
+                <div className="survey-actions">
+                  {!session && !review && (
+                    <Button
+                      variant={places.length ? 'primary' : 'outline'}
+                      disabled={
+                        busy ||
+                        !ready ||
+                        (!native && !gps.browserReady) ||
+                        (native && !gps.grant) ||
+                        !current ||
+                        q !== 'fresh' ||
+                        (native && perm !== 'precise') ||
+                        !gps.status.enabled
+                      }
+                      onClick={() => act(() => gps.control('start'))}
+                    >
+                      התחלת הקלטת שביל
+                    </Button>
+                  )}
+                  {session?.state === 'recording' && (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => act(() => gps.control('pause', session))}
+                    >
+                      השהיה
+                    </Button>
+                  )}
+                  {(session?.state === 'paused' || session?.state === 'interrupted') && (
+                    <Button
+                      disabled={
+                        busy || !current || q !== 'fresh' || (native && perm !== 'precise') || !gps.status.enabled
+                      }
+                      onClick={() => act(() => gps.control('resume', session))}
+                    >
+                      המשך הקלטה
+                    </Button>
+                  )}
+                  {session && session.state !== 'review' && (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => act(() => gps.control('finish', session))}
+                    >
+                      סיום ההקלטה
+                    </Button>
+                  )}
+                  {session?.state === 'review' && !review && (
+                    <Button disabled={busy || gps.raw.length !== session.count} onClick={recordingReview}>
+                      סקירה ושמירה
+                    </Button>
+                  )}
+                  {review && (
+                    <Button
+                      onClick={() => {
+                        setWorkingReview(true);
+                        focus(undefined, review.points);
+                      }}
+                    >
+                      חזרה לעריכת השביל
+                    </Button>
+                  )}
+                  {review && !session && (
+                    <Button
+                      variant="quiet"
+                      onClick={() => {
+                        if (window.confirm('למחוק את טיוטת העריכה מהמכשיר?')) {
+                          setWork(null);
+                          setWorkingReview(false);
+                        }
+                      }}
+                    >
+                      מחיקת טיוטת העריכה
+                    </Button>
+                  )}
+                  {!review && !session && (
+                    <Button variant="outline" onClick={newDrawing}>
+                      שרטוט שביל במפה
+                    </Button>
+                  )}
+                  {session && (
+                    <Button variant="quiet" onClick={() => setTool('places')}>
+                      הוספת מקום או תמונה
+                    </Button>
+                  )}
+                  {drawn.map((d) => (
+                    <Button key={d.trail.id} variant="quiet" onClick={() => openTrail(d.trail.id)}>
+                      {d.trail.name} · {d.trail.status === 'confirmed' ? 'עריכה וחיבורים' : 'טיוטה'}
+                    </Button>
+                  ))}
+                </div>
+                {!native && (
+                  <p>
+                    {demoOnly()
+                      ? 'בהדגמה אפשר להקליט מדידות מהמכשיר כשהמפה פתוחה.'
+                      : 'להקלטה בזמן נעילת המסך, פתחו את המפה באפליקציית Android של החווה.'}
+                  </p>
+                )}
+                {native && !gps.status.notifications && (
+                  <Button variant="quiet" onClick={() => act(() => gps.settings('notifications'))}>
+                    הגדרות התראות להקלטה
+                  </Button>
+                )}
+              </section>
+            )}
+            {queue.length > 0 && (
+              <section className="survey-panel">
+                <h2>
+                  {queue.length === 1 ? 'שמירה אחת ממתינה לסנכרון' : queue.length + ' שמירות ממתינות לסנכרון'}
+                </h2>
+                <p>{syncError || 'הנתונים שמורים במכשיר ויישלחו כשיהיה חיבור.'}</p>
+                <Button variant="outline" onClick={retrySync}>
+                  ניסיון סנכרון נוסף
+                </Button>
+                {syncError.includes('השתנה') && (
+                  <Button
+                    variant="quiet"
+                    onClick={() =>
+                      act(async () => {
+                        await recoverJob(scope, queue[0].key);
+                        setPlace((await readDraft<PlaceDraft>(placeKey)) ?? null);
+                        retrySync();
+                      })
+                    }
+                  >
+                    שמירה כעותק נפרד
+                  </Button>
+                )}
+              </section>
+            )}
+            {!queue.length && note.includes('נשמר') && (
+              <p className="survey-note">{demoOnly() ? 'נשמר במצב ההדגמה' : 'הסנכרון הושלם'}</p>
+            )}
+          </>
+        )}
+      </MapWorkspace>
+    </>
   );
 }

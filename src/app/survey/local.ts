@@ -89,6 +89,8 @@ export function placeFields(job: PlaceJob) {
     lat,
     lng,
     photo: draft.photo,
+    ...(draft.markerIcon ? {markerIcon:draft.markerIcon} : {}),
+    ...(draft.markerDisplay ? {markerDisplay:draft.photo ? draft.markerDisplay : 'icon'} : {}),
     accuracy: accuracy ?? null,
     ...(source === 'legacy' ? {} : { source, measuredAt: draft.point.at }),
     ...(draft.editing ? {} : { createdBy: actor, createdAt: at }),
@@ -108,6 +110,7 @@ async function applyPlace(tx: Tx, job: PlaceJob, key: string) {
         (current.lat !== draft.original.lat ||
           current.lng !== draft.original.lng ||
           current.name !== draft.original.name ||
+          current.markerIcon !== draft.original.markerIcon || current.markerDisplay !== draft.original.markerDisplay ||
           (current.photo || '') !== (draft.original.photo || '')))
     )
       throw new Error('המקום השתנה במכשיר אחר. הטיוטה שלך נשמרה');

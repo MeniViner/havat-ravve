@@ -232,3 +232,300 @@
   outline: 3px solid var(--action);
   outline-offset: 2px;
 }
+
+/* The canvas occupies the whole area between the shell strips and bottom navigation. */
+.k-screen.map-workspace {
+  max-width: none;
+  --map-pine: #214e3c;
+  --map-paper: #fffefa;
+  --map-shadow: 0 2px 14px #19362926;
+}
+.map-workspace .k-screen__body {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.map-workspace .map-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  isolation: isolate;
+}
+.map-stage > .survey-map,
+.map-stage .survey-map-canvas {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+.map-head,
+.map-controls,
+.map-sheet,
+.map-feedback,
+.map-dock,
+.map-demo {
+  position: absolute;
+  z-index: 2;
+}
+.map-head {
+  inset-block-start: 12px;
+  inset-inline-start: max(12px, env(safe-area-inset-right));
+  inset-inline-end: 76px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.map-head > * {
+  pointer-events: auto;
+}
+.map-search,
+.map-controls,
+.map-sheet,
+.map-dock,
+.map-feedback:not(:empty),
+.map-demo {
+  background: var(--map-paper);
+  color: #213b2e;
+  border: 1px solid #cbd5c8;
+  border-radius: 12px;
+  box-shadow: var(--map-shadow);
+}
+.map-search {
+  width: min(22rem, 100%);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 12px;
+}
+.map-search input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.map-head .k-btn {
+  white-space: nowrap;
+  background: var(--map-pine);
+  color: white;
+}
+.map-controls {
+  inset-inline-end: 12px;
+  top: 120px;
+  display: grid;
+  overflow: hidden;
+}
+.map-controls button,
+.map-close {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  background: var(--map-paper);
+  color: var(--map-pine);
+  border: 0;
+  cursor: pointer;
+}
+.map-controls button + button {
+  border-top: 1px solid #dbe0d8;
+}
+.map-controls [aria-pressed='true'] {
+  background: #d5ecdc;
+}
+.map-sheet {
+  inset-inline-start: 12px;
+  top: 74px;
+  width: min(360px, 45%);
+  max-height: calc(100% - 115px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.map-sheet h2 {
+  margin: 0;
+  font-size: 1.12rem;
+  padding-inline-end: 40px;
+}
+.map-sheet p {
+  margin: 2px 0;
+}
+.map-sheet .survey-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.map-close {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 1px;
+  background: transparent;
+}
+.map-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.map-stage .leaflet-control-zoom {
+  margin: 12px;
+}
+.map-stage .survey-tile-status {
+  top: auto;
+  bottom: 24px;
+  inset-inline-start: auto;
+  left: 8px;
+  max-width: 55%;
+}
+.map-stage .survey-place-badge {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 4px;
+  color: white;
+  background: var(--map-pine);
+  box-shadow: 0 2px 5px #183a2770;
+}
+.survey-place-badge svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.survey-place-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chosen .survey-place-badge {
+  outline: 3px solid #99521b;
+}
+.map-place-name {
+  font: 600 13px/1.3 inherit;
+  color: #183928;
+}
+.map-frame {
+  position: absolute;
+  inset: 4px;
+  z-index: 1;
+  border: 2px dashed #286749;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+.map-frame span {
+  background: white;
+  color: #214e3c;
+  border-radius: 50%;
+  font-size: 24px;
+  width: 30px;
+  text-align: center;
+}
+.map-feedback {
+  top: 70px;
+  inset-inline-end: 68px;
+  max-width: min(330px, 50%);
+}
+.map-feedback:not(:empty),
+.map-dock {
+  padding: 8px 12px;
+}
+.map-feedback button,
+.map-dock button {
+  color: inherit;
+  font: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.map-dock {
+  left: 74px;
+  bottom: 24px;
+  max-width: calc(100% - 90px);
+}
+.map-demo {
+  inset-inline-start: 8px;
+  bottom: 4px;
+  padding: 2px 7px;
+}
+.map-workspace .map-sheet fieldset {
+  min-width: 0;
+}
+@media (max-width: 739px) {
+  .map-head {
+    inset-inline-end: 12px;
+  }
+  .map-stage .leaflet-control-zoom {
+    margin-top: 74px;
+  }
+  .map-controls {
+    top: 183px;
+  }
+  .map-sheet {
+    inset-inline: 0;
+    top: auto;
+    bottom: 20px;
+    width: auto;
+    max-height: 46%;
+    border-radius: 16px 16px 8px 8px;
+    padding: 14px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  }
+  .map-sheet.compact {
+    max-height: 28%;
+  }
+  .map-feedback {
+    top: 70px;
+    inset-inline: 65px 8px;
+    max-width: none;
+  }
+  .map-dock {
+    top: 67px;
+    bottom: auto;
+    left: 68px;
+  }
+  .map-stage:has(.map-dock) .map-feedback {
+    top: 130px;
+  }
+}
+.map-loc-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  background: var(--map-paper);
+  border: 1px solid #cbd5c8;
+  border-radius: 12px;
+  box-shadow: var(--map-shadow);
+  white-space: nowrap;
+}
+.map-loc-hint button {
+  background: transparent;
+  color: var(--map-pine);
+  border: 0;
+  font: inherit;
+  padding-inline: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.map-dock button {
+  min-height: 44px;
+  text-decoration: underline;
+}
+.map-sheet select {
+  font: inherit;
+  min-height: 44px;
+  max-width: 100%;
+}

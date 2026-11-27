@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as L from 'leaflet';
-import type { Place } from '../../../types';
+import type { MapPlace, MapTrail, MapHome, MarkerIcon } from '../../../../../shared/farm-map';
+import { validHome } from '../../../../../shared/farm-map';
 import {
   coordinate,
   quality,
@@ -13,10 +14,15 @@ import {
 import basemap from '../../../survey/basemap.json';
 
 export type DrawnTrail = { trail: Trail; points: Vertex[] };
-export type View = { id: number; point?: Point; points?: Point[] };
+export type View = { id: number; point?: Point; points?: Point[]; zoom?: number; detail?: boolean };
 type Props = {
-  places: Place[];
-  trails: DrawnTrail[];
+  places: MapPlace[];
+  trails: { trail: MapTrail; points: Vertex[] }[];
+  home?: MapHome | null;
+  homeLoading?: boolean;
+  onCamera?: (home: MapHome) => void;
+  onManual?: () => void;
+  selectedTrail?: string;
   live: Fix | null;
   clock: number;
   draft?: Point;
@@ -32,6 +38,25 @@ type Props = {
   onTrail: (id: string) => void;
   onVertex: (seq: number) => void;
 };
+const glyphs: Record<MarkerIcon, string> = {
+  pin: 'M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z M14.5 9a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0',
+  farm: 'M3 20V10l8-6 8 6v10z M9 20v-7h4v7',
+  gate: 'M3 21V5h3v16 M18 21V5h3v16 M6 8h12 M6 16h12 M7 15l10-6',
+  tree: 'M12 2 5 11h3l-4 6h16l-4-6h3z M12 17v5',
+  water: 'M12 2s-7 9-7 13a7 7 0 0 0 14 0c0-4-7-13-7-13z',
+  bench: 'M4 7h16v5H4z M3 15h18 M6 15v5 M18 15v5',
+  parking: 'M8 20V4h6a5 5 0 0 1 0 10H8',
+  view: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0',
+};
+function markerGlyph(icon: MarkerIcon) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  path.setAttribute('d', glyphs[icon] || glyphs.pin);
+  svg.append(path);
+  return svg;
+}
 const label = (value: string) => {
   const span = document.createElement('span');
   span.textContent = value;
@@ -78,6 +103,16 @@ export function SurveyMap(props: Props) {
       zoomAnimation: false,
     }).fitWorld({ animate: false });
     map.current = m;
+    const camera = () => {
+      const c = m.getCenter().wrap();
+      current.current.onCamera?.({ lat: c.lat, lng: c.lng, zoom: m.getZoom() });
+    };
+    m.on('moveend zoomend', camera);
+    m.on('dragstart boxzoomstart', () => {
+      initial.current = true;
+      current.current.onManual?.();
+    });
+    camera();
     L.control.zoom({ position: 'topleft', zoomInTitle: 'התקרבות', zoomOutTitle: 'התרחקות' }).addTo(m);
     const attribution = L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(m);
     const credit = document.createElement('a');
@@ -120,7 +155,12 @@ export function SurveyMap(props: Props) {
   }, [props.online, reload]);
   useEffect(() => {
     const m = map.current;
-    if (!m || initial.current) return;
+    if (!m || initial.current || props.homeLoading) return;
+    if (validHome(props.home)) {
+      m.setView(props.home, props.home.zoom, { animate: false });
+      initial.current = true;
+      return;
+    }
     const points = props.places.filter(coordinate);
     if (points.length) {
       frame(m, points);
@@ -135,14 +175,20 @@ export function SurveyMap(props: Props) {
       );
       initial.current = true;
     }
-  }, [props.places, props.live, props.trails]);
+  }, [props.places, props.live, props.trails, props.home, props.homeLoading]);
   useEffect(() => {
     const m = map.current,
       v = props.view;
     if (!m || !v) return;
     initial.current = true;
-    if (v.point) m.setView(v.point, Math.max(17, m.getZoom()), { animate: false });
-    else frame(m, v.points || []);
+    if (v.point) {
+      const zoom = v.zoom ?? Math.max(17, m.getZoom());
+      m.setView(v.point, zoom, { animate: false });
+      if (v.detail) {
+        const size = m.getSize();
+        m.panBy(size.x < 740 ? [0, size.y * 0.16] : [Math.min(170, size.x * 0.18), 0], { animate: false });
+      }
+    } else frame(m, v.points || []);
   }, [props.view]);
   useEffect(() => {
     const m = map.current;
@@ -152,9 +198,15 @@ export function SurveyMap(props: Props) {
       draw(
         group,
         points,
-        trail.status === 'confirmed' ? '#20745b' : '#795930',
+        props.selectedTrail === trail.id
+          ? '#1267a2'
+          : trail.status === 'draft'
+            ? '#925114'
+            : trail.modes.includes('vehicle')
+              ? '#795930'
+              : '#20745b',
         props.selecting ? undefined : () => current.current.onTrail(trail.id),
-        trail.status === 'draft'
+        trail.status === 'draft' || !trail.modes.includes('vehicle')
       );
     draw(group, props.edit ?? props.raw, '#925114');
     for (const p of props.places.filter(coordinate)) {
@@ -163,7 +215,17 @@ export function SurveyMap(props: Props) {
       button.className = 'survey-place-button';
       button.setAttribute('aria-label', p.name);
       button.disabled = !!props.selecting;
-      button.append(document.createElement('i'));
+      const badge = document.createElement('span');
+      badge.className = 'survey-place-badge';
+      const icon = markerGlyph(p.markerIcon || 'pin');
+      if (p.markerDisplay === 'photo' && p.photo) {
+        const photo = document.createElement('img');
+        photo.alt = '';
+        photo.src = p.photo;
+        photo.onerror = () => badge.replaceChildren(icon);
+        badge.append(photo);
+      } else badge.append(icon);
+      button.append(badge);
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         current.current.onPlace(p.id);
@@ -180,7 +242,20 @@ export function SurveyMap(props: Props) {
         keyboard: false,
         interactive: !props.selecting,
       }).addTo(group);
-      marker.bindTooltip(label(p.name), { direction: 'top', offset: [0, -34] });
+      marker.bindTooltip(label(p.name), {
+        direction: 'top',
+        permanent: true,
+        offset: [0, -35],
+        className: 'map-place-name',
+      });
+    }
+    if (props.edit?.length) {
+      const ends = [props.edit[0], props.edit[props.edit.length - 1]];
+      ends.forEach((p, i) =>
+        L.circleMarker(p, { radius: 6, color: '#214e3c', fillColor: '#fff', fillOpacity: 1, interactive: false })
+          .addTo(group)
+          .bindTooltip(label(i ? 'סיום' : 'התחלה'), { permanent: true, direction: i ? 'right' : 'left' })
+      );
     }
     if (props.edit?.length) {
       // A long walk stays usable. Select a vertex from any visible part of the line, or by its number in the review.
@@ -229,6 +304,7 @@ export function SurveyMap(props: Props) {
     props.edit,
     props.anchor,
     props.selected,
+    props.selectedTrail,
     props.draft,
     props.selecting,
   ]);

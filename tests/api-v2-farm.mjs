@@ -93,6 +93,26 @@ let rulesEnv;
 try {
   await waitUp(BASE);
   await fetch(`http://${EMU}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+  section('Public map · published geometry only');
+  await seed('places/public-gate',{name:'שער',lat:0,lng:0,createdBy:{uid:'private'},markerIcon:'gate',markerDisplay:'icon'});
+  await seed('places/archived-gate',{name:'ישן',lat:1,lng:2,archived:true});
+  for (const id of ['confirmed','draft']) {
+    await seed('farmTrails/'+id,{status:id,name:'שביל',modes:['walk'],count:2,geometry:'current',ownerUid:'private'});
+    for(const version of ['current','old'])await seed('farmTrails/'+id+'/versions/'+version+'/chunks/0',{index:0,writer:'private',points:[1,2].map(seq=>({seq,lat:1,lng:2,segment:1,at:100,provider:'private'}))});
+  }
+  const publicMap = query => fetch(BASE+'/v1/public/map?'+query);
+  const publicPlaces = await (await publicMap('layer=places')).json();
+  check(publicPlaces.items.length===1 && publicPlaces.items[0].id==='public-gate' && !JSON.stringify(publicPlaces).includes('private'),'anonymous map serves legacy places without private fields');
+  const publicTrails = await (await publicMap('layer=trails')).json();
+  check(publicTrails.items.length===1 && publicTrails.items[0].id==='confirmed' && !JSON.stringify(publicTrails).includes('private'),'published trail metadata only');
+  const geom=await (await publicMap('layer=geometry&id=confirmed&version=current')).json();
+  check(geom.items[0].points.length===2 && !JSON.stringify(geom).includes('private') && !('at' in geom.items[0].points[0]),'projection omits raw measurements and writer');
+  check((await publicMap('layer=geometry&id=draft&version=current')).status===404 && (await publicMap('layer=geometry&id=confirmed&version=old')).status===404,'draft and superseded geometry unavailable');
+  for(let i=0;i<9;i++)await seed('places/page-'+i,{name:'מקום',lat:1,lng:1});
+  const first=await (await publicMap('layer=places')).json(), second=await (await publicMap('layer=places&after='+first.next)).json();
+  check(first.next && new Set([...first.items,...second.items].map(p=>p.id)).size===10,'paginated public places include every active id');
+  for(const id of ['public-gate','archived-gate',...Array.from({length:9},(_,i)=>'page-'+i)])await fetch(DOCS+'/places/'+id,{method:'DELETE',headers:admin});
+  for(const id of ['confirmed','draft'])await fetch(DOCS+'/farmTrails/'+id,{method:'DELETE',headers:admin});
   const now = new Date().toISOString();
   const person = (uid, displayName, role, extra = {}) => seed('users/' + uid, { uid, email: `${uid}@synthetic.invalid`, displayName, phone: '0500000000', role, status: 'active', customerNumber: 1, acceptedTermsAt: now, notes: '', createdAt: now, updatedAt: now, ...extra });
   await person('synthetic-owner', 'בעלים סינתטי', 'owner');
