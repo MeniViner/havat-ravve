@@ -574,10 +574,20 @@ service cloud.firestore {
   match /visits/{id} {
    function visitShape(){return incoming().keys().hasOnly(['uid','name','phone','date','people','type','note','status','managerNote','handledBy','createdAt','updatedAt','requestedDate','approvedDate','approvedTime','replyText','replyChannel','replyChannels']) && str(incoming().name, 80) && str(incoming().phone, 25) && str(incoming().date, 10) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500 && str(incoming().type, 100) && str(incoming().note, 2000) && incoming().status in ['new','approved','rejected','cancelled'] && str(incoming().managerNote, 2000) && str(incoming().get('requestedDate', ''), 10) && str(incoming().get('approvedDate', ''), 10) && str(incoming().get('approvedTime', ''), 5) && str(incoming().get('replyText', ''), 2000) && incoming().get('replyChannel', 'app') in ['app','app-email','whatsapp'] && incoming().get('replyChannels', []) is list && incoming().get('replyChannels', []).size() <= 3 && incoming().get('replyChannels', []).hasOnly(['whatsapp','email','push']) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isManager() || mine('uid');
-   allow create: if signed() && visitShape() && incoming().uid == uid() && incoming().status == 'new' && incoming().handledBy == null
+   allow create: if signed() && visitShape() && incoming().uid == uid() && incoming().status == 'new' && incoming().handledBy == null && incoming().managerNote == ''
     && incoming().get('requestedDate', incoming().date) == incoming().date && !incoming().keys().hasAny(['approvedDate','approvedTime','replyText','replyChannel','replyChannels']);
-   allow update: if visitShape() && incoming().uid == resource.data.uid && ((isManager() && changed().hasOnly(['status','managerNote','handledBy','updatedAt','requestedDate','approvedDate','approvedTime','replyText','replyChannel']) && actorOk(incoming().handledBy)) || (mine('uid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'new' && incoming().status == 'cancelled'));
+   // Legacy approvals stored their public reply in managerNote. Visits with a dedicated reply keep staff notes private.
+   function publicNoteOk(){return (!('replyText' in resource.data) || 'replyText' in incoming())
+     && (!changed().hasAny(['managerNote']) || incoming().managerNote == '' || (!('replyText' in resource.data) && !('replyText' in incoming())));}
+   allow update: if visitShape() && incoming().uid == resource.data.uid && ((isManager() && publicNoteOk() && changed().hasOnly(['status','managerNote','handledBy','updatedAt','requestedDate','approvedDate','approvedTime','replyText','replyChannel']) && actorOk(incoming().handledBy)) || (mine('uid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'new' && incoming().status == 'cancelled'));
    allow delete: if isManager();
+   match /private/{noteId} {
+    function currentVisit(){return exists(/databases/$(database)/documents/visits/$(id));}
+    allow get: if noteId == 'staff' && isManager() && currentVisit();
+    allow create, update: if noteId == 'staff' && isManager() && currentVisit()
+      && incoming().keys().hasOnly(['note','updatedAt']) && str(incoming().note, 1000) && isoTime(incoming().updatedAt);
+    allow delete: if noteId == 'staff' && isManager();
+   }
   }
   match /donations/{id} {
    function donationShape(){return incoming().keys().hasOnly(['uid','name','phone','amount','label','note','memorial','receiptWanted','receiptName','receiptSent','paymentStatus','paymentConfirmation','paidAt','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && incoming().amount is number && incoming().amount > 0 && incoming().amount <= 1000000 && str(incoming().label, 100) && str(incoming().note, 2000) && str(incoming().memorial, 500) && incoming().receiptWanted is bool && str(incoming().receiptName, 120) && incoming().receiptSent is bool && incoming().paymentStatus in ['pending','claimed','paid','cancelled'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}

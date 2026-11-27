@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const require = createRequire(import.meta.url);
 require('firebase/compat/firestore');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
-const { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch, setLogLevel } = require('firebase/firestore');
+const { collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch, setLogLevel } = require('firebase/firestore');
 setLogLevel('silent');
 if (!/^(localhost|127\.0\.0\.1):\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST || '')) throw Error('A local Firestore emulator is required');
 const env = await initializeTestEnvironment({ projectId: 'demo-reviewed-contracts', firestore: { rules: await readFile('firestore.rules', 'utf8') } });
@@ -82,6 +82,38 @@ try {
  const visit={uid:'g',name:'g',phone:'0500000000',date:'2031-01-02',people:1,type:'סיור',note:'',status:'new',managerNote:'',handledBy:null,createdAt:now,updatedAt:now};
  await assertSucceeds(put(guest,'visits/g',visit));
  await assertFails(put(guest,'visits/selfApproved',{...visit,replyText:'אושר',approvedDate:'2031-01-02'}));
+ await assertFails(put(guest,'visits/noteOnCreate',{...visit,managerNote:'only the manager should write notes'}));
+ const privatePath='visits/g/private/staff';
+ const staffNote={note:'internal fixture note',updatedAt:now};
+ await assertSucceeds(put(mgr,privatePath,staffNote));
+ await assertSucceeds(getDoc(doc(mgr,privatePath)));
+ await env.withSecurityRulesDisabled(async c=>{
+   const a=c.firestore();
+   await Promise.all([put(a,'users/private-owner',profile('private-owner','owner')),
+     put(a,'users/blocked-manager',{...profile('blocked-manager','manager'),status:'blocked'})]);
+ });
+ await assertSucceeds(getDoc(doc(ctx('private-owner'),privatePath)));
+ await assertFails(getDoc(doc(ctx('blocked-manager'),privatePath)));
+ await assertFails(getDoc(doc(guest,privatePath)));
+ await assertFails(getDoc(doc(staff,privatePath)));
+ await assertFails(getDoc(doc(other,privatePath)));
+ await assertFails(getDocs(collection(mgr,'visits/g/private')));
+ await assertFails(put(guest,privatePath,{...staffNote,note:'guest write'}));
+ await assertFails(put(mgr,'visits/missing/private/staff',staffNote));
+ await assertFails(put(mgr,'visits/g/private/other',staffNote));
+ await assertFails(updateDoc(doc(mgr,privatePath),{note:'x'.repeat(1001)}));
+ await assertFails(updateDoc(doc(mgr,privatePath),{updatedAt:'unparseable'}));
+ const approval={status:'approved',handledBy:identity('m'),replyText:'public reply',approvedDate:visit.date};
+ await assertFails(updateDoc(doc(mgr,'visits/g'),{...approval,managerNote:staffNote.note}));
+ await assertSucceeds(updateDoc(doc(mgr,'visits/g'),approval));
+ await assertFails(updateDoc(doc(mgr,'visits/g'),{managerNote:staffNote.note}));
+ await assertFails(updateDoc(doc(mgr,'visits/g'),{replyText:deleteField()}));
+ const customerVisit=(await assertSucceeds(getDoc(doc(guest,'visits/g')))).data();
+ assert.equal(customerVisit.replyText,'public reply');
+ assert.ok(!JSON.stringify(customerVisit).includes(staffNote.note));
+ await assertSucceeds(updateDoc(doc(mgr,privatePath),{note:'revised internal note',updatedAt:now}));
+ await assertFails(deleteDoc(doc(guest,privatePath)));
+ await assertSucceeds(deleteDoc(doc(mgr,privatePath)));
  await assertFails(getDocs(collection(mgr,'operational_notices')));
- console.log('PASS reviewed cross-domain rules: years, directory ownership, shopping, calendar privacy, event projects and end times, staff test tickets, supplier applications and service records.');
+ console.log('PASS reviewed cross-domain rules, including guest visit replies and manager-only internal notes.');
 } finally { await env.cleanup(); }
