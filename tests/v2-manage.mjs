@@ -3,12 +3,28 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-await build({ entryPoints: ['src/app/v2/screens/manage/calc.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.build/v2-manage-test.mjs', logLevel: 'error' });
+await build({ stdin: { contents: "export * from './src/app/v2/screens/manage/calc'; export * from './src/app/v2/screens/manage/inboxRows'", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'esm', outfile: '.build/v2-manage-test.mjs', logLevel: 'error' });
 const c = await import('../.build/v2-manage-test.mjs?' + Date.now());
 
 const today = '2026-11-19';
 const iso = (key, hh = '12:00') => new Date(`${key}T${hh}:00+02:00`).toISOString();
 const don = (id, amount, createdAt, o = {}) => ({ id, uid: 'u', name: 'x', phone: '', amount, label: '', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'paid', createdAt, updatedAt: createdAt, ...o });
+
+// One row per donation, including legacy notifications that linked to the general inbox.
+{
+  const note = (id, type, refId, link) => ({ id, type, refId, link, title: '18 ₪' });
+  const notices = [
+    note('receipt', 'receipt', 'first', '/manage/inbox'), note('claim', 'claim', 'first', '/manage/donations/first'),
+    note('donation', 'donation', 'first', '/manage/donations/first'), note('another', 'donation', 'second', '/manage/donations/second'),
+    note('ticket', 'claim', 'first', '/manage/events/event'),
+  ];
+  const rows = c.inboxRows(notices);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0].members.map(n => n.id), ['receipt', 'claim', 'donation']);
+  assert.equal(rows[0].note.id, 'donation');
+  assert.deepEqual(rows.filter(row => c.rowIn(row, 'receipts')).map(row => row.donationId), ['first']);
+  assert.deepEqual(rows.filter(row => c.rowIn(row, 'orders')).map(row => row.note.id), ['ticket']);
+}
 
 // ---- periods ----
 assert.equal(c.monthStart(today), '2026-11-01');

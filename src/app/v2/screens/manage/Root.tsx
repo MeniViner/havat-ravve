@@ -69,7 +69,7 @@ const VREQ: Record<VendorRequest['kind'], string> = { power: 'חשמל', water: 
 type Resolved = { pay?: PayItem; visit?: Visit; donation?: Donation; tab?: Tab; tickets?: Ticket[] };
 function resolve(n: AppNotification, m: { visits: Map<string, Visit>; donations: Map<string, Donation>; tabs: Map<string, Tab>; orders: Map<string, Ticket[]> }): Resolved {
   if (n.type === 'visit') return { visit: m.visits.get(n.refId) };
-  if (n.type === 'donation' || n.type === 'receipt' || (n.type === 'claim' && n.link.startsWith('/manage/donations/'))) {
+  if (n.type === 'donation' || n.type === 'receipt' || (n.type === 'claim' && (n.link || '').startsWith('/manage/donations/'))) {
     const d = m.donations.get(n.refId); return { donation: d, pay: d ? { kind: 'donation', doc: d } : undefined };
   }
   if (n.type === 'tab') { const t = m.tabs.get(n.refId); return { tab: t, pay: t ? { kind: 'tab', doc: t } : undefined }; }

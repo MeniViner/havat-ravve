@@ -479,6 +479,26 @@ try {
     check(del.status === 200 && !(await docOf('shopping_trips/' + tripId)) && (await docOf('shopping/' + i1)).bought, 'a manager deletes it; bought stays bought');
   }
 
+  section('team categories and the audience for a single shopping trip');
+  {
+    const created=await w(RONIT,'shopping.createCategory',{name:'חומרים  לבדיקה'});
+    ok(created,'a volunteer can create a category');
+    const category=created.json.data.id;
+    const same=await w(NOA,'shopping.createCategory',{name:'  חומרים לבדיקה '});
+    check(same.json.data.id===category && (await docOf('shopping_categories/'+category)).name==='חומרים לבדיקה','creation and normalized retry resolve to one shared category');
+    const begin=await w(RONIT,'shopping.startTrip',{list:category,recipientUids:['syn-noa','syn-noa','syn-guest']});
+    ok(begin,'start a trip for a custom category');
+    const id=begin.json.data.tripId;
+    check((await docOf('shopping_trips/'+id)).recipientUids.join()==='syn-noa','the audience intersects active staff, without forcing the shopper into it');
+    check((await pushesFor(id))[0]?.to.join()==='syn-noa','only the selected manager is queued');
+    await w(RONIT,'shopping.closeTrip',{tripId:id});
+    check((await notesOf('syn-noa')).filter(n=>n.refId===id).length===2 && !(await notesOf('syn-ronit')).some(n=>n.refId===id),'closure uses the same audience');
+    const quiet=await w(RONIT,'shopping.startTrip',{list:'super',recipientUids:[]});
+    ok(quiet,'an explicit empty audience opens the trip');
+    check(!(await pushesFor(quiet.json.data.tripId)).length,'no recipients produce no push');
+    await w(RONIT,'shopping.closeTrip',{tripId:quiet.json.data.tripId});
+  }
+
   section('recurring templates');
   {
     await seed('places/pl-tpl', { name: 'רפת', lat: 31.6, lng: 34.7, createdBy: ME.owner, createdAt: now });

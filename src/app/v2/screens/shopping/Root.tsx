@@ -39,6 +39,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
   const [selection, setSelection] = useState<string[]>();
   const ids = tripRecipients(ctx.team, selection);
   const running = activeTripOf(trips.items, ctx.user.uid);
+  const rosterReady = ctx.team.some(p => p.uid === ctx.user.uid && p.status === 'active');
 
   const counts = useMemo(() => Object.fromEntries(lists.map((l) => [l.key, openOf(open, l.cat).length])) as Record<ListKey, number>, [open, lists]);
   const rows = useMemo(() => openOf(open, cat), [open, cat]);
@@ -48,7 +49,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
 
   const toAdd = (extra = '') => go(`/new?kind=shopping&list=${key}${extra}`);
   const begin = async () => {
-    if (starting || trips.loading || trips.error) return;
+    if (starting || trips.loading || trips.error || (!running && !rosterReady)) return;
     setStarting(true);
     try { await startTrip(ctx.actor, cat, trips.items, ctx.team, ids); go('/shopping/trip'); } catch (e) { fail(e); } finally { setStarting(false); }
   };
@@ -72,7 +73,7 @@ export function ShoppingRoot({ ctx, params }: ScreenProps) {
       <RootHead overline={openOverline(openToBuy(open))} title="קניות" />
       <Tabs className="shopping-categories" label="סוג הרשימה" value={key} onChange={(k) => go(k === 'super' ? '/shopping' : `/shopping?list=${k}`, true)}
         options={lists.map((l) => ({ value: l.key, label: l.label, count: counts[l.key] }))} />
-      {cat === 'super' && <div className="shopping-depart">{!running && <TripRecipients team={ctx.team} ids={ids} setIds={setSelection} />}<Button size="bar" icon="cart" block onClick={begin} disabled={starting || trips.loading || !!trips.error}>{running ? 'המשך קנייה' : 'יצאתי לקניות'}</Button></div>}
+      {cat === 'super' && <div className="shopping-depart">{!running && <TripRecipients team={ctx.team} ids={ids} setIds={setSelection} />}<Button size="bar" icon="cart" block onClick={begin} disabled={starting || trips.loading || !!trips.error || (!running && !rosterReady)}>{running ? 'המשך קנייה' : 'יצאתי לקניות'}</Button></div>}
       {chips.length > 0 && (
         <div className="k-chips shopping-chips" role="group" aria-label="קונים בדרך כלל">
           {chips.map((c) => <AddChip key={c.title} onClick={() => quick(c)}>{c.title}</AddChip>)}
