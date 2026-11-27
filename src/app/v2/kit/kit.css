@@ -707,7 +707,7 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-gate--ok { background: var(--green-fill); color: #FFFFFF; }
 .k-gate--pay { background: var(--amber); color: var(--on-amber); }
 .k-gate--bad { background: var(--red-fill); color: #FFFFFF; }
-.k-gate--camera { background: var(--gate-dark); color: var(--bg); }
+.k-gate--camera, .k-gate--saving { background: var(--gate-dark); color: var(--bg); }
 .k-gate__head { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; }
 .k-gate__place { font-size: 15px; font-weight: 600; }
 .k-gate__main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }

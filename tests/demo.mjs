@@ -24,7 +24,7 @@ const stub = {
       export const setDoc = async (ref) => { calls.push(['set', ref.path]); if (globalThis.__server === 'silent') await new Promise(() => {}); if (globalThis.__server === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } };
       export const updateDoc = async (ref) => { calls.push(['update', ref.path]); };
       export const deleteDoc = async (ref) => { calls.push(['delete', ref.path]); };
-      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); if (globalThis.__batch === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } } });
+      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); if (globalThis.__batch === 'slowAck') await new Promise((r) => setTimeout(r, 50)); if (globalThis.__batch === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } } });
       export const arrayUnion = (...v) => ({ union: v }), arrayRemove = (...v) => ({ remove: v }), increment = (n) => ({ inc: n });
       // __tx: '' runs fn and commits; 'unavailable' / 'denied' fail like the server; 'hang' never answers;
       // 'slowRead' answers the reads only after __slowMs; 'slowCommit' commits after __slowMs.
@@ -211,6 +211,13 @@ console.log('PASS: demo mode never reaches Firestore, demo ids are refused outsi
   reset();
   assert.deepEqual(await transact(scan()), { entries: 1 }, 'offline: the cached copy, as before');
   assert.deepEqual(sent(), ['commit']);
+  reset();
+  globalThis.__batch = 'slowAck';
+  const receipt = { col: 'events/e1/scans', id: 't9-1' };
+  await assert.rejects(transact(scan(), { queue: true, localReceipt: receipt }), /עדיין לא נשמרה בטלפון/, 'no green result before the queued scan exists on this device');
+  globalThis.__cacheDocs['events/e1/scans/t9-1'] = { result: 'ok' };
+  assert.deepEqual(await transact(scan(), { queue: true, localReceipt: receipt }), { entries: 1 }, 'a local receipt can confirm admission before the server responds');
+  await new Promise(r => setTimeout(r, 60));
   reset();
   txTiming.waitMs = 4000; globalThis.__serverDocs = undefined; globalThis.__cacheDocs = undefined;
   console.log('PASS: a gate scan is saved on the phone when the server cannot be reached, and refusals are reported honestly');

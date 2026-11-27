@@ -266,6 +266,8 @@ export type TransactOpts = {
   /** The gate: when the server does not answer in time (weak reception, or "online" without a network), the write is saved on
    *  this phone as an ordinary queued write, as when offline, instead of failing. A server that answers still refuses a second entry. */
   queue?: boolean;
+  /** The gate displays an admission only after this scan can be read from this device. */
+  localReceipt?: { col: string; id: string };
   /** Translate a delayed refusal only when the caller can verify a specific cause on the server. */
   queuedErrorText?: (reason: unknown) => Promise<string | undefined>;
   /** Never use cached data or queue mutations for this transaction. Its caller handles the server error. */
@@ -296,7 +298,7 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     ops.forEach((o) => o());
     return out;
   }
-  if (offline) return queued(fn, undefined, o.queuedErrorText);
+  if (offline) return queued(fn, o);
   setSync({ pending: sync.pending + 1 });
   let abandoned = false, committing = false;
   const attempt = runTransaction(db, async (t) => {
@@ -319,17 +321,17 @@ export async function transact<T>(fn: (tx: Tx) => Promise<T>, o: TransactOpts = 
     const first = await Promise.race([attempt.then((v) => ({ v })), late]).finally(() => clearTimeout(timer));
     if (first !== 'late') return first.v;
     abandoned = true;
-    return await queued(fn, committing ? attempt : undefined, o.queuedErrorText);
+    return await queued(fn, o, committing ? attempt : undefined);
   } catch (e) {
     if (isConflict(e) || o.serverOnly) throw e;
-    if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn, undefined, o.queuedErrorText); }
+    if (o.queue && unreachable(e)) { abandoned = true; return await queued(fn, o); }
     throw new Error(readError(e));
   } finally { setSync({ pending: Math.max(0, sync.pending - 1) }); }
 }
 /** `fn` on the cached copy, its writes as one queued batch (Firestore sends it when the network is back).
  *  `attempt`: the transaction this replaces, when its commit was already on the way. If it still landed, the batch repeats it
  *  and the rules refuse the repeat (the scan id is fixed per entry), so that refusal is not a failure the shell should show. */
-async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>, errorText?: TransactOpts['queuedErrorText']): Promise<T> {
+async function queued<T>(fn: (tx: Tx) => Promise<T>, options: TransactOpts, attempt?: Promise<unknown>): Promise<T> {
   const ops: Parameters<typeof write.batch>[0] = [];
   const cache = new Map<string, unknown>();
   const out = await fn({
@@ -347,12 +349,16 @@ async function queued<T>(fn: (tx: Tx) => Promise<T>, attempt?: Promise<unknown>,
     else b.update(refs[i], toFirestore(x.data!));
   });
   const commit = b.commit();
-  await settle(commit.catch(async (error) => {
+  const acknowledged = await settle(commit.catch(async (error) => {
     if (attempt && await attempt.then(() => true, () => false)) return;
-    const detail = await errorText?.(error).catch(() => undefined);
+    const detail = await options.queuedErrorText?.(error).catch(() => undefined);
     if (detail) throw new Error(detail);
     throw error;
   }));
+  // Firestore serializes this cache read after persisting the queued batch in IndexedDB.
+  const receipt = options.localReceipt;
+  if (!acknowledged && receipt && !await readCached(receipt.col, receipt.id))
+    throw new Error('הכניסה עדיין לא נשמרה בטלפון. בדקו את החיבור ונסו שוב.');
   return out;
 }
 async function readCached(col: string, id: string): Promise<Row | null> {

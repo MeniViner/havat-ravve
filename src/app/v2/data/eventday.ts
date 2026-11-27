@@ -209,7 +209,7 @@ export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, or
     const audit = activityOp(actor,'ticket',ticket.id,'scanned',details,{subjectUid:ticket.ownerUid,eventId:event.id});
     tx.set(audit.col,audit.id,audit.data);
     return { entries: n, result, amount };
-  }, { queue: true, queuedErrorText });
+  }, { queue: true, queuedErrorText, localReceipt: { col: scanCollection, id: expectedScan } });
   return res;
 }
 
@@ -252,7 +252,7 @@ export async function admitWalkIn(actor: Actor, event: FarmEvent, guest: { name:
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: ids[0], orderId, name: guest.name, phone: guest.phone, meta: `${ticketWord(guest.count)} · אורח בלי כרטיס${amount ? ` · ${amount} ₪` : ''}`, result, ...(amount ? { amount, method: '' } : {}), count: guest.count, by: actor, at, reopenedBy: null, reopenedAt: null };
     tx.set(`events/${event.id}/scans`, `${ids[0]}-1`, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: guest.count, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: guest.count } : {}), ...(result === 'payLater' ? { payLater: guest.count, payLaterAmount: amount } : {}) });
-  }, { queue: true });
+  }, { queue: true, localReceipt: { col: `events/${event.id}/scans`, id: `${ids[0]}-1` } });
   logActivity(actor, 'ticket', orderId, 'ordered', `${guest.name} · ${ticketWord(guest.count)} בשער · ${event.title}${amount ? ` · ${amount} ₪ ${pay === 'gate' ? 'שולם במקום' : 'ישלמו אחר כך'}` : ''}`, { eventId: event.id });
   return { orderId, ticketId: ids[0] };
 }
