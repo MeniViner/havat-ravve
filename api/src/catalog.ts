@@ -6,6 +6,7 @@ import { resourceOperations } from './resources';
 import { WRITE_DEFS } from './writes';
 import './v2'; // the redesign's actions register themselves into WRITE_DEFS (after writes.ts is evaluated)
 import { OVERVIEW_OPS } from './overview';
+import { WHOAMI_OPS } from './whoami';
 import { FAILURE_OPS } from './failures';
 
 export const CATALOG_VERSION = '3.0.0';
@@ -227,7 +228,7 @@ export const OPERATIONS: Operation[] = [
 ];
 
 /** Every operation: the hand-written ones above, then the generated reads, the overview and every app action. */
-export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...OPERATIONS, ...FAILURE_OPS, ...resourceOperations(), ...WRITE_DEFS.map((d) => d.op)];
+export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...WHOAMI_OPS, ...OPERATIONS, ...FAILURE_OPS, ...resourceOperations(), ...WRITE_DEFS.map((d) => d.op)];
 
 export const CATALOG = {
   version: CATALOG_VERSION,

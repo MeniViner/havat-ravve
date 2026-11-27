@@ -9,6 +9,7 @@ import { autoId, validate } from './util';
 import { getResource, listResource, matchResource } from './resources';
 import { WRITE_DEFS } from './writes';
 import { getSettings, overview } from './overview';
+import { whoami } from './whoami';
 import { listFailures, recordFailure } from './failures';
 import { type Scope, requireScope } from './auth';
 import { runAccountDeletions } from './accounts';
@@ -103,6 +104,7 @@ async function route(req: Request, env: Env, url: URL, log: Record<string, unkno
     if (m === 'GET' && one) { if ([...url.searchParams].length) throw new ApiError('VALIDATION_FAILED', 'tasks.get takes no query parameters', { field: [...url.searchParams.keys()][0] }); return { data: await getTask(fs, caller, decodeURIComponent(one[1])) }; }
     if (m === 'GET' && path === '/v1/people') return { data: await searchPeople(fs, caller, url.searchParams) };
     if (m === 'GET' && path === '/v1/shopping') return { data: await listShopping(fs, caller, url.searchParams) };
+    if (m === 'GET' && path === '/v1/me') return { data: whoami(caller, url.searchParams) };
     if (m === 'GET' && path === '/v1/overview') return { data: await overview(fs, caller, url.searchParams) };
     if (m === 'GET' && path === '/v1/settings') return { data: await getSettings(fs, caller) };
     if (m === 'GET') {
