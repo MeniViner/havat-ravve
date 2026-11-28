@@ -1,3 +1,4 @@
+import { birthYearRequired, isBirthYear } from '../../birthYear';
 // Vendor area data: the vendor pool (vendors/{vid}), the per-event vendor record (events/{eid}/vendors/{vid}), the vendor-facing
 // event brief (events/{eid}/vendor_info/main), event-day requests (events/{eid}/vendor_requests/{rid}) and app access by invite
 // (vendor_invites/{code}, claimed at first sign-in). Everything goes through db.ts, so demo and Firestore behave the same.
@@ -482,7 +483,7 @@ export const useInvite = (code: string) => useDoc<VendorInviteDoc>('vendor_invit
 /** First sign-in (or a guest account) with a vendor link: makes this account the stall's owner or helper.
  *  One transaction: reads the invite (must be active and unused), creates or updates users/{uid} with role 'vendor' + vendorId,
  *  and marks the invite used. The rules check the same (docs/redesign-data/vendor.md). Returns the vendor id. */
-export async function claimVendorInvite(user: Session, code: string, details?: { displayName?: string; phone?: string }): Promise<string> {
+export async function claimVendorInvite(user: Session, code: string, details?: { displayName?: string; phone?: string; birthYear?: number }): Promise<string> {
   const at = nowIso();
   const vid = await transact(async (tx) => {
     const inv = await tx.get<VendorInviteDoc>('vendor_invites', code);
@@ -493,12 +494,13 @@ export async function claimVendorInvite(user: Session, code: string, details?: {
       if (me.role !== 'guest' && me.role !== 'vendor') throw new ConflictError('החשבון הזה כבר שייך לצוות. נכנסים עם חשבון אחר.');
       tx.update('users', user.uid, link);
     } else {
+      if (!isBirthYear(details?.birthYear)) throw new Error(birthYearRequired);
       const counter = await tx.get<{ value: number }>('counters', 'users');
       const value = (counter?.value || 0) + 1;
       if (counter) tx.update('counters', 'users', { value }); else tx.set('counters', 'users', { value });
       tx.set('users', user.uid, {
         uid: user.uid, email: (user.email || '').toLowerCase(), displayName: (details?.displayName || user.displayName || inv.name).trim().slice(0, 80) || inv.name,
-        phone: (details?.phone ?? inv.phone).trim().slice(0, 25), status: 'active', customerNumber: value, acceptedTermsAt: at, createdAt: at, ...link,
+        phone: (details?.phone ?? inv.phone).trim().slice(0, 25), status: 'active', birthYear: details.birthYear, customerNumber: value, acceptedTermsAt: at, createdAt: at, ...link,
       });
     }
     tx.update('vendor_invites', code, { usedBy: user.uid, usedAt: at, active: false });

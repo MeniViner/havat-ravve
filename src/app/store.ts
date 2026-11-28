@@ -9,6 +9,7 @@ import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './act
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
 import { nowMs } from './clock';
+import { birthYearRequired, isBirthYear } from './birthYear';
 import { linkOpen, LINK_GONE, type TeamLink } from './v2/data/invite';
 
 // ---------- auth ----------
@@ -46,7 +47,7 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
 
 // ---------- profile ----------
 export function useProfile(user: Session | null) {
-  const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user);
+  const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user, true);
   // a profile that could not be read is not a missing profile: never send an existing member to registration because of a network error
   return { profile: item ? { ...item, uid: user!.uid } : null, loading, error: error || '', missing: !!user && !loading && !item && !error };
 }
@@ -80,10 +81,11 @@ export function useCmsEditor(user: Session, enabled: boolean) {
 /** The role for a brand-new account: owner by bootstrap email; otherwise the role of the one-time team link the person came
  *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
  *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string>; birthYear?: number }, link = '') {
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string>; birthYear: number }, link = '') {
+  if (!isBirthYear(data.birthYear)) throw new Error(birthYearRequired);
   const now = nowIso();
   const email = (user.email || '').toLowerCase();
-  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, ...(data.birthYear !== undefined ? { birthYear: data.birthYear } : {}), status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, birthYear: data.birthYear, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
   if (demoOnly() && getDemo().persona === 'new' && user.uid === NEW_DEMO_SESSION.uid) {
     if (!demoDoc('users/' + user.uid)) await write.set('users', user.uid, { ...details, role: 'guest', customerNumber: 999 });
     return;

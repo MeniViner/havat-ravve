@@ -18,6 +18,7 @@ import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
   receiptOf, saveProfile, storedBirthYear, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
+import { isBirthYear } from '../../../birthYear';
 import { RegistrationQuestions, BirthYearField } from './fields';
 import './system.css';
 
@@ -116,12 +117,13 @@ export function ProfileEdit({ ctx }: ScreenProps) {
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const src = photoOf(p);
+  const selectedYear = d.birthYear ?? storedBirthYear(p, ctx.settings.registrationFields);
   const nameErr = tried && !d.displayName.trim() ? 'צריך שם' : '';
   const townMissing = !!townQ?.required && !d.town.trim();
   const missing = [...missingAnswers(d.answers, questions), ...(townMissing ? [townQ!.id] : [])];
   const save = async () => {
     setTried(true);
-    if (!d.displayName.trim() || missing.length || busy) return;
+    if (!d.displayName.trim() || missing.length || !isBirthYear(selectedYear, 1) || busy) return;
     setBusy(true);
     const answers = { ...(d.answers || {}) };
     if (townQ) answers[townQ.id] = d.town.trim();
@@ -141,7 +143,7 @@ export function ProfileEdit({ ctx }: ScreenProps) {
       <Field label="שם בעברית" value={d.displayName} onChange={set('displayName')} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={d.phone} onChange={set('phone')} maxLength={25} inputMode="tel" autoComplete="tel" />
       <Field label={townQ?.required ? 'יישוב *' : 'יישוב'} value={d.town} onChange={set('town')} maxLength={60} error={tried && townMissing ? 'צריך למלא' : ''} />
-      <BirthYearField value={d.birthYear ?? storedBirthYear(p, ctx.settings.registrationFields)} onChange={(birthYear) => setD((s) => ({ ...s, birthYear }))} />
+      <BirthYearField value={selectedYear} onChange={(birthYear) => setD((s) => ({ ...s, birthYear }))} invalid={tried && !isBirthYear(selectedYear, 1)} />
       <RegistrationQuestions questions={questions} answers={d.answers || {}} missing={tried ? missing : []}
         onChange={(id, v) => setD((s) => ({ ...s, answers: { ...s.answers, [id]: v } }))} />
       <DetailList className="system-dl"><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>

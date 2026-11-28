@@ -101,7 +101,9 @@ service cloud.firestore {
    // vendor keys (vendorId, helper, addedBy, inviteCode) are written only by a claim; photo, town, birthDate, push, welcomedAt and
    // updatesOptIn ("לקבל עדכונים מהחווה", the consent a message to all users needs) only by the person
    function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt','vendorId','helper','addedBy','inviteCode','teamLink','photo','photoSource','googlePhoto','town','birthDate','birthYear','push','welcomedAt','updatesOptIn']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && str(incoming().get('vendorId', ''), 60) && incoming().get('helper', false) is bool && str(incoming().get('addedBy', ''), 60) && str(incoming().get('inviteCode', ''), 40) && str(incoming().get('teamLink', ''), 40) && ownShapeOk();}
-   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('birthYear' in incoming()) || (incoming().birthYear is int && incoming().birthYear >= 1 && incoming().birthYear <= request.time.year())) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40)) && incoming().get('updatesOptIn', false) is bool;}
+   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40)) && incoming().get('updatesOptIn', false) is bool;}
+   // Reuse older profiles unchanged; only a new registration or a change to the year needs a new selection.
+   function validBirthYear(){let year=incoming().get('birthYear', 0); return year is int && year >= 1900 && year <= request.time.year();}
    function pushOk(){let p = incoming().push; return p is map && p.keys().hasOnly(['enabled','kinds','devices','updatedAt']) && p.get('enabled', false) is bool && p.get('kinds', []) is list && p.get('kinds', []).size() <= 10 && p.get('devices', []) is list && p.get('devices', []).size() <= 6 && str(p.get('updatedAt', ''), 40);}
    // a vendor profile is written only in the commit that uses up a matching invite (claimVendorInvite)
    function inviteBefore(){return get(/databases/$(database)/documents/vendor_invites/$(incoming().inviteCode)).data;}
@@ -126,7 +128,7 @@ service cloud.firestore {
    // volunteers need the names of the team (who a task is on), never the guests
    allow list: if isManager() || (isStaff() && resource.data.role in ['owner','manager','staff']);
    function fieldsOk(){return incoming().get('fields', {}) is map && incoming().get('fields', {}).get('receiptPreference', '') in ['', 'whatsapp', 'email'];}
-   allow create: if self(id) && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole() && (incoming().role == 'vendor' || !incoming().keys().hasAny(['vendorId','helper','addedBy','inviteCode']));
+   allow create: if self(id) && validBirthYear() && profileShape() && fieldsOk() && incoming().email == request.auth.token.email && createRole() && (incoming().role == 'vendor' || !incoming().keys().hasAny(['vendorId','helper','addedBy','inviteCode']));
    function revokedHelper(vid, code){
     let invPath = vendorInvitePath(code);
     let claimant = get(invPath).data.get('usedBy', null);
@@ -144,7 +146,7 @@ service cloud.firestore {
    }
    // The removal only changes role and time. All other profile fields stay byte-for-byte unchanged.
    allow update: if (resource.data.role == 'vendor' && incoming().role == 'guest'
-      && resource.data.get('helper', false) == true && helperRevoke()) || (profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit() || teamClaimEdit()));
+      && resource.data.get('helper', false) == true && helperRevoke()) || (profileShape() && incoming().email == resource.data.email && ((self(id) && selfEdit() && (!changed().hasAny(['birthYear']) || validBirthYear()) && (!changed().hasAny(['fields']) || fieldsOk())) || (isManager() && managerEdit()) || claimEdit() || teamClaimEdit()));
    allow delete: if isOwner();
 
    // C1: personal notifications. Only the person reads them; the team (and a vendor, to the team) writes them through notify()

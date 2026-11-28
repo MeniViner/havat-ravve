@@ -27,9 +27,21 @@ try {
  await env.withSecurityRulesDisabled(async c=>{
    const a=c.firestore();
    await Promise.all(Object.entries({m:'manager',s:'staff',g:'guest',h:'guest'}).map(([id,role])=>put(a,'users/'+id,profile(id,role))));
+   await put(a,'users/legacy',{...profile('legacy','guest'),birthYear:1899});
    await Promise.all([put(a,'events/e',event),put(a,'events/past',{...event,end:new Date(Date.now()-60000).toISOString()}),
      put(a,'calendar/old',calendar),put(a,'calendar/private',{...calendar,audience:'managers'}),put(a,'calendar/public',{...calendar,audience:'all'})]);
  });
+ const newPerson=ctx('new-person'), ref=doc(newPerson,'users/new-person'), registration=profile('new-person','guest');
+ await assertFails(setDoc(ref,registration));
+ for (const birthYear of [1899, '2000', 2000.5, null, new Date().getUTCFullYear()+1]) {
+   await assertFails(setDoc(ref,{...registration,birthYear}));
+ }
+ await assertSucceeds(setDoc(ref,{...registration,birthYear:1900}));
+ await assertFails(updateDoc(ref,{birthYear:deleteField()}));
+ const legacy=ctx('legacy');
+ await assertSucceeds(updateDoc(doc(legacy,'users/legacy'),{town:'חיפה'}));
+ await assertFails(updateDoc(doc(legacy,'users/legacy'),{birthYear:1898}));
+ await assertSucceeds(updateDoc(doc(guest,'users/g'),{town:'חיפה'}));
  await assertSucceeds(updateDoc(doc(guest,'users/g'),{birthYear:1989}));
  await assertFails(updateDoc(doc(guest,'users/g'),{birthYear:new Date().getFullYear()+1}));
  await assertFails(updateDoc(doc(other,'users/g'),{birthYear:1960}));

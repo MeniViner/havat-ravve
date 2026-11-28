@@ -11,7 +11,7 @@ const env=await initializeTestEnvironment({projectId:'demo-havat-ravve',firestor
 const claims=email=>({email,email_verified:true,firebase:{sign_in_provider:'google.com'}});
 const ctx=(uid,email)=>env.authenticatedContext(uid,claims(email)).firestore();
 const now=new Date().toISOString();
-const profile=(uid,email,role,status,extra={})=>({uid,email,displayName:'בדיקה',phone:'0500000000',role,status,customerNumber:1,acceptedTermsAt:now,createdAt:now,updatedAt:now,...extra});
+const profile=(uid,email,role,status,extra={})=>({uid,email,displayName:'בדיקה',phone:'0500000000',role,status,birthYear:1990,customerNumber:1,acceptedTermsAt:now,createdAt:now,updatedAt:now,...extra});
 const actor=(uid)=>({uid,name:'בדיקה'});
 const task=(uid,extra={})=>({title:'משימה',note:'',photo:'',location:null,dueDate:'',managersOnly:false,templateId:null,dateKey:null,createdBy:actor(uid),createdAt:now,done:false,doneBy:null,doneAt:null,donePhoto:'',doneNote:'',assignee:null,urgent:false,updatedAt:now,...extra});
 const item=(uid,extra={})=>({title:'חלב',qty:'',urgent:false,note:'',link:'',category:'super',createdBy:actor(uid),createdAt:now,bought:false,boughtBy:null,boughtAt:null,expireAt:null,updatedAt:now,...extra});
@@ -1333,11 +1333,12 @@ const env4=await initializeTestEnvironment({projectId:'demo-havat-ravve-4',fires
     vsection('Rules: claiming an invite');
     const claimNew = (u, uid, code, inv, over = {}, useInvite = true, value = 7) => {
       const b = writeBatch(u);
-      b.set(doc(u, `users/${uid}`), { ...profile(uid, 'vendor'), customerNumber: 7, vendorId: inv.vendorId, helper: inv.role === 'helper', addedBy: inv.createdBy, inviteCode: code, ...over });
+      b.set(doc(u, `users/${uid}`), { ...profile(uid, 'vendor'), customerNumber: 7, birthYear: 1990, vendorId: inv.vendorId, helper: inv.role === 'helper', addedBy: inv.createdBy, inviteCode: code, ...over });
       b.update(doc(u, 'counters/users'), { value });
       if (useInvite) b.update(doc(u, `vendor_invites/${code}`), { usedBy: uid, usedAt: now, active: false });
       return b.commit();
     };
+    await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-raz', role: 'owner', createdBy: 'mgr' }, { birthYear: null }), 'new vendor must choose a birth year before claiming the invite');
     await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-raz', role: 'owner', createdBy: 'mgr' }, {}, false), '23 vendor profile without using the invite');
     await no(claimNew(fresh, 'fresh', 'code-owner-new', { vendorId: 'v-dana', role: 'owner', createdBy: 'mgr' }), '23 wrong vendorId');
     await no(claimNew(fresh, 'fresh', 'code-used-0001', { vendorId: 'v-raz', role: 'helper', createdBy: 'mgr' }), '23 used invite');
@@ -1455,7 +1456,7 @@ const env5=await initializeTestEnvironment({projectId:'demo-havat-ravve-5',fires
   const env = env5;
   const mail = (uid) => (uid === 'owner' ? 'meniviner@gmail.com' : uid + '@example.com');
   const db = (uid) => env.authenticatedContext(uid, claims(mail(uid))).firestore();
-  const P = (uid, role, extra = {}) => ({ uid, email: mail(uid), displayName: 'בדיקה', phone: '0500000000', role, status: 'active', customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now, ...extra });
+  const P = (uid, role, extra = {}) => ({ uid, email: mail(uid), displayName: 'בדיקה', phone: '0500000000', role, status: 'active', birthYear: 1990, customerNumber: 1, acceptedTermsAt: now, createdAt: now, updatedAt: now, ...extra });
   const DAY = 86400000, T = Date.now();
   const L = (code, role, by, extra = {}) => ({ code, role, name: '', phone: '054-000-0421', active: true, usedBy: null, usedAt: null, createdBy: actor(by), createdAt: now, expiresMs: T + 14 * DAY, ...extra });
   const ok = v2ok, no = v2no;

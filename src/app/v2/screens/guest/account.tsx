@@ -17,6 +17,7 @@ import { dayName, daysFromToday, ddmm, longDate, money } from '../../format';
 import { isRead, markRead, useNotifications, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import { markNotificationsRead } from '../../data/notify';
 import { DevicePushRow } from '../broadcast/PushSheet';
+import { isBirthYear } from '../../../birthYear';
 import { registrationQuestions, storedBirthYear, birthChange, answerOf, answersFor, missingAnswers } from '../../data/system';
 import { RegistrationQuestions, BirthYearField } from '../system/fields';
 import { gw } from '../../gender';
@@ -192,6 +193,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const [updatesChoice, setOptIn] = useState<boolean>();
   const optIn = updatesChoice ?? !!p.updatesOptIn;
   const [birthYear, setBirthYear] = useState<number>();
+  const selectedYear = birthYear ?? storedBirthYear(p, ctx.settings.registrationFields);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const missing = missingAnswers(answers, questions);
@@ -200,7 +202,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const done = () => back(paths(ctx).account);
   const save = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !isBirthYear(selectedYear, 1) || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]));
     try {
@@ -216,7 +218,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       <Field label="השם שלך בעברית" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
       <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
-      <BirthYearField value={birthYear ?? storedBirthYear(p, ctx.settings.registrationFields)} onChange={setBirthYear} />
+      <BirthYearField value={selectedYear} onChange={setBirthYear} invalid={tried && !isBirthYear(selectedYear, 1)} />
       <UpdatesSwitch checked={optIn} onChange={setOptIn} />
       <DetailList><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>
       <Note>המייל מגיע מחשבון Google, ולכן אי אפשר לשנות אותו כאן.</Note>

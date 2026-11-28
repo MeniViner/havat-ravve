@@ -4,7 +4,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import config from '../../site.config.json';
 import { nowIso, todayKey, dateKeyOf, hoursAgoIso } from './clock';
 
-const useEmulator = location.hostname === 'localhost' && new URLSearchParams(location.search).has('emulator');
+import { useEmulator } from './firebaseTarget';
 export const emulatorMode = useEmulator;
 export const app = getApps()[0] || initializeApp(config.firebase);
 export const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
