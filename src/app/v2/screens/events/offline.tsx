@@ -10,6 +10,10 @@ const statusIcons: Record<ReturnType<typeof useEventOffline>['status'], IconName
   checking: 'clock', ready: 'check', offline: 'offline', partial: 'download', denied: 'blocked', error: 'help',
 };
 
+const statusLabels: Record<ReturnType<typeof useEventOffline>['status'], string> = {
+  checking: 'בודק שמירה', ready: 'שמור במכשיר', offline: 'אין חיבור', partial: 'נשמר חלקית', denied: 'גישה מוגבלת', error: 'העדכון נכשל',
+};
+
 type EventCopy = { status:ReturnType<typeof useEventOffline>; refresh:() => void };
 const EventCopyContext = createContext<(EventCopy & {eventId:string}) | null>(null);
 
@@ -64,7 +68,7 @@ function OfflineDetails({status,refresh}:EventCopy) {
     <button ref={trigger} type="button" className="event-sync__trigger" data-state={waiting ? 'checking' : status.status}
       aria-label={'סנכרון האירוע · ' + title} title={title} aria-haspopup="dialog" aria-controls={open ? id : undefined}
       aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      <span className="event-sync__glyph"><Icon name={waiting ? 'clock' : statusIcons[status.status]} size={17} /></span>
+      <span className="event-sync__glyph"><Icon name={waiting ? 'clock' : statusIcons[status.status]} size={15} />{waiting ? 'ממתין לסנכרון' : statusLabels[status.status]}</span>
     </button>
     {open && <div ref={panel} id={id} tabIndex={-1} role="dialog" aria-labelledby={id + '-title'} className="event-sync__panel">
       <div className="event-sync__heading">

@@ -1,7 +1,7 @@
 .event-sync { position: relative; flex: 0 0 auto; }
 .event-sync__trigger, .event-sync__close { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.event-sync__glyph { display: grid; place-items: center; border-radius: 50%; width: 25px; height: 25px; background: var(--surface); border: 1px solid var(--line); }
-.event-sync__trigger { color: var(--soft); }
+.event-sync__glyph { display: inline-flex; align-items: center; gap: 4px; border-radius: 16px; padding: 2px 7px; min-height: 25px; font-size: 13px; font-weight: 600; white-space: nowrap; background: var(--surface); border: 1px solid var(--line); }
+.event-sync__trigger { width: auto; min-width: 44px; font-family: inherit; color: var(--soft); }
 .event-sync__trigger[data-state="ready"] { color: var(--green); }
 .event-sync__trigger[data-state="partial"], .event-sync__trigger[data-state="offline"] { color: #885915; }
 .event-sync__trigger[data-state="error"], .event-sync__trigger[data-state="denied"] { color: var(--red); }
