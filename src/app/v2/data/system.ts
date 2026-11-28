@@ -2,6 +2,7 @@
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
 import { useCalendarRange } from './farm';
+import { birthYearRequired, isBirthYear } from '../../birthYear';
 import { saveAccountChange } from '../../account-activity';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useList, useDoc, write, type Spec } from '../../db';
@@ -111,14 +112,21 @@ export function useGooglePhotoSync(profile: Profile) {
 // ---------- registration questions (settings.registrationFields; the same rules as the old RegistrationFields.tsx) ----------
 export const birthQuestion = (f: RegistrationField) => f.type === 'date' && (f.label.includes('לידה') || /^(birthdate|dob)$/i.test(f.id));
 export function storedBirthYear(p: Profile, fields: RegistrationField[]) {
-  if (p.birthYear) return p.birthYear;
-  const legacy = p.birthDate || p.fields?.[fields.find(birthQuestion)?.id || ''] || '';
-  const year = /^(\d{4})-\d{2}-\d{2}$/.exec(legacy)?.[1];
-  return year ? Number(year) : undefined;
+  if (isBirthYear(p.birthYear, 1)) return p.birthYear;
+  const dates = [p.birthDate, ...fields.filter(birthQuestion).map((f) => p.fields?.[f.id])];
+  for (const date of dates) {
+    const year = Number(/^(\d{4})-\d{2}-\d{2}$/.exec(date || '')?.[1]);
+    if (isBirthYear(year, 1)) return year;
+  }
+  return undefined;
 }
 /** Drop the old full-date answer only when the person explicitly replaces it with a year. */
 export function birthChange(p: Profile, year: number | undefined, fields: RegistrationField[]): Partial<Pick<Profile, 'birthYear' | 'birthDate' | 'fields'>> {
   if (year === undefined) return {};
+  if (!isBirthYear(year)) {
+    if (year === storedBirthYear(p, fields)) return {};
+    throw new Error(birthYearRequired);
+  }
   const answers = { ...p.fields };
   fields.filter(birthQuestion).forEach((f) => { delete answers[f.id]; });
   return { birthYear: year, ...(p.birthDate ? { birthDate: '' } : {}), fields: answers };
@@ -167,9 +175,11 @@ export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4
 const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
 export function saveProfile(p: Profile, d: ProfileDraft, questions: RegistrationField[] = []) {
+  const date = d.birthDate ? parseBirth(d.birthDate) : undefined;
+  if (!isBirthYear(d.birthYear ?? storedBirthYear(p, questions) ?? Number(date?.slice(0, 4)), 1)) throw new Error(birthYearRequired);
   const changedBirth = birthChange(p, d.birthYear, questions);
   return saveAccountChange(p.uid, 'profile_updated', {
-    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), ...(d.birthDate !== undefined ? { birthDate: parseBirth(d.birthDate) || '' } : {}), ...changedBirth,
+    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), ...(date ? { birthDate: date } : {}), ...changedBirth,
     fields: { ...(changedBirth.fields || p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
 }
@@ -213,8 +223,8 @@ export function useInviteFor(email: string) {
 export const INVITE_ROLE_WORD: Record<RoleInvite['role'], string> = { staff: 'כמתנדב', manager: 'כמנהל', owner: 'כבעלים' };
 export const firstName = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
 /** `fields`: the whole answers map to store (the profile's fields with the new answers); left out, fields stay untouched. */
-export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string> }) =>
-  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
+export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string>; birthYear?: number; birthDate?: string }) =>
+  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), ...(d.birthYear !== undefined ? { birthYear: d.birthYear } : {}), ...(d.birthDate !== undefined ? { birthDate: d.birthDate } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
 
 // ---------- install (C10) ----------
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };

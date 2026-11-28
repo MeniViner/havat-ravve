@@ -1,5 +1,6 @@
 // U8 GuestVisit (a date row and a date picker), U9 GuestDonate, U11 GuestContact and U13 GuestRegister (first sign-in).
 // The forms open signed out; their bar button signs in with Google on the spot and the form keeps what was typed.
+import { isBirthYear } from '../../../birthYear';
 import { useState } from 'react';
 import { AppScreen, go, useExternal, useToast, waUrl, telUrl, ToastProvider } from '../../core';
 import { BottomBar, Button, Segmented, ChoiceGroup, EmptyState, Field, FormHeader, IconButton, MoreDetails, SelectRow, Sheet, TextAreaField, Toggle, ListCard, Row, cx } from '../../kit';
@@ -218,7 +219,7 @@ function Register({ user, settings }: { user: Session; settings: Settings }) {
   const phoneErr = tried && !contactPhoneOk(phone) ? 'מספר טלפון לא תקין' : '';
   const submit = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !termsRead || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !isBirthYear(birthYear) || !termsRead || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
     try {
@@ -231,7 +232,7 @@ function Register({ user, settings }: { user: Session; settings: Settings }) {
       <Field label="השם שלך בעברית" placeholder="שם פרטי ומשפחה" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" placeholder="05" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
       <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
-      <BirthYearField value={birthYear} onChange={setBirthYear} />
+      <BirthYearField value={birthYear} onChange={setBirthYear} invalid={tried && !isBirthYear(birthYear)} />
       <RegistrationTerms read={termsRead} onChange={setTermsRead} invalid={tried && !termsRead} />
       <Note>נכנסים עם <bdi>{user.email}</bdi> · <button type="button" className="guest-inlinelink" onClick={() => demo.on ? setDemo({ persona: 'anon' }) : void signOutUser()}>לא אני</button></Note>
     </AppScreen>

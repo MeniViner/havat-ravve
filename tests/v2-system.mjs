@@ -17,7 +17,7 @@ const stub = {
     b.onLoad({ filter: /^fs$/, namespace: 'stub' }, () => ({ contents: `
       const rec = (n) => (...a) => { globalThis.__calls.push(n); return n === 'onSnapshot' ? () => {} : {}; };
       export const collection = rec('collection'), doc = rec('doc'), documentId = rec('documentId'), onSnapshot = rec('onSnapshot'), query = rec('query'), where = rec('where'), orderBy = rec('orderBy'), limit = rec('limit');
-      export const setDoc = async () => rec('setDoc')(), updateDoc = async () => rec('updateDoc')(), deleteDoc = async () => rec('deleteDoc')(), getDocsFromServer = async () => rec('get')(), getDocsFromCache = async () => rec('getDocsFromCache')();
+      export const setDoc = async () => rec('setDoc')(), updateDoc = async () => rec('updateDoc')(), deleteDoc = async () => rec('deleteDoc')(), getDocsFromServer = async () => rec('get')(), getDocsFromCache = async () => rec('getDocsFromCache')(), getDocFromCache = async () => rec('getDocFromCache')(), getDocFromServer = async () => rec('getDocFromServer')();
       export const writeBatch = () => { rec('writeBatch')(); return { set() {}, update() {}, delete() {}, commit: async () => {} }; };
       export const runTransaction = async () => rec('runTransaction')();
       export const arrayUnion = rec('arrayUnion'), arrayRemove = rec('arrayRemove'), increment = rec('increment'), serverTimestamp = rec('serverTimestamp');
@@ -143,6 +143,7 @@ globalThis.__calls.length = 0;
 const yoav = m.demoDoc('users/demo-u-yoav');
 assert.ok(yoav, 'the staff persona has a profile');
 assert.equal(yoav.photoSource, 'custom', 'seed: Yoav chose his own picture');
+assert.throws(() => sys.saveProfile({ ...yoav, birthYear: undefined, birthDate: '', fields: {} }, { displayName: 'יואב', phone: '', town: '', receipt: 'email' }), /שנת לידה/);
 const before = { role: yoav.role, status: yoav.status, email: yoav.email };
 await sys.saveProfile(yoav, { displayName: ' יואב פרץ ', phone: '052-1234567', town: 'רחובות', birthDate: '14.3.1975', receipt: 'email' });
 let after = m.demoDoc('users/demo-u-yoav');
@@ -182,6 +183,7 @@ await sys.saveProfile(m.demoDoc('users/demo-u-yoav'), { displayName: 'יואב �
 after = m.demoDoc('users/demo-u-yoav');
 assert.deepEqual({ shirt: after.fields.shirt, how: after.fields.how, receipt: after.fields.receiptPreference }, { shirt: 'L', how: 'חבר', receipt: 'whatsapp' }, 'C13 saves the answers trimmed, with the receipt');
 await sys.saveProfile(m.demoDoc('users/demo-u-yoav'), { displayName: 'יואב פרץ', phone: '052-1234567', town: '', birthDate: '', receipt: 'whatsapp' });
+assert.equal(m.demoDoc('users/demo-u-yoav').birthDate, '1975-03-14', 'legacy birth date survives unrelated profile edits');
 assert.equal(m.demoDoc('users/demo-u-yoav').fields.shirt, 'L', 'a draft without answers keeps the stored ones');
 await sys.markWelcomed('demo-u-yoav', { displayName: 'יואב פרץ', phone: '052-1234567', fields: { ...m.demoDoc('users/demo-u-yoav').fields, how: 'אתר ' } });
 assert.deepEqual({ shirt: m.demoDoc('users/demo-u-yoav').fields.shirt, how: m.demoDoc('users/demo-u-yoav').fields.how }, { shirt: 'L', how: 'אתר' }, 'C9 /welcome writes the answers');

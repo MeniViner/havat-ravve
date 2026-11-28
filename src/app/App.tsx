@@ -13,7 +13,10 @@ import { V2Root } from './v2/App';
 import { PushEntryPrompt } from './v2/PushEntryPrompt';
 import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
 import { GuestRoot, GuestFrame, TermsPage, BlockedPage, DeletionScheduledPage, useDeletionRequest } from './v2/screens/guest';
-import { ToastProvider as V2Toasts } from './v2/core';
+import { AppScreen, ToastProvider as V2Toasts } from './v2/core';
+import { BottomBar, Button } from './v2/kit';
+import { BirthYearField } from './v2/screens/system/fields';
+import { isBirthYear } from './birthYear';
 import { V2DemoStrip } from './v2/DemoChrome';
 import { pendingVendorInvite, forgetVendorInvite, claimVendorInvite } from './v2/data/vendor';
 import { isTeamLink, claimTeamLink } from './v2/data/invite';
@@ -21,16 +24,29 @@ import { isTeamLink, claimTeamLink } from './v2/data/invite';
 /** A vendor access link (?k=...) on first sign-in or on a guest account: claim it, then the vendor app opens by itself
  *  (the profile listener sees role 'vendor'). If the claim fails, say why and continue as a guest. */
 const claiming = new Map<string, Promise<unknown>>(); // one claim per link, even when the effect runs twice (StrictMode, a remount)
-function VendorClaim({ user, code }: { user: Session; code: string }) {
+function VendorClaim({ user, code, newProfile }: { user: Session; code: string; newProfile: boolean }) {
   const [error, setError] = useState('');
+  const [year, setYear] = useState<number>();
+  const [submitted, setSubmitted] = useState(false);
+  const [tried, setTried] = useState(false);
   useEffect(() => {
+    if (newProfile && (!submitted || !isBirthYear(year))) return;
     let live = true;
     const key = user.uid + ':' + code;
-    const claim = claiming.get(key) || claimVendorInvite(user, code);
+    const claim = claiming.get(key) || claimVendorInvite(user, code, { birthYear: year });
     claiming.set(key, claim);
     claim.then(() => forgetVendorInvite()).catch((e: Error) => { forgetVendorInvite(); claiming.delete(key); if (live) setError(e.message || 'הקישור לא תקין'); });
     return () => { live = false; };
-  }, [user.uid, code]);
+  }, [user.uid, code, newProfile, submitted, year]);
+  if (newProfile && !submitted && !error) return (
+    <GuestFrame><AppScreen variant="form" noNav bar={<BottomBar><Button size="bar" grow onClick={() => {
+      setTried(true);
+      if (isBirthYear(year)) setSubmitted(true);
+    }}>כניסה לדוכן</Button></BottomBar>}>
+      <div className="guest-titleblock"><h1 className="k-h1">כניסה לדוכן</h1></div>
+      <BirthYearField value={year} onChange={setYear} invalid={tried && !isBirthYear(year)} />
+    </AppScreen></GuestFrame>
+  );
   if (!error) return <Splash />;
   return <div className="splash" role="alert"><div className="title">לא הצלחנו לחבר את הדוכן</div><div>{error}</div><button type="button" className="btn ghost" onClick={() => location.replace('/app')}>המשך</button></div>;
 }
@@ -117,7 +133,7 @@ export default function App() {
   if (sw.maintenance && !owner && !demo.on && route !== '/terms' && route !== '/privacy') return <MaintenancePage text={sw.maintenanceText} />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
   const teamLink = isTeamLink(invite);
-  if (user && invite && !teamLink && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
+  if (user && invite && !teamLink && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim key={user.uid + ':' + invite} user={user} code={invite} newProfile={!profile} />;
   if (user && profile && teamLink && !demo.on && profile.role === 'guest' && profile.status === 'active' && pendingVendorInvite()) return <TeamClaim user={user} code={invite} />;
   if (user && (missing || !profile)) {
     if (route === '/contact') return <GuestRoot user={user} profile={null} settings={settings} />;
