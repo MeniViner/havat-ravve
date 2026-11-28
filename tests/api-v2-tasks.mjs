@@ -47,7 +47,7 @@ const ITEM_KEYS = ['title', 'qty', 'note', 'link', 'category', 'urgent', 'create
 const ACT_KEYS = ['kind', 'refId', 'action', 'text', 'by', 'at', 'subjectUid', 'eventId'];
 const NOTE_KEYS = ['id', 'kind', 'title', 'sub', 'link', 'refId', 'by', 'createdAt', 'readAt'];
 const PUSH_KEYS = ['id', 'kind', 'title', 'body', 'link', 'to', 'createdBy', 'createdAt', 'sentAt', 'urgent', 'tag', 'refId'];
-const TRIP_KEYS = ['id', 'by', 'list', 'startedAt', 'closedAt', 'bought', 'missing'];
+const TRIP_KEYS = ['recipientUids', 'id', 'by', 'list', 'startedAt', 'closedAt', 'bought', 'missing'];
 const TEMPLATE_KEYS = ['title', 'note', 'days', 'time', 'active', 'managersOnly', 'updatedAt', 'createdBy', 'createdAt'];
 const PLACE_KEYS = ['name', 'lat', 'lng', 'createdBy', 'createdAt'];
 const PROJECT_KEYS = ['id', 'title', 'goal', 'deadline', 'members', 'memberUids', 'status', 'createdBy', 'createdAt', 'updatedAt', 'doneAt'];
@@ -479,6 +479,26 @@ try {
     check(del.status === 200 && !(await docOf('shopping_trips/' + tripId)) && (await docOf('shopping/' + i1)).bought, 'a manager deletes it; bought stays bought');
   }
 
+  section('team categories and the audience for a single shopping trip');
+  {
+    const created=await w(RONIT,'shopping.createCategory',{name:'חומרים  לבדיקה'});
+    ok(created,'a volunteer can create a category');
+    const category=created.json.data.id;
+    const same=await w(NOA,'shopping.createCategory',{name:'  חומרים לבדיקה '});
+    check(same.json.data.id===category && (await docOf('shopping_categories/'+category)).name==='חומרים לבדיקה','creation and normalized retry resolve to one shared category');
+    const begin=await w(RONIT,'shopping.startTrip',{list:category,recipientUids:['syn-noa','syn-noa','syn-guest']});
+    ok(begin,'start a trip for a custom category');
+    const id=begin.json.data.tripId;
+    check((await docOf('shopping_trips/'+id)).recipientUids.join()==='syn-noa','the audience intersects active staff, without forcing the shopper into it');
+    check((await pushesFor(id))[0]?.to.join()==='syn-noa','only the selected manager is queued');
+    await w(RONIT,'shopping.closeTrip',{tripId:id});
+    check((await notesOf('syn-noa')).filter(n=>n.refId===id).length===2 && !(await notesOf('syn-ronit')).some(n=>n.refId===id),'closure uses the same audience');
+    const quiet=await w(RONIT,'shopping.startTrip',{list:'super',recipientUids:[]});
+    ok(quiet,'an explicit empty audience opens the trip');
+    check(!(await pushesFor(quiet.json.data.tripId)).length,'no recipients produce no push');
+    await w(RONIT,'shopping.closeTrip',{tripId:quiet.json.data.tripId});
+  }
+
   section('recurring templates');
   {
     await seed('places/pl-tpl', { name: 'רפת', lat: 31.6, lng: 34.7, createdBy: ME.owner, createdAt: now });
@@ -507,24 +527,26 @@ try {
 
   section('places');
   {
-    const a = await w(RONIT, 'places.add', { name: 'מחסן', lat: 31.55, lng: 34.65, accuracy: 12.5 });
-    ok(a, 'staff adds a place (rules: create isStaff)');
+    const a = await w(OWNER, 'places.add', { name: 'מחסן', lat: 31.55, lng: 34.65, accuracy: 12.5 });
+    ok(a, 'owner adds a place');
     const pid = a.json.data.placeId;
     const p = await docOf('places/' + pid);
-    check(sameKeys(p, [...PLACE_KEYS, 'accuracy']) && p.accuracy === 12.5 && p.createdBy.uid === 'syn-ronit', 'with accuracy (createPlace)', p);
+    check(sameKeys(p, [...PLACE_KEYS, 'accuracy']) && p.accuracy === 12.5 && p.createdBy.uid === 'synthetic-owner', 'with accuracy (createPlace)', p);
     check((await acts(pid)).map((x) => x.action + ':' + x.kind + ':' + x.text).join() === 'created:place:מחסן', 'activity created');
-    const noAcc = await w(RONIT, 'places.add', { name: 'בלי דיוק', lat: 31, lng: 34 });
+    const noAcc = await w(OWNER, 'places.add', { name: 'בלי דיוק', lat: 31, lng: 34 });
     check(sameKeys(await docOf('places/' + noAcc.json.data.placeId), PLACE_KEYS), 'without accuracy: no accuracy field');
-    ok(await w(NOA, 'places.update', { placeId: pid, name: 'מחסן כלים', accuracy: 5 }), 'staff edits a place');
+    ok(await w(OWNER, 'places.update', { placeId: pid, name: 'מחסן כלים', accuracy: 5 }), 'owner edits a place');
     const ph = PHOTO('syn-noa').replace('/task/', '/place/');
-    ok(await w(NOA, 'places.update', { placeId: pid, photo: ph }), 'a stored photo for the place');
+    ok(await w(OWNER, 'places.update', { placeId: pid, photo: ph }), 'a stored photo for the place');
     const p2 = await docOf('places/' + pid);
     check(p2.name === 'מחסן כלים' && p2.accuracy === 5 && p2.photo === ph && !('updatedAt' in p2), 'name, accuracy and photo; no updatedAt (the rules allow none)', p2);
     check((await acts(pid)).map((x) => x.action + ':' + x.text).join() === 'created:מחסן,edited:מחסן כלים,edited:מחסן כלים', 'activity edited each time (savePlace)', await acts(pid));
-    check((await w(NOA, 'places.update', { placeId: pid, photo: 'data:image/jpeg;base64,AA' })).status === 400, 'base64 place photo refused');
+    check((await w(OWNER, 'places.update', { placeId: pid, photo: 'data:image/jpeg;base64,AA' })).status === 400, 'base64 place photo refused');
     check((await w(RONIT, 'places.delete', { placeId: pid })).status === 403, 'staff cannot delete a place');
-    const d = await w(MGR, 'places.delete', { placeId: pid });
-    check(d.status === 200 && !(await docOf('places/' + pid)) && (await acts(pid)).at(-1).action === 'deleted' && (await acts(pid)).at(-1).text === 'מחסן כלים', 'a manager deletes it, activity deleted');
+    check((await w(MGR, 'places.update', { placeId: pid, lat: 32 })).status === 403, 'manager cannot move a place');
+    check((await w(MGR, 'places.delete', { placeId: pid })).status === 403, 'manager cannot delete a place');
+    const d = await w(OWNER, 'places.delete', { placeId: pid });
+    check(d.status === 200 && !(await docOf('places/' + pid)) && (await acts(pid)).at(-1).action === 'deleted' && (await acts(pid)).at(-1).text === 'מחסן כלים', 'an owner deletes it, activity deleted');
   }
 
   section('projects');
@@ -638,8 +660,8 @@ try {
       // an API-created template and place are valid app documents
       const tpl = (await w(MGR, 'templates.create', { title: 'חוקים', assignee: 'syn-ronit', placeId: 'pl-tpl', days: [0, 1, 2, 3, 4, 5, 6] })).json.data.templateId;
       label = 'a manager edits an API-created template in the app'; await assertSucceeds(updateDoc(doc(dani, 'task_templates', tpl), { active: false, updatedAt: n })); check(true, label);
-      const pl = (await w(RONIT, 'places.add', { name: 'חוקים', lat: 31, lng: 34, accuracy: 3 })).json.data.placeId;
-      label = 'staff edits an API-added place in the app'; await assertSucceeds(updateDoc(doc(noa, 'places', pl), { name: 'חוקים 2', lat: 31, lng: 34 })); check(true, label);
+      const pl = (await w(OWNER, 'places.add', { name: 'חוקים', lat: 31, lng: 34, accuracy: 3 })).json.data.placeId;
+      label = 'staff cannot edit an API-added place in the app'; await assertFails(updateDoc(doc(noa, 'places', pl), { name: 'חוקים 2', lat: 31, lng: 34 })); check(true, label);
       // projects: API steps are valid for the app's take / update; staff sees nothing
       const pid = (await w(MGR, 'projects.create', { title: 'חוקים', steps: JSON.stringify([{ title: 'א' }, { title: 'ב' }]) })).json.data.projectId;
       const steps = await listOf(`projects/${pid}/steps`);

@@ -2,7 +2,10 @@
 import { useCallback, useRef, useState, type MouseEvent } from 'react';
 import { href } from '../../../router';
 import { go, useToast } from '../../core';
-import { ago, daysFromToday } from '../../format';
+import { Tag } from '../../kit';
+import { nowMs } from '../../../clock';
+import { useNowMin } from '../farm/parts';
+import { ago, daysFromToday, ddmm, hhmm } from '../../format';
 import { setItemBought, doneWord } from '../../data/shopping';
 import type { Actor, ShoppingItem, ShoppingTrip } from '../../../types';
 
@@ -42,4 +45,12 @@ export function useMarkBought(actor: Actor, trip?: ShoppingTrip | null) {
   }, [actor.uid, trip?.id]);
   const unmark = useCallback((i: ShoppingItem) => { setItemBought(actor, i, false, null).catch(fail); }, [actor.uid]);
   return { leaving, mark, unmark, fail };
+}
+
+export function UrgencyTag({ item, compact = false }: { item: ShoppingItem; compact?: boolean }) {
+  useNowMin();
+  if (!item.urgent || item.bought) return null;
+  const due = item.urgentDueAt;
+  const valid = due && Number.isFinite(Date.parse(due));
+  return <Tag tone="urgent">{valid && Date.parse(due) < nowMs() ? 'דחוף · באיחור' : 'דחוף'}{valid && !compact && ` · ${ddmm(due)} ${hhmm(due)}`}</Tag>;
 }

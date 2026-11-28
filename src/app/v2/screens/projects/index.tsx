@@ -341,7 +341,7 @@ export function ProjectForm({ ctx, params }: ScreenProps): ReactNode {
     setBusy(true);
     try {
       if (editing && project.item) { await saveProject(ctx, project.item, steps.items, { title, deadline, steps: drafts }); go(projectLink(pid), true); }
-      else { const id = await createProject(ctx, { title, deadline, steps: drafts }); go(projectLink(id), true); }
+      else { const id = await createProject(ctx, { title, deadline, steps: drafts, eventId:params.event }); go(params.event ? '/manage/events/'+encodeURIComponent(params.event) : projectLink(id), true); }
     } catch (e) { fail(e); } finally { setBusy(false); }
   };
   if (editing && !ready && !project.loading && !project.item) return <Missing backLabel="פרויקטים" backTo="/projects" />;

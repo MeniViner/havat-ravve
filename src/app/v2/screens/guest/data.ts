@@ -1,3 +1,4 @@
+import { eventMillis } from '../events/logic';
 // The guest side (U1-U14): what the screens read and how they word it. Data through data.ts / db.ts only, so every screen
 // runs the same on demo data and on Firestore. A team member reaches the same screens from the team app (tickets as a guest,
 // visit, donate, contact): `team` in the context changes only where links go (their /me is the team profile).
@@ -53,7 +54,7 @@ export function useEvents() {
   const byId = useMemo(() => new Map(r.items.map((e) => [e.id, e])), [r.items]);
   return { ...r, byId };
 }
-export const isPast = (e: Pick<FarmEvent, 'start' | 'end'>) => (e.end || e.start) < clockNow().toISOString();
+export const isPast = (e: Pick<FarmEvent, 'start' | 'end'>) => !(eventMillis(e.end) > clockNow().getTime());
 
 // ---------- orders ----------
 export type Order = { id: string; tickets: Ticket[]; valid: Ticket[]; first: Ticket; event: FarmEvent | undefined; status: PaymentStatus; cancelled: boolean; past: boolean; owed: number };

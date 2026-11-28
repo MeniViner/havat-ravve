@@ -4,7 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isGoogleUser, type Session } from './firebase';
 import { useList, useDoc, write, newId } from './db';
-import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
+import { checkDemoSession, useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
@@ -21,6 +21,7 @@ function startAuth() {
   authStarted = true;
   void readyAuth().then((auth) => onAuthStateChanged(auth, (user) => {
     authState = { loading: false, user: isGoogleUser(user) ? user : null };
+    checkDemoSession(authState.user?.uid);
     authListeners.forEach((listener) => listener());
   }));
 }
@@ -79,10 +80,10 @@ export function useCmsEditor(user: Session, enabled: boolean) {
 /** The role for a brand-new account: owner by bootstrap email; otherwise the role of the one-time team link the person came
  *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
  *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }, link = '') {
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string>; birthYear?: number }, link = '') {
   const now = nowIso();
   const email = (user.email || '').toLowerCase();
-  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, ...(data.birthYear !== undefined ? { birthYear: data.birthYear } : {}), status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
   if (demoOnly() && getDemo().persona === 'new' && user.uid === NEW_DEMO_SESSION.uid) {
     if (!demoDoc('users/' + user.uid)) await write.set('users', user.uid, { ...details, role: 'guest', customerNumber: 999 });
     return;

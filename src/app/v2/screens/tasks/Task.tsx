@@ -186,7 +186,7 @@ export function AssignScreen({ ctx, params }: ScreenProps) {
   useClockVersion();
   const r = useTaskV2(params.id, ctx);
   const root = useRootTasks(ctx);
-  const presence = usePresenceToday(ctx.today);
+  const presence = usePresenceToday(ctx.today, ctx.manager);
   const fail = useFail(); const toast = useToast();
   const [q, setQ] = useState('');
   const [pick, setPick] = useState<string | null | undefined>(undefined);

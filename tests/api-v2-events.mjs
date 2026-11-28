@@ -357,6 +357,8 @@ try {
     check((await w(STAFF, 'gate.keepRejected', { eventId, scanId: rj2 })).status === 403, 'staff cannot handle a rejected entry');
     ok(await w(MGR, 'gate.keepRejected', { eventId, scanId: rj2 }), 'gate.keepRejected');
     check((await docOf(`events/${eventId}/scans/${rj2}`)).keptBy.uid === 'syn-mgr' && (await w(MGR, 'gate.reopenAndAdmit', { eventId, scanId: rj2 })).status === 409, 'kept: it can no longer be reopened');
+    const noContact = await w(STAFF, 'gate.admitWalkIn', { eventId, name: 'אורח לבדיקה', count: 1 });
+    check(noContact.status === 400, 'walk-in requires a phone for a new registration');
     const wi = await w(STAFF, 'gate.admitWalkIn', { eventId, name: 'אורח מזדמן', phone: '0509990000', count: 2, pay: 'gate' });
     check(wi.status === 201 && wi.json.data.result === 'paidAtGate' && wi.json.data.amount === 60, 'gate.admitWalkIn → 201', wi.json);
     walkIn = wi.json.data.ticketIds[0];
@@ -394,7 +396,7 @@ try {
     check((await w(STAFF, 'tickets.payOnsite', { orderId: 'syn-late' })).status === 403, 'closed: staff cannot take payment on site');
     check((await w(STAFF, 'tabs.open', { eventId, guestName: 'מאוחר' })).status === 403 && (await w(STAFF, 'tabs.addItem', { tabId, productId: coffee })).status === 403, 'closed: staff cannot sell at the stall');
     check((await w(STAFF, 'vendorRequests.close', { eventId, requestId: 'none' })).status === 404, '(requests are checked below)');
-    check((await w(MGR, 'gate.admitWalkIn', { eventId, name: 'x', count: 1 })).status === 403, 'closed: no walk-in tickets, for managers too (the rules)');
+    check((await w(MGR, 'gate.admitWalkIn', { eventId, name: 'אורח לבדיקה', phone: '0500000001', count: 1 })).status === 403, 'closed: no walk-in tickets, for managers too (the rules)');
     ok(await w(MGR, 'gate.admit', { eventId, ticketId: 'syn-late-1', pay: 'gate' }), 'closed: a manager still lets someone in');
     ok(await w(MGR, 'events.reopen', { eventId }), 'events.reopen');
     const e2 = await docOf('events/' + eventId);

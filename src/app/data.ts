@@ -8,6 +8,9 @@ import type {
 } from './types';
 import { DEFAULT_SETTINGS, RECEIPT_PREFERENCE_FIELD } from './types';
 import { nowMs } from './clock';
+import { needsSignedStallSale, localStallLog, submitStallCart, type CheckoutOptions } from './v2/data/stallCheckout';
+import type { SaleLine } from '../../shared/stall-sale';
+import { isoFromLocal } from './v2/screens/events/logic';
 
 export const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
 export const fillTemplate = (t: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`[${k}]`, String(v)), t);
@@ -44,8 +47,21 @@ export const useUpcomingEvents = () => useList<FarmEvent>('events', { where: [['
 export const useAllEvents = (enabled: boolean) => useList<FarmEvent>('events', { orderBy: [['start', 'desc']] }, enabled);
 export const useEvent = (id: string, enabled = true) => useDoc<FarmEvent>('events/' + (id || '_'), enabled && !!id);
 export type EventInput = Omit<FarmEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'publishedAt'>;
+/** Old API events may use Jerusalem wall time; current entries carry an explicit time zone. */
+function eventMillis(value: string) {
+  if (!value) return NaN;
+  if (/(Z|[+-]\d\d:\d\d)$/i.test(value)) return Date.parse(value);
+  const wall = /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d)(?::([0-5]\d)(?:[.](\d{3}))?)?$/.exec(value);
+  if (!wall || !Number.isFinite(Date.parse(wall[1] + 'T00:00:00Z'))) return NaN;
+  const day = new Date(wall[1] + 'T00:00:00Z');
+  if (day.toISOString().slice(0,10) !== wall[1]) return NaN;
+  return Date.parse(isoFromLocal(wall[1], wall[2])) + Number(wall[3] || 0) * 1000 + Number(wall[4] || 0);
+}
 export async function saveEvent(actor: Actor, data: EventInput, existing?: FarmEvent) {
   const now = nowIso();
+  const end = eventMillis(data.end), start = eventMillis(data.start);
+  if (data.published && (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)) throw new Error('לפרסום צריך מועד סיום אחרי ההתחלה.');
+  if (data.published && !existing?.published && end <= nowMs()) throw new Error('מועד הסיום כבר חלף.');
   const publication = data.published && !existing?.published ? { publishedAt: now } : {};
   if (existing) {
     await write.update('events', existing.id, { ...data, ...publication, updatedAt: now });
@@ -73,6 +89,9 @@ export async function restoreOrder(actor: Actor, before: Ticket[]) {
 }
 export const useOpenTickets = (enabled: boolean) => useList<Ticket>('tickets', { where: [['paymentStatus', 'in', ['pending', 'claimed']]], orderBy: [['createdAt', 'desc']], limit: 500 }, enabled);
 export async function orderTickets(profile: Profile, event: FarmEvent, count: number, holders: string[], answers: Record<string, string>) {
+  const end = eventMillis(event.end);
+  if (!event.published || !event.open || (event as FarmEvent & { closed?: unknown }).closed || !Number.isFinite(end) || end <= nowMs()) throw new Error('ההרשמה לאירוע הסתיימה או סגורה.');
+  if (!Number.isInteger(count) || count < 1 || count > event.maxPerOrder) throw new Error('כמות הכרטיסים אינה מתאימה להזמנה.');
   const orderId = newId('tickets');
   const now = nowIso();
   const paymentStatus: PaymentStatus = event.price > 0 ? 'pending' : 'free';
@@ -81,7 +100,7 @@ export async function orderTickets(profile: Profile, event: FarmEvent, count: nu
     const id = newId('tickets'); ids.push(id);
     const t: Omit<Ticket, 'id'> = {
       eventId: event.id, eventTitle: event.title, orderId, index: i + 1, total: count,
-      ownerUid: profile.uid, ownerName: profile.displayName, ownerPhone: profile.phone, holderName: (holders[i] || '').trim(),
+      ownerUid: profile.uid, selfRegistered: true, ownerName: profile.displayName, ownerPhone: profile.phone, holderName: (holders[i] || '').trim(),
       secret: randomSecret(), price: event.price, paymentStatus, status: 'valid', scans: [], entries: 0, answers, createdAt: now, updatedAt: now,
     };
     return { op: 'set' as const, col: 'tickets', id, data: t as unknown as Record<string, unknown> };
@@ -170,7 +189,7 @@ export async function decideVisit(v: Visit, actor: Actor, status: VisitStatus, m
   await write.batch([
     { op: 'update', col: 'visits', id: v.id, data: { status, managerNote, handledBy: actor, updatedAt: now } },
     status === 'approved'
-      ? { op: 'set', col: 'calendar', id: `visit_${v.id}`, data: { title: `ביקור: ${v.name} · ${v.people}`, date: v.date, time, ownerUid: actor.uid, ownerName: actor.name, kind: 'visit', refId: v.id, createdAt: now } }
+      ? { op: 'set', col: 'calendar', id: `visit_${v.id}`, data: { title: `ביקור: ${v.name} · ${v.people}`, date: v.date, time, ownerUid: actor.uid, ownerName: actor.name, audience: 'all', kind: 'visit', refId: v.id, createdAt: now } }
       : { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
     ...open.filter((n) => n.refId === v.id).map((n) => ({ op: 'update' as const, col: 'notifications', id: n.id, data: status === 'new' ? { handled: false, handledBy: null, handledAt: null } : { handled: true, handledBy: actor, handledAt: now } })),
   ]);
@@ -222,11 +241,7 @@ export async function saveProduct(eventId: string, data: Omit<Product, 'id'>, ex
   return id;
 }
 export const deleteProduct = (eventId: string, id: string) => write.remove(`events/${eventId}/products`, id);
-/** Copies products into another event as new documents, placed after the ones that event already has. */
-export async function copyProducts(_fromEventId: string, toEventId: string, products: Product[], after = 0) {
-  const sorted = [...products].sort((x, y) => x.sort - y.sort);
-  await write.batch(sorted.map((p, i) => ({ op: 'set' as const, col: `events/${toEventId}/products`, id: newId('products'), data: { name: p.name, price: p.price, active: p.active, sort: after + i + 1 } })));
-}
+export { copyFarmProducts as copyProducts } from './v2/data/farmCatalogs';
 /** Saves the whole order in one write, so two taps can never leave two products with the same place. */
 export async function setProductOrder(eventId: string, ordered: Product[]) {
   await write.batch(ordered.map((p, i) => ({ op: 'update' as const, col: `events/${eventId}/products`, id: p.id, data: { sort: i + 1 } })));
@@ -273,13 +288,26 @@ export async function openTab(actor: Actor, event: FarmEvent, guest: StallGuest)
   return { ...tab, id };
 }
 
-/** Adds to the tab without reading it first: works without reception, and two volunteers can add to the same tab at once. */
-export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[]) {
+/** Catalog sales commit their verified snapshots together. One-off events keep their offline atomic increments. */
+export async function addTabItems(actor: Actor, tab: Tab, items: TabItem[], options: CheckoutOptions = {}, snapshotItems?: SaleLine[]) {
+  if (!items.length) return 0;
+  const lines = snapshotItems || items.map(({productId,qty,price})=>({productId,qty,price}));
+  const request = {eventId:tab.eventId,tabId:tab.id,items:lines};
+  if (await needsSignedStallSale(actor,request,options)) return (await submitStallCart(actor,request,options)).total;
   // each line gets its own moment, so two identical products added together stay two lines
   const base = nowMs();
-  const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString() }));
+  const stamped = items.map((i, k) => ({ ...i, at: new Date(base + k).toISOString(), ...(options.operationId ? {saleOperation:options.operationId.toLowerCase()} : {}) }));
+  if (options.operationId) {
+    const {id,result}=await localStallLog(actor,options.operationId,{eventId:tab.eventId,tabId:tab.id,items:lines});
+    if (result) return result.total;
+    const history=activityOp(actor,'tab',tab.id,'item',tab.guestName+': '+items.map(i=>i.name+(i.qty>1?' ×'+i.qty:'')).join(', ')+' · '+sum(stamped)+' ₪',{subjectUid:tab.guestUid,eventId:tab.eventId});
+    // This activity is create-only. Replaying the same offline batch cannot increment the account twice.
+    await write.batch([{op:'update',col:'tabs',id:tab.id,data:{items:push(...stamped),total:inc(sum(stamped)),updatedAt:nowIso()}},{...history,id}]);
+    return sum(stamped);
+  }
   await write.update('tabs', tab.id, { items: push(...stamped), total: inc(sum(stamped)), updatedAt: nowIso() });
   logActivity(actor, 'tab', tab.id, 'item', `${tab.guestName}: ${items.map((i) => `${i.name}${i.qty > 1 ? ' ×' + i.qty : ''}`).join(', ')} · ${sum(items)} ₪`, { subjectUid: tab.guestUid, eventId: tab.eventId });
+  return sum(stamped);
 }
 /** Removes exactly that line, whatever the other phones added meanwhile. */
 export async function removeTabItem(actor: Actor, tab: Tab, index: number, reason = '') {
@@ -338,7 +366,7 @@ export async function saveCalendarItem(owner: Actor, data: CalendarDraft, existi
 }
 export const deleteCalendarItem = (id: string) => write.remove('calendar', id);
 export async function upsertCalendarRef(actor: Actor, kind: 'visit' | 'event', refId: string, data: { title: string; date: string; time: string }) {
-  await write.set('calendar', `${kind}_${refId}`, { ...data, ownerUid: actor.uid, ownerName: actor.name, kind, refId, createdAt: nowIso() });
+  await write.set('calendar', `${kind}_${refId}`, { ...data, ownerUid: actor.uid, ownerName: actor.name, audience:'all', kind, refId, createdAt: nowIso() });
 }
 export const deleteCalendarRef = (kind: 'visit' | 'event', refId: string) => write.remove('calendar', `${kind}_${refId}`).catch(() => {});
 

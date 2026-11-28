@@ -2,7 +2,7 @@
 // edit and delete in ⋯ (rules 5 and 6: one control in the top bar, delete only through ⋯ and the confirmation).
 import { useEffect, useMemo, useRef } from 'react';
 import { AppScreen, go, useExternal, useToast } from '../../core';
-import { BottomBar, Button, DetailList, DetailRow, EmptyState, History, PageTitle, SectionTitle, Stepper, Tag, TopBar } from '../../kit';
+import { BottomBar, Button, DetailList, DetailRow, EmptyState, History, PageTitle, SectionTitle, Stepper, TopBar } from '../../kit';
 import { dayTime, ddmm } from '../../format';
 import { back } from '../../../router';
 import { compressPhoto } from '../../../store';
@@ -13,7 +13,7 @@ import {
   doneWord, g, keyOfCat, listLabel, logQtyChange, parseQty, qtyText, setItemBought, setItemPhoto, setItemQty,
   stepQty, timeline, useItemActivity, useShopItem, useShopping,
 } from '../../data/shopping';
-import { agoLong } from './common';
+import { agoLong, UrgencyTag } from './common';
 
 export function ShopItemScreen({ ctx, params }: ScreenProps) {
   const { item, loading } = useShopItem(params.id);
@@ -66,7 +66,7 @@ function ItemView({ item, ctx, onBack }: { item: ShoppingItem; ctx: ScreenProps[
     }>
       <TopBar back={{ label: 'קניות', onClick: onBack }}
         end={<Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/shopping/${item.id}/edit`)}>עריכה</Button>} />
-      <PageTitle size="detail" className="shopping-title">{item.title}{item.urgent && !item.bought && <Tag tone="urgent">דחוף</Tag>}</PageTitle>
+      <PageTitle size="detail" className="shopping-title">{item.title}<UrgencyTag item={item} /></PageTitle>
       <DetailList>
         <DetailRow term="כמות" action={<Stepper value={parseQty(item.qty).n} min={1} onChange={(n) => step(n - parseQty(item.qty).n)} />}>{qtyText(item.qty)}</DetailRow>
         <DetailRow term="רשימה">{listLabel(item.category)}</DetailRow>

@@ -494,11 +494,11 @@ try {
     check((await actsOf('app')) === 'saved,saved', 'settings activity "saved" (one per save)');
 
     // places
-    // as in the app (firestore.rules): the team adds and edits places; only managers delete them
-    check([200, 201].includes((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status), 'staff can add places, as in the app');
-    const pl = await w(MGR, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
+    // Map places are read-only for the team.
+    check((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status === 403, 'staff cannot add map places');
+    const pl = await w(OWNER, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
     ok(pl, 'places.add'); const placeId = pl.json.data.placeId;
-    ok(await w(MGR, 'places.update', { placeId, name: 'דיר' }), 'places.update');
+    ok(await w(OWNER, 'places.update', { placeId, name: 'דיר' }), 'places.update');
     check((await r(STAFF, '/v1/places')).json.data.items.some((p) => p.id === placeId && p.name === 'דיר'), 'places.list (staff can read)');
 
     // tasks: the new fields, edit, note, delete
@@ -634,6 +634,26 @@ try {
     const off = (await w(MGR, 'events.saveProduct', { eventId, name: 'מיץ (לא במלאי)', price: 0, active: false })).json.data.productId;
     const offAdd = await w(STAFF, 'tabs.addItem', { tabId, productId: off });
     check(offAdd.status === 400 && offAdd.json.error.details.field === 'productId', 'an inactive product cannot be added to a tab (found by the assistant)');
+    // A cached selection must be revalidated by the key-auth API too, even when active is still true.
+    const sourceCatalog = 'syn-coffee-catalog', sourceProduct = 'syn-coffee', saleTab = 'syn-catalog-sale-tab';
+    const master = {name:'קפה',price:14,createdAt:t0,updatedAt:t0};
+    const linked = { name:'קפה',price:12,active:true,sort:1,catalogId:sourceCatalog,catalogProductId:sourceProduct };
+    await seed('farm_catalogs',sourceCatalog,{name:'משקאות',createdAt:t0,updatedAt:t0});
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,master);
+    await seed('events/'+eventId+'/products','syn-linked',linked);
+    await seed('tabs',saleTab,{...tb.json.data.record,eventId,ticketId:saleTab,items:[],total:0,status:'open'});
+    const catalogSale = () => w(STAFF,'tabs.addItem',{tabId:saleTab,productId:'syn-linked'});
+    check((await catalogSale()).status===200,'catalog sale uses the event selection, including a legacy generation');
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,{...master,archived:true,generation:1});
+    check((await catalogSale()).status===400,'archived coffee cannot be sold from an open event');
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,{...master,archived:false,generation:1});
+    check((await catalogSale()).status===400,'restoring coffee alone does not revive its earlier event selection');
+    const historical = (await where('tabs','ticketId',saleTab))[0];
+    check(historical.items.length===1 && historical.items[0].price===12 && historical.total===12,'archive and restore preserve the recorded price and total');
+    await seed('events/'+eventId+'/products','syn-linked',{...linked,catalogProductGeneration:1});
+    check((await catalogSale()).status===200,'explicit selection in the current product generation permits a new sale');
+    await seed('farm_catalogs',sourceCatalog,{name:'משקאות',createdAt:t0,updatedAt:t0,archived:true,generation:1});
+    check((await catalogSale()).status===400,'archiving a whole catalog stops its active event lines');
     check((await w(STAFF, 'tabs.setStatus', { tabId, status: 'paid' })).status === 403, 'staff cannot settle a tab');
     ok(await w(MGR, 'tabs.setStatus', { tabId, status: 'paid' }), 'tabs.setStatus paid');
     check((await actsOf(tabId)) === 'item,item,opened,paid,removed', 'tab activity', await actsOf(tabId));
@@ -692,7 +712,7 @@ try {
     ok(await w(MGR, 'templates.delete', { templateId: tpm.json.data.templateId }), 'templates.delete');
     // A saved entrance remains a stable reference even after its place is archived.
     await seed('farmTrails','syn-place-entrance',{placeIds:[placeId]});
-    const archived = await w(MGR, 'places.delete', { placeId });
+    const archived = await w(OWNER, 'places.delete', { placeId });
     ok(archived, 'places.delete');
     check(archived.json.data.archived && (await docOf('places/' + placeId)).archived, 'deleting a referenced place archives its original ID');
     const newAtArchive = await create(KEYS.users, {title:'מקום בארכיון',placeId},randomUUID(),{'x-actor-id':'user:syn-ronit'});
@@ -1480,7 +1500,7 @@ section('files: R2 uploads for the app (Firebase sign-in token, roles, types, se
   const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json());
   const t = new Date().toISOString();
   const people = {};
-  for (const [name, role, status] of [['guest', 'guest', 'active'], ['staff', 'staff', 'active'], ['manager', 'manager', 'active'], ['vendor', 'vendor', 'active'], ['blocked', 'staff', 'blocked']]) {
+  for (const [name, role, status] of [['owner', 'owner', 'active'], ['guest', 'guest', 'active'], ['staff', 'staff', 'active'], ['manager', 'manager', 'active'], ['vendor', 'vendor', 'active'], ['blocked', 'staff', 'blocked']]) {
     const a = await signUp(`files-${name}-${Date.now()}@synthetic.test`);
     people[name] = a;
     await seed('users', a.localId, { uid: a.localId, email: a.email, displayName: 'קבצים ' + name, phone: '0500000000', role, status, customerNumber: 3, acceptedTermsAt: t, createdAt: t, updatedAt: t });
@@ -1511,6 +1531,9 @@ section('files: R2 uploads for the app (Firebase sign-in token, roles, types, se
     const s = await up('task', WEBP, 'image/webp', people.staff.idToken);
     check(s.status === 201 && (await s.json()).data.key.endsWith('.webp'), 'staff uploads a task photo (WebP) → 201');
     check((await up('event', JPEG, 'image/jpeg', people.staff.idToken)).status === 403, 'staff may not upload an event image → 403');
+    for (const role of ['staff', 'manager', 'owner']) {
+      check((await up('place', JPEG, 'image/jpeg', people[role].idToken)).status === (role === 'owner' ? 201 : 403), 'place photo upload: ' + role);
+    }
     const m = await up('eventfile', PDF, 'application/pdf', people.manager.idToken);
     const mj = await m.json();
     check(m.status === 201 && mj.data.key.endsWith('.pdf') && (await fetch(mj.data.url)).headers.get('content-type') === 'application/pdf', 'a manager uploads an event PDF → 201, served as application/pdf', mj);

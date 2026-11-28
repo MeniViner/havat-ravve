@@ -26,7 +26,7 @@ export function PresenceScreen({ ctx, params }: ScreenProps) {
   const whoP = people.find((p) => p.uid === whoUid);
   const me = whoUid === ctx.user.uid;
   const who = me || !whoP ? ctx.actor : { uid: whoP.uid, name: whoP.displayName };
-  const cal = useCalendarRange(today, addDays(today, 90), true);
+  const cal = useCalendarRange(today, addDays(today, 90), ctx.manager);
   const mine = useMemo(() => cal.items.filter((it) => it.ownerUid === who.uid && isPresence(it) && it.date >= today).sort((a, b) => a.date.localeCompare(b.date)), [cal.items, who.uid, today]);
   const existing = mine.find((it) => it.date === first && it.kind === 'presence');
   const [days, setDays] = useState<string[]>([first]);

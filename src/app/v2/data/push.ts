@@ -204,13 +204,20 @@ export async function enablePush(profile: Profile, config: PushConfig): Promise<
     device = { id: deviceId(), kind: 'fcm', token, ua: ua(), createdAt };
   }
   await saveDevice(profile, device, true);
+  try { localStorage.removeItem('farm-push-off:' + profile.uid); } catch { /* storage unavailable */ }
   return 'on';
+}
+
+/** An explicit device opt-out outlives a deferred entry prompt. */
+export function entryPushOptedOut(uid: string) {
+  try { return localStorage.getItem('farm-push-off:' + uid) === '1'; } catch { return false; }
 }
 
 /** Turns push off on this device. Other registered devices keep receiving. */
 export async function disablePush(profile: Profile) {
   if (getDemo().on) { await saveDevice(profile, null, false); return; }
   await saveDevice(profile, null);
+  try { localStorage.setItem('farm-push-off:' + profile.uid, '1'); } catch { /* storage unavailable */ }
   await dropSubscription();
 }
 

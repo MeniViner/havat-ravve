@@ -9,7 +9,7 @@ const stub = {
   setup(b) {
     b.onResolve({ filter: /^firebase\/firestore$/ }, () => ({ path: 'fs', namespace: 'stub' }));
     b.onResolve({ filter: /^firebase\/auth$/ }, () => ({ path: 'auth', namespace: 'stub' }));
-    b.onResolve({ filter: /^\.\/firebase$/ }, () => ({ path: 'app', namespace: 'stub' }));
+    b.onResolve({ filter: /^(?:\.\.?\/)+firebase$/ }, () => ({ path: 'app', namespace: 'stub' }));
     b.onLoad({ filter: /^fs$/, namespace: 'stub' }, () => ({ contents: `
       const calls = globalThis.__calls;
       let n = 0;
@@ -17,13 +17,14 @@ const stub = {
       export const doc = (a, b, c) => (c !== undefined ? { path: b + '/' + c } : b !== undefined ? { path: b } : { id: 'real' + (++n), path: a.path + '/real' + n });
       export const query = (c) => c, where = () => 0, orderBy = () => 0, limit = () => 0;
       export const onSnapshot = (ref) => { calls.push(['listen', ref.path]); return () => {}; };
+      export const getDocsFromCache = async (ref) => { calls.push(['listCache', ref.path]); return { docs: [] }; };
       export const getDocsFromServer = async (ref) => { calls.push(['get', ref.path]); return { docs: [] }; };
       export const serverTimestamp = () => ({ __serverTimestamp: true });
       export const documentId = () => '__name__';
       export const setDoc = async (ref) => { calls.push(['set', ref.path]); if (globalThis.__server === 'silent') await new Promise(() => {}); if (globalThis.__server === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } };
       export const updateDoc = async (ref) => { calls.push(['update', ref.path]); };
       export const deleteDoc = async (ref) => { calls.push(['delete', ref.path]); };
-      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); if (globalThis.__batch === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } } });
+      export const writeBatch = () => ({ set: (r) => calls.push(['batch.set', r.path]), update: (r) => calls.push(['batch.update', r.path]), delete: (r) => calls.push(['batch.delete', r.path]), commit: async () => { calls.push(['commit']); if (globalThis.__batch === 'slowAck') await new Promise((r) => setTimeout(r, 50)); if (globalThis.__batch === 'refuse') { await new Promise((r) => setTimeout(r, 30)); throw Object.assign(new Error('denied'), { code: 'permission-denied' }); } } });
       export const arrayUnion = (...v) => ({ union: v }), arrayRemove = (...v) => ({ remove: v }), increment = (n) => ({ inc: n });
       // __tx: '' runs fn and commits; 'unavailable' / 'denied' fail like the server; 'hang' never answers;
       // 'slowRead' answers the reads only after __slowMs; 'slowCommit' commits after __slowMs.
@@ -43,11 +44,12 @@ const stub = {
         calls.push(['tx.commit']);
         return out;
       };
+      export const getDocFromServer = async (r) => { calls.push(['get', r.path]); return snap(r.path, (globalThis.__serverDocs || {})[r.path]); };
       export const getDocFromCache = async (r) => { const d = (globalThis.__cacheDocs || {})[r.path]; if (d === undefined) throw Object.assign(new Error('not cached'), { code: 'unavailable' }); return snap(r.path, d); };
     ` }));
     b.onLoad({ filter: /^auth$/, namespace: 'stub' }, () => ({ contents: 'export const onAuthStateChanged = () => {};' }));
     b.onLoad({ filter: /^app$/, namespace: 'stub' }, () => ({ contents: `
-      export const db = {}, ownerEmail = 'owner@example.test';
+      export const db = {}, config = {}, emulatorMode = true, ownerEmail = 'owner@example.test';
       export const readyAuth = async () => ({});
       export const nowIso = () => new Date().toISOString();
       export const todayKey = () => '', hoursAgoIso = () => '', isGoogleUser = () => false;
@@ -64,11 +66,24 @@ globalThis.__calls = [];
 // a state left by the old build ("examples on top of my real account") must not come back as demo
 store.set('farm-demo', JSON.stringify({ on: true, persona: 'real' }));
 
-const { write, newId, push, inc, syncState, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
+const { write, readListFromCache, directoryInvitations, birthChange, storedBirthYear, newId, push, inc, syncState, setDemoAccess, setDemo, getDemo, demoItems, demoDoc, NEW_DEMO_SESSION, createProfile, updateOwnProfile, fit, byPriority, transact, ConflictError, isConflict, txTiming, admit } = await import('../.build/demo-test.mjs?' + Date.now());
 const calls = globalThis.__calls;
+const checked = {uid:'linked-user',email:'joined@example.invalid',createdAt:'2026-11-20'};
+const invites = directoryInvitations([checked], [{email:'JOINED@example.invalid'},{email:'pending@example.invalid'}], [
+  {usedBy:'linked-user',active:false,expiresMs:0},{usedBy:null,active:true,expiresMs:Date.now()+86400000},{usedBy:null,active:true,expiresMs:0},
+]);
+assert.deepEqual([invites.count,invites.joined.length,invites.expired.length],[2,1,1]);
+const birthFields=[{id:'birth',type:'date',label:'תאריך לידה'}];
+const older={birthDate:'1982-05-19',fields:{birth:'1982-05-19',member:'yes'}};
+assert.equal(storedBirthYear(older,birthFields),1982);
+assert.deepEqual(birthChange(older,undefined,birthFields),{});
+assert.deepEqual(birthChange(older,1980,birthFields),{birthYear:1980,birthDate:'',fields:{member:'yes'}});
+
 const writes = () => calls.filter((c) => c[0] !== 'listen');
 
 assert.deepEqual(getDemo(), { on: false, persona: 'real', scenario: 'regular' }, 'an old mixed state loads as "demo off"');
+
+setDemoAccess('local-test-owner', 'owner');
 
 // ---- demo on: every kind of write stays local, whatever the id looks like
 for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest', 'blocked', 'anon', 'new']) {
@@ -85,6 +100,7 @@ for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest',
   await write.update('tabs', 'demo-tab-roni-oct', { items: push({ name: 'x' }), total: inc(5) });
   assert.deepEqual(writes(), [], `no Firestore write as ${persona}`);
 }
+assert.equal((await readListFromCache('tasks',{where:[['title','==','x']]})).some(t=>t.id==='a-real-looking-id'),true);
 assert.ok(demoItems('tasks').some((t) => t.id === 'a-real-looking-id'), 'the write landed in the local demo store');
 const signup = { displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
 await createProfile(NEW_DEMO_SESSION, signup);
@@ -196,6 +212,13 @@ console.log('PASS: demo mode never reaches Firestore, demo ids are refused outsi
   reset();
   assert.deepEqual(await transact(scan()), { entries: 1 }, 'offline: the cached copy, as before');
   assert.deepEqual(sent(), ['commit']);
+  reset();
+  globalThis.__batch = 'slowAck';
+  const receipt = { col: 'events/e1/scans', id: 't9-1' };
+  await assert.rejects(transact(scan(), { queue: true, localReceipt: receipt }), /עדיין לא נשמרה בטלפון/, 'no green result before the queued scan exists on this device');
+  globalThis.__cacheDocs['events/e1/scans/t9-1'] = { result: 'ok' };
+  assert.deepEqual(await transact(scan(), { queue: true, localReceipt: receipt }), { entries: 1 }, 'a local receipt can confirm admission before the server responds');
+  await new Promise(r => setTimeout(r, 60));
   reset();
   txTiming.waitMs = 4000; globalThis.__serverDocs = undefined; globalThis.__cacheDocs = undefined;
   console.log('PASS: a gate scan is saved on the phone when the server cannot be reached, and refusals are reported honestly');

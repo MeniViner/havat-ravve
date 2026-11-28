@@ -9,6 +9,7 @@ import { AppScreen, go, useExternal, useRemove, useToast, waUrl, telUrl } from '
 import { Avatar, BottomBar, Button, DetailList, DetailRow, IconButton, IconTile, ListCard, MoreMenu, PageTitle, Quote, Row, Tag, TopBar, type ActionItem } from '../../kit';
 import { back } from '../../../router';
 import { useDoc, isConflict } from '../../../db';
+import { useContactGuest } from '../../data/contact';
 import { agoLong, hhmm, firstName } from '../../format';
 import { contactPhoneOk, useUpcomingEvents } from '../../../data';
 import type { AppNotification } from '../../../types';
@@ -23,7 +24,8 @@ const INBOX = { label: 'לטיפול', path: '/manage/inbox' };
 export function InboxMessageScreen({ ctx, params }: ScreenProps) {
   const { item: n, loading } = useDoc<AppNotification>(`notifications/${params.id || '_'}`, !!params.id);
   const sender = n ? ctx.peopleByUid.get(n.refId) : undefined;
-  const tickets = useMyTickets(n?.refId || '', !!n?.refId).items;
+  const contact = useContactGuest(n?.contactId || '').item;
+  const tickets = useMyTickets(sender?.uid || '', !!sender).items;
   const events = useUpcomingEvents().items;
   const run = useRun();
   const ext = useExternal();
@@ -37,8 +39,8 @@ export function InboxMessageScreen({ ctx, params }: ScreenProps) {
   }, [tickets, events]);
   if (loading) return <Loading back={INBOX} />;
   if (!n || n.type !== 'contact') return <NotFound back={INBOX} title="הפנייה לא נמצאה" />;
-  const name = sender?.displayName || '';
-  const phone = sender?.phone || '';
+  const name = sender?.displayName || (contact ? 'אורח מפנייה' : '');
+  const phone = n.contactId ? (contact?.method === 'phone' ? contact.reply : '') : sender?.phone || '';
   const handled = !!n.handled;
   const toggle = async () => {
     const ok = await run(() => setHandled(n, ctx.actor, !handled), { text: handled ? 'חזר לתור' : 'סומן טופל', undo: () => setHandled(n, ctx.actor, handled) });
@@ -71,8 +73,10 @@ export function InboxMessageScreen({ ctx, params }: ScreenProps) {
         {sender
           ? <Row minHeight={58} leading={<Avatar name={name} />} title={name}
               meta={[roleWord(sender.role, femName(name)), nextOrder].filter(Boolean).join(' · ')} onClick={() => go(`/manage/people/${sender.uid}`)} />
+          : contact ? <Row minHeight={58} leading={<Avatar name={name} />} title={name} meta={<bdi>{contact.reply}</bdi>} onClick={() => go(`/manage/people/contact/${contact.id}`)} />
           : <Row minHeight={58} title={<span className="k-soft" style={{ fontWeight: 400 }}>פרטי השולח אינם זמינים</span>} />}
       </ListCard>
+      {contact?.method === 'email' && <Button variant="outline" icon="mail" onClick={() => ext('mailto:' + contact.reply)}>מענה במייל · <bdi>{contact.reply}</bdi></Button>}
       {contactPhoneOk(phone) && (
         <div className="manage-replies">
           <Button icon="message" onClick={() => ext(waUrl(phone, `שלום ${firstName(name)}, `))}>מענה בוואטסאפ</Button>

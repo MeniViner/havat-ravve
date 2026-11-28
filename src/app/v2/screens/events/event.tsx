@@ -1,3 +1,5 @@
+import { currentStaffingEvent, useStationRegistry } from '../../data/workStations';
+import { eventMillis } from './logic';
 // M4-M7: one event, four stages chosen by ?tab (הכנה / נרשמים / יום האירוע / סיכום). Opens on the stage that fits the time.
 // Top bar, one control (rule 5): the outlined "עריכה" on הכנה and יום האירוע (details keep it); ⋯ on נרשמים (table view,
 // export) and on סיכום (Q15: export, print, history). Delete is in ⋯ on the event form (rule 6).
@@ -10,23 +12,34 @@ import {
   TextLink, Card, BarList, Sheet, Field, Stepper, Toggle, EmptyState, MoreMenu, ActionSheet, type ActionItem,
 } from '../../kit';
 import {
-  useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
+  contactPhoneOk, useEvent, useEventTickets, useEventTabs, useEventVendors, useProducts, useNotifications, useDonations, restoreOrder, setOrderPayment,
   cancelOrder, fillTemplate, downloadCsv, handleNotificationsFor, useAllEvents,
 } from '../../../data';
+import { useLegacyTicketActivity, userNumber } from '../../data/manage';
 import { nowIso, nowMs, useClockVersion } from '../../../clock';
 import { gw } from '../../gender';
 import { money, num, hhmm, firstName, ddmm, dayName, keyOf } from '../../format';
 import { useEventTasks, useStaffing, useFiles, approveOrders, addGuestOrder, stampReminder, deleteOrder } from '../../data/events';
 import {
   EVENT_TABS, defaultTab, eventSubtitle, detailsMeta, vendorsMeta, productsMeta, staffingStats, staffingMeta, stationsOf, ordersOf, guestStats,
-  filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
+  eventOrderPeople, filterOrders, ticketsWord, dayTiles, scanPart, shareLabel, eventSummary, topSold, debtsOf, debtTotals, debtBreakdown, fillDebtTemplate,
   isPaid, cancelledOrdersOf, scansFromTickets, summaryExtras, type EventTab, type GuestFilter, type Order,
 } from './logic';
+import { useTestTickets } from '../../data/eventTestTickets';
+import { useApplications } from '../../data/vendorApplications';
+import { ReminderAction } from './reminder';
+import { EventShareActions } from './EventShareActions';
+import { EventShoppingLink } from './shopping';
+import { EventTestTickets } from '../events/testTickets';
+import { OfflineStatus } from './offline';
+import { EventProjects, PrepTaskCard } from './preparation';
+import { personPath, registrationReport, RegistrantsReport, reportHeaders } from './registrants';
+import { back } from '../../../router';
 import { PayConfirmStatus } from './payconfirm';
 import { tableCell, usePayConfirm, useTableView, type PayConfirmTarget } from '../../patterns';
 import { useCounters, useScans, useCash, liveNumbers as liveOf } from '../../data/eventday';
 import { Loading, Missing, TitleBlock, ButtonRow, backTo, link, useRun } from './shared';
-import { DEFAULT_SETTINGS, PAYMENT_LABELS, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
+import { DEFAULT_SETTINGS, PAYMENT_LABELS, type Profile, type AppNotification, type EventVendorV2, type FarmEvent, type Tab, type Ticket } from '../../../types';
 
 export function EventScreen({ ctx, params }: ScreenProps) {
   useClockVersion();
@@ -45,12 +58,12 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
   const tickets = useEventTickets(e.id, ctx.manager);
   const tabs = useEventTabs(e.id, ctx.manager && tab === 'summary');
   const donations = useDonations(ctx.manager && tab === 'summary');
-  // Q9: the registrants as a table (…/table?tab=guests) and the CSV, from the guests stage's ⋯
-  const table = useTableView({
-    title: 'נרשמים', filename: `${e.title} - נרשמים.csv`, headers: ['שם', 'טלפון', 'כרטיסים', 'תשלום', 'הוזמן', 'נכנסו', 'תשובות'],
-    rows: () => ordersOf(tickets.items).map((o) => [o.name, o.phone, o.count, PAYMENT_LABELS[o.tickets[0].paymentStatus], tableCell.date(o.createdAt), o.arrived, Object.values(o.tickets[0].answers || {}).join(' / ')]),
-  });
-  if (table.active) return table.screen;
+  const tests=useTestTickets(tab==='guests' ? e.id : '');
+  const legacy = useLegacyTicketActivity(tab === 'guests' ? tickets.items : []);
+  const peopleByOrder = useMemo(() => eventOrderPeople(e.id, tickets.items, legacy.items, ctx.peopleByUid), [e.id, tickets.items, legacy.items, ctx.peopleByUid]);
+  const report = useMemo(() => registrationReport(e, tickets.items, peopleByOrder, ctx.settings.registrationFields, tests.items), [e, tickets.items, peopleByOrder, ctx.settings.registrationFields, tests.items]);
+  const table = useTableView({ title: e.title, filename: e.title + ' - נרשמים.csv', headers: reportHeaders, rows: () => report.map((r) => r.values) });
+  if (table.active) return <RegistrantsReport event={e} rows={report} full onBack={() => back('/manage/events/' + e.id + '?tab=guests')} />;
   if (tab === 'summary' && PARTS.includes(part as Part)) return <SummaryPart ctx={ctx} e={e} part={part as Part} />;
   const dayDonations = () => donations.items.filter((d) => keyOf(d.createdAt) === keyOf(e.start) && isPaid(d.paymentStatus)).reduce((s, d) => s + d.amount, 0);
   const summaryItems: ActionItem[] = [
@@ -63,11 +76,11 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
       : <Button variant="outline" icon="edit" iconSize={16} onClick={() => go(`/manage/events/${e.id}/edit`)}>עריכה</Button>;
   return (
     <AppScreen variant="detail" gap={tab === 'prep' ? 12 : 10}>
-      <TopBar back={backTo('אירועים', '/manage/events')} end={end} />
+      <TopBar back={backTo('אירועים', '/manage/events')} end={<>{end}<OfflineStatus /></>} />
       <TitleBlock over={eventSubtitle(e, now)} title={e.title} />
       <Segmented mode="tabs" className="events-tabs" label="שלבי האירוע" options={EVENT_TABS} value={tab} onChange={(v) => go(`/manage/events/${e.id}?tab=${v}`, true)} />
       {tab === 'prep' && <Prep ctx={ctx} e={e} />}
-      {tab === 'guests' && <Guests ctx={ctx} e={e} tickets={tickets.items} />}
+      {tab === 'guests' && <><RegistrantsReport event={e} rows={report} /><Guests ctx={ctx} e={e} tickets={tickets.items} peopleByOrder={peopleByOrder} /><EventTestTickets ctx={ctx} eventId={e.id} /></>}
       {tab === 'day' && <Day ctx={ctx} e={e} />}
       {tab === 'summary' && <Summary ctx={ctx} e={e} tickets={tickets.items} tabs={tabs.items} donMoney={dayDonations()} />}
     </AppScreen>
@@ -77,51 +90,27 @@ function EventBody({ ctx, e, tabParam, part }: { ctx: V2Ctx; e: FarmEvent; tabPa
 // ---------- M4 הכנה ----------
 function Prep({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
   const toast = useToast(); const open = useExternal();
-  const vendors = useEventVendors(e.id, ctx.manager);
+  const applications = useApplications(e.id);
   const products = useProducts(e.id, ctx.manager && e.stall !== false);
-  const tasks = useEventTasks(e.id, ctx.manager);
   const staffing = useStaffing(e.id, ctx.manager);
   const files = useFiles(e.id, ctx.manager);
-  const st = staffingStats(stationsOf(e, staffing.items), [], []);
-  const openTasks = tasks.items.filter((t) => !t.done).length;
+  const registry = useStationRegistry();
+  const st = staffingStats(stationsOf(e, staffing.items, currentStaffingEvent(e) ? registry.item || undefined : undefined), [], []);
   const fileNames = [...files.items.map((f) => f.name), ...(e.files || []).map((f) => f.name)];
-  const share = async () => {
-    const url = `${location.origin}/app/events/${e.id}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: e.title, url }); return; } catch (err) { if ((err as Error)?.name === 'AbortError') return; /* closed the share sheet */ }
-    }
-    // no share sheet, or it failed: copy the link
-    let copied = false;
-    try { await navigator.clipboard.writeText(url); copied = true; } catch { /* no clipboard permission */ }
-    if (!copied) {
-      const ta = document.createElement('textarea');
-      ta.value = url; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      try { copied = document.execCommand('copy'); } catch { /* not supported */ }
-      ta.remove();
-    }
-    toast.show(copied ? { text: 'הקישור הועתק', check: true, duration: 2500 } : { text: url, duration: 6000 });
-  };
-  const remind = () => {
-    const t = fillTemplate(ctx.settings.templates.ticketReminder || DEFAULT_SETTINGS.templates.ticketReminder, { 'שם': '', 'אירוע': e.title, 'תאריך': `${dayName(e.start)} ${ddmm(e.start)}`, 'שעה': hhmm(e.start) });
-    open(`https://wa.me/?text=${encodeURIComponent(t.replace(/^שלום\s*,\s*/, 'שלום, '))}`);
-  };
-  // rule 4: one status tag (מפורסם / טיוטה); the registration state goes into the meta line
-  const status = <Tag tone={e.published ? 'paid' : 'neutral'}>{e.published ? 'מפורסם' : 'טיוטה'}</Tag>;
-  const detailsLine = e.published ? `${e.open ? 'פתוח להרשמה' : 'ההרשמה סגורה'} · ${detailsMeta(e)}` : detailsMeta(e);
   return (
     <>
+      <ListCard><Row minHeight={58} title="בעלי דוכנים" meta={applications.items.filter((a)=>a.status==='requested').length + ' ביקשו · ' + applications.items.filter((a)=>a.status==='approved').length + ' אושרו'} {...link('/manage/events/' + e.id + '/vendors')} /></ListCard>
+      <PrepTaskCard event={e} ctx={ctx} />
+      <EventShoppingLink event={e} />
+      <ListCard><Row minHeight={58} title="צוות" meta={staffingMeta(st)} {...link('/manage/events/' + e.id + '/staffing')} /></ListCard>
+      <EventProjects event={e} ctx={ctx} />
       <ListCard>
-        <Row minHeight={58} title="פרטי האירוע" tags={status} meta={detailsLine} {...link(`/manage/events/${e.id}/edit`)} />
-        <Row minHeight={58} title="בעלי דוכנים" meta={vendors.items.length ? vendorsMeta(vendors.items as EventVendorV2[]) : 'עוד לא הוזמנו'} {...link(`/manage/events/${e.id}/vendors`)} />
-        {e.stall !== false && <Row minHeight={58} title="מוצרי הדוכן" meta={productsMeta(products.items)} {...link(`/manage/events/${e.id}/products`)} />}
-        <Row minHeight={58} title="משימות הכנה" meta={`${openTasks} פתוחות מתוך ${tasks.items.length}`} {...link(`/farm/events/${e.id}`)} />
-        <Row minHeight={58} title="מי עובד באירוע" meta={staffingMeta(st)} {...link(`/manage/events/${e.id}/staffing`)} />
-        <Row minHeight={58} title="קבצים" meta={fileNames.length ? fileNames.slice(0, 2).join(', ') : 'עוד אין קבצים'} {...link(`/manage/events/${e.id}/files`)} />
+        {e.stall !== false && <Row minHeight={58} title="מוצרי דוכן החווה" meta={productsMeta(products.items)} {...link('/manage/events/' + e.id + '/products')} />}
+        <Row minHeight={58} title="מסמכים ואישורים" meta={fileNames.length ? fileNames.slice(0, 2).join(', ') : 'מסמכי האירוע לשיתוף בין מנהלי החווה'} {...link('/manage/events/' + e.id + '/files')} />
       </ListCard>
       <ButtonRow>
-        <Button variant="outline" size="tall" onClick={share}>שיתוף הקישור</Button>
-        <Button variant="outline" size="tall" icon="message" onClick={remind}>תזכורת לנרשמים</Button>
+        <EventShareActions event={e} />
+        <ReminderAction event={e} ctx={ctx} />
       </ButtonRow>
     </>
   );
@@ -136,7 +125,7 @@ const statusTag = (o: Order) => (o.status === 'claimed' ? { ...STATUS_TAG.claime
 const payTarget = (e: FarmEvent, o: Order): PayConfirmTarget => ({
   collection: 'tickets', ids: o.tickets.map((t) => t.id), uid: o.ownerUid, name: o.name, phone: o.phone, amount: o.total, purpose: `כרטיסים לאירוע ${e.title}`, event: e.title,
 });
-function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket[] }) {
+function Guests({ ctx, e, tickets, peopleByOrder }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket[]; peopleByOrder: ReadonlyMap<string, Profile | undefined> }) {
   const toast = useToast(); const run = useRun();
   const pay = usePayConfirm();
   const notes = useNotifications(ctx.manager);
@@ -193,6 +182,8 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
           )}
           <ul className="k-list">
             {list.map((o) => {
+              const person = peopleByOrder.get(o.orderId);
+              const number = userNumber(person?.customerNumber);
               const tag = o.cancelled ? { tone: 'neutral' as const, text: 'בוטל' } : statusTag(o);
               return (
                 <li key={o.orderId} className="events-guestrow">
@@ -204,6 +195,11 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
                     </span>
                     <b className="events-value">{money(o.owed || o.total)}</b>
                   </button>
+                  {person && number !== undefined && (
+                    <a {...link(personPath(person))} className="k-textlink events-guestrow__person" aria-label={`User ID ${number} · פתיחת התיק של ${person.displayName}`}>
+                      <span dir="ltr">User ID</span><bdi>{number}</bdi>
+                    </a>
+                  )}
                 </li>
               );
             })}
@@ -215,7 +211,7 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
       <ButtonRow>
         <Button variant="outline" size="tall" icon="plus" onClick={() => setAdding(true)}>הוספת נרשם</Button>
       </ButtonRow>
-      <OrderSheet ctx={ctx} e={e} order={opened} onClose={() => setSheet(null)} onApprove={(o) => approve([o])} onConfirm={(o) => pay.ask(payTarget(e, o))}
+      <OrderSheet ctx={ctx} e={e} order={opened} peopleByOrder={peopleByOrder} onClose={() => setSheet(null)} onApprove={(o) => approve([o])} onConfirm={(o) => pay.ask(payTarget(e, o))}
         onCancel={setCancelling} notes={notes.items} />
       <CancelSheet ctx={ctx} order={cancelling} onClose={() => setCancelling(null)} />
       <AddGuestSheet ctx={ctx} e={e} open={adding} onClose={() => setAdding(false)} />
@@ -225,8 +221,8 @@ function Guests({ ctx, e, tickets }: { ctx: V2Ctx; e: FarmEvent; tickets: Ticket
 }
 
 /** The order's row sheet (Q11): what it is, then its actions; cancel and delete in red at the bottom (rule 6). */
-function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, notes }: {
-  ctx: V2Ctx; e: FarmEvent; order: Order | null; onClose: () => void; onApprove: (o: Order) => void; onConfirm: (o: Order) => void; onCancel: (o: Order) => void; notes: AppNotification[];
+function OrderSheet({ ctx, e, order, peopleByOrder, onClose, onApprove, onConfirm, onCancel, notes }: {
+  ctx: V2Ctx; e: FarmEvent; order: Order | null; peopleByOrder: ReadonlyMap<string, Profile | undefined>; onClose: () => void; onApprove: (o: Order) => void; onConfirm: (o: Order) => void; onCancel: (o: Order) => void; notes: AppNotification[];
 }) {
   const open = useExternal(); const toast = useToast(); const run = useRun();
   const remove = useRemove();
@@ -235,6 +231,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
   if (order) last.current = order;
   const o = order || last.current;
   if (!o) return null;
+  const person = peopleByOrder.get(o.orderId);
   const t0 = o.tickets[0];
   const owing = o.owed > 0;
   const paidAll = o.tickets.every((t) => isPaid(t.paymentStatus));
@@ -266,7 +263,7 @@ function OrderSheet({ ctx, e, order, onClose, onApprove, onConfirm, onCancel, no
     { label: 'תזכורת בוואטסאפ', icon: 'message', hidden: !owing || !o.phone, onSelect: remind },
     { label: confirmation ? 'שליחת אישור התשלום שוב' : 'שליחת אישור תשלום', icon: 'mail', hidden: o.cancelled || !paidAll || o.total <= 0, onSelect: () => onConfirm(o) },
     { label: 'התקשרות', icon: 'phone', hidden: !o.phone, onSelect: () => open(telUrl(o.phone)) },
-    { label: `הכרטיס של ${firstName(o.name)}`, icon: 'people', hidden: o.ownerUid === ctx.user.uid, onSelect: () => go(`/manage/people/${o.ownerUid}`) },
+    ...(person ? [{ label: `הכרטיס של ${firstName(person.displayName)}`, icon: 'people' as const, onSelect: () => go(personPath(person)) }] : []),
     { label: 'ביטול ההזמנה', icon: 'close', tone: 'danger', hidden: o.cancelled, onSelect: () => onCancel(o) },
     { label: 'מחיקה', icon: 'trash', tone: 'danger', confirm: {
       title: 'למחוק את ההזמנה?', text: `ההזמנה של ${o.name} (${ticketsWord(o.tickets.length)}) תימחק לגמרי, גם אצל מי שהזמין. ביטול משאיר אותה ברשימה, מחיקה לא.`,
@@ -303,7 +300,7 @@ function CancelSheet({ ctx, order, onClose }: { ctx: V2Ctx; order: Order | null;
 function AddGuestSheet({ ctx, e, open, onClose }: { ctx: V2Ctx; e: FarmEvent; open: boolean; onClose: () => void }) {
   const toast = useToast(); const run = useRun();
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [count, setCount] = useState(1); const [paid, setPaid] = useState(false);
-  const ok = name.trim().length > 1;
+  const ok = !!name.trim() && contactPhoneOk(phone) && nowMs() < eventMillis(e.end);
   const save = async () => {
     const id = await run(() => addGuestOrder(ctx.actor, e, { name, phone, count, paid }));
     if (!id) return;

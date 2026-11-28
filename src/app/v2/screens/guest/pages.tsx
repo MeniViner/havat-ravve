@@ -9,7 +9,7 @@ import { useDoc, write, serverNow } from '../../../db';
 import { isOwner } from '../../../store';
 import { useDemo } from '../../../demo/store';
 import { now } from '../../../clock';
-import { back } from '../../../router';
+import { back, useRoute } from '../../../router';
 import { ddmm, firstName } from '../../format';
 import { signOutEverywhere } from '../system/profile';
 import type { Profile, Settings } from '../../../types';
@@ -35,8 +35,11 @@ const Lead = ({ children }: { children: ReactNode }) => <p className="guest-lead
 // ---------- terms and privacy (public: /app/terms, /app/privacy) ----------
 const POLICY_UPDATED = '23 בנובמבר 2026';
 export function TermsPage() {
-  const sections: [string, ReactNode][] = [
-    ['מי אנחנו', 'חוות רווה, ליד טנא עומרים, מפעילה את האפליקציה ואת האתר havat-ravve.web.app. האפליקציה משמשת את צוות החווה, מתנדבים ואורחים: משימות, קניות, אירועים וכרטיסים, ביקורים ותרומות.'],
+  const privacy = useRoute() === '/privacy';
+  const common: [string, ReactNode] = ['מי אנחנו', 'חוות רווה, ליד טנא עומרים, מפעילה את האפליקציה ואת האתר havat-ravve.web.app. האפליקציה משמשת את צוות החווה, מתנדבים ואורחים: משימות, קניות, אירועים וכרטיסים, ביקורים ותרומות.'];
+  const age: [string, ReactNode] = ['גיל', 'ההרשמה מיועדת לבני 18 ומעלה. ילדים מגיעים לאירועים עם הורה שמזמין בשבילם.'];
+  const changes: [string, ReactNode] = ['שינויים', 'אם המדיניות תשתנה, נעדכן כאן את התאריך, ועל שינוי מהותי נודיע באפליקציה.'];
+  const sections: [string, ReactNode][] = privacy ? [common,
     ['איזה מידע נשמר', <>
       <b>חשבון:</b> השם, כתובת המייל וחשבון Google שאיתו נכנסתם, מספר הטלפון והתשובות שמילאתם בהרשמה.<br />
       <b>פעילות:</b> כרטיסים שהזמנתם, ביקורים שתיאמתם, תרומות (סכום, הקדשה, שם לקבלה), חשבונות בדוכן, ומצב התשלום. אין סליקה באפליקציה, ופרטי כרטיס אשראי לא נשמרים בה.<br />
@@ -50,15 +53,16 @@ export function TermsPage() {
     ['אבטחה', 'כל התעבורה מוצפנת (HTTPS). כל אחד רואה ומשנה רק מה שהתפקיד שלו מתיר, וזה נאכף בשרת ולא רק במסך. מפתחות הגישה לשרתים לא נשמרים בקוד.'],
     ['כמה זמן נשמר ומחיקה', <>המידע נשמר כל עוד החשבון פעיל. אפשר למחוק את החשבון בעצמכם בכל עת: החשבון שלי ← מחיקת החשבון, או בעמוד {link('/delete-account', 'מחיקת חשבון')}. החשבון נמחק לצמיתות 30 יום אחרי הבקשה, ועד אז אפשר לבטל. סכומים ותאריכים של תשלומים ותרומות נשארים בלי שם, להנהלת החשבונות.</>],
     ['הזכויות שלכם', <>לפי חוק הגנת הפרטיות אפשר לעיין במידע שלכם, לתקן אותו ולבקש למחוק אותו. את השם, הטלפון ופרטי ההרשמה מתקנים בעצמכם בחשבון. לכל בקשה אחרת: {link('/contact', 'פנייה למנהלים')}.</>],
-    ['גיל', 'ההרשמה מיועדת לבני 18 ומעלה. ילדים מגיעים לאירועים עם הורה שמזמין בשבילם.'],
-    ['תנאי שימוש', 'משתמשים באפליקציה רק לפעילות של החווה ובהתאם לתפקיד. כרטיסים, ביקורים ותרומות כפופים לתנאים שמופיעים בכל אירוע או טופס. אין להעביר את החשבון לאחר. החווה רשאית להשעות חשבון שמשמש לרעה.'],
-    ['שינויים', 'אם המדיניות תשתנה, נעדכן כאן את התאריך, ועל שינוי מהותי נודיע באפליקציה.'],
+    age, changes,
+  ] : [common, age,
+    ['תנאי שימוש', 'משתמשים באפליקציה רק לפעילות של החווה ובהתאם לתפקיד. כרטיסים, ביקורים ותרומות כפופים לתנאים שמופיעים בכל אירוע או טופס. אין להעביר את החשבון לאחר. החווה רשאית להשעות חשבון שמשמש לרעה.'], changes,
   ];
   return (
     <AppScreen variant="detail" gap={10}>
       <TopBar className="guest-pull" back={{ label: 'חזרה', onClick: () => back('/') }} />
-      <div className="guest-titleblock"><PageTitle size="detail">תנאי שימוש ופרטיות</PageTitle><span className="guest-sub">חוות רווה · עודכן ב־{POLICY_UPDATED}</span></div>
+      <div className="guest-titleblock"><PageTitle size="detail">{privacy ? 'מדיניות הפרטיות' : 'תנאי השימוש'}</PageTitle><span className="guest-sub">חוות רווה · עודכן ב־{POLICY_UPDATED}</span></div>
       {sections.map(([h, t]) => <section key={h} className="guest-section"><SectionTitle>{h}</SectionTitle><Lead>{t}</Lead></section>)}
+      {privacy ? link('/terms', 'תנאי השימוש') : link('/privacy', 'מדיניות הפרטיות')}
     </AppScreen>
   );
 }
@@ -95,7 +99,7 @@ export function DeleteAccountPage({ ctx }: { ctx: GuestCtx }) {
       {p && owner && <Note>בעלי החווה לא מוחקים את החשבון מהאפליקציה, כדי שהחווה לא תישאר בלי מנהל. קודם מעבירים את הבעלות לאדם אחר.</Note>}
       {p && !owner && <>
         <Button variant="secondary" size="lg" block icon="trash" className="guest-delete" onClick={() => setAsk(true)}>מחיקת החשבון</Button>
-        <Note>אחרי האישור החשבון ננעל עד המחיקה. {link('/terms', 'מדיניות הפרטיות')}</Note>
+        <Note>אחרי האישור החשבון ננעל עד המחיקה. {link('/privacy', 'מדיניות הפרטיות')}</Note>
         <ConfirmSheet open={ask} onClose={() => setAsk(false)} title="למחוק את החשבון?" confirmLabel="מחיקת החשבון" onConfirm={request}
           text={`החשבון ננעל עכשיו ונמחק לצמיתות אחרי ${DELETION_DAYS} ימים. עד אז אפשר לבטל.`} />
       </>}

@@ -10,6 +10,8 @@ export { ProductsScreen, ProductForm } from './products';
 export { TabScreen } from './tab';
 export { TabsScreen } from './tabs';
 export { FilesScreen } from './files';
+export { FarmCatalogsScreen } from './farmCatalogs';
+export { WorkStationsScreen } from './workStations';
 export { StaffingScreen } from './staffing';
 export { DebtsScreen } from './debts';
 

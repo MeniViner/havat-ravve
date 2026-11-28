@@ -14,6 +14,7 @@ import { useFiles, addFileV2, removeFileV2, removeLegacyFile, type EventFileV2 }
 import { fileKindLabel, FILE_MAX_CHARS } from './logic';
 import { Loading, Missing, ButtonRow, backTo, useRun } from './shared';
 import type { FarmEvent } from '../../../types';
+import { OfflineStatus } from './offline';
 
 export function FilesScreen({ ctx, params }: ScreenProps) {
   const { item: e, loading } = useEvent(params.id, ctx.manager);
@@ -103,8 +104,8 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
     <AppScreen variant="detail">
       {/* rule 5: "הוספת קישור" is a ⋯ item; the two upload buttons stay */}
       <TopBar back={backTo(e.title, `/manage/events/${e.id}`)}
-        end={<MoreMenu title="קבצים" items={[{ label: 'הוספת קישור', icon: 'link', onSelect: () => setLinkDraft({ name: '', url: '', kind: 'doc' }) }]} />} />
-      <PageTitle>קבצים</PageTitle>
+        end={<><MoreMenu title="מסמכים ואישורים" items={[{ label: 'הוספת קישור', icon: 'link', onSelect: () => setLinkDraft({ name: '', url: '', kind: 'doc' }) }]} /><OfflineStatus /></>} />
+      <PageTitle>מסמכים ואישורים</PageTitle>
       {shown.length > 0 ? (
         <ListCard>
           {shown.map((f) => (
@@ -119,7 +120,7 @@ function Files({ ctx, e }: { ctx: V2Ctx; e: FarmEvent }) {
       </ButtonRow>
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => { pick(ev.target.files?.[0], true); ev.target.value = ''; }} />
       <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(ev) => { pick(ev.target.files?.[0], false); ev.target.value = ''; }} />
-      <span className="events-softline">רק מנהלים רואים את הקבצים.</span>
+      <span className="events-softline">כאן משתפים בין מנהלי החווה מסמכים ואישורים של האירוע.</span>
 
       <Sheet open={!!draft} onClose={() => setDraft(null)} title="שם הקובץ">
         {draft && (

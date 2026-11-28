@@ -1625,7 +1625,7 @@ export function GateButton({ variant = 'solid', icon, iconSize, onClick, childre
 
 export interface GateResultProps extends Base {
   /** ok green (E3), pay amber (E4), bad red (E5). */
-  tone: 'ok' | 'pay' | 'bad';
+  tone: 'ok' | 'pay' | 'bad' | 'saving';
   /** Header text, 15/600: "שער · פסטיבל הסתיו". */
   place: ReactNode;
   headerEnd?: ReactNode;
@@ -1659,7 +1659,7 @@ export function GateResult({ tone, place, headerEnd, mark, prelude, headline, he
         <span className="k-gate__place">{place}</span>
         {headerEnd}
       </header>
-      <main className="k-gate__main" role={tone === 'ok' ? 'status' : 'alert'} style={tone === 'pay' ? { gap: 4 } : undefined}>
+      <main className="k-gate__main" role={tone === 'ok' || tone === 'saving' ? 'status' : 'alert'} style={tone === 'pay' ? { gap: 4 } : undefined}>
         {m && <span className="k-gate__mark"><Icon name={m} size={tone === 'bad' ? 60 : 64} strokeWidth={3} /></span>}
         {prelude !== undefined && <span className="k-gate__prelude">{prelude}</span>}
         {amount !== undefined && <span className="k-gate__amount">{amount}</span>}

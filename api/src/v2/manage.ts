@@ -37,7 +37,7 @@ def('visits.delete', 'visits:write', 'מחיקת בקשת ביקור (עם הפ�
   const v = await mustGet(c.fs, 'visits', c.input.visitId, c.tx, 'visit');
   fresh(v, c.input.ifUpdatedAt);
   const inbox = await inboxFor(c, v.id);
-  const writes: Write[] = [c.fs.remove('visits', v.id, v.updateTime), c.fs.remove('calendar', `visit_${v.id}`), ...inbox.map((n) => c.fs.remove('notifications', n.id)),
+  const writes: Write[] = [c.fs.remove('visits', v.id, v.updateTime), c.fs.remove(`visits/${v.id}/private`, 'staff'), c.fs.remove('calendar', `visit_${v.id}`), ...inbox.map((n) => c.fs.remove('notifications', n.id)),
     activity(c.fs, c.me, 'visit', v.id, 'deleted', `${v.data.name} · ${v.data.date}`, { subjectUid: String(v.data.uid || '') })];
   return { writes, refs: [{ col: 'visits', id: v.id, gone: true }, { col: 'calendar', id: `visit_${v.id}`, gone: true }], data: { deleted: project('visits', v.id, v.data), inboxRemoved: inbox.length } };
 }, ['Destructive: confirm with the user first. To decline instead, use visits.setStatus rejected.']);

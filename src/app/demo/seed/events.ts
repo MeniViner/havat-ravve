@@ -21,7 +21,7 @@ function order(eventId: string, title: string, orderId: string, owner: Owner, n:
     const at = on(date, `16:${String(10 + ((i * 7) % 45)).padStart(2, '0')}`);
     return {
       id: `${orderId}-${i + 1}`, eventId, eventTitle: title, orderId, index: i + 1, total: n,
-      ownerUid: owner.uid, ownerName: owner.displayName, ownerPhone: owner.phone, holderName: '',
+      ownerUid: owner.uid, selfRegistered: true, ownerName: owner.displayName, ownerPhone: owner.phone, holderName: '',
       secret: `e${orderId.replace(/\D/g, '').padStart(4, '0')}${String(i + 1).padStart(2, '0')}cafef00d`.slice(0, 24), price, paymentStatus, status: 'valid',
       scans: entries ? [{ at, by: i % 2 ? A.yoav : A.noa }] : [], entries, answers: {}, createdAt: on('2026-10-12', '12:00'), updatedAt: on(date, '21:30'), ...extra,
     };
@@ -150,6 +150,18 @@ function rosh(seed: Seed) {
 }
 
 const slice: Slice = (seed, scenario) => {
+  const dates = { createdAt: ago(24), updatedAt: ago(24) };
+  put(seed, 'farm_catalogs', [
+    { id:'demo-catalog-bakery', name:'קפה ומאפים', ...dates },
+    { id:'demo-catalog-produce', name:'תוצרת החווה', ...dates },
+  ]);
+  put(seed, 'farm_catalogs/demo-catalog-bakery/products', [
+    { id:'demo-catalog-tea', name:'תה צמחים', price:8, ...dates },
+    { id:'demo-catalog-bread', name:'לחם מחמצת', price:18, ...dates },
+  ]);
+  put(seed, 'farm_catalogs/demo-catalog-produce/products', [
+    { id:'demo-catalog-oil', name:'שמן זית', price:28, ...dates },
+  ]);
   festival(seed, scenario);
   october(seed, scenario);
   rosh(seed);

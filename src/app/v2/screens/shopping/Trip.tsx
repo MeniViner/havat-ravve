@@ -1,4 +1,5 @@
 // S6-Trip (I am at the store) and S7-TripEnd (the trip closed).
+import { UrgencyTag } from './common';
 import { useEffect, useMemo } from 'react';
 import { AppScreen, go, useRemove, useToast } from '../../core';
 import { BottomBar, Button, Icon, IconButton, ListCard, MoreMenu, PageTitle, ProgressSegments, Row, Tag } from '../../kit';
@@ -34,7 +35,7 @@ function TripView({ trip, items, ctx }: { trip: ShoppingTrip; items: ShoppingIte
   const meta = (i: ShoppingItem, state: 'open' | 'missing' | 'bought') => {
     const parts = [i.qty];
     if (state === 'missing') parts.push('לא היה במדף');
-    else if (state === 'open') { if (i.urgent) parts.push('דחוף'); if (addedLive(i, trip)) parts.push(first(i.createdBy?.name || '')); }
+    else if (state === 'open' && addedLive(i, trip)) parts.push(first(i.createdBy?.name || ''));
     return parts.filter(Boolean).join(' · ');
   };
   const row = (i: ShoppingItem, state: 'open' | 'missing' | 'bought') => (
@@ -79,7 +80,7 @@ function TripRow({ item, state, meta, live, onCheck, onMissing }: { item: Shoppi
         <span className={`shopping-trip-row__box${checked ? ' shopping-trip-row__box--on' : ''}`} aria-hidden="true">{checked && <Icon name="check" size={20} />}</span>
       </button>
       <div className="shopping-trip-row__body">
-        <span className="shopping-trip-row__title">{item.title}{live && <Tag className="shopping-live">נוסף עכשיו</Tag>}</span>
+        <span className="shopping-trip-row__title">{item.title}{state === 'open' && <UrgencyTag item={item} />}{live && <Tag className="shopping-live">נוסף עכשיו</Tag>}</span>
         <span className="shopping-trip-row__meta">{meta}</span>
       </div>
       {state !== 'bought' && (

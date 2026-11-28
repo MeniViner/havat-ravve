@@ -10,7 +10,7 @@ import { build } from 'esbuild';
 process.env.TZ = 'UTC'; // the helpers must not depend on the machine's zone
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'v2-farm-'));
 const out = path.join(dir, 'logic.mjs');
-await build({ entryPoints: ['src/app/v2/screens/farm/logic.ts'], bundle: true, platform: 'node', format: 'esm', outfile: out, logLevel: 'silent' });
+await build({ stdin: { contents: "export * from './src/app/v2/screens/farm/logic'; export * from './src/app/v2/screens/farm/staffing'", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'esm', outfile: out, logLevel: 'silent' });
 const L = await import(out);
 await fs.rm(dir, { recursive: true, force: true });
 
@@ -19,6 +19,24 @@ const test = (name, fn) => { fn(); n++; console.log(`PASS: ${name}`); };
 
 const item = (o) => ({ id: o.id || Math.random().toString(36).slice(2), ownerUid: '', ownerName: '', title: '', date: '2026-11-19', time: '', kind: 'presence', refId: '', ...o });
 const pres = (uid, name, date, from, to, extra = {}) => item({ ownerUid: uid, ownerName: name, title: `${name.split(' ')[0]} בחווה`, date, from, to, time: L.timeText({ from, to }), ...extra });
+
+test('staffing summary merges overlapping periods, preserves a second visit and hides private shifts', () => {
+  const date='2026-11-19';
+  const shifts=[
+    pres('m','תמר',date,'07:00','15:00'), pres('v','נטע',date,'08:00','12:00'),
+    pres('v','נטע',date,'09:00','10:00'), pres('v','נטע',date,'14:00','17:00'),
+    pres('v2','עומר',date,'09:00','11:00'), pres('m2','גל',date,'11:00','16:00',{audience:'managers'}),
+  ];
+  const profiles=new Map([['m',{role:'owner'}],['m2',{role:'manager'}],['v',{role:'staff'}],['v2',{role:'staff'}]]);
+  const report=L.staffingSummary(shifts,date,630,profiles,true);
+  assert.equal(report.current.length,3);
+  assert.deepEqual(report.next.map(e=>[e.person.uid,e.arriving]).sort(),[['m2',true],['v2',false]]);
+  assert.deepEqual(report.gap,{start:720,end:840});
+  const publicReport=L.staffingSummary(shifts,date,630,profiles,false);
+  assert(!publicReport.people.some(p=>p.uid==='m2'));
+  assert.deepEqual(publicReport.next.map(e=>e.person.uid),['v2']);
+  assert.equal(L.plannedAt(publicReport.people,840).filter(p=>p.uid==='v').length,1);
+});
 
 test('normTime reads loose hour input and refuses non-times', () => {
   assert.equal(L.normTime('9'), '09:00');

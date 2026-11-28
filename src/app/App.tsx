@@ -7,8 +7,9 @@ import { useRoute } from './router';
 import { useUsage } from './usage';
 import { ROLE_LABELS } from './types';
 import type { Session } from './firebase';
-import { useDemo } from './demo/store';
+import { currentDemoRole, setDemoAccess, useDemo, type DemoAccessRole } from './demo/store';
 import { V2Root } from './v2/App';
+import { PushEntryPrompt } from './v2/PushEntryPrompt';
 import { FirstEntry, SuspendedScreen, DemoStart } from './v2/screens/system';
 import { GuestRoot, GuestFrame, TermsPage, BlockedPage, DeletionScheduledPage, useDeletionRequest } from './v2/screens/guest';
 import { ToastProvider as V2Toasts } from './v2/core';
@@ -110,8 +111,6 @@ export default function App() {
   }, [loading, profileLoading, user?.uid, profile?.displayName, profile?.role, demo.on, demo.persona]);
   // the owners' console counts app usage (usage.ts): opens and screens only, never in the demo
   useUsage(route, !loading && !(user && profileLoading), user ? (owner ? 'owner' : profile?.role || 'guest') : null, demo.on);
-  // Z1: the demo start page works for everyone, signed in or not, demo on or off
-  if (route === '/demo') return <V2Toasts><DemoStart /></V2Toasts>;
   if (loading || (user && profileLoading)) return <Splash />;
   if (sw.maintenance && !owner && !demo.on && route !== '/terms' && route !== '/privacy') return <MaintenancePage text={sw.maintenanceText} />;
   if (user && !profile && profileError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את החשבון</div><div>{profileError}. הנתונים שלך לא נפגעו.</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
@@ -119,11 +118,18 @@ export default function App() {
   if (user && invite && !teamLink && !demo.on && (missing || !profile || profile.role === 'guest') && pendingVendorInvite()) return <VendorClaim user={user} code={invite} />;
   if (user && profile && teamLink && !demo.on && profile.role === 'guest' && profile.status === 'active' && pendingVendorInvite()) return <TeamClaim user={user} code={invite} />;
   if (user && (missing || !profile)) {
+    if (route === '/contact') return <GuestRoot user={user} profile={null} settings={settings} />;
     if (route === '/terms' || route === '/privacy') return <GuestFrame><TermsPage /></GuestFrame>; // the terms link on C9 / U13 works before the profile exists
     if (settingsLoading) return <Splash />;
     if (settingsError) return <div className="splash" role="alert"><div className="title">לא הצלחנו לטעון את שאלות ההרשמה</div><button type="button" className="btn ghost" onClick={() => location.reload()}>לנסות שוב</button></div>;
     if (sw.registrationClosed && !demo.on && !isOwnerEmail(user.email)) return <RegistrationClosedPage />;
     return <GuestFrame><FirstEntry key={user.uid} user={user} settings={settings} link={teamLink && !demo.on && pendingVendorInvite() ? invite : undefined} /></GuestFrame>;
+  }
+  if (route === '/demo') {
+    const role: DemoAccessRole | null = demo.on ? currentDemoRole()
+      : profile?.status === 'active' && user ? (owner ? 'owner' : profile.role === 'manager' || profile.role === 'staff' ? profile.role : null) : null;
+    if (!demo.on && deletion.item) return <GuestFrame><DeletionScheduledPage profile={profile!} request={deletion.item} /></GuestFrame>;
+    return <V2Toasts><DemoStart role={role} authorize={() => { if (!demo.on && user) setDemoAccess(user.uid, role); }} /></V2Toasts>;
   }
   if (user && profile && deletion.item) return <GuestFrame><DeletionScheduledPage profile={profile} request={deletion.item} /></GuestFrame>;
   // X2: a suspended team member or vendor sees the new suspended screen; a suspended guest keeps the guest page
@@ -133,6 +139,8 @@ export default function App() {
     return <><V2DemoStrip /><SuspendedScreen ctx={{ profile, settings }} /></>;
   }
   // staff, managers, owners and vendors: the redesigned app
-  if (user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))) return <V2Root user={user} profile={profile} settings={settings} />;
-  return <GuestRoot user={user} profile={profile} settings={settings} />;
+  const screen = user && profile && (isTeam(profile, user.email) || (profile.role === 'vendor' && profile.status === 'active'))
+    ? <V2Root user={user} profile={profile} settings={settings} /> : <GuestRoot user={user} profile={profile} settings={settings} />;
+  return <>{screen}{!demo.on && user && profile?.status === 'active' && <PushEntryPrompt key={profile.uid} profile={profile} />}</>;
+
 }

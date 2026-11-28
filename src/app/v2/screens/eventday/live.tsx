@@ -1,3 +1,4 @@
+import { currentStaffingEvent, useStationRegistry } from '../../data/workStations';
 // Y1-Live, Y2-Scans, Y3-Rejected, Y4-Waiting, Y5-Close: the manager's view of the event while it runs, and closing it.
 // Numbers come from events/{id}/counters/live (one small document, cheap to watch); lists come from the scan log and the tickets.
 import { useMemo, useState, type ReactNode } from 'react';
@@ -90,6 +91,7 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   const tabs = useEventTabs(id, !!event && event.stall !== false);
   const counters = useCounters(id);
   const staffing = useStaffing(id);
+  const registry = useStationRegistry();
   const rejected = useRejectedScans(id);
   const last = useScans(id, 1);
   if (!event) return <NoEvent loading={loading} back="/manage/events" backLabel="אירועים" />;
@@ -101,7 +103,9 @@ export function LiveScreen({ ctx, params }: ScreenProps): ReactNode {
   const status = closed ? 'נסגר' : nowM < startM ? `מתחיל ב־${hhmm(event.start)}` : nowM >= endM ? 'הסתיים' : `חי · ${nowHM}`;
   const open = rejected.items.filter(needsLook);
   const station = (key: string) => staffing.items.find((s) => s.id === key || s.station === key);
-  const unstaffed = staffing.items.filter((s) => (s.needed || 1) > 0 && s.people.length === 0);
+  const currentNames = currentStaffingEvent(event) ? registry.item?.stations : undefined;
+  const unstaffed = staffing.items.filter((s) => !currentNames?.[s.id]?.archived && (s.needed || 1) > 0 && s.people.length === 0)
+    .map((s) => ({...s, station:currentNames?.[s.id]?.name || s.station}));
   const gateNames = onShift(station('gate') || station('שער'), nowHM).map((p) => firstName(p.name));
   const stallNames = onShift(station('stall') || station('דוכן'), nowHM).map((p) => firstName(p.name));
   const sold = tabs.items.filter(hasTabPurchases);

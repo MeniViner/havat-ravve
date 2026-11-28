@@ -16,7 +16,7 @@ function ticketsOf(orderId: string, owner: { uid: string; name: string; phone: s
     const e = entries[i];
     return {
       id: `${orderId}-${i + 1}`, eventId: E.fall, eventTitle: FEST, orderId, index: i + 1, total: count,
-      ownerUid: owner.uid, ownerName: owner.name, ownerPhone: owner.phone, holderName: '',
+      ownerUid: owner.uid, selfRegistered: true, ownerName: owner.name, ownerPhone: owner.phone, holderName: '',
       secret: `f${orderId.replace(/\D/g, '').padStart(5, '0')}${String(i + 1).padStart(2, '0')}c0ffee`.slice(0, 24), price: PRICE, paymentStatus, status: 'valid',
       scans: e ? [{ at: e.at, by: e.by }] : [], entries: e ? 1 : 0, answers: {}, createdAt, updatedAt: e ? e.at : createdAt, ...extra,
     };

@@ -1,14 +1,15 @@
 // E2-Scan, E3-Ok, E4-Pay, E5-Bad (one route, full-bleed, no AppScreen) and E6-Search.
-// A valid ticket is let in at once (optimistic; the transaction refuses a second gate's copy -> X1). Unpaid shows E4,
+// A valid ticket shows a green result after server acknowledgement or a confirmed local scan. Unpaid shows E4,
 // cancelled or unknown shows E5 and is logged as a rejected scan. Works offline: the ticket list is on the phone. A scan saved on
 // the phone (no reception, or weak reception: db.ts transact `queue`) shows as the "previous" line with "נשמר בטלפון, יישלח כשתהיה
 // קליטה" until it is sent; the offline queue (C8) lists it too (admit logs the activity).
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GateCamera, GateResult, GateButton, TopBar, PageTitle, SearchField, SectionTitle, ListCard, Row, Tag, Button, Sheet, Field, Stepper, BottomBar } from '../../kit';
 import { AppScreen, useToast, useV2 } from '../../core';
 import { hhmm, money } from '../../format';
 import { isConflict, txTiming, useSync } from '../../../db';
 import { nowIso } from '../../../clock';
+import { contactPhoneOk } from '../../../data';
 import { useDemo, getDemo, getDemoStates, useDemoStates } from '../../../demo/store';
 import { useOnline } from '../../../store';
 import { navigate } from '../../../router';
@@ -17,9 +18,11 @@ import {
   useEventTickets, useScans, useCounters, judge, judgeCode, admit, logRejected, admitWalkIn, ensureCounters, groupOrders, orderName, ticketMatcher,
   ticketWord, isUnpaid, qrPayload, DEMO_QR, isEventClosed, type EventV2, type TicketV2, type Verdict, type ScanV2,
 } from '../../data/eventday';
+import { useSupplierPasses } from '../../data/vendorApplications';
+import { isTestPayload, testMatch, useTestTickets } from '../../data/eventTestTickets';
 import { useRouteEvent, NoEvent, GateToasts, useCamera, useDebounce, to, moduleOff } from './common';
 
-type View = { tone: 'ok'; name: string; detail: string } | { tone: 'pay' | 'bad'; v: Verdict };
+type View = { tone: 'saving' } | { tone: 'ok'; name: string; detail: string; testing?: boolean; supplier?:boolean } | {tone:'test-error'; supplier?:boolean} | {tone:'unverified'} | { tone: 'pay' | 'bad'; v: Verdict };
 /** No reception right now (or the demo's "offline" state): a write is saved on the phone. */
 const offlineNow = () => !navigator.onLine || (getDemo().on && getDemoStates().offline);
 const SAVED_ON_PHONE = 'נשמר בטלפון, יישלח כשתהיה קליטה';
@@ -28,24 +31,38 @@ const RESULT_WORD: Record<ScanV2['result'], string> = { ok: 'מאושר', paidAt
 /** The gate's decisions, shared by the camera (E2) and the name search (E6). */
 function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
   const toast = useToast();
+  const tests = useTestTickets(event?.id || '');
+  const suppliers = useSupplierPasses(event?.id || '');
   const [view, setView] = useState<View | null>(null);
   const [mine, setMine] = useState<{ name: string; result: ScanV2['result']; at: string; saved?: boolean } | null>(null);
-  /** The scan as this phone made it. `write`: its save; one that had to wait for the server was saved on the phone instead. */
-  const note = (name: string, result: ScanV2['result'], write?: Promise<unknown>) => {
-    const at = nowIso(); const t0 = performance.now();
-    setMine({ name, result, at, saved: offlineNow() });
-    write?.then(() => { if (performance.now() - t0 >= txTiming.waitMs - 50) setMine((m) => (m && m.at === at ? { ...m, saved: true } : m)); }, () => {});
-  };
+  const saving = useRef(false);
+  const note = (name: string, result: ScanV2['result'], saved = offlineNow()) =>
+    setMine({ name, result, at: nowIso(), saved });
+  async function confirmAdmission(name: string, detail: string, result: ScanV2['result'], store: () => Promise<unknown>) {
+    if (saving.current) return;
+    saving.current = true;
+    setView({ tone: 'saving' });
+    const started = performance.now();
+    try {
+      await store();
+      note(name, result, offlineNow() || performance.now() - started >= txTiming.waitMs);
+      setView({ tone: 'ok', name, detail });
+    } catch (error) {
+      setView(null);
+      toast.refused(isConflict(error) ? (error as Error).message : 'לא נשמר. ' + (error as Error).message);
+    } finally {
+      saving.current = false;
+    }
+  }
   const okDetail = (t: TicketV2) => `${t.total === 1 ? 'כרטיס אחד' : `כרטיס ${t.index} מתוך ${t.total}`} · ${(t.entries || 0) === 0 ? 'כניסה ראשונה' : `כניסה ${(t.entries || 0) + 1}, יצא וחזר`}`;
   const letIn = (t: TicketV2, order: TicketV2[], pay: 'none' | 'gate' | 'later') => {
     if (!event) return;
-    setView({ tone: 'ok', name: t.holderName || t.ownerName, detail: okDetail(t) });
-    const write = admit(ctx.actor, event, t, order, pay);
-    note(t.holderName || t.ownerName, pay === 'gate' && order.some(isUnpaid) ? 'paidAtGate' : pay === 'later' && order.some(isUnpaid) ? 'payLater' : 'ok', write);
-    write.catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
+    const result = pay === 'gate' && order.some(isUnpaid) ? 'paidAtGate' : pay === 'later' && order.some(isUnpaid) ? 'payLater' : 'ok';
+    void confirmAdmission(t.holderName || t.ownerName, okDetail(t), result, () => admit(ctx.actor, event, t, order, pay));
   };
   const show = (v: Verdict) => {
     if (!event) return;
+    if (v.kind === 'bad' && v.reason==='לא נמצא' && offlineNow()) { setView({tone:'unverified'}); return; }
     if (v.kind === 'ok') return letIn(v.ticket, v.order, 'none');
     setView({ tone: v.kind, v });
     if (v.kind === 'bad') note(v.name || 'לא מזוהה', 'rejected');
@@ -53,7 +70,20 @@ function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
   };
   return {
     view, mine, clear: () => setView(null),
-    scan: (code: string) => { if (event) show(judgeCode(code, tickets, event.id)); },
+    scan: (code:string) => {
+      if (!event) return;
+      if (code.startsWith('HRSUP1|')) {
+        const pass=suppliers.items.find((p)=>p.eventId===event.id && ['HRSUP1',p.eventId,p.id].map(encodeURIComponent).join('|')===code);
+        setView(pass ? {tone:'ok',supplier:true,name:pass.name,detail:pass.people+' אנשים בדוכן. אפשר להיכנס גם בלי הקוד.'} : {tone:'test-error',supplier:true});
+        return;
+      }
+      if (isTestPayload(code)) {
+        const test = testMatch(code,event.id,tests.items);
+        setView(test ? {tone:'ok',testing:true,name:test.ownerName,detail:'הבדיקה הסתיימה. ספירת הכניסות נשארה כפי שהייתה.'} : {tone:'test-error'});
+        return;
+      }
+      show(judgeCode(code, tickets, event.id));
+    },
     open: (t: TicketV2) => { if (event) show(judge(t, tickets, event.id)); },
     paid: () => { if (view?.tone === 'pay' && view.v.kind === 'pay') letIn(view.v.ticket, view.v.order, 'gate'); },
     later: () => { if (view?.tone === 'pay' && view.v.kind === 'pay') letIn(view.v.ticket, view.v.order, 'later'); },
@@ -64,10 +94,8 @@ function useGate(ctx: V2Ctx, event: EventV2 | null, tickets: TicketV2[]) {
     },
     walkIn: (g: { name: string; phone: string; count: number }, pay: 'gate' | 'later') => {
       if (!event) return;
-      setView({ tone: 'ok', name: g.name, detail: `${ticketWord(g.count)} · כניסה ראשונה` });
-      const write = admitWalkIn(ctx.actor, event, g, pay);
-      note(g.name, (event.price || 0) ? (pay === 'gate' ? 'paidAtGate' : 'payLater') : 'ok', write);
-      write.catch((e) => { setView(null); if (isConflict(e)) toast.refused(); else toast.refused(`לא נשמר. ${(e as Error).message}`); });
+      const result = (event.price || 0) ? (pay === 'gate' ? 'paidAtGate' : 'payLater') : 'ok';
+      void confirmAdmission(g.name, `${ticketWord(g.count)} · כניסה ראשונה`, result, () => admitWalkIn(ctx.actor, event, g, pay));
     },
   };
 }
@@ -85,8 +113,11 @@ function ResultPage({ view, place, origin, onNext, onPaid, onLater, onRefuse, on
     return () => { clearInterval(tick); clearTimeout(done); };
   }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
   const back = origin === 'scan' ? 'לסריקה' : 'לחיפוש';
+  if (view.tone === 'saving') return <GateResult tone="saving" place={place} headline="שומרים את הכניסה…" headlineSize="md" />;
+  if (view.tone === 'unverified') return <><GateResult tone="bad" place={place} headline="הכרטיס לא שמור בטלפון" detail="חפשו את השם בשער שיש בו חיבור, או בקשו ממנהל האירוע לבדוק. הכניסה עדיין לא נרשמה." actions={<GateButton onClick={onSearch}>חיפוש לפי שם</GateButton>} /><GateToasts /></>;
+  if (view.tone === 'test-error') return <><GateResult tone="bad" place={place} headline={view.supplier ? 'אישור הדוכן לא נמצא' : 'כרטיס הבדיקה לא נמצא'} detail={view.supplier ? 'אפשר לפנות למנהל האירוע. כניסת הדוכן אינה מחייבת קוד.' : 'בדקו שבחרתם את האירוע הנכון ושיש חיבור.'} actions={<GateButton onClick={onNext}>חזרה לסריקה</GateButton>} /><GateToasts /></>;
   if (view.tone === 'ok') {
-    return <><GateResult tone="ok" place={place} headline="מאושר" name={view.name} detail={view.detail}
+    return <><GateResult tone="ok" place={place} headline={view.testing ? 'כרטיס לבדיקה' : view.supplier ? 'הדוכן אושר' : 'אפשר להיכנס'} name={view.name} detail={view.detail}
       actions={<GateButton onClick={onNext}>הבא</GateButton>} note={`חוזר ${back} בעוד ${left === 1 ? 'שנייה' : `${left} שניות`}`} /><GateToasts /></>;
   }
   const v = view.v;
@@ -138,7 +169,7 @@ export function GateScreen({ ctx, params }: ScreenProps): ReactNode {
   return (
     <>
       <GateCamera place={place} onExit={() => navigate(params.from === 'live' || ctx.eventToday?.id !== id ? `/manage/events/${id}/live` : '/event')}
-        hint={cam.error || undefined} showHint={demo || !!cam.error}
+        hint={cam.error || (!online || (demo && demoStates.offline) ? 'בלי קליטה, הסריקות נשמרות בטלפון. שער אחר יתעדכן כשיהיה חיבור.' : undefined)} showHint={demo || !online || !!cam.error}
         lastScan={l ? { text: `הקודם: ${l.name} · ${waiting ? SAVED_ON_PHONE : RESULT_WORD[l.result]}`, time: hhmm(l.at), tone: l.result === 'rejected' ? 'bad' : l.result === 'payLater' ? 'pay' : 'ok' } : undefined}
         onSearch={() => navigate('/event/gate/search' + q)}>
         {cam.render(onCode)}
@@ -206,7 +237,7 @@ function WalkInSheet({ open, price, onClose, onDone }: { open: boolean; price: n
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [count, setCount] = useState(1);
-  const ok = !!name.trim();
+  const ok = !!name.trim() && contactPhoneOk(phone);
   const done = (pay: 'gate' | 'later') => { if (!ok) return; onDone({ name: name.trim(), phone: phone.trim(), count }, pay); setName(''); setPhone(''); setCount(1); };
   return (
     <Sheet open={open} onClose={onClose} title="אורח בלי כרטיס" aside={price ? `${money(price * count)} לתשלום` : undefined}>

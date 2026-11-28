@@ -1,13 +1,13 @@
 // Demo seed slice for the "farm" area (F1-F6, C11, C5): November presence that gives the designed counts (F1 week bars,
 // F2 month marks), today's people and hours (F1, F3, C4), Noa's and Yoav's week (C5, F4), today's calendar items (F2, F3),
 // the feed of what was done today (F5, F1) and the festival crew (F6). Dates are absolute: the demo clock is frozen.
-import { A, E, T, U } from '../data';
+import { A, E, T, U, profiles } from '../data';
 import type { Actor } from '../../types';
 import type { Row, Slice } from './types';
 import { drop, patch, put } from './types';
 
 /** People at the farm per day in November 2026, as drawn in F2 (the 19th is the designed "today"). */
-const NOVEMBER: number[] = [2, 3, 3, 4, 3, 2, 0, 2, 3, 3, 4, 3, 2, 0, 2, 3, 3, 5, 4, 2, 0, 2, 3, 2, 3, 3, 4, 8, 3, 2];
+const NOVEMBER: number[] = [2, 3, 3, 4, 3, 2, 0, 2, 3, 3, 4, 3, 2, 0, 2, 3, 3, 5, 10, 2, 0, 2, 3, 2, 3, 3, 4, 8, 3, 2];
 const ISO = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+02:00`).toISOString();
 const first = (a: Actor) => a.name.split(' ')[0];
 const timeOf = (from: string, to: string) => (from && to ? `${from}–${to}` : from || (to ? `–${to}` : ''));
@@ -15,6 +15,7 @@ const presence = (id: string, a: Actor, date: string, from = '', to = '', note =
   id, ownerUid: a.uid, ownerName: a.name, title: `${first(a)} בחווה`, date, time: timeOf(from, to), from, to, note, kind: 'presence', refId: '', createdAt: ISO('2026-11-10', '09:00'),
 });
 const HOURS: [string, string][] = [['', ''], ['08:00', '13:00'], ['09:00', '14:00'], ['13:00', '18:00'], ['07:30', '12:00'], ['10:00', '16:00']];
+const morningTeam = new Set([U.avi, U.orly, U.gil, U.maya, U.omer, U.shira]);
 
 /** Fixed days (designed people and hours); every other day is filled from the team in a stable rotation. */
 const FIXED: Record<string, Row[]> = {
@@ -22,6 +23,8 @@ const FIXED: Record<string, Row[]> = {
     presence('demo-c-presence-beni', A.beni, '2026-11-19'),
     presence('demo-c-presence-noa', A.noa, '2026-11-19', '09:00', '14:00'),
     presence('demo-c-presence-yoav', A.yoav, '2026-11-19', '08:00', '13:00'),
+    ...profiles.filter(p => morningTeam.has(p.uid)).map(p =>
+      presence(`demo-c-presence-team-${p.uid}`, { uid: p.uid, name: p.displayName }, '2026-11-19', '09:00', p.uid === U.omer ? '11:00' : '12:00')),
     presence('demo-c-presence-dana', A.dana, '2026-11-19', '15:00', '19:00'),
   ],
   '2026-11-22': [presence('demo-c-f-noa-22', A.noa, '2026-11-22'), presence('demo-c-f-beni-22', A.beni, '2026-11-22', '08:00', '13:00')],
@@ -31,7 +34,7 @@ const FIXED: Record<string, Row[]> = {
   '2026-11-20': [presence('demo-c-f-roi-20', A.roi, '2026-11-20', '09:00', '14:00')],
   '2026-11-27': [presence('demo-c-f-noa-27', A.noa, '2026-11-27', '08:00', '13:00'), presence('demo-c-f-dana-27', A.dana, '2026-11-27'), presence('demo-c-f-beni-27', A.beni, '2026-11-27', '10:00', '16:00')],
 };
-/** From the 19th on, Yoav and Noa appear only where the designs show them (F4, C5), and Orly only on Wednesday 25.11, all day (Q17). */
+/** After the fixed dates, keep Yoav, Noa and Orly out of the generated rotation. */
 const ROTATION: Actor[] = [A.beni, A.dana, A.roi, A.eliya, A.orly, A.shira, A.gil, A.omer, A.noa, A.yoav];
 
 function november(): Row[] {
