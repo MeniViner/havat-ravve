@@ -27,6 +27,7 @@ function mountBackground(L, map, key, notify, images, creditChanged) {
   });
   const footprint = L.latLngBounds(key === "aerial" ? [[31.23628864179301, 34.72503662109375], [31.248030044481112, 34.73876953125]] : REGIONAL_BOUNDS);
   const coverage = source.bounds && L.latLngBounds(source.bounds);
+  let disposed = false;
   let regionReady = false, previousCredit = '', frame = 0, previous = '';
   const region = images[key] ? L.imageOverlay(images[key], footprint, {
     alt: key === 'aerial' ? 'תצלום אוויר של אזור באר שבע, 2015' : 'צילום לוויין של אזור באר שבע, 22 בנובמבר 2026', interactive: false,
@@ -62,7 +63,7 @@ function mountBackground(L, map, key, notify, images, creditChanged) {
     if (status !== previous) { previous = status; notify(status); }
   }
   function schedule() {
-    if (!frame) frame = requestAnimationFrame(measure);
+    if (!disposed && !frame) frame = requestAnimationFrame(measure);
   }
   for (const [event, status] of [['tileloadstart', 'loading'], ['tileerror', 'error'], ['tileload', 'ok']]) {
     layer.on(event, e => {
@@ -76,6 +77,7 @@ function mountBackground(L, map, key, notify, images, creditChanged) {
   notify('loading');
   // Fetch network tiles only where the packaged observation cannot fill the viewport.
   function updateNetwork() {
+    if (disposed) return;
     const needed = !regionReady || !footprint.contains(map.getBounds());
     if (needed && !map.hasLayer(layer)) layer.addTo(map);
     else if (!needed && map.hasLayer(layer)) map.removeLayer(layer);
@@ -87,12 +89,14 @@ function mountBackground(L, map, key, notify, images, creditChanged) {
   updateNetwork();
   schedule();
   return () => {
+    disposed = true;
     map.off('moveend zoomend resize', schedule);
     map.off('moveend resize',updateNetwork);
-    region?.off();
+    // Leaflet uses the remove event to detach each layer from future map updates.
     region?.remove();
-    layer.off();
     map.removeLayer(layer);
+    region?.off();
+    layer.off();
     cancelAnimationFrame(frame);
   };
 }
