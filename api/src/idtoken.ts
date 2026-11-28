@@ -32,7 +32,7 @@ async function keyFor(kid: string, env: Env): Promise<CryptoKey | undefined> {
 }
 
 /** The uid of a valid, unexpired ID token for this project; UNAUTHENTICATED otherwise. */
-export async function verifyIdToken(token: string, env: Env): Promise<{ uid: string; email: string }> {
+export async function verifyIdToken(token: string, env: Env, requireGoogleEmail = false): Promise<{ uid: string; email: string }> {
   const emulator = !!env.FIRESTORE_EMULATOR_HOST && !!env.FIREBASE_AUTH_EMULATOR_HOST;
   // the Auth emulator in single-project mode signs for its own demo project while the app's data keeps the real id
   const project = (emulator && env.AUTH_EMULATOR_PROJECT) || env.FIRESTORE_PROJECT_ID;
@@ -56,5 +56,8 @@ export async function verifyIdToken(token: string, env: Env): Promise<{ uid: str
   if (typeof claims.exp !== 'number' || claims.exp < now - SKEW_S) throw new ApiError('UNAUTHENTICATED', 'sign-in token has expired');
   if (typeof claims.iat !== 'number' || claims.iat > now + SKEW_S) throw new ApiError('UNAUTHENTICATED', 'sign-in token is from the future');
   if (typeof sub !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(sub)) throw new ApiError('UNAUTHENTICATED', 'sign-in token has no valid user');
+  if (requireGoogleEmail && (claims.email_verified !== true || (claims.firebase as { sign_in_provider?: string } | undefined)?.sign_in_provider !== 'google.com')) {
+    throw new ApiError('UNAUTHENTICATED', 'a verified Google address is required');
+  }
   return { uid: sub, email: typeof claims.email === 'string' ? claims.email : '' };
 }

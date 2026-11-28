@@ -49,9 +49,27 @@ export function linkText(l: Pick<TeamLink, 'name' | 'role' | 'fem' | 'code'>) {
   return `שלום${first ? ' ' + first : ''}, הוספתי אותך לצוות של חוות רווה ${roleAs(l.role, l.fem)}. נכנסים כאן עם חשבון Google: ${teamLinkUrl(l.code)} הקישור טוב לכניסה אחת, בתוקף ${LINK_DAYS} ימים.`;
 }
 
-/** Managers: the links not yet used (open or expired; a cancelled link is deleted). */
+export const useAllTeamLinks = (enabled: boolean) => useList<TeamLink>('team_links', { orderBy: [['createdAt', 'desc']] }, enabled);
+/** Managers keep both historic groups visible without writing into the invitations. */
+export function directoryInvitations(people: Profile[], emailInvites: RoleInvite[], links: TeamLink[]) {
+  const emails = new Map(people.filter((p) => p.email).map((p) => [p.email.trim().toLowerCase(), p]));
+  const uids = new Map(people.map((p) => [p.uid, p]));
+  const joined = new Map<string, Profile>();
+  const pendingEmails = emailInvites.filter((i) => {
+    const person = emails.get(i.email.trim().toLowerCase());
+    if (person) joined.set(person.uid, person);
+    return !person;
+  });
+  for (const link of links) {
+    const p = link.usedBy ? uids.get(link.usedBy) : undefined;
+    if (p) joined.set(p.uid, p);
+  }
+  const pendingLinks = links.filter((l) => linkOpen(l));
+  return { pendingEmails, pendingLinks, expired: links.filter((l) => !l.usedBy && !linkOpen(l)),
+    joined: [...joined.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), count: pendingEmails.length + pendingLinks.length };
+}
 export function useTeamLinks(enabled: boolean) {
-  const r = useList<TeamLink>('team_links', { orderBy: [['createdAt', 'desc']] }, enabled);
+  const r = useAllTeamLinks(enabled);
   return useMemo(() => ({ ...r, items: r.items.filter((l) => !l.usedBy) }), [r]);
 }
 

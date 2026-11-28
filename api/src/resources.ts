@@ -85,7 +85,16 @@ export const PAYMENT = ['free', 'pending', 'claimed', 'paid', 'paid_onsite', 'ca
 const TEAM_KINDS: readonly string[] = TEAM_ACTIVITY_KINDS;
 const ALL_KINDS = [...TEAM_KINDS, 'task_private', 'visit', 'donation', 'user', 'settings', 'project', 'calendar_private', 'inbox'];
 
+const managerReads = { restrict: (c: Caller) => isManager(c) ? [] : null, visible: (c: Caller) => isManager(c) };
 export const RESOURCES: ResourceDef[] = [
+  { name: 'vendorApplications', col: 'vendor_applications', path: '/v1/vendor-applications', scope: 'vendors:read', he: 'בקשות רישום דוכנים', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
+  { name: 'eventVendorApplications', col: 'vendor_applications', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/vendor-applications', scope: 'vendors:read', he: 'בקשות השתתפות לדוכנים באירוע', order: { field: 'createdAt', dir: 'DESCENDING' }, ...managerReads },
+  { name: 'workStations', col: 'work_stations', path: '/v1/work-stations', scope: 'events:read',
+    he: 'מאגר תחנות העבודה הקבוע והעברה פעילה של שיבוצים', order: { field: 'moving', dir: 'ASCENDING' },
+    notes: ['Read id farm for stable station IDs, current names, retirements and a move in progress. Before the first edit, gate, stall and parking are available by default. Use eventStaffing for people and shift details.'] },
+  { name: 'farmCatalogs', col: 'farm_catalogs', path: '/v1/farm-catalogs', scope: 'events:read', he: 'קטלוגים לדוכן החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
+  { name: 'farmCatalogProducts', col: 'products', parent: { param: 'catalogId', col: 'farm_catalogs' }, path: '/v1/farm-catalogs/{catalogId}/products', scope: 'events:read', he: 'מוצרים ומחירים בקטלוג החווה', order: { field: 'name', dir: 'ASCENDING' }, ...managerReads },
+  { name: 'eventShopping', col: 'shopping', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/shopping', scope: 'events:read', he: 'רשימת הקניות של האירוע', order: { field: 'createdAt', dir: 'DESCENDING' } },
   {
     name: 'templates', col: 'task_templates', path: '/v1/templates', scope: 'templates:read',
     he: 'משימות קבועות (חוזרות): ימים בשבוע (0=ראשון), שעה, פעילה או לא',
@@ -95,13 +104,13 @@ export const RESOURCES: ResourceDef[] = [
     visible: (c, d) => isManager(c) || !d.managersOnly,
     notes: ['Every day the app creates that day\'s task from each active template (id "<templateId>_<date>").'],
   },
-  { name: 'places', col: 'places', path: '/v1/places', scope: 'places:read', he: 'מקומות בחווה (שם וקואורדינטות)', order: { field: 'name', dir: 'ASCENDING' } },
+  { name: 'places', col: 'places', path: '/v1/places', scope: 'places:read', he: 'מקומות בחווה (שם וקואורדינטות)', notes: ['An archived place keeps its ID and history. Offer only places where archived is not true for new work.'], order: { field: 'name', dir: 'ASCENDING' } },
   {
     name: 'profiles', col: 'users', path: '/v1/profiles', scope: 'people:read',
     he: 'כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה',
     order: { field: 'displayName', dir: 'ASCENDING' },
     filters: {
-      role: { field: 'role', param: en(['owner', 'manager', 'staff', 'guest'], 'owner בעלים, manager מנהל, staff מתנדב, guest אורח') },
+      role: { field: 'role', param: en(['owner', 'manager', 'staff', 'vendor', 'guest'], 'owner בעלים, manager מנהל, staff מתנדב, vendor בעל דוכן, guest אורח') },
       status: { field: 'status', param: en(['active', 'pending', 'blocked'], 'active פעיל, pending ממתין, blocked חסום') },
     },
     redact: redactProfiles,
@@ -175,7 +184,7 @@ export const RESOURCES: ResourceDef[] = [
   {
     name: 'eventStaffing', col: 'staffing', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/staffing', scope: 'events:read',
     he: 'שיבוץ הצוות לעמדות באירוע (שער, דוכן, חניה): מי, באילו שעות, כמה צריך', order: { field: 'station', dir: 'ASCENDING' },
-    notes: ['id = the station (gate, stall, parking or another). people: [{uid, name, hours}], hours "" = the whole event; needed = how many the station needs. A station nobody saved yet is missing (the app shows gate, stall and parking anyway).'],
+    notes: ['Each row is an event snapshot with a stable work station id. People retain their uid, role, hours and dated shift. When someone has multiple assignments at a station, use their assignmentId (or their uid for the original shift) for a single edit. Active shifts move to the chosen replacement before retirement. Closed events keep their snapshots.'],
   },
   {
     name: 'eventFiles', col: 'files', parent: { param: 'eventId', col: 'events' }, path: '/v1/events/{eventId}/files', scope: 'events:read',
@@ -348,11 +357,17 @@ export async function listResource(fs: Firestore, caller: Caller, r: ResourceDef
     // inclusive end date, also for "YYYY-MM-DDTHH:mm" and ISO time values on that date
     if (hi) filters.push({ fieldFilter: { field: { fieldPath: r.order.field }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: hi } } });
   }
-  const where = filters.length ? { where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } } } : {};
+  const whereFor = (parts: Record<string, unknown>[]) => parts.length ? { where: parts.length === 1 ? parts[0] : { compositeFilter: { op: 'AND', filters: parts } } } : {};
+  const where = whereFor(filters);
+  const teamCalendar = r.col === 'calendar' && !isManager(caller);
+  if (teamCalendar && p.audience === 'managers') return p.countOnly ? { count: 0 } : { items: [], hasMore: false, nextCursor: null };
   const parent = parentPath(r, caller, parentId);
   if (p.countOnly) {
     if (parent) return { count: (await fs.query({ from: [{ collectionId: r.col }], ...where, select: { fields: [] }, limit: 1000 }, parent)).length };
-    return { count: await fs.count({ from: [{ collectionId: r.col }], ...where }) };
+    const total = await fs.count({ from: [{ collectionId: r.col }], ...where });
+    if (!teamCalendar || p.audience === 'all') return { count: total };
+    const privateCount = await fs.count({ from: [{ collectionId: r.col }], ...whereFor([...filters, eq('audience', 'managers')]) });
+    return { count: Math.max(0, total - privateCount) };
   }
 
   const fingerprint = (await sha256hex(canonical({ r: r.name, parent, given, range: r.range ? [p[r.range.from], p[r.range.to]] : null, m: isManager(caller) }))).slice(0, 16);
@@ -364,12 +379,19 @@ export async function listResource(fs: Firestore, caller: Caller, r: ResourceDef
     if (c.f !== fingerprint) throw invalid('cursor', 'cursor belongs to a different filter');
     startAt = { values: [enc(c.v), { referenceValue: fs.name(parent ? `${parent}/${r.col}` : r.col, c.n) }], before: false };
   }
-  const docs = await fs.query({
+  const docs: Doc[] = [];
+  const queryBase = {
     from: [{ collectionId: r.col }], ...where,
     orderBy: [{ field: { fieldPath: r.order.field }, direction: r.order.dir }, { field: { fieldPath: '__name__' }, direction: r.order.dir }],
-    ...(startAt ? { startAt } : {}),
-    limit: p.limit + 1,
-  }, parent);
+  };
+  const pageSize = teamCalendar ? Math.max(100, p.limit + 1) : p.limit + 1;
+  for (;;) {
+    const batch = await fs.query({ ...queryBase, ...(startAt ? { startAt } : {}), limit: pageSize }, parent);
+    docs.push(...(teamCalendar ? batch.filter(d => d.data.audience !== 'managers') : batch));
+    if (docs.length > p.limit || batch.length < pageSize || !teamCalendar) break;
+    const last = batch[batch.length - 1];
+    startAt = { values: [enc(last.data[r.order.field]), { referenceValue: last.name }], before: false };
+  }
   const page = docs.slice(0, p.limit);
   const last = page[page.length - 1];
   const hasMore = docs.length > p.limit;

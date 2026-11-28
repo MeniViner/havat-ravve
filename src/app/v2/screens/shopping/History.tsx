@@ -9,17 +9,14 @@ import { back } from '../../../router';
 import { todayKey } from '../../../clock';
 import type { ScreenProps } from '../../ctx';
 import type { ShoppingItem } from '../../../types';
-import { againShopItem, first, historyGroups, listLabel, useShopping, type HistoryFilter, type HistoryGroup } from '../../data/shopping';
+import { againShopItem, first, historyGroups, listLabel, useShopping, useShoppingCategories, type HistoryFilter, type HistoryGroup } from '../../data/shopping';
 import { useMarkBought } from './common';
 
-const FILTERS: { value: HistoryFilter; label: string }[] = [
-  { value: 'all', label: 'הכל' }, { value: 'super', label: 'סופר' }, { value: 'building', label: 'בניין' }, { value: 'online', label: 'אינטרנט' },
-  { value: 'giveaway', label: 'מחפשים' },
-];
 const SHOWN = 3;
 
 export function ShopHistoryScreen({ ctx }: ScreenProps) {
   const toast = useToast();
+  const filters = [{ value: 'all' as const, label: 'הכל' }, ...useShoppingCategories().map(row => ({ value: row.cat, label: row.label }))];
   const { history, loading } = useShopping();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<HistoryFilter>('all');
@@ -38,7 +35,7 @@ export function ShopHistoryScreen({ ctx }: ScreenProps) {
       <PageTitle>מה נקנה</PageTitle>
       <SearchField label="חיפוש בקניות" placeholder="חיפוש: פריט או שם" size="sm" className="shopping-search" value={q} onChange={(e) => setQ(e.target.value)} />
       <ChipRow label="רשימה">
-        {FILTERS.map((f) => <Chip key={f.value} selected={filter === f.value} onClick={() => setFilter(f.value)}>{f.label}</Chip>)}
+        {filters.map((f) => <Chip key={f.value} selected={filter === f.value} onClick={() => setFilter(f.value)}>{f.label}</Chip>)}
       </ChipRow>
       {groups.map((g) => {
         const open = g.key === 'today' || more.has(g.key);

@@ -1,23 +1,22 @@
 // U8 GuestVisit (a date row and a date picker), U9 GuestDonate, U11 GuestContact and U13 GuestRegister (first sign-in).
 // The forms open signed out; their bar button signs in with Google on the spot and the form keeps what was typed.
+import { isBirthYear } from '../../../birthYear';
 import { useState } from 'react';
 import { AppScreen, go, useExternal, useToast, waUrl, telUrl, ToastProvider } from '../../core';
-import { BottomBar, Button, ChoiceGroup, EmptyState, Field, FormHeader, IconButton, MoreDetails, SelectRow, Sheet, TextAreaField, Toggle, ListCard, Row, cx } from '../../kit';
-import { createVisit, createDonation, contactPhoneOk, notify } from '../../../data';
+import { BottomBar, Button, Segmented, ChoiceGroup, EmptyState, Field, FormHeader, IconButton, MoreDetails, SelectRow, Sheet, TextAreaField, Toggle, ListCard, Row, cx } from '../../kit';
+import { createVisit, createDonation, contactPhoneOk } from '../../../data';
 import { createProfile } from '../../../store';
 import { authErrorMessage, signOutUser, type Session } from '../../../firebase';
 import { useDemo, setDemo } from '../../../demo/store';
-import { write } from '../../../db';
-import { nowIso, todayKey } from '../../../clock';
+import { todayKey } from '../../../clock';
 import { back, param } from '../../../router';
 import { DAY_LETTERS, MONTHS, dayName, longDate, money } from '../../format';
 import { registrationQuestions, answersFor, missingAnswers } from '../../data/system';
-import { isBirthYear } from '../../../birthYear';
 import { RegistrationQuestions, RegistrationTerms, BirthYearField } from '../system/fields';
 import type { Settings } from '../../../types';
 import { type GuestCtx, paths, useSignIn, ACCOUNT_WORD, useReceiptChoice, saveReceipt, payWays } from './data';
 import { StepperCard, TotalBlock, ReceiptSelect, Note, SignInChoice } from './parts';
-import { UpdatesSwitch } from './account';
+import { chooseReplyAccount, sendFarmContact, type ReplyAccount } from '../../data/contact';
 
 // ---------- the date picker (U8) ----------
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -152,43 +151,56 @@ export function ContactLinks({ settings, message }: { settings: Settings; messag
 export function ContactForm({ ctx }: { ctx: GuestCtx }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [method, setMethod] = useState<'email' | 'phone'>('email');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [google, setGoogle] = useState<ReplyAccount>();
+  const [picking, setPicking] = useState(false);
+  const [submission] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
-  const sign = useSignIn(); const toast = useToast();
+  const [tried, setTried] = useState(false);
+  const toast = useToast();
   const leave = () => back(param('from') === 'team' ? paths(ctx).account : '/');
-  const ok = subject.trim() && message.trim();
+  const reply = (method === 'email' ? email : phone).trim();
+  const valid = method === 'phone' ? contactPhoneOk(reply) : /^[^\s@?&/#]+@[^\s@?&/#]+\.[^\s@?&/#]+$/.test(reply);
+  const choose = async () => {
+    setPicking(true);
+    try { const account = await chooseReplyAccount(); if (!account) return; setGoogle(account); setEmail(account.email); }
+    catch { toast.refused('לא התקבל מייל מ־Google. אפשר להקליד כתובת.'); }
+    finally { setPicking(false); }
+  };
   const send = async () => {
-    if (!ctx.profile) { void sign.go(); return; }
-    if (!ok || busy) return;
+    setTried(true);
+    if (!subject.trim() || !message.trim() || !valid || busy || picking) return;
     setBusy(true);
-    try { await notify('contact', subject.trim(), message.trim(), '/manage/inbox', ctx.profile.uid); setSent(true); }
-    catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); }
+    try {
+      const token = method === 'email' && google?.email === reply ? google.token : '';
+      await sendFarmContact(submission, subject.trim(), message.trim(), method, reply, token);
+      setSent(true);
+    } catch (e) { toast.refused((e as Error).message || 'הפנייה לא אושרה. אפשר לנסות שוב.'); }
     finally { setBusy(false); }
   };
-  if (sent) {
-    return (
-      <AppScreen variant="form" gap={14}>
-        <FormHeader title="פנייה לחווה" cancelLabel="סגירה" onCancel={leave} />
-        <EmptyState variant="done" title="הפנייה נשלחה" text="המנהלים קיבלו אותה. נחזור אליך בהקדם." action={<Button variant="outline" onClick={leave}>חזרה</Button>} />
-      </AppScreen>
-    );
-  }
-  return (
-    <AppScreen variant="form" gap={14} bar={<BottomBar column={!ctx.profile}>
-      <Button size="bar" block={!ctx.profile} grow={!!ctx.profile} disabled={busy || sign.busy || (!!ctx.profile && !ok)} onClick={send}>שליחת הפנייה</Button>
-      {!ctx.profile && <span className="k-note guest-barnote">{sign.error || `כדי שהמנהלים ידעו למי לחזור, נכנסים עם ${ACCOUNT_WORD}.`}</span>}<SignInChoice sign={sign} />
-    </BottomBar>}>
-      <FormHeader title="פנייה לחווה" onCancel={leave} />
-      <ContactLinks settings={ctx.settings} />
-      <span className="guest-sub">או לכתוב כאן, ונחזור אליך:</span>
-      <Field label="נושא" maxLength={200} value={subject} onChange={(e) => setSubject(e.target.value)} />
-      <TextAreaField label="מה רצית לשאול" maxLength={500} height={120} value={message} onChange={(e) => setMessage(e.target.value)} />
-    </AppScreen>
-  );
+  if (sent) return <AppScreen variant="form" gap={14}>
+    <FormHeader title="הודעות לחווה" cancelLabel="סגירה" onCancel={leave} />
+    <EmptyState variant="done" title="הפנייה נשלחה" text={`אפשר לחזור אליך ב${method === 'email' ? 'מייל' : 'טלפון'} שהזנת.`} action={<Button variant="outline" onClick={leave}>חזרה</Button>} />
+  </AppScreen>;
+  return <AppScreen variant="form" gap={14} bar={<BottomBar><Button size="bar" grow disabled={busy || picking} onClick={send}>שליחת הפנייה</Button></BottomBar>}>
+    <FormHeader title="הודעות לחווה" onCancel={leave} />
+    <ContactLinks settings={ctx.settings} />
+    <Field label="נושא" maxLength={200} value={subject} onChange={(e) => setSubject(e.target.value)} error={tried && !subject.trim() ? 'צריך למלא נושא' : undefined} />
+    <TextAreaField label="ההודעה שלך" maxLength={500} height={120} value={message} onChange={(e) => setMessage(e.target.value)} error={tried && !message.trim() ? 'צריך לכתוב הודעה' : undefined} />
+    <span className="guest-sub">איך לחזור אליך?</span>
+    <Segmented label="איך לחזור אליך" value={method} onChange={setMethod} options={[{ value: 'email', label: 'מייל' }, { value: 'phone', label: 'טלפון' }]} />
+    {method === 'email' ? <>
+      <Field label="כתובת מייל למענה" type="email" ltr maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} error={tried && !valid ? 'צריך כתובת מייל תקינה' : undefined} />
+      <Button variant="outline" onClick={choose} disabled={picking || busy}>מילוי המייל עם Google</Button>
+    </> : <Field label="מספר טלפון למענה" type="tel" ltr maxLength={25} value={phone} onChange={(e) => setPhone(e.target.value)} error={tried && !valid ? 'צריך מספר טלפון תקין' : undefined} />}
+  </AppScreen>;
 }
 
 // ---------- U13 ----------
-/** First sign-in of a guest: name, phone, the farm's registration questions and the updates switch (off). */
+/** First sign-in of a guest: name, phone, the farm's registration questions and acknowledgement of the terms. */
 export function GuestRegister({ user, settings }: { user: Session; settings: Settings }) {
   return <ToastProvider><Register user={user} settings={settings} /></ToastProvider>;
 }

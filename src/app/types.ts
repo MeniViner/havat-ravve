@@ -33,8 +33,8 @@ export type Profile = {
   /** The Google account photo URL, copied at sign-in. */
   googlePhoto?: string;
   town?: string;
-  birthYear?: number;
   birthDate?: string;
+  birthYear?: number;
   /** Push opt-in (L6 / C12 notification rows). */
   push?: { enabled: boolean; kinds?: string[]; updatedAt?: string };
   /** First entry (C9) was completed. */
@@ -52,7 +52,8 @@ export const RECEIPT_PREFERENCE_FIELD = 'receiptPreference';
 export const RECEIPT_PREFERENCE_LABELS: Record<ReceiptPreference, string> = { whatsapp: 'וואטסאפ', email: 'מייל' };
 export type PaymentConfirmation = { by: Actor; at: string };
 
-export type Place = { id: string; name: string; lat: number; lng: number; createdBy: Actor; createdAt: string };
+export type PlaceIcon = 'pin' | 'gate' | 'sprout' | 'tree' | 'paw' | 'box' | 'flower' | 'store';
+export type Place = { icon?: PlaceIcon; markerStyle?: 'icon' | 'thumbnail'; id: string; name: string; lat: number; lng: number; createdBy: Actor; createdAt: string; photo?: string; accuracy?: number | null; measuredAt?: number | null; source?: 'gps' | 'manual' | null; archived?: boolean };
 
 export type TaskLocation = { lat: number; lng: number; placeId?: string; placeName?: string };
 
@@ -105,7 +106,7 @@ export type Template = {
   skip?: string[];
 };
 
-export type ShoppingCategory = 'super' | 'building' | 'online' | 'giveaway';
+export type ShoppingCategory = 'super' | 'building' | 'online' | 'giveaway' | `custom_${string}`;
 
 export type ShoppingItem = {
   id: string;
@@ -116,6 +117,7 @@ export type ShoppingItem = {
   category: ShoppingCategory;
   qty: string;
   urgent: boolean;
+  urgentDueAt?: string | null;
   createdBy: Actor;
   createdAt: string;
   bought: boolean;
@@ -137,7 +139,7 @@ export type ShoppingItem = {
 
 /** A shopping trip (S6/S7): someone is at the store now. */
 export type ShoppingTrip = {
-  id: string; by: Actor; list: ShoppingCategory; startedAt: string; closedAt: string | null;
+  id: string; recipientUids?: string[]; by: Actor; list: ShoppingCategory; startedAt: string; closedAt: string | null;
   /** ids bought / marked not available during the trip (filled on close) */
   bought: string[]; missing: string[];
 };
@@ -162,7 +164,7 @@ export const PAYMENT_LABELS: Record<PaymentStatus, string> = { free: 'חינם',
 export type EventQuestion = { id: string; label: string; required: boolean };
 export type EventFile = { name: string; url: string; kind: 'doc' | 'image'; by: Actor; at: string };
 export type FarmEvent = {
-  id: string; title: string; description: string; image: string; location: string;
+  id: string; title: string; description: string; image: string; location: string; shareWords?: string;
   start: string; end: string; price: number; maxPerOrder: number; capacity: number;
   open: boolean; published: boolean; publishedAt?: string; questions: EventQuestion[];
   entry?: boolean; stall?: boolean;
@@ -174,6 +176,9 @@ export type TicketScan = { at: string; by: Actor };
 export type Ticket = {
   id: string; eventId: string; eventTitle: string; orderId: string; index: number; total: number;
   ownerUid: string; ownerName: string; ownerPhone: string; holderName: string;
+  /** Whether the signed-in owner registered personally. Absent on older tickets. */
+  selfRegistered?: boolean;
+  walkIn?: boolean;
   secret: string; price: number; paymentStatus: PaymentStatus; status: 'valid' | 'cancelled';
   scans: TicketScan[]; entries: number; answers: Record<string, string>;
   paymentConfirmation?: PaymentConfirmation;
@@ -185,6 +190,7 @@ export type VisitStatus = 'new' | 'approved' | 'rejected' | 'cancelled';
 export const VISIT_LABELS: Record<VisitStatus, string> = { new: 'חדש', approved: 'אושר', rejected: 'לא מתאים', cancelled: 'בוטל' };
 export type Visit = {
   id: string; uid: string; name: string; phone: string; date: string; people: number; type: string; note: string;
+  requestedDate?: string; approvedDate?: string; approvedTime?: string; replyText?: string; replyChannel?: 'app' | 'app-email' | 'whatsapp'; replyChannels?: ('push' | 'email' | 'whatsapp')[];
   status: VisitStatus; managerNote: string; handledBy: Actor | null; createdAt: string; updatedAt: string;
 };
 
@@ -197,8 +203,8 @@ export type Donation = {
 
 export type Vendor = { id: string; name: string; phone: string; product: string; external: boolean; notes: string; createdAt: string; updatedAt: string };
 export type EventVendor = { id: string; vendorId: string; name: string; confirmed: boolean; notes: string };
-export type Product = { id: string; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
-export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor };
+export type Product = { id: string; catalogId?: string; catalogProductId?: string; catalogGeneration?: number; catalogProductGeneration?: number; name: string; price: number; active: boolean; sort: number; /** v2 (optional): sale unit text */ unit?: string };
+export type TabItem = { productId: string; name: string; price: number; qty: number; at: string; by: Actor; saleOperation?: string };
 export type TabStatus = 'open' | 'claimed' | 'paid' | 'waived';
 export const TAB_LABELS: Record<TabStatus, string> = { open: 'פתוח', claimed: 'הועבר, ממתין לאישור', paid: 'שולם', waived: 'נמחל' };
 export type Tab = {
@@ -237,7 +243,8 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export type NotificationType = 'visit' | 'donation' | 'join' | 'order' | 'receipt' | 'tab' | 'claim' | 'contact';
-export type AppNotification = { id: string; type: NotificationType; title: string; text: string; link: string; refId: string; createdAt: string; handled: boolean; handledBy: Actor | null; handledAt: string | null };
+export type ContactGuest = { id: string; accountUid: string; customerNumber?: number; method: 'email' | 'phone'; reply: string; createdAt: string };
+export type AppNotification = { id: string; contactId?: string; type: NotificationType; title: string; text: string; link: string; refId: string; createdAt: string; handled: boolean; handledBy: Actor | null; handledAt: string | null };
 
 export type CalendarKind = 'manual' | 'visit' | 'event' | 'presence' | 'meeting' | 'planning';
 export type CalendarItem = { id: string; ownerUid: string; ownerName: string; title: string; date: string; time: string; kind: CalendarKind; refId: string; createdAt: string;
@@ -249,7 +256,7 @@ export type CalendarItem = { id: string; ownerUid: string; ownerName: string; ti
 
 /** Manager projects (P1-P6). Managers and owners only. */
 export type Project = {
-  id: string; title: string; goal: string; deadline: string; deadlineText?: string;
+  id: string; eventId?: string; title: string; goal: string; deadline: string; deadlineText?: string;
   members: Actor[]; status: 'active' | 'done'; createdBy: Actor; createdAt: string; updatedAt: string;
   /** uids of members (rules and queries); short name for compact places (P4, P6); when the last step was done. */
   memberUids?: string[]; short?: string; doneAt?: string | null;
@@ -310,7 +317,7 @@ export type GateScan = { id: string; eventId: string; ticketId: string; orderId:
 export type LiveCounters = { entered: number; paidAtGate: number; payLater: number; payLaterAmount: number; rejected: number; scans: number; perHalfHour: Record<string, number> };
 
 /** events/{id}/staffing/{station} (V4). */
-export type Staffing = { id: string; station: string; people: { uid: string; name: string; hours: string }[]; needed: number };
+export type Staffing = { id: string; station: string; people: import('../../shared/work-stations').StationPerson[]; needed: number };
 
 /** Event close (Y5). Stored on the event document as `closed`. */
 /** events/{id}.closed. Public with the event, so it holds no money: the cash counts live in events/{id}/counters/cash (managers only). */

@@ -5,11 +5,13 @@ import { ApiError, invalid } from '../http';
 import type { Param } from '../catalog';
 import type { Doc, Write } from '../firestore';
 import { IF_UPDATED_AT, activity, forbidden, fresh, isManager, mustGet, notFound, nextUpdatedAt, nowIso, project, taskKind } from '../core';
-import { type Ctx, bool, def, en, req, str } from '../writes';
+import { type Ctx, bool, def, req, str } from '../writes';
 import { RESOURCES } from '../resources';
 import { notifyWrites } from '../notify';
+import { customCategoryId, categoryName, standardShoppingCategories } from '../../../shared/shopping-categories';
+import { readShoppingCategory } from './shoppingCategories';
 import { autoId } from '../util';
-import { SHOP_CATEGORIES, firstName, gw, keyOfCat, listLabel, qtyPart, shopItemWrites, short, storedPhoto, teamUids } from './taskutil';
+import { firstName, gw, keyOfCat, listLabel, qtyPart, shopItemWrites, short, storedPhoto, teamUids } from './taskutil';
 
 type Person = { uid: string; name: string };
 
@@ -83,19 +85,20 @@ def('tasks.setDonePhoto', 'tasks:complete', 'תמונת ביצוע למשימה 
   };
 }, [PHOTO_NOTE, 'To mark it done with a photo in one step, use tasks.complete with donePhoto.']);
 
-const CAT_HE = 'super סופר, building בניין, online אינטרנט, giveaway מחפשים';
+const CAT_HE = 'super סופר, building בניין, online אינטרנט, giveaway מחפשים או מזהה קטגוריה מותאמת';
 const shopBody = (): Record<string, Param> => ({
   title: str(200, 'מה לקנות', true, 1), qty: str(40, 'כמות, טקסט חופשי'), note: str(1000, 'הערה'), link: str(2000, 'קישור https'),
-  category: en([...SHOP_CATEGORIES], CAT_HE, false, 'super'), urgent: bool('דחוף: כל הצוות מקבל התראה', false), photo: str(300, PHOTO_HE),
+  category: str(327, CAT_HE), urgentDueAt: str(24,'מועד דחיפות ב־UTC ISO'), urgent: bool('דחוף: כל הצוות מקבל התראה', false), photo: str(300, PHOTO_HE),
 });
 
 // createShopping() with a taskId: the item carries taskId, the task gets shoppingId back (C3)
 def('tasks.addShopping', 'shopping:write', 'פריט קנייה שנדרש למשימה (מקושר משני הצדדים)', { taskId: req('המשימה'), ...shopBody() }, async (c) => {
   const t = await visibleTask(c, c.input.taskId);
   const photo = c.input.photo ? storedPhoto('photo', c.input.photo) : null;
+  const category = await readShoppingCategory(c.fs,c.input.category,c.tx);
   const team = c.input.urgent ? await teamUids(c.fs) : [];
   const id = autoId();
-  const { doc, writes } = shopItemWrites(c.fs, c.me, id, { ...c.input, photo, taskId: t.id } as Parameters<typeof shopItemWrites>[3], team);
+  const { doc, writes } = shopItemWrites(c.fs, c.me, id, { ...c.input, category, photo, taskId: t.id } as Parameters<typeof shopItemWrites>[3], team);
   writes.push(c.fs.patch('tasks', t.id, { shoppingId: id, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime));
   return {
     status: 201, writes,
@@ -125,8 +128,21 @@ def('shopping.setMissing', 'shopping:write', 'סימון פריט "אין" (לא
 /** firestore.rules shopping_trips update: only the shopper writes the trip. */
 function myTrip(c: Ctx, t: Doc) { if ((t.data.by as Person | null)?.uid !== c.me.uid) throw forbidden('only the person on this shopping trip can change it'); }
 
+def('shopping.createCategory', 'shopping:write', 'יצירת קטגוריית קניות ובחירה בה', { name: str(60,'שם קטגוריה',true,1) }, async c => {
+  const name=categoryName(c.input.name);
+  const builtin=Object.entries(standardShoppingCategories).find(([,label])=>label===name);
+  if (builtin) return { writes:[], refs:[], data:{id:builtin[0],name} };
+  let id: string;
+  try { id=customCategoryId(name); } catch { throw invalid('name','invalid category name'); }
+  const saved=await c.fs.get('shopping_categories',id,c.tx);
+  if (saved && saved.data.name!==name) throw conflict('category id already used');
+  return { writes:saved?[]:[c.fs.create('shopping_categories',id,{name})], refs:[{col:'shopping_categories',id,expected:{name}}], data:{id,name} };
+});
+RESOURCES.push({ name:'shoppingCategories', col:'shopping_categories', path:'/v1/shopping-categories', scope:'shopping:read', he:'קטגוריות קניות שנוצרו בידי הצוות', order:{field:'name',dir:'ASCENDING'} });
+const selectedTripUids = (eligible: string[], selected: unknown) => Array.isArray(selected) ? eligible.filter(uid=>selected.includes(uid)) : eligible;
+
 // Resume the newest unclosed trip for this shopper, whatever list was requested.
-def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או התחלת קנייה חדשה', { list: en([...SHOP_CATEGORIES], CAT_HE, true) }, async (c) => {
+def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או התחלת קנייה חדשה', { list: str(327, CAT_HE, true, 1), recipientUids: { type:'stringList', maxItems:2000, maxLength:128, he:'נמענים נבחרים. חסר = כולם, ריק = ללא נמענים' } }, async (c) => {
   const mine = await c.fs.query({
     from: [{ collectionId: 'shopping_trips' }],
     where: { fieldFilter: { field: { fieldPath: 'by.uid' }, op: 'EQUAL', value: { stringValue: c.me.uid } } },
@@ -135,9 +151,11 @@ def('shopping.startTrip', 'shopping:write', 'המשך קנייה פתוחה או
   if (open) return { writes: [], refs: [{ col: 'shopping_trips', id: open.id }], data: { tripId: open.id, list: open.data.list, resumed: true } };
   const now = nowIso();
   const id = autoId();
-  const trip = { id, by: c.me, list: c.input.list, startedAt: now, closedAt: null, bought: [], missing: [] };
+  const list = await readShoppingCategory(c.fs,c.input.list,c.tx);
+  const recipientUids = selectedTripUids(await teamUids(c.fs),c.input.recipientUids);
+  const trip = { id, by: c.me, list, recipientUids, startedAt: now, closedAt: null, bought: [], missing: [] };
   const writes = [c.fs.create('shopping_trips', id, trip)];
-  writes.push(...notifyWrites(c.fs, await teamUids(c.fs), {
+  writes.push(...notifyWrites(c.fs, recipientUids, {
     kind: 'trip', title: `${firstName(c.me.name)} ${gw(c.me.name, 'יוצא', 'יוצאת')} ל${listLabel(c.input.list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(c.input.list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' } as unknown as string, by: c.me,
   }));
@@ -165,7 +183,7 @@ def('shopping.closeTrip', 'shopping:write', 'סיימתי לקנות: סגירת
     .sort((a, b) => Number(!!b.data.urgent) - Number(!!a.data.urgent) || String(b.data.createdAt || '').localeCompare(String(a.data.createdAt || '')));
   const patch = { closedAt: nowIso(), bought: bought.map((i) => i.id), missing: missing.map((i) => i.id) };
   const writes: Write[] = [c.fs.patch('shopping_trips', t.id, patch, t.updateTime)];
-  writes.push(...notifyWrites(c.fs, await teamUids(c.fs), {
+  writes.push(...notifyWrites(c.fs, selectedTripUids(await teamUids(c.fs),t.data.recipientUids), {
     kind: 'trip', title: `הקנייה ב${listLabel(t.data.list)} נסגרה`, sub: tripSummary(bought.length, missing.map((i) => String(i.data.title))),
     link: `/shopping/trip/done?id=${t.id}`, refId: t.id, by: c.me, push: false,
   }));

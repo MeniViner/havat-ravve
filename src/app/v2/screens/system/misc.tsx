@@ -8,6 +8,7 @@ import { useOnline, createProfile } from '../../../store';
 import { contactPhoneOk } from '../../../data';
 import { useDemo, useDemoStates, setDemoStates, demoOnly } from '../../../demo/store';
 import { write } from '../../../db';
+import { isBirthYear } from '../../../birthYear';
 import { nowIso } from '../../../clock';
 import { ddmm } from '../../format';
 import { gw } from '../../gender';
@@ -15,11 +16,10 @@ import type { ScreenProps } from '../../ctx';
 import type { Profile, RegistrationField, RoleInvite, Settings } from '../../../types';
 import type { Session } from '../../../firebase';
 import {
-  useInviteFor, INVITE_ROLE_WORD, firstName, markWelcomed, registrationQuestions, answersFor, missingAnswers, useInstallPrompt, promptInstall, isIos,
-  storedBirthYear, birthChange, afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
+  useInviteFor, INVITE_ROLE_WORD, firstName, markWelcomed, storedBirthYear, birthChange, registrationQuestions, answersFor, missingAnswers, useInstallPrompt, promptInstall, isIos,
+  afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
-import { isBirthYear } from '../../../birthYear';
 import { RegistrationQuestions, RegistrationTerms, BirthYearField } from './fields';
 import { forgetVendorInvite } from '../../data/vendor';
 import './system.css';

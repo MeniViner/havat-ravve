@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isAccountUser, type Session } from './firebase';
-import { isBirthYear, birthYearRequired } from './birthYear';
 import { useList, useDoc, write, newId } from './db';
-import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
+import { checkDemoSession, useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
 import type { Profile, Task, Template, ShoppingItem, Place, RoleInvite, Actor, Role, Status, ShoppingCategory, TaskLocation } from './types';
 import { CATEGORY_LABELS, ROLE_LABELS } from './types';
 import { nowMs } from './clock';
+import { birthYearRequired, isBirthYear } from './birthYear';
 import { linkOpen, LINK_GONE, type TeamLink } from './v2/data/invite';
 
 // ---------- auth ----------
@@ -29,6 +29,7 @@ function startAuth() {
     }
     if (auth.currentUser !== user) return;
     authState = { loading: false, user: account, bootstrapOwner };
+    checkDemoSession(authState.user?.uid);
     authListeners.forEach((listener) => listener());
   }));
 }
@@ -288,7 +289,7 @@ export async function addPlace(actor: Actor, name: string, lat: number, lng: num
   return id;
 }
 export const updatePlace = (id: string, data: Partial<Pick<Place, 'name' | 'lat' | 'lng'>>) => write.update('places', id, data);
-export const deletePlace = (id: string) => write.remove('places', id);
+export const deletePlace = (id: string) => write.update('places', id, { archived: true });
 
 // ---------- helpers ----------
 export async function compressPhoto(file: File, maxDim = 1280, maxChars = 380_000): Promise<string> {
@@ -314,8 +315,8 @@ export function getPosition(): Promise<{ lat: number; lng: number; accuracy: num
     if (!('geolocation' in navigator)) return reject(Error('אין גישה למיקום במכשיר הזה'));
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), accuracy: Math.round(p.coords.accuracy) }),
-      () => reject(Error('לא הצלחנו לקבל מיקום. בדקו שהרשאת מיקום פתוחה.')),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+      (e) => reject(Error(e.code === 1 ? 'הגישה למיקום נדחתה. אפשר להתיר אותה בהגדרות האתר.' : e.code === 3 ? 'הזמן לקבלת מיקום חלף. נסו שוב בשטח פתוח.' : 'אין מדידת מיקום זמינה. בדקו ששירותי המיקום פעילים.')),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
   });
 }

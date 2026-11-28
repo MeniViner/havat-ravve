@@ -28,6 +28,25 @@ export const otherOps = (): CatalogOp[] => LINES.trim().split('\n').map((line) =
 });
 
 const LINES = `
+eventProjects.list|פרויקטים משויכים לאירוע|events:read|event-projects||eventId*:i,@
+eventProjects.get|פרויקט משויך לאירוע עם צעדיו|events:read|event-projects/{id}|id|
+vendorApplications.list|בקשות רישום דוכנים|vendors:read|vendor-applications||@
+vendorApplications.get|בקשות רישום דוכנים לפי מזהה|vendors:read|vendor-applications/{id}|id|
+eventVendorApplications.list|בקשות השתתפות לדוכנים באירוע|vendors:read|events/{eventId}/vendor-applications|eventId|@
+eventVendorApplications.get|בקשות השתתפות לדוכנים באירוע לפי מזהה|vendors:read|events/{eventId}/vendor-applications/{id}|eventId,id|
+farmCatalogs.list|קטלוגים לדוכן החווה|events:read|farm-catalogs||@
+farmCatalogs.get|קטלוגים לדוכן החווה לפי מזהה|events:read|farm-catalogs/{id}|id|
+farmCatalogProducts.list|מוצרים בקטלוג החווה|events:read|farm-catalogs/{catalogId}/products|catalogId|@
+farmCatalogProducts.get|מוצרים בקטלוג החווה לפי מזהה|events:read|farm-catalogs/{catalogId}/products/{id}|catalogId,id|
+eventShopping.list|קניות לאירוע|events:read|events/{eventId}/shopping|eventId|@
+eventShopping.get|קניות לאירוע לפי מזהה|events:read|events/{eventId}/shopping/{id}|eventId,id|
+shoppingCategories.list|קטגוריות קניות שיצר הצוות|shopping:read|shopping-categories||@
+shoppingCategories.get|קטגוריות קניות שיצר הצוות לפי מזהה|shopping:read|shopping-categories/{id}|id|
+farmCatalogs.save|שמירת קטלוג לדוכן החווה|events:write|||catalogId:i,name*:s100
+farmCatalogs.saveProduct|שמירת מוצר בקטלוג|events:write|||catalogId*:i,productId:i,name*:s100,price*:x0~1000000
+farmCatalogs.selectForEvent|בחירת מוצר לאירוע|events:write|||eventId*:i,catalogId*:i,productId*:i,active:b=true
+eventVendorApplications.approve|אישור השתתפות דוכן באירוע|vendors:write|||eventId*:i,applicantUid*:u
+shopping.createCategory|יצירת קטגוריית קניות|shopping:write|||name*:s60
 settings.get|הגדרות: פתיח לאורחים, סוגי ביקור, פרטי תשלום (ביט/PayBox), סכומי תרומה, נוסחי הודעות|settings:read|settings||
 tasks.assign|שיוך משימה קיימת לאחראי, או שחרור שלה (פנויה)|tasks:assign|||taskId*:i,assignee:u,release:b,^
 tasks.complete|סימון משימה כבוצעה, בשם מי שקורא|tasks:complete|||taskId*:i,^,donePhoto:s300,doneNote:s2000
@@ -38,7 +57,7 @@ templates.list|משימות קבועות (חוזרות): ימים בשבוע (0=
 templates.get|משימות קבועות (חוזרות): ימים בשבוע (0=ראשון), שעה, פעילה או לא (רשומה אחת לפי מזהה)|templates:read|templates/{id}|id|
 places.list|מקומות בחווה (שם וקואורדינטות)|places:read|places||@
 places.get|מקומות בחווה (שם וקואורדינטות) (רשומה אחת לפי מזהה)|places:read|places/{id}|id|
-profiles.list|כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה|people:read|profiles||role:eowner/manager/staff/guest,status:eactive/pending/blocked,@
+profiles.list|כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה|people:read|profiles||role:eowner/manager/staff/vendor/guest,status:eactive/pending/blocked,@
 profiles.get|כל האנשים הרשומים באפליקציה, כולל אורחים: תפקיד, מצב, טלפון, מייל, הערות והיסטוריה (רשומה אחת לפי מזהה)|people:read|profiles/{id}|id|
 roleInvites.list|מיילים שהוגדר להם תפקיד מראש (יקבלו אותו כשיירשמו)|people:read|role-invites||@
 roleInvites.get|מיילים שהוגדר להם תפקיד מראש (יקבלו אותו כשיירשמו) (רשומה אחת לפי מזהה)|people:read|role-invites/{id}|id|
@@ -100,7 +119,7 @@ tasks.delete|מחיקת משימה|tasks:edit|||^,taskId*:i
 templates.create|יצירת משימה קבועה (חוזרת)|templates:write|||title*:s200,note:s4000,days:l,time:T,active:b,managersOnly:b,assignee:u,placeId:i
 templates.update|עדכון משימה קבועה|templates:write|||^,templateId*:i,title:s200,note:s4000,days:l,time:T,active:b,managersOnly:b,assignee:u,placeId:i,clearAssignee:b,clearPlace:b
 templates.delete|מחיקת משימה קבועה|templates:write|||^,templateId*:i
-shopping.edit|עריכת פריט ברשימת הקניות|shopping:write|||^,itemId*:i,title:s200,qty:s40,note:s1000,link:s2000,category:esuper/building/online/giveaway,urgent:b
+shopping.edit|עריכת פריט ברשימת הקניות|shopping:write|||^,itemId*:i,title:s200,qty:s40,note:s1000,link:s2000,category:s327,urgentDueAt:s24,urgent:b
 shopping.delete|מחיקת פריט מרשימת הקניות|shopping:write|||^,itemId*:i
 places.add|הוספת מקום בחווה|places:write|||name*:s120,lat*:x-90~90,lng*:x-180~180,accuracy:x0~100000
 places.update|עדכון מקום: שם, מיקום, דיוק, תמונה|places:write|||placeId*:i,name:s120,lat:x-90~90,lng:x-180~180,accuracy:x0~100000,photo:s300
@@ -109,8 +128,8 @@ people.setRole|שינוי תפקיד של אדם (אורח, מתנדב, מנהל
 people.setStatus|חסימה או שחרור של אדם|people:write|||^,uid*:i,status*:eactive/blocked
 people.setNotes|הערות פנימיות על אדם (רק מנהלים רואים)|people:write|||^,uid*:i,notes*:s2000
 invites.setRole|הגדרת תפקיד מראש למייל (יקבל אותו כשיירשם). guest מבטל|people:write|||email*:E,role*:estaff/manager/owner/guest
-events.create|יצירת אירוע|events:write|||title*:s200,description:s8000,location:s300,start*:D,end*:D,price:x0~100000,maxPerOrder:n1~20=5,capacity:n0~100000=0,open:b,published:b,entry:b,stall:b,questions:L10,questionsRequired:l,image:s300
-events.update|עדכון אירוע, כולל פרסום/הסרה מפרסום ופתיחה/סגירה של הרשמה|events:write|||^,eventId*:i,title:s200,description:s8000,location:s300,start:D,end:D,price:x0~100000,maxPerOrder:n1~20,capacity:n0~100000,open:b,published:b,entry:b,stall:b,questions:L10,questionsRequired:l,image:s300
+events.create|יצירת אירוע|events:write|||title*:s200,description:s8000,shareWords:s300,location:s300,start*:D,end*:D,price:x0~100000,maxPerOrder:n1~20=5,capacity:n0~100000=0,open:b,published:b,entry:b,stall:b,questions:L10,questionsRequired:l,image:s300
+events.update|עדכון אירוע, כולל פרסום/הסרה מפרסום ופתיחה/סגירה של הרשמה|events:write|||^,eventId*:i,title:s200,description:s8000,shareWords:s300,location:s300,start:D,end:D,price:x0~100000,maxPerOrder:n1~20,capacity:n0~100000,open:b,published:b,entry:b,stall:b,questions:L10,questionsRequired:l,image:s300
 events.delete|מחיקת אירוע|events:write|||^,eventId*:i
 events.saveProduct|הוספה או עדכון של מוצר בדוכן האירוע: שם, מחיר, יחידה, זמין למכירה|events:write|||eventId*:i,productId:i,name:s200,price:x0~100000,unit:s20,active:b,sort:x0~100000
 events.deleteProduct|מחיקת מוצר מדוכן האירוע|events:write|||eventId*:i,productId*:i
@@ -150,14 +169,14 @@ tasks.take|לקחת משימה פנויה על עצמי|tasks:complete|||taskId*
 tasks.release|לשחרר משימה שלי (חוזרת להיות פנויה)|tasks:complete|||taskId*:i
 tasks.setPhoto|תמונה למשימה (מה צריך לעשות)|tasks:complete|||^,taskId*:i,photo*:s300
 tasks.setDonePhoto|תמונת ביצוע למשימה (אחרי שבוצעה), ואופציונלי הערת ביצוע|tasks:complete|||^,taskId*:i,donePhoto*:s300,note:s2000
-tasks.addShopping|פריט קנייה שנדרש למשימה (מקושר משני הצדדים)|shopping:write|||taskId*:i,title*:s200,qty:s40,note:s1000,link:s2000,category:esuper/building/online/giveaway=super,urgent:b=false,photo:s300
+tasks.addShopping|פריט קנייה שנדרש למשימה (מקושר משני הצדדים)|shopping:write|||taskId*:i,title*:s200,qty:s40,note:s1000,link:s2000,category:s327,urgentDueAt:s24,urgent:b=false,photo:s300
 shopping.setMissing|סימון פריט "אין" (לא היה בחנות בקנייה הזו), או ביטול הסימון|shopping:write|||^,itemId*:i,tripId:i,missing:b=true
-shopping.startTrip|המשך קנייה פתוחה או התחלת קנייה חדשה|shopping:write|||list*:esuper/building/online/giveaway
+shopping.startTrip|המשך קנייה פתוחה או התחלת קנייה חדשה|shopping:write|||list*:s327,recipientUids:L2000
 shopping.closeTrip|סיימתי לקנות: סגירת הקנייה (מה נקנה ומה לא היה)|shopping:write|||tripId*:i
 shopping.deleteTrip|מחיקת קנייה (רק מנהל). הפריטים נשארים כפי שהם|shopping:write|||tripId*:i
 shopping.reopenTrip|פתיחה מחדש של קנייה שנסגרה בטעות|shopping:write|||tripId*:i
-projects.create|יצירת פרויקט עם צעדים (מי שמקבל צעד מקבל התראה)|projects:write|||title*:s120,deadline:s60,steps:s12000
-projects.update|עריכת פרויקט: שם, יעד, והצעדים (הוספה, שינוי, מחיקה של צעד פתוח שהוסר)|projects:write|||^,projectId*:i,title:s120,deadline:s60,steps:s12000
+projects.create|יצירת פרויקט עם צעדים (מי שמקבל צעד מקבל התראה)|projects:write|||eventId:i,title*:s120,deadline:s60,steps:s12000
+projects.update|עריכת פרויקט: שם, יעד, והצעדים (הוספה, שינוי, מחיקה של צעד פתוח שהוסר)|projects:write|||^,projectId*:i,eventId:s80,title:s120,deadline:s60,steps:s12000
 projects.delete|מחיקת פרויקט שלם עם כל הצעדים (רק הבעלים)|projects:write|||^,projectId*:i
 projects.takeStep|לקחת צעד פנוי בפרויקט על עצמי|projects:write|||projectId*:i,stepId*:i
 projects.releaseStep|לשחרר צעד שלי בפרויקט|projects:write|||projectId*:i,stepId*:i
@@ -173,8 +192,8 @@ events.reorderProducts|סידור מחדש של מוצרי הדוכן|events:wri
 events.copyProducts|העתקת מוצרי הדוכן מאירוע קודם|events:write|||eventId*:i,fromEventId*:i
 events.addFileLink|הוספת קישור לקובץ באירוע (היתר, מפה, רשימה)|events:write|||eventId*:i,name*:s200,url*:s2000,kind:edoc/image=doc
 events.removeFile|מחיקת קובץ מהאירוע|events:write|||^,eventId*:i,fileId:i,legacyIndex:n0~29
-events.assignStation|שיבוץ איש צוות לעמדה באירוע (שער, דוכן, חניה או עמדה אחרת)|events:write|||eventId*:i,station*:i,stationName:s60,needed:n1~30,uid*:i,hours:s40
-events.updateStationPerson|עדכון שעות של איש צוות בעמדה|events:write|||eventId*:i,station*:i,uid*:i,hours:s40
+events.assignStation|שיבוץ איש צוות לעמדה באירוע (שער, דוכן, חניה או עמדה אחרת)|events:write|||eventId*:i,station*:i,stationName:s60,needed:n1~30,uid*:i,hours:s40,role:s80,startsAt:s40,endsAt:s40
+events.updateStationPerson|עדכון שעות של איש צוות בעמדה|events:write|||eventId*:i,station*:i,uid*:i,hours:s40,role:s80,startsAt:s40,endsAt:s40
 events.removeFromStation|הסרת איש צוות מעמדה באירוע|events:write|||eventId*:i,station*:i,uid*:i
 tickets.addGuestOrder|הוספת נרשם לאירוע ידנית (טלפון, וואטסאפ)|tickets:write|||eventId*:i,name*:s80,phone:s25,count:n1~20=1,paid:b=false
 tickets.deleteOrder|מחיקת הזמנה לגמרי (לא ביטול): הכרטיסים ופריטי התיבה שלה|tickets:write|||orderId*:i

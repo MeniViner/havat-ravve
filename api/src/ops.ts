@@ -6,6 +6,7 @@ import { operation } from './catalog';
 import { type Doc, Firestore, type Write, enc } from './firestore';
 import { fresh, idempotent, nextUpdatedAt, todayIL } from './core';
 import { autoId, b64url, canonical, normName, sha256hex, validate } from './util';
+import { readShoppingCategory, urgentDueAt } from './v2/shoppingCategories';
 import { photoUrl, publicItem, qtyPart, shopItemWrites, short, storedPhoto, taskToPerson, teamUids } from './v2/taskutil';
 
 type Person = { uid: string; name: string };
@@ -271,7 +272,7 @@ export async function createTask(fs: Firestore, caller: Caller, body: Record<str
     let location: Record<string, unknown> | null = null;
     if (input.placeId) {
       const p = await fs.get('places', input.placeId, tx);
-      if (!p) throw invalid('placeId', 'no such place');
+      if (!p || p.data.archived) throw invalid('placeId', 'place does not exist or was archived');
       location = { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
     }
     if (input.eventId && !(await fs.get('events', input.eventId, tx))) throw invalid('eventId', 'no such event');
@@ -365,17 +366,15 @@ export const reopenTask = (fs: Firestore, caller: Caller, body: Record<string, u
 
 // ---------- shopping ----------
 
-export const SHOPPING_CATEGORIES = ['super', 'building', 'online', 'giveaway'] as const;
-type Category = (typeof SHOPPING_CATEGORIES)[number];
 const itemText = (d: Record<string, unknown>) => `${d.title}${qtyPart(d.qty)}`;
 
 export async function listShopping(fs: Firestore, caller: Caller, query: URLSearchParams) {
   requireScope(caller, 'shopping:read');
   const raw: Record<string, string> = {};
   for (const [k, v] of query) { if (k in raw) throw invalid(k, `"${k}" given twice`); raw[k] = v; }
-  const p = validate(operation('shopping.list')!.params!, raw, true) as { bought: boolean; category: Category | null; limit: number };
+  const p = validate(operation('shopping.list')!.params!, raw, true) as { bought: boolean; category: string | null; limit: number };
   const filters: Record<string, unknown>[] = [{ fieldFilter: { field: { fieldPath: 'bought' }, op: 'EQUAL', value: enc(p.bought) } }];
-  if (p.category) filters.push({ fieldFilter: { field: { fieldPath: 'category' }, op: 'EQUAL', value: enc(p.category) } });
+  if (p.category) filters.push({ fieldFilter: { field: { fieldPath: 'category' }, op: 'EQUAL', value: enc(await readShoppingCategory(fs, p.category)) } });
   const docs = await fs.query({
     from: [{ collectionId: 'shopping' }],
     where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } },
@@ -403,8 +402,10 @@ const readBackItem = (fs: Firestore) => async (data: Record<string, unknown>) =>
 /** shopping.add: addShopItem() in src/app/v2/data/shopping.ts (taskId, photo, list label in the activity; urgent tells the team). */
 export async function addShopping(fs: Firestore, caller: Caller, body: Record<string, unknown>, key: string | null) {
   requireScope(caller, 'shopping:write');
-  const input = validate(operation('shopping.add')!.body!, body) as { title: string; qty: string | null; category: Category; urgent: boolean; note: string | null; link: string | null; taskId: string | null; photo: string | null };
+  const input = validate(operation('shopping.add')!.body!, body) as { title: string; qty: string | null; category: string; urgent: boolean; urgentDueAt: string | null; note: string | null; link: string | null; taskId: string | null; photo: string | null };
   const photo = input.photo ? storedPhoto('photo', input.photo) : null;
+  const dueAt = urgentDueAt(input.urgentDueAt);
+  if (dueAt && !input.urgent) throw invalid('urgentDueAt', 'a due time requires an urgent item');
   const team = input.urgent ? await teamUids(fs) : [];
   return idempotent(fs, caller, 'shopping.add', key, input, async (tx) => {
     if (input.taskId) {
@@ -412,7 +413,8 @@ export async function addShopping(fs: Firestore, caller: Caller, body: Record<st
       if (!t || !visible(t.data, caller)) throw invalid('taskId', 'no such task');
     }
     const id = autoId();
-    const { doc, writes } = shopItemWrites(fs, caller.actor.person, id, { ...input, photo }, team);
+    const category = await readShoppingCategory(fs, input.category, tx);
+    const { doc, writes } = shopItemWrites(fs, caller.actor.person, id, { ...input, category, urgentDueAt: dueAt, photo }, team);
     const expected = { title: doc.title, qty: doc.qty, category: doc.category, urgent: doc.urgent, bought: false, taskId: input.taskId || null };
     return { status: 201, writes, data: { itemId: id, expected } };
   }, readBackItem(fs));

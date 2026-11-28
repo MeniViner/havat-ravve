@@ -16,7 +16,7 @@ import { setUpdatesOptIn } from '../../data/broadcast';
 import type { V2Ctx } from '../../ctx';
 import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
-  receiptOf, saveProfile, storedBirthYear, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
+  receiptOf, saveProfile, storedBirthYear, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
 import { isBirthYear } from '../../../birthYear';
 import { RegistrationQuestions, BirthYearField } from './fields';
@@ -62,7 +62,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const vendor = ctx.role === 'vendor';
   const lead = ctx.manager || ctx.owner;
   const counts = useMyCounts(ctx);
-  const presence = usePresenceText(ctx.user.uid, ctx.today, !vendor);
+  const presence = usePresenceText(ctx.user.uid, ctx.today, ctx.manager, !vendor);
   const notifs = useParam('notifications') === '1';
   useGooglePhotoSync(p);
   const src = photoOf(p);

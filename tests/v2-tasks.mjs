@@ -25,7 +25,8 @@ const STUBS = {
       update: (col, id, data) => calls().push(['tx.update', col, id, data]),
       set: (col, id, data) => calls().push(['tx.set', col, id, data]),
     });`,
-  activity: `export const logActivity = (actor, kind, refId, action, text, extra) => { globalThis.__calls.push(['log', kind, refId, action, text, extra]); };
+  activity: `export const activityOp = (by, kind, refId, action, text) => ({ op:'set', col:'activity', id:'log', data:{by,kind,refId,action,text} });
+             export const logActivity = (actor, kind, refId, action, text, extra) => { globalThis.__calls.push(['log', kind, refId, action, text, extra]); };
              export const taskKind = (t) => (t.templateId ? 'routine' : 'task');
              export const useActivityFor = () => ({ items: [] });`,
   store: `export const addTask = async (actor, data) => { globalThis.__calls.push(['addTask', data]); return 'tasks-added'; };
@@ -383,7 +384,7 @@ await test('take, release and assign refuse with X1 text when the server moved o
   assert.deepEqual(note[1], [yoav.uid]); assert.equal(note[2].link, '/tasks/tk'); assert.equal(note[2].sub, 'בני העביר אליך');
   calls.length = 0;
   await T.assignTask(yoav, t, yoav, noa.uid);
-  assert.ok(!calls.some((c) => c[0] === 'notify'), 'taking it yourself sends nothing');
+  assert.deepEqual(calls.find((c) => c[0] === 'notify')[1], [yoav.uid], 'self-notifications follow the recipient preference');
 });
 
 await test('add / edit: tasks through the store, shopping through the shopping area, the task gets shoppingId', async () => {
@@ -393,7 +394,7 @@ await test('add / edit: tasks through the store, shopping through the shopping a
   assert.equal(calls[0][0], 'addTask'); assert.deepEqual(calls[1][1], [yoav.uid]);
   calls.length = 0;
   await T.createTask(yoav, { title: 'לתקן', assignee: yoav });
-  assert.ok(!calls.some((c) => c[0] === 'notify'));
+  assert.deepEqual(calls.find((c) => c[0] === 'notify')[1], [yoav.uid]);
   calls.length = 0;
   const sid = await T.createShopping(yoav, { title: ' מלט ', qty: '2 שקים', note: '', link: 'ace.co.il', category: 'building', urgent: true, photo: '' }, [], 'tk');
   assert.equal(sid, 'shopping-added');
@@ -410,16 +411,17 @@ await test('templates keep the old shape unless the new fields carry a value', a
   const data = { title: ' להשקות ', note: '', days: [0, 1, 2, 3, 4, 5, 6], time: '07:00', active: true, managersOnly: false, assignee: null, placeId: '' };
   calls.length = 0;
   await T.saveTemplateV2(beni, data);
-  const [op, col, , doc] = calls[0];
+  const [{op, col, data:doc}, log] = calls[0][1];
+  assert.equal(log.col, 'activity');
   assert.equal(op, 'set'); assert.equal(col, 'task_templates');
   assert.deepEqual(Object.keys(doc).sort(), ['active', 'createdAt', 'createdBy', 'days', 'managersOnly', 'note', 'time', 'title', 'updatedAt']);
   assert.deepEqual(doc.days, []); assert.equal(doc.title, 'להשקות');
   calls.length = 0;
   await T.saveTemplateV2(beni, { ...data, assignee: yoav, placeId: 'p-green', managersOnly: false }, { id: 'tpl1' });
-  assert.equal(calls[0][0], 'update'); assert.equal(calls[0][3].assignee, yoav); assert.equal(calls[0][3].placeId, 'p-green');
+  assert.equal(calls[0][1][0].op, 'update'); assert.equal(calls[0][1][0].data.assignee, yoav); assert.equal(calls[0][1][0].data.placeId, 'p-green');
   calls.length = 0;
   await T.saveTemplateV2(beni, { ...data, managersOnly: true, assignee: yoav }, { id: 'tpl1', assignee: yoav, placeId: 'p-green' });
-  assert.equal(calls[0][3].assignee, null, 'managers-only clears the person'); assert.equal(calls[0][3].placeId, '');
+  assert.equal(calls[0][1][0].data.assignee, null, 'managers-only clears the person'); assert.equal(calls[0][1][0].data.placeId, '');
 });
 
 await test('places: accuracy and photo only when they change', async () => {
@@ -432,6 +434,14 @@ await test('places: accuracy and photo only when they change', async () => {
   calls.length = 0;
   await T.savePlace(yoav, { id: 'p1', name: 'a', lat: 1, lng: 1, accuracy: 4 }, { name: 'b ', lat: 2, lng: 2, accuracy: 4, photo: '' });
   assert.deepEqual(calls[0][3], { name: 'b', lat: 2, lng: 2 });
+  calls.length = 0;
+  await T.savePlace(yoav,{...gate,source:'gps',measuredAt:100},{name:gate.name,lat:32.01,lng:35,accuracy:5});
+  assert.equal(calls[0][3].source,null); assert.equal(calls[0][3].measuredAt,null);
+  calls.length = 0;
+  await T.removePlace(beni,gate); assert.deepEqual(calls[0],['update','places',gate.id,{archived:true}]);
+  const linked = task({location:loc(gate)}), renamed = {...gate,name:'שער מתוקן',lat:32.1};
+  assert.equal(T.withTemplateDefaults(linked,[],[renamed]).location.placeName,renamed.name);
+  assert.deepEqual(T.withTemplateDefaults({...linked,done:true},[],[renamed]).location,loc(gate));
 });
 
 await test('restored: stale routine, overdue group, routine "עד HH:MM", no "ביקש" on routine rows', () => {

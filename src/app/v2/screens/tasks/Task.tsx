@@ -81,7 +81,7 @@ export function TaskScreen({ ctx, params }: ScreenProps) {
   const saveNote = async () => {
     try { await setDoneDetails(ctx.actor, t, { doneNote: note || '' }); setNote(null); toast.show({ text: 'נשמר' }); } catch (e) { fail(e); }
   };
-  const navBtn = t.location ? <Button variant="outline" icon="nav" iconSize={16} style={{ padding: '0 12px' }} onClick={() => external(mapsUrl(t.location!.lat, t.location!.lng))}>ניווט</Button> : undefined;
+  const navBtn = t.location ? <Button variant="outline" icon="nav" iconSize={16} style={{ padding: '0 12px' }} onClick={() => external(mapsUrl(t.location!.lat, t.location!.lng))}>ניווט חיצוני</Button> : undefined;
 
   let who: ReactNode; let whoAction: ReactNode;
   if (t.done) who = t.assignee ? (mine ? 'עליך' : t.assignee.name) : 'פנויה';
@@ -186,7 +186,7 @@ export function AssignScreen({ ctx, params }: ScreenProps) {
   useClockVersion();
   const r = useTaskV2(params.id, ctx);
   const root = useRootTasks(ctx);
-  const presence = usePresenceToday(ctx.today);
+  const presence = usePresenceToday(ctx.today, ctx.manager);
   const fail = useFail(); const toast = useToast();
   const [q, setQ] = useState('');
   const [pick, setPick] = useState<string | null | undefined>(undefined);

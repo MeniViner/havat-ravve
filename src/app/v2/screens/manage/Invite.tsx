@@ -8,9 +8,10 @@ import { nowMs } from '../../../clock';
 import { contactPhoneOk } from '../../../data';
 import { useDemo } from '../../../demo/store';
 import {
-  usePeople, useRoleInvites, useTeamLinks, roleWord, inviteRolesFor, emailOk, gw, inviteRole, cancelInvite,
+  usePeople, useRoleInvites, roleWord, inviteRolesFor, emailOk, gw, inviteRole, cancelInvite,
   createTeamLink, cancelTeamLink, restoreTeamLink, linkOpen, useRun, type InviteRole, type TeamLink, type RoleInvite,
 } from '../../data/manage';
+import { directoryInvitations, useAllTeamLinks } from '../../data/invite';
 import './manage.css';
 
 type How = 'phone' | 'email';
@@ -26,7 +27,7 @@ type Pending = { kind: 'email'; at: string; invite: RoleInvite } | { kind: 'phon
 
 export function InviteScreen({ ctx }: ScreenProps) {
   const emailInvites = useRoleInvites(true).items;
-  const links = useTeamLinks(true).items;
+  const links = useAllTeamLinks(true).items;
   const people = usePeople(true).items;
   const allowed = inviteRolesFor(ctx.owner);
   const [how, setHow] = useState<How>('phone');
@@ -38,10 +39,11 @@ export function InviteScreen({ ctx }: ScreenProps) {
   const [busy, setBusy] = useState(false);
   const run = useRun(); const open = useExternal(); const toast = useToast(); const demo = useDemo();
 
+  const groups = useMemo(() => directoryInvitations(people, emailInvites, links), [people, emailInvites, links]);
   const pending = useMemo<Pending[]>(() => [
-    ...emailInvites.map((invite) => ({ kind: 'email' as const, at: invite.createdAt, invite })),
-    ...links.map((link) => ({ kind: 'phone' as const, at: link.createdAt, link })),
-  ].sort((a, b) => (a.at || '').localeCompare(b.at || '')), [emailInvites, links]); // oldest first, as Q27 lists them
+    ...groups.pendingEmails.map((invite) => ({ kind: 'email' as const, at: invite.createdAt, invite })),
+    ...groups.pendingLinks.map((link) => ({ kind: 'phone' as const, at: link.createdAt, link })),
+  ].sort((a, b) => (a.at || '').localeCompare(b.at || '')), [groups]); // oldest first, as Q27 lists them
 
   const existing = how === 'email'
     ? people.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase())
@@ -114,6 +116,13 @@ export function InviteScreen({ ctx }: ScreenProps) {
           ))}
         </ListCard>
       )}
+      {groups.joined.length > 0 && <ListCard title="כבר נכנסו" count={groups.joined.length} className="manage-joined-list">
+        {groups.joined.map((p) => <Row key={p.uid} title={p.displayName} meta={roleWord(p.role, false)} onClick={() => go(`/manage/people/${p.uid}`)} />)}
+      </ListCard>}
+      {groups.expired.length > 0 && <ListCard title="קישורים שפג תוקפם" count={groups.expired.length}>
+        {groups.expired.map((p) => <Row key={p.code} title={p.name || p.phone} meta={agoDays(p.createdAt)}
+          actions={<Button variant="quiet" onClick={() => cancel({ kind: 'phone', at: p.createdAt, link: p })}>ביטול</Button>} />)}
+      </ListCard>}
     </AppScreen>
   );
 }

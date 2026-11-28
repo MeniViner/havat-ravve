@@ -2,7 +2,7 @@
 // Every write goes through the existing helpers in data.ts / store.ts (they write through db.ts), so the documents keep
 // exactly the shape the rules and the guest app expect. New settings keys are optional and live next to the old ones.
 import { useCallback } from 'react';
-import { useList, isConflict, readOnce, write } from '../../db';
+import { useList, useListByValues, isConflict, readOnce, write } from '../../db';
 import { activityOp, logActivity } from '../../activity';
 import { nowIso } from '../../clock';
 import {
@@ -16,7 +16,7 @@ import type { DemoIntroRoles } from '../../demo/intro';
 import { notify } from './notify';
 import { useToast } from '../core';
 import { ROLE_LABELS } from '../../types';
-import type { Actor, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, VendorRequest, RoleInvite } from '../../types';
+import type { Activity, Actor, AppNotification, Donation, Profile, Role, Settings, Tab, Ticket, Visit, VendorRequest, RoleInvite } from '../../types';
 import type { PaymentExtra } from '../screens/manage/calc';
 import type { PayConfirmTarget } from '../patterns';
 
@@ -25,6 +25,12 @@ export {
   useNotifications, useHandledNotifications, useOpenTickets, useOpenTabs, useDonations, useDonation, useVisits, useVisit, useCalendar,
   usePeople, usePerson, useRoleInvites, useMyTickets, useMyVisits, useMyDonations, useMyTabs, downloadCsv, useTab, fillTemplate, markPaymentConfirmation,
 };
+
+/** Only ambiguous older tickets need their original order activity. No count/date limit on a person's history. */
+export function useLegacyTicketActivity(tickets: Ticket[]) {
+  const ids = tickets.filter((t) => t.ownerUid && t.orderId && !t.walkIn && t.selfRegistered === undefined).map((t) => t.orderId);
+  return useListByValues<Activity>('activity', 'refId', ids);
+}
 
 // ---------- settings as stored (old keys plus the optional new ones) ----------
 /** New optional keys on settings/app. The guest app reads only the old ones; these are for the manage screens until it does. */
@@ -148,7 +154,8 @@ async function inboxFor(refId: string, open: AppNotification[]) {
 export async function deleteVisit(actor: Actor, v: Visit, open: AppNotification[]) {
   const inbox = await inboxFor(v.id, open);
   await write.batch([
-    { op: 'remove', col: 'visits', id: v.id }, { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
+    { op: 'remove', col: 'visits', id: v.id }, { op: 'remove', col: `visits/${v.id}/private`, id: 'staff' },
+    { op: 'remove', col: 'calendar', id: `visit_${v.id}` },
     ...inbox.map((n) => ({ op: 'remove' as const, col: 'notifications', id: n.id })),
   ]);
   logActivity(actor, 'visit', v.id, 'deleted', `${v.name} · ${v.date}`, { subjectUid: v.uid });

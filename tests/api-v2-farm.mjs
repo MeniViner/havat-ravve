@@ -46,7 +46,7 @@ const sha = (s) => createHash('sha256').update(s).digest('hex');
 const KEYS = { owner: newKey(), users: newKey() };
 const CREDENTIALS = [
   { id: 'cred-v2-owner', sha256: sha(KEYS.owner), actors: ['actor-demo-owner'] },
-  { id: 'cred-v2-users', sha256: sha(KEYS.users), actors: ['user:syn-mgr', 'user:syn-staff', 'user:syn-staff2'] },
+  { id: 'cred-v2-users', sha256: sha(KEYS.users), actors: ['user:syn-mgr', 'user:syn-staff', 'user:syn-staff2', 'user:syn-owner-acct'] },
 ];
 
 // ---------- Worker under wrangler dev ----------
@@ -112,7 +112,7 @@ try {
     const c = (await api('GET', '/v1/catalog')).json.data;
     const names = c.operations.map((o) => o.name);
     const mine = ['presence.save', 'presence.remove', 'calendar.create', 'calendar.update', 'calendar.delete', 'calendar.list', 'broadcasts.list', 'broadcasts.get', 'broadcastReads.list', 'broadcasts.send', 'broadcasts.resend', 'broadcasts.delete',
-      'me.notifications.list', 'me.notifications.get', 'me.notifications.markRead', 'notifications.send', 'notifications.delete', 'people.delete', 'visits.delete', 'donations.paymentNotArrived', 'donations.undoApproval', 'donations.delete',
+      'me.whoami', 'me.notifications.list', 'me.notifications.get', 'me.notifications.markRead', 'notifications.send', 'notifications.delete', 'people.delete', 'visits.delete', 'donations.paymentNotArrived', 'donations.undoApproval', 'donations.delete',
       'settings.update', 'settings.saveQuestion', 'settings.removeQuestion', 'settings.reorderQuestions', 'accountDeletions.list'];
     check(c.version === '3.0.0' && c.generatedAt.startsWith('2026-11-22') && (await api('GET', '/v1/health')).json.data.catalogVersion === '3.0.0', 'catalog and health report 3.0.0');
     check(mine.every((n) => names.includes(n)), 'every new operation is listed', mine.filter((n) => !names.includes(n)));
@@ -129,7 +129,7 @@ try {
     check(s.status === 201 && s.json.data.created === 2 && s.json.data.updated === 0 && s.json.data.verified, 'staff registers two days → 201, two entries', s.json);
     [presA, presB] = s.json.data.itemIds;
     const a = await docOf('calendar/' + presA);
-    check(sameKeys(a, ['from', 'to', 'time', 'note', 'title', 'date', 'kind', 'ownerUid', 'ownerName', 'refId', 'createdAt']) && a.date === d1 && a.time === '08:00–13:00' && a.title === 'רונית בחווה' && a.kind === 'presence' && a.ownerUid === 'syn-staff' && a.ownerName === 'רונית לוי' && a.refId === '' && a.note === 'מביאה עוגה',
+    check(sameKeys(a, ['from', 'to', 'time', 'note', 'title', 'date', 'kind', 'audience', 'ownerUid', 'ownerName', 'refId', 'createdAt']) && a.audience === 'all' && a.date === d1 && a.time === '08:00–13:00' && a.title === 'רונית בחווה' && a.kind === 'presence' && a.ownerUid === 'syn-staff' && a.ownerName === 'רונית לוי' && a.refId === '' && a.note === 'מביאה עוגה',
       'stored exactly as presencePlan() writes it (days sorted, title "<first name> בחווה")', a);
     const again = await w(STAFF, 'presence.save', { dates: [d2, d1, d1], from: '08:00', to: '13:00', note: 'מביאה עוגה' }, key);
     check(again.status === 200 && again.json.data.replayed === true && (await where('calendar', 'ownerUid', 'syn-staff')).length === 2, 'replay with the same key: same answer, nothing new');
@@ -263,6 +263,22 @@ try {
     check(!(await docOf('broadcasts/' + bTeam)) && !!(await docOf(`users/syn-vendor/notifications/b_${bTeam}`)), 'gone; the person\'s copy stays, as in the app');
   }
 
+  section('me.whoami: the caller\'s own identity and effective scopes');
+  {
+    const op = (await api('GET', '/v1/catalog')).json.data.operations.find((o) => o.name === 'me.whoami');
+    check(op && op.method === 'GET' && op.path === '/v1/me' && op.requiredScope === 'me:read' && !op.params, 'catalog lists me.whoami (GET /v1/me, me:read, no parameters)', op);
+    const s = await r(STAFF, '/v1/me');
+    check(s.status === 200 && s.json.ok && s.json.data.actor.role === 'staff' && s.json.data.actor.person.uid === 'syn-staff', 'staff: own uid and role', s.json);
+    check(s.json.data.scopes.includes('me:read') && s.json.data.scopes.includes('tasks:read') && !s.json.data.scopes.includes('donations:read'), 'staff: the staff scopes only');
+    check(s.json.data.key.version === 'current' && s.json.data.key.limited === false && s.json.meta.keyVersion === 'current', 'key block: current, not limited');
+    const m = await r(MGR, '/v1/me');
+    check(m.status === 200 && m.json.data.actor.role === 'manager' && m.json.data.actor.person.uid === 'syn-mgr' && m.json.data.scopes.includes('donations:read'), 'manager: own uid, role and manager scopes', m.json);
+    const text = JSON.stringify(s.json);
+    check(!text.includes('syn-mgr') && !text.includes('syn-staff2') && !/sha256|cred-v2/i.test(text), 'no other person, key hash or credential id in the answer');
+    check((await r(STAFF, '/v1/me?x=1')).status === 400, 'a query parameter → 400');
+    check((await api('GET', '/v1/me')).status === 401, 'no key → 401');
+  }
+
   section('personal notifications (C1)');
   {
     const l = await r(STAFF, '/v1/me/notifications');
@@ -336,8 +352,10 @@ try {
     check((await docOf('visits/syn-v')).status === 'cancelled' && (await docOf('notifications/n-v')).handled === true, 'cancelled, inbox item closed');
     check((await w(STAFF, 'visits.delete', { visitId: 'syn-v' })).status === 403, 'staff cannot delete a visit');
     await seed('calendar/visit_syn-v', { title: 'ביקור', date: '2026-12-20', time: '', ownerUid: 'syn-mgr', ownerName: 'x', kind: 'visit', refId: 'syn-v', createdAt: t0 });
+    await seed('visits/syn-v/private/staff', { note: 'תרגול', updatedAt: t0 });
     const vd = await w(MGR, 'visits.delete', { visitId: 'syn-v' });
     check(vd.status === 200 && vd.json.data.verified && vd.json.data.inboxRemoved === 1 && !(await docOf('visits/syn-v')) && !(await docOf('calendar/visit_syn-v')) && !(await docOf('notifications/n-v')), 'visits.delete: the visit, its calendar entry and its inbox items', vd.json);
+    check(!(await docOf('visits/syn-v/private/staff')), 'visits.delete removes its internal note in the same commit');
     check((await where('activity', 'refId', 'syn-v')).some((a) => a.action === 'deleted' && a.text === 'אורחת · 2026-12-20'), 'activity visit/deleted');
 
     await seed('donations/syn-d', { uid: 'syn-guest', name: 'אורחת', phone: '0500000000', amount: 180, label: 'חי', note: '', memorial: '', receiptWanted: false, receiptName: '', receiptSent: false, paymentStatus: 'claimed', createdAt: t0, updatedAt: t0 });
@@ -415,7 +433,7 @@ try {
     check(L && L.keyLabel === 'האינסטינקט של הבדיקה' && L.credential === 'cred-v2-users' && L.actor.uid === 'syn-mgr' && L.actor.role === 'manager', 'the entry names the key (KEY_LABELS) and the person it acts as', L);
     check(L && L.kind === 'write' && L.op === 'calendar.create' && L.verb === 'יצר' && L.opHe && L.ok === true && L.status === made.status, 'operation, verb and outcome', L);
     check(L && JSON.parse(L.body).title === 'יומן בדיקה ללוג' && L.result.includes(made.json.data.itemId || made.json.data.refs?.[0]?.id) && L.refs.length > 0 && L.idempotencyKey, 'what was sent, what came back and the records touched', L);
-    const pl = await w(MGR, 'places.add', { name: 'מקום ללוג', lat: 31.5, lng: 34.6 });
+    const pl = await w(U('syn-owner-acct'), 'places.add', { name: 'מקום ללוג', lat: 31.5, lng: 34.6 });
     const act = (await where('activity', 'refId', pl.json.data.placeId || pl.json.data.refs?.[0]?.id || pl.json.data.record?.id))[0];
     check(act && act.via && act.via.label === 'האינסטינקט של הבדיקה' && act.via.credential === 'cred-v2-users', 'the app\'s activity line says which key did it', act);
     const rd = await r(MGR, '/v1/calendar?limit=5');
@@ -542,13 +560,13 @@ try {
 
     // ---------- recycle bin (whatever an API request deletes is kept for 30 days) ----------
     const placeIdOf = (res) => res.json?.data?.placeId || res.json?.data?.refs?.[0]?.id || res.json?.data?.record?.id;
-    const pDel = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לסל המחזור', lat: 31.4, lng: 34.5 }));
+    const pDel = placeIdOf(await w(U('syn-owner-acct'), 'places.add', { name: 'מקום לסל המחזור', lat: 31.4, lng: 34.5 }));
     const placeBefore = await docOf('places/' + pDel);
-    const del = await w(MGR, 'places.delete', { placeId: pDel });
+    const del = await w(U('syn-owner-acct'), 'places.delete', { placeId: pDel });
     check(del.status === 200 && !(await docOf('places/' + pDel)), 'a key deletes a place', del.json?.error);
     const tr = await api('GET', '/v1/console/trash', C(own));
     const item = tr.json?.data?.items?.find((x) => x.path === 'places/' + pDel);
-    check(tr.status === 200 && item && item.by === 'האינסטינקט של הבדיקה' && item.who === 'מנהלת בדיקה' && item.title === 'מקום לסל המחזור' && item.collection === 'places' && item.requestId === del.json.meta.requestId, 'the deleted place is in the recycle bin, with the key and the person', item);
+    check(tr.status === 200 && item && item.by === 'האינסטינקט של הבדיקה' && item.who === 'חשבון הבעלים' && item.title === 'מקום לסל המחזור' && item.collection === 'places' && item.requestId === del.json.meta.requestId, 'the deleted place is in the recycle bin, with the key and the person', item);
     check(!tr.json.data.items.some((x) => /^(api_idempotency|push_jobs|api_log)\//.test(x.path)), 'the API\'s own housekeeping is not kept in the bin');
     check((await api('GET', '/v1/console/trash', C(mgr))).status === 403, 'a manager cannot open the recycle bin');
     const back = await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: [item.key] } });
@@ -635,7 +653,7 @@ try {
     const colOf = (g) => cols.json?.data?.items?.find((c) => c.group === g);
     check(cols.status === 200 && colOf('users')?.count >= 10 && colOf('users').readOnly === true && colOf('places')?.readOnly === false && cols.json.data.backupDate === day, 'data: every collection with a live count; people and logs are read-only', cols.json?.data?.items?.slice(0, 4));
     check((await api('GET', '/v1/console/data', C(mgr))).status === 403, 'a manager cannot browse the data');
-    const pDat = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
+    const pDat = placeIdOf(await w(U('syn-owner-acct'), 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
     const pg = await api('GET', '/v1/console/data/docs?collection=places', C(own));
     check(pg.status === 200 && pg.json.data.items.some((d) => d.path === `places/${pDat}` && d.title === 'מקום לדפדוף'), 'data: a page of records with titles', pg.json?.data?.items?.length);
     const dv = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));
@@ -902,7 +920,8 @@ try {
     await tryIt('presence (volunteer creates it)', setDoc(doc(staff, 'calendar', 'copy-presence'), pres));
     const cal = await docOf('calendar/' + itemId);
     await tryIt('team calendar item (manager)', setDoc(doc(mgr, 'calendar', 'copy-item'), cal));
-    await tryIt('staff reads the calendar', getDocs(collection(staff, 'calendar')));
+    await tryIt('staff reads shared calendar rows', getDocs(query(collection(staff, 'calendar'), filter('audience', '==', 'all'))));
+    await assertFails(getDocs(collection(staff, 'calendar')));
     const b = await docOf('broadcasts/' + bAll);
     await tryIt('broadcast (manager)', setDoc(doc(mgr, 'broadcasts', 'copyb'), { ...b, id: 'copyb', resentAt: null }));
     const bn = await docOf(`users/syn-staff/notifications/b_${bAll}`);

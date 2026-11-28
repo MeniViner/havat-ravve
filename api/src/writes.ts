@@ -1,3 +1,6 @@
+import { hasCatalogPair, hasCatalogReference, isCurrentCatalogSelection } from '../../shared/farm-catalogs';
+import { activeCatalogProduct, stallMarkerWrites } from './farmCatalog';
+import { readStallProducts } from './stallSales';
 // Every other action of the app. Each one writes exactly what the app's function writes (named in its
 // comment, in src/app/store.ts or src/app/data.ts), including the activity record and side effects such as
 // the calendar entry or closing notifications, but atomically in one transaction with an idempotency key.
@@ -6,11 +9,12 @@ import type { Caller, Scope } from './auth';
 import type { Operation, Param } from './catalog';
 import type { Firestore, Write } from './firestore';
 import {
-  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq,
+  type Person, type Ref, IF_UPDATED_AT, activity, forbidden, fresh, idempotent, isManager, isOwner, mustGet, notFound, nextUpdatedAt, nowIso, paidStamp, project, readBackRefs, taskKind, whereEq, placeIsReferenced,
 } from './core';
 import { autoId } from './util';
 import { notifyWrites } from './notify';
 import { member as teamMember, todayIL } from './core';
+import { readShoppingCategory, urgentDueAt } from './v2/shoppingCategories';
 import { storedPhoto, taskToPerson } from './v2/taskutil';
 import { dropPushDevices } from './resources';
 import { addWriteActivity } from './write-activity';
@@ -86,6 +90,7 @@ function ownsTask(c: Ctx, t: { data: Record<string, unknown> }) {
 }
 async function placeLocation(c: Ctx, placeId: string) {
   const p = await mustGet(c.fs, 'places', placeId, c.tx, 'place');
+  if (p.data.archived) throw invalid('placeId','this place was archived');
   return { lat: p.data.lat, lng: p.data.lng, placeId: p.id, placeName: p.data.name };
 }
 
@@ -182,7 +187,7 @@ def('templates.create', 'templates:write', 'יצירת משימה קבועה (ח
   const data: Record<string, unknown> = { title: c.input.title, note: c.input.note || '', days: daysToSave(c.input.days || []), time: c.input.time || '', active: c.input.active ?? true, managersOnly, updatedAt: now };
   // new fields only when they carry a value, so a template without them keeps the old shape
   if (c.input.assignee) data.assignee = managersOnly ? null : await teamMember(c.fs, c.input.assignee, 'assignee', c.tx);
-  if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); data.placeId = c.input.placeId; }
+  if (c.input.placeId) { await placeLocation(c, c.input.placeId); data.placeId = c.input.placeId; }
   Object.assign(data, { createdBy: c.me, createdAt: now });
   return { status: 201, writes: [c.fs.create('task_templates', id, data)], refs: [{ col: 'task_templates', id, expected: { title: data.title, days: data.days, active: data.active } }], data: { templateId: id } };
 }, TEMPLATE_NOTES);
@@ -197,7 +202,7 @@ def('templates.update', 'templates:write', 'עדכון משימה קבועה', {
   if (c.input.assignee) patch.assignee = managersOnly ? null : await teamMember(c.fs, c.input.assignee, 'assignee', c.tx);
   else if ('assignee' in t.data && (c.input.clearAssignee || (managersOnly && t.data.assignee))) patch.assignee = null;
   if (c.input.placeId && c.input.clearPlace) throw invalid('clearPlace', 'send placeId or clearPlace, not both');
-  if (c.input.placeId) { await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place'); patch.placeId = c.input.placeId; }
+  if (c.input.placeId) { await placeLocation(c, c.input.placeId); patch.placeId = c.input.placeId; }
   else if (c.input.clearPlace && 'placeId' in t.data) patch.placeId = '';
   needSome(patch);
   return { writes: [c.fs.patch('task_templates', t.id, { ...patch, updatedAt: nextUpdatedAt(t.data.updatedAt) }, t.updateTime)], refs: [{ col: 'task_templates', id: t.id, expected: patch }] };
@@ -211,16 +216,21 @@ def('templates.delete', 'templates:write', 'מחיקת משימה קבועה', {
 
 // ======================= shopping =======================
 
-const CAT = ['super', 'building', 'online', 'giveaway'];
 const itemText = (d: Record<string, unknown>) => `${d.title}${d.qty ? ' · ' + d.qty : ''}`;
 // editShopping()
 def('shopping.edit', 'shopping:write', 'עריכת פריט ברשימת הקניות', { ifUpdatedAt: IF_UPDATED_AT as Param,
   itemId: req(), title: str(200, 'מה לקנות', false, 1), qty: str(40, 'כמות'), note: str(1000, 'הערה'), link: str(2000, 'קישור https'),
-  category: en(CAT, 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה'), urgent: bool('דחוף'),
+  category: str(327, 'מזהה קטגוריה מובנית או רשימה מותאמת', false, 1), urgent: bool('דחוף'), urgentDueAt: str(24, 'מועד הדחיפות בשעון UTC, מחרוזת ריקה להסרה'),
 }, async (c) => {
   const it = await mustGet(c.fs, 'shopping', c.input.itemId, c.tx, 'shopping item');
   fresh(it, c.input.ifUpdatedAt);
-  const patch = given(c.input, ['title', 'qty', 'note', 'link', 'category', 'urgent']);
+  const patch = given(c.input, ['title', 'qty', 'note', 'link', 'category', 'urgent', 'urgentDueAt']);
+  if ('category' in patch) patch.category = await readShoppingCategory(c.fs, patch.category, c.tx);
+  if ('urgentDueAt' in patch) {
+    patch.urgentDueAt = urgentDueAt(patch.urgentDueAt);
+    if (patch.urgentDueAt && !(patch.urgent ?? it.data.urgent)) throw invalid('urgentDueAt', 'a due time requires an urgent item');
+  }
+  if (patch.urgent === false && it.data.urgentDueAt) patch.urgentDueAt = null;
   if (typeof patch.link === 'string' && patch.link && !/^https:\/\//.test(patch.link)) throw invalid('link', 'link must start with https://');
   needSome(patch);
   const onlyUrgent = Object.keys(patch).length === 1 && 'urgent' in patch;
@@ -238,13 +248,13 @@ def('shopping.delete', 'shopping:delete', 'מחיקת פריט מרשימת הק
 
 // ======================= places =======================
 
-// createPlace() in src/app/v2/data/tasks.ts: anyone on the team saves a place
+// places:write is restricted to owners across all three operations.
 def('places.add', 'places:write', 'הוספת מקום בחווה', { name: str(120, 'שם', true, 1), lat: num(-90, 90, 'קו רוחב', true), lng: num(-180, 180, 'קו אורך', true), accuracy: num(0, 100000, 'דיוק המיקום במטרים') }, async (c) => {
   const id = autoId();
   const data: Record<string, unknown> = { name: c.input.name, lat: c.input.lat, lng: c.input.lng, createdBy: c.me, createdAt: nowIso() };
   if (c.input.accuracy !== null && c.input.accuracy !== undefined) data.accuracy = c.input.accuracy;
   return { status: 201, writes: [c.fs.create('places', id, data), activity(c.fs, c.me, 'place', id, 'created', String(data.name))], refs: [{ col: 'places', id, expected: { name: data.name } }], data: { placeId: id } };
-}, ['Every team member may add and edit places (as in the app); only managers delete them.']);
+}, ['Only owners may add, edit or delete farm map places.']);
 // savePlace()
 def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, דיוק, תמונה', {
   placeId: req(), name: str(120, 'שם', false, 1), lat: num(-90, 90, 'קו רוחב'), lng: num(-180, 180, 'קו אורך'), accuracy: num(0, 100000, 'דיוק המיקום במטרים'),
@@ -254,6 +264,9 @@ def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, ד�
   const patch: Record<string, unknown> = given(c.input, ['name', 'lat', 'lng']);
   if (c.input.accuracy !== null && c.input.accuracy !== undefined && c.input.accuracy !== p.data.accuracy) patch.accuracy = c.input.accuracy;
   if (c.input.photo !== null && c.input.photo !== undefined) { const ph = storedPhoto('photo', c.input.photo, true); if (ph !== (p.data.photo || '')) patch.photo = ph; }
+  const moved = ['lat','lng'].some(key => key in patch && patch[key] !== p.data[key]);
+  if (moved && p.data.source) Object.assign(patch, {source: null, measuredAt: null});
+  if (moved && c.input.accuracy == null && p.data.accuracy != null) patch.accuracy = null;
   needSome(patch);
   // the read-back shows a photo as hasPhoto
   const { photo: newPhoto, ...shown } = patch;
@@ -261,11 +274,14 @@ def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, ד�
   return { writes: [c.fs.patch('places', p.id, patch, p.updateTime), activity(c.fs, c.me, 'place', p.id, 'edited', String(patch.name ?? p.data.name))], refs: [{ col: 'places', id: p.id, expected }] };
 });
 // removePlace()
-def('places.delete', 'places:write', 'מחיקת מקום (רק מנהל)', { placeId: req() }, async (c) => {
-  if (!isManager(c.caller)) throw forbidden('only managers can delete a place');
+def('places.delete', 'places:write', 'מחיקת מקום (בעלים בלבד)', { placeId: req() }, async (c) => {
   const p = await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place');
+  if (await placeIsReferenced(c.fs,p.id,c.tx)) {
+    return {writes:[c.fs.patch('places',p.id,{archived:true},p.updateTime),activity(c.fs,c.me,'place',p.id,'archived',String(p.data.name))],
+      refs:[{col:'places',id:p.id,expected:{archived:true}}],data:{archived:true}};
+  }
   return { writes: [c.fs.remove('places', p.id, p.updateTime), activity(c.fs, c.me, 'place', p.id, 'deleted', String(p.data.name))], refs: [{ col: 'places', id: p.id, gone: true }], data: { deleted: project('places', p.id, p.data) } };
-}, ['Destructive: confirm with the user first. Managers only.']);
+}, ['Destructive: confirm with the user first. Owners only.']);
 
 // ======================= people =======================
 
@@ -360,7 +376,7 @@ function questionsOf(c: Ctx, old: unknown): Question[] | null {
   });
 }
 const eventFields = (required: boolean): Record<string, Param> => ({
-  title: str(200, 'שם האירוע', required, 1), description: str(8000, 'תיאור לאורחים'), location: str(300, 'מקום'),
+  title: str(200, 'שם האירוע', required, 1), description: str(8000, 'תיאור לאורחים'), shareWords: str(300, 'כמה מילים לשיתוף'), location: str(300, 'מקום'),
   start: dt('התחלה, שעון ישראל', required), end: dt('סיום, שעון ישראל (יכול להיות ביום מאוחר יותר)', required), price: num(0, 100000, 'מחיר לכרטיס, 0 חינם'),
   maxPerOrder: { type: 'int', min: 1, max: 20, ...(required ? { default: 5 } : {}), he: 'עד כמה כרטיסים בהזמנה' }, capacity: { type: 'int', min: 0, max: 100000, ...(required ? { default: 0 } : {}), he: 'מקומות, 0 בלי הגבלה' },
   open: bool('פתוח להרשמה'), published: bool('מפורסם לאורחים'),
@@ -377,7 +393,7 @@ const EVENT_NOTES = [
 /** ManageEvents.tsx save(): a published event has a calendar entry "event_<id>" (time "HH:mm–HH:mm"), an unpublished one none. */
 function eventCalendar(c: Ctx, id: string, e: Record<string, unknown>): Write {
   if (!e.published) return c.fs.remove('calendar', `event_${id}`);
-  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: farmTime(String(e.start)).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'event', refId: id, createdAt: nowIso() });
+  return c.fs.set('calendar', `event_${id}`, { title: e.title, date: farmTime(String(e.start)).slice(0, 10), time: `${hhmm(String(e.start))}–${hhmm(String(e.end))}`, ownerUid: c.me.uid, ownerName: c.me.name, audience: 'all', kind: 'event', refId: id, createdAt: nowIso() });
 }
 // saveEventV2() (src/app/v2/data/events.ts) -> saveEvent() (new) + upsertCalendarRef, with the fields of the N11 form
 def('events.create', 'events:write', 'יצירת אירוע', eventFields(true), async (c) => {
@@ -388,8 +404,9 @@ def('events.create', 'events:write', 'יצירת אירוע', eventFields(true),
   const id = autoId();
   const now = nowIso();
   const published = i.published ?? false;
+  if (published && Date.parse(end) <= Date.now()) throw invalid('end', 'publication requires a future end');
   const e = {
-    title: i.title, description: i.description || '', image: i.image || '', location: i.location ?? DEFAULT_LOCATION, start, end,
+    title: i.title, description: i.description || '', ...(i.shareWords ? { shareWords: i.shareWords } : {}), image: i.image || '', location: i.location ?? DEFAULT_LOCATION, start, end,
     price: i.price ?? 0, maxPerOrder: i.maxPerOrder, capacity: i.capacity, open: i.open ?? true, published,
     questions: questionsOf(c, []) || [], entry: i.entry ?? true, stall: i.stall ?? true, files: [],
     ...(published ? { publishedAt: now } : {}), createdBy: c.me, createdAt: now, updatedAt: now,
@@ -403,7 +420,7 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   const ev = await mustGet(c.fs, 'events', c.input.eventId, c.tx, 'event');
   fresh(ev, c.input.ifUpdatedAt);
   const i = c.input;
-  const patch: Record<string, unknown> = given(i, ['title', 'description', 'location', 'price', 'maxPerOrder', 'capacity', 'open', 'published', 'entry', 'stall', 'image']);
+  const patch: Record<string, unknown> = given(i, ['title', 'description', 'shareWords', 'location', 'price', 'maxPerOrder', 'capacity', 'open', 'published', 'entry', 'stall', 'image']);
   if ('image' in patch) storedImage('image', patch.image);
   if (i.start !== null) patch.start = isoFromIL(i.start);
   if (i.end !== null) patch.end = isoFromIL(i.end);
@@ -413,6 +430,7 @@ def('events.update', 'events:write', 'עדכון אירוע, כולל פרסום
   // times older API writes left in farm time are stored as ISO UTC on the next edit, like the app's
   for (const k of ['start', 'end']) if (!(k in patch) && ev.data[k] && eventIso(ev.data[k]) !== ev.data[k]) patch[k] = eventIso(ev.data[k]);
   const next = { ...ev.data, ...patch };
+  if (next.published && (!next.end || !next.start || (!ev.data.published && Date.parse(eventIso(next.end)) <= Date.now()))) throw invalid('end', 'publication requires a future end');
   if (Date.parse(eventIso(next.end)) <= Date.parse(eventIso(next.start))) throw invalid('end', 'end must be after start');
   const action = patch.published !== undefined && patch.published !== !!ev.data.published ? (patch.published ? 'published' : 'unpublished') : 'edited';
   const now = nowIso();
@@ -445,11 +463,25 @@ def('events.saveProduct', 'events:write', 'הוספה או עדכון של מו�
     const p = await mustGet(c.fs, col, i.productId, c.tx, 'product');
     const patch: Record<string, unknown> = given(i, ['name', 'price', 'active', 'sort']);
     if ('price' in patch) patch.price = price(Number(patch.price));
+    const marker: Write[] = [];
+    if (hasCatalogReference(p.data) && !hasCatalogPair(p.data)) throw invalid('productId', 'the catalog reference is incomplete');
+    if (p.data.catalogId && p.data.catalogProductId) {
+      if (('name' in patch && patch.name !== p.data.name) || ('price' in patch && patch.price !== p.data.price))
+        throw invalid('productId', 'edit the name or price in the farm catalog');
+      if (patch.active === true) {
+        const source = await activeCatalogProduct(c.fs, String(p.data.catalogId), String(p.data.catalogProductId), c.tx);
+        if (!source) throw invalid('productId', 'the catalog or product is archived or missing');
+        marker.push(...await stallMarkerWrites(c.fs, ev.id, c.tx));
+        if (!isCurrentCatalogSelection(p.data, source.parent, source.data)) {
+          Object.assign(patch, source.generations, {name: source.data.name, price: source.data.price});
+        }
+      }
+    }
     // an empty unit removes the field, as saving N10 with an empty unit does
     if (i.unit !== null) patch.unit = i.unit || undefined;
     needSome(patch);
     const onlyActive = Object.keys(patch).length === 1 && 'active' in patch;
-    const writes: Write[] = [c.fs.patch(col, p.id, patch, p.updateTime)];
+    const writes: Write[] = [...marker, c.fs.patch(col, p.id, patch, p.updateTime)];
     if (!onlyActive) writes.push(activity(c.fs, c.me, 'event', ev.id, 'edited', `מוצר עודכן: ${patch.name ?? p.data.name} · ${money(Number(patch.price ?? p.data.price))}`, { eventId: ev.id }));
     return { writes, refs: [{ col, id: p.id, expected: Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) }], data: { productId: p.id } };
   }
@@ -467,6 +499,11 @@ def('events.saveProduct', 'events:write', 'הוספה או עדכון של מו�
 def('events.deleteProduct', 'events:write', 'מחיקת מוצר מדוכן האירוע', { eventId: req(), productId: req() }, async (c) => {
   const col = `events/${c.input.eventId}/products`;
   const p = await mustGet(c.fs, col, c.input.productId, c.tx, 'product');
+  if (hasCatalogReference(p.data)) {
+    const active = false;
+    return { writes: p.data.active ? [c.fs.patch(col, p.id, { active }, p.updateTime)] : [],
+      refs: [{ col, id: p.id, expected: { active } }], data: { productId: p.id, active } };
+  }
   return {
     writes: [c.fs.remove(col, p.id, p.updateTime), activity(c.fs, c.me, 'event', c.input.eventId, 'edited', `מוצר נמחק: ${p.data.name}`, { eventId: c.input.eventId })],
     refs: [{ col, id: p.id, gone: true }], data: { deleted: project(col, p.id, p.data) },
@@ -576,13 +613,13 @@ def('tabs.addItem', 'tabs:write', 'רישום מוצר (או כמה) שאורח 
   if (!cart.length) throw invalid('items', 'items is empty');
   // each line gets its own moment, so two identical products added together stay two lines (addTabItems)
   const base = Date.now();
-  const added: TabItem[] = [];
-  for (const [k, [pid, qty]] of cart.entries()) {
-    const p = await mustGet(c.fs, `events/${tab.data.eventId}/products`, pid, c.tx, 'product');
-    // the stall screen only offers active products; an inactive one is not for sale
-    if (p.data.active === false) throw invalid(c.input.productId ? 'productId' : 'items', `product ${pid} is not active (not for sale)`);
-    added.push({ productId: p.id, name: String(p.data.name), price: Number(p.data.price), qty, at: new Date(base + k).toISOString(), by: c.me });
-  }
+  const {products, available} = await readStallProducts(c.fs, String(tab.data.eventId), cart.map(([pid]) => pid), c.tx);
+  const added: TabItem[] = cart.map(([pid, qty], index) => {
+    const product = products.get(pid);
+    if (!product) throw notFound('product');
+    if (!available.has(pid)) throw invalid(c.input.productId ? 'productId' : 'items', `product ${pid} is not active (not for sale)`);
+    return { productId: pid, name: String(product.name), price: Number(product.price), qty, at: new Date(base + index).toISOString(), by: c.me };
+  });
   const items = [...((tab.data.items as TabItem[]) || []), ...added];
   return {
     writes: [c.fs.patch('tabs', tab.id, { items, total: sum(items), updatedAt: nowIso() }, tab.updateTime),
@@ -643,7 +680,7 @@ def('visits.setStatus', 'visits:write', 'אישור, דחייה או ביטול 
     c.fs.patch('visits', v.id, { status: st, managerNote: note, handledBy: c.me, updatedAt: now }, v.updateTime),
     activity(c.fs, c.me, 'visit', v.id, st, `${v.data.name} · ${v.data.date}${time ? ' · ' + time : ''}${note ? ' · ' + note : ''}`, { subjectUid: String(v.data.uid) }),
   ];
-  if (st === 'approved') writes.push(c.fs.set('calendar', `visit_${v.id}`, { title: `ביקור: ${v.data.name} · ${v.data.people}`, date: v.data.date, time, ownerUid: c.me.uid, ownerName: c.me.name, kind: 'visit', refId: v.id, createdAt: now }));
+  if (st === 'approved') writes.push(c.fs.set('calendar', `visit_${v.id}`, { title: `ביקור: ${v.data.name} · ${v.data.people}`, date: v.data.date, time, ownerUid: c.me.uid, ownerName: c.me.name, audience: 'all', kind: 'visit', refId: v.id, createdAt: now }));
   else writes.push(c.fs.remove('calendar', `visit_${v.id}`));
   // back to "new": its inbox items return to the queue; any other decision closes them
   if (st === 'new') writes.push(...(await whereEq(c.fs, 'notifications', { refId: v.id, handled: true })).map((n) => c.fs.patch('notifications', n.id, { handled: false, handledBy: null, handledAt: null })));

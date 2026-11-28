@@ -186,6 +186,8 @@ html[data-theme="dark"] .v2 {
   flex: none; height: 66px; display: flex; background: var(--surface); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+.k-nav.k-nav--center-map-4 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2fr); }
+.k-nav.k-nav--center-map-6 { display: grid; grid-template-columns: repeat(2, minmax(0, 3fr)) minmax(0, 2fr) repeat(3, minmax(0, 2fr)); }
 .k-nav__item {
   position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   text-decoration: none; color: var(--soft); font-size: 13px; font-weight: 400;
@@ -707,7 +709,7 @@ a.k-card.k-card--col, a.k-card.k-card--row { display: flex; }
 .k-gate--ok { background: var(--green-fill); color: #FFFFFF; }
 .k-gate--pay { background: var(--amber); color: var(--on-amber); }
 .k-gate--bad { background: var(--red-fill); color: #FFFFFF; }
-.k-gate--camera { background: var(--gate-dark); color: var(--bg); }
+.k-gate--camera, .k-gate--saving { background: var(--gate-dark); color: var(--bg); }
 .k-gate__head { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; }
 .k-gate__place { font-size: 15px; font-weight: 600; }
 .k-gate__main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }

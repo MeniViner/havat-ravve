@@ -38,12 +38,17 @@ export async function readyAuth() {
 export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|MicroMessenger|Snapchat|; wv\)/i.test(navigator.userAgent);
 
 const POPUP_UNAVAILABLE = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request', 'auth/web-storage-unsupported'];
+export async function chooseNativeGoogleAccount(auth: Auth) {
+  const credential = await nativeSheet(() => NativeAuth.signInWithGoogle({ skipNativeAuth: true }));
+  if (!credential) return null;
+  const result = await signInWithCredential(auth, GoogleAuthProvider.credential(credential.idToken, credential.accessToken));
+  return result.user;
+}
 /** Popup first (the page and a half-filled form stay as they are). Where a popup cannot open, an installed app on iPhone for one, the whole page goes to Google and comes back. */
 export async function signIn() {
   const auth = getAppAuth();
   if (isNative) {
-    const credential = await nativeSheet(() => NativeAuth.signInWithGoogle({ skipNativeAuth: true }));
-    if (credential) await signInWithCredential(auth, GoogleAuthProvider.credential(credential.idToken, credential.accessToken));
+    await chooseNativeGoogleAccount(auth);
     return;
   }
   const provider = new GoogleAuthProvider();
@@ -75,6 +80,10 @@ async function nativeSheet(open: () => Promise<{ credential: { idToken?: string;
 }
 
 export async function signOutUser() {
+  if (getAppAuth().currentUser) {
+    const { disconnectSurvey } = await import('./survey/native');
+    await disconnectSurvey(getAppAuth().currentUser!.uid);
+  }
   await signOut(getAppAuth());
   // the native Google session too, so the next sign-in offers the account picker again
   if (isNative) await NativeAuth.signOut().catch(() => {});

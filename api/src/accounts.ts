@@ -66,6 +66,13 @@ export async function runAccountDeletions(env: Env, nowMs = Date.now()): Promise
     const uid = req.id;
     // Auth first: if the service account may not delete users, nothing is touched and the next run retries.
     await deleteAuthUser(fs, env, uid);
+    // Google-linked correspondence holds a separate reply address. Drain it in retryable, bounded atomic pairs.
+    for (;;) {
+      const contacts = await whereEq(fs, 'contact_people', { accountUid: uid }, 100);
+      if (!contacts.length) break;
+      await fs.commit(contacts.flatMap((c) => [fs.remove('contact_people', c.id), fs.remove('notifications', c.id)]));
+      stats.docs += contacts.length * 2;
+    }
     const writes = await purgeWrites(fs, uid, new Date(nowMs).toISOString());
     try { await fs.commit(writes); }
     catch (e) { stats.note = 'commit failed: ' + (e instanceof FsError ? e.status : 'error'); continue; }

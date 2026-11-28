@@ -1,7 +1,8 @@
-import { isBirthYear, birthYearRequired } from '../../birthYear';
 // Data for the system area: my profile (L6, C12, C13), profile photo (A1, A2), global search (C2), first entry (C9),
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
+import { useCalendarRange } from './farm';
+import { birthYearRequired, isBirthYear } from '../../birthYear';
 import { saveAccountChange } from '../../account-activity';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useList, useDoc, write, type Spec } from '../../db';
@@ -13,7 +14,7 @@ import { getDemo } from '../../demo/store';
 import { readyAuth } from '../../firebase';
 import { isNative } from '../../native';
 import { storePhoto } from '../../upload';
-import type { Activity, CalendarItem, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
+import type { Activity, FarmEvent, Place, Profile, RegistrationField, RoleInvite, ShoppingItem, Task, Ticket, Visit } from '../../types';
 import { RECEIPT_PREFERENCE_FIELD } from '../../types';
 import type { V2Ctx } from '../ctx';
 import { gw } from '../gender';
@@ -197,11 +198,12 @@ export function useMyCounts(ctx: V2Ctx) {
   }, [done.items, done.loading, ctx.user.uid, s.day, s.week]);
 }
 /** "היום, עד 13:00" / "היום, כל היום" from my presence entries today (calendar kind 'presence'). */
-export function usePresenceText(uid: string, today: string, enabled = true) {
-  const r = useList<CalendarItem>('calendar', { where: [['date', '==', today], ['kind', '==', 'presence'], ['ownerUid', '==', uid]] }, enabled && !!uid);
-  if (!r.items.length) return r.loading ? '' : 'לא היום';
+export function usePresenceText(uid: string, today: string, manager: boolean, enabled = true) {
+  const r = useCalendarRange(today, today, manager, enabled && !!uid);
+  const mine = r.items.filter((item) => item.kind === 'presence' && item.ownerUid === uid);
+  if (!mine.length) return r.loading ? '' : 'לא היום';
   const ends: string[] = [];
-  for (const c of r.items) {
+  for (const c of mine) {
     const to = c.to || (c.time || '').split(/[–-]/)[1]?.trim();
     if (!to) return 'היום, כל היום';
     ends.push(to);
@@ -221,8 +223,8 @@ export function useInviteFor(email: string) {
 export const INVITE_ROLE_WORD: Record<RoleInvite['role'], string> = { staff: 'כמתנדב', manager: 'כמנהל', owner: 'כבעלים' };
 export const firstName = (name: string) => (name || '').trim().split(/\s+/)[0] || '';
 /** `fields`: the whole answers map to store (the profile's fields with the new answers); left out, fields stay untouched. */
-export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string> }) =>
-  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
+export const markWelcomed = (uid: string, d: { displayName: string; phone: string; fields?: Record<string, string>; birthYear?: number; birthDate?: string }) =>
+  saveAccountChange(uid, 'welcome_completed', { displayName: d.displayName.trim(), phone: d.phone.trim(), ...(d.fields ? { fields: trimmed(d.fields) } : {}), ...(d.birthYear !== undefined ? { birthYear: d.birthYear } : {}), ...(d.birthDate !== undefined ? { birthDate: d.birthDate } : {}), welcomedAt: nowIso(), updatedAt: nowIso() });
 
 // ---------- install (C10) ----------
 type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };

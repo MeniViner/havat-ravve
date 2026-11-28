@@ -1,6 +1,8 @@
 // Shared helpers of the tasks, shopping and projects actions (v2): the app's Hebrew wording (src/app/v2/gender.ts,
 // format.ts, data/shopping.ts), the team to notify, the R2 photo link the Rules accept, and the shopping item document
 // addShopItem() writes. Pure, except teamUids() which reads the team.
+import { customCategoryName } from '../../../shared/shopping-categories';
+import { urgentDueAt } from './shoppingCategories';
 import { invalid } from '../http';
 import type { Firestore, Write } from '../firestore';
 import { type Person, activity, nowIso } from '../core';
@@ -55,12 +57,12 @@ export const photoUrl = (v: unknown) => (typeof v === 'string' && v.startsWith('
 export const SHOP_CATEGORIES = ['super', 'building', 'online', 'giveaway'] as const;
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 /** listLabel(): the list names of the redesigned app. */
-export const listLabel = (c: unknown) => ({ super: 'סופר', building: 'בניין', online: 'אינטרנט', giveaway: 'מחפשים' } as Record<string, string>)[String(c)] || 'סופר';
+export const listLabel = (c: unknown) => ({ super: 'סופר', building: 'בניין', online: 'אינטרנט', giveaway: 'מחפשים' } as Record<string, string>)[String(c)] || customCategoryName(String(c)) || 'קניות';
 /** keyOfCat(): the ?list= key of a list. */
-export const keyOfCat = (c: unknown) => ({ super: 'super', building: 'building', online: 'online', giveaway: 'wish' } as Record<string, string>)[String(c)] || 'super';
+export const keyOfCat = (c: unknown) => ({ super: 'super', building: 'building', online: 'online', giveaway: 'wish' } as Record<string, string>)[String(c)] || (customCategoryName(String(c)) ? String(c) : 'super');
 export const qtyPart = (q: unknown) => (q ? ' · ' + q : '');
 
-export type NewShopItem = { title: string; qty?: string | null; note?: string | null; link?: string | null; category: string; urgent?: boolean | null; photo?: string | null; taskId?: string | null };
+export type NewShopItem = { title: string; qty?: string | null; note?: string | null; link?: string | null; category: string; urgent?: boolean | null; urgentDueAt?: string | null; photo?: string | null; taskId?: string | null };
 /**
  * addShopItem(): the item document, its "added" activity and, for an urgent item, "דחוף לכולם" to the team (kind urgent + push).
  * `team` is teamUids(), read before the transaction.
@@ -73,7 +75,7 @@ export function shopItemWrites(fs: Firestore, me: Person, id: string, data: NewS
   const doc: Record<string, unknown> = {
     title, qty, note: (data.note || '').trim(), link, category: data.category, urgent: !!data.urgent,
     createdBy: me, createdAt: now, bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now,
-    ...(data.photo ? { photo: data.photo } : {}), ...(data.taskId ? { taskId: data.taskId } : {}),
+    ...(data.urgent && data.urgentDueAt ? { urgentDueAt: urgentDueAt(data.urgentDueAt) } : {}), ...(data.photo ? { photo: data.photo } : {}), ...(data.taskId ? { taskId: data.taskId } : {}),
   };
   const writes = [fs.create('shopping', id, doc), activity(fs, me, 'shopping', id, 'added', `${title}${qtyPart(qty)} (${listLabel(data.category)})`)];
   if (data.urgent) writes.push(...notifyWrites(fs, team, { kind: 'urgent', title: 'דחוף לכולם', sub: `${title}${qtyPart(qty)}`, link: `/shopping/${id}`, refId: id, by: me }));
@@ -83,7 +85,7 @@ export function shopItemWrites(fs: Firestore, me: Person, id: string, data: NewS
 /** What callers see of a shopping item: every field the app writes, photos as a flag (and the R2 link). */
 export function publicItem(id: string, d: Record<string, unknown>) {
   return {
-    id, title: d.title, qty: d.qty || '', note: d.note || '', link: d.link || '', category: d.category, urgent: !!d.urgent,
+    id, title: d.title, qty: d.qty || '', note: d.note || '', link: d.link || '', category: d.category, urgent: !!d.urgent, urgentDueAt: d.urgentDueAt ?? null,
     bought: !!d.bought, boughtBy: d.boughtBy ?? null, boughtAt: d.boughtAt ?? null, expireAt: d.expireAt ?? null,
     createdBy: d.createdBy ?? null, createdAt: d.createdAt, updatedAt: d.updatedAt,
     hasPhoto: !!d.photo, photoUrl: photoUrl(d.photo), taskId: d.taskId || null,

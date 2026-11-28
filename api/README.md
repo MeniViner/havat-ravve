@@ -16,7 +16,7 @@ assistant ──GET /v1/catalog──▶ Worker ──Firestore REST──▶ Fi
 
 ## Catalog 3.0 (2026-11-22, live)
 
-The redesigned app's actions: 182 operations (67 reads, 115 writes), in `src/v2/` (one module per area, registered into
+The redesigned app's actions: 183 operations (68 reads, 115 writes), in `src/v2/` (one module per area, registered into
 `WRITE_DEFS` by `src/v2/index.ts`). Writes notify people like the app's `notify()` (`src/notify.ts`). Gate A runs
 `tests/api.mjs` plus `tests/api-v2-{tasks,events,farm}.mjs` (`npm run test:api`); the live check is
 `tests/api-remote.mjs`. The message for Instinct is `docs/instinct-handoff-3.0.md`. The table below lists the first
@@ -28,6 +28,7 @@ operations only; `GET /v1/catalog` is the full list.
 |---|---|---|---|
 | GET | `/v1/health` | health and catalog version (no auth) | |
 | GET | `/v1/catalog` | the versioned catalog (no auth, static) | |
+| GET | `/v1/me` | `me.whoami`: the caller's own identity, role and effective scopes; no parameters, no other people, no key value | `me:read` |
 | GET | `/v1/people?q=` | `people.search`: candidates, never a guess | `people:read` |
 | GET | `/v1/tasks?assignee=&date=&done=&limit=&cursor=` | `tasks.list` | `tasks:read` |
 | GET | `/v1/tasks/{id}` | `tasks.get` | `tasks:read` |

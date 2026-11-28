@@ -3,6 +3,7 @@
 // demo sandbox and on Firestore, and every write is applied locally at once (offline first). Take / release / assign use
 // transact(); a ConflictError is shown by the screen as X1.
 import { useMemo } from 'react';
+import { useTeamCalendarRange } from './teamCalendar';
 import { useList, useDoc, write, newId, transact, ConflictError, isConflict } from '../../db';
 import { deferDelete, isHidden, useHiddenVersion } from '../../defer';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
@@ -57,6 +58,10 @@ export function normalizeTask(raw: Partial<Task> & { id: string }): Task {
 
 /** Recurring instances get the template's place and default person when the instance itself has none (display only). */
 export function withTemplateDefaults(t: Task, templates: Template[], places: Place[]): Task {
+  if (!t.done && t.location?.placeId) {
+    const place = places.find(p => p.id === t.location!.placeId);
+    if (place) t = { ...t, location: { ...t.location, lat: place.lat, lng: place.lng, placeName: place.name } };
+  }
   if (!t.templateId) return t;
   const tpl = templates.find((x) => x.id === t.templateId);
   if (!tpl) return t;
@@ -484,7 +489,10 @@ export const useTasksAt = (placeId: string, manager: boolean) => {
   const r = useList<Task>('tasks', { where: [...staffOnly(manager), ['location.placeId', '==', placeId], ['done', '==', false]] }, !!placeId);
   return { items: useMemo(() => norm(r.items), [r.items]), loading: r.loading };
 };
-export const usePresenceToday = (today: string) => useList<CalendarItem>('calendar', { where: [['kind', '==', 'presence'], ['date', '==', today]] });
+export function usePresenceToday(today: string, manager: boolean) {
+  const calendar = useTeamCalendarRange(today, today, manager);
+  return useMemo(() => ({ ...calendar, items: calendar.items.filter(item => item.kind === 'presence') }), [calendar]);
+}
 export const useShoppingDoc = (id: string) => useDoc<ShoppingItem>('shopping/' + (id || '_'), !!id);
 /** Start of today in Israel as an ISO instant (Israel is UTC+2 or +3; the earliest of the two is safe for a ">=" query). */
 export const startOfTodayIso = () => new Date(Date.parse(todayKey() + 'T00:00:00+03:00')).toISOString();
@@ -616,7 +624,7 @@ export function deleteTaskLater(actor: Actor, t: Task, templates: Template[], ms
   return deferDelete(t.id, () => { deleteTaskV2(actor, t, templates).catch(() => {}); }, ms);
 }
 
-export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; photo?: string };
+export type ShopInput = { title: string; qty: string; note: string; link: string; category: ShoppingCategory; urgent: boolean; urgentDueAt?: string | null; photo?: string };
 /** S5 add: the existing ShoppingItem shape plus an optional taskId; the task gets shoppingId back (C3). */
 /** The shopping area owns the shopping collection: adding goes through its addShopItem (urgent items tell the team,
  *  taskId is kept); here only the task side of the link (shoppingId) is written. */
@@ -670,13 +678,17 @@ export async function createPlace(actor: Actor, name: string, pos: { lat: number
 export async function savePlace(actor: Actor, p: PlaceV2, data: { name: string; lat: number; lng: number; accuracy?: number; photo?: string }) {
   const patch: Record<string, unknown> = { name: data.name.trim(), lat: data.lat, lng: data.lng };
   if (data.accuracy !== undefined && data.accuracy !== p.accuracy) patch.accuracy = data.accuracy;
+  if (p.source && (p.lat !== data.lat || p.lng !== data.lng)) {
+    patch.source = null;
+    patch.measuredAt = null;
+  }
   if (data.photo !== undefined && data.photo !== (p.photo || '')) patch.photo = data.photo;
   await write.update('places', p.id, patch);
   logActivity(actor, 'place', p.id, 'edited', data.name.trim());
 }
 export async function removePlace(actor: Actor, p: PlaceV2) {
-  await write.remove('places', p.id);
-  logActivity(actor, 'place', p.id, 'deleted', p.name);
+  await write.update('places', p.id, { archived: true });
+  logActivity(actor, 'place', p.id, 'archived', p.name);
 }
 
 export { daysFromToday };
