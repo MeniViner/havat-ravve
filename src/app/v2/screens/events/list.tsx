@@ -52,7 +52,7 @@ export function EventsList({ ctx }: ScreenProps) {
       <TileGrid className="events-resources">
         <Tile icon="people" title="מאגר בעלי הדוכנים" meta={pool.loading ? undefined : pool.items.length + ' במאגר'} {...link('/manage/vendors')} />
         <Tile icon="pin" title="תחנות עבודה" meta="תחנות לשיבוץ הצוות" {...link('/manage/work-stations')} />
-        <Tile icon="cart" title="קטלוגים ומוצרים" meta="מוצרים ומחירים לדוכן" {...link('/manage/farm-catalogs')} />
+        <Tile icon="cart" title="הדוכן של החווה" meta="מוצרים ומחירים לדוכן" {...link('/manage/farm-catalogs')} />
       </TileGrid>
       {!all.loading && !all.items.length && (
         <EmptyState variant="card" icon="calendar" title="עוד אין אירועים" />
