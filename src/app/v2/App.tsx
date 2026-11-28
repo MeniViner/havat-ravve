@@ -64,7 +64,7 @@ function Frame({ nav, tab: routeTab, showNav, children }: { nav: NavItem[]; tab:
     {demo.on && <DemoStrip roleName={PERSONA_ROLE[demo.persona]} day={SCENARIOS[demo.scenario].label} expanded={sheet} onSwitch={() => setSheet(true)} onExit={() => { setDemo({ on: false }); navigate(leaveDemoTarget(), true); }} />}
     {offline && <button type="button" className="k-strip-btn" onClick={() => navigate('/offline')}><Strip icon="offline">{pending ? `אין קליטה. ${pending} פעולות שמורות בטלפון` : 'אין קליטה. מה שתעשו יישמר בטלפון'}</Strip></button>}
   </> : null;
-  const navNode = showNav ? <BottomNav className={nav.length === 6 && nav[2].key === 'map' ? 'k-nav--center-map' : undefined} items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
+  const navNode = showNav ? <BottomNav className={nav[2]?.key === 'map' ? 'k-nav--center-map-' + nav.length : undefined} items={nav.map((i) => ({ ...i, active: i.key === tab, href: undefined, onClick: () => navigate(i.href) }))} /> : null;
   const route = useRoute();
   return (
     <ChromeProvider value={{ top, nav: navNode }}>
@@ -133,7 +133,7 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   // קניות or החווה; the bell carries the personal count in each root header.
   const inbox = inboxRows(useNotifications(ctx.manager).items).length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
   const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
-  const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, ...(ctx.owner ? [TEAM_NAV.map] : []), TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
+  const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.map, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
   let screen: ReactNode;
   if (redirect || (hit && !allowed)) screen = null;

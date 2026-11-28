@@ -53,7 +53,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/shopping/:id', shopping.ShopItemScreen, 'shopping', 'page'),
   // Farm tab
   R('/farm', farm.FarmRoot, 'farm', 'tab'),
-  R('/farm/map', FarmSurvey, 'map', 'tab', { owner: true }),
+  R('/farm/map', FarmSurvey, 'map', 'tab'),
   R('/farm/calendar', farm.CalendarScreen, 'farm', 'tab'),
   R('/farm/calendar/new', farm.CalItemForm, 'farm', 'page'),
   R('/farm/calendar/:id/edit', farm.CalItemForm, 'farm', 'page'),
