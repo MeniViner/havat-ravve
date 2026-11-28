@@ -4,6 +4,7 @@ import type { Seed, Scenario, Slice } from './types';
 import tasks from './tasks';
 import shopping from './shopping';
 import farm from './farm';
+import map from './map';
 import eventday from './eventday';
 import live from './live';
 import manage from './manage';
@@ -14,7 +15,7 @@ import profile from './profile';
 import projects from './projects';
 import guest from './guest';
 
-const SLICES: Slice[] = [tasks, shopping, farm, eventday, live, manage, events, vendor, broadcast, profile, projects, guest];
+const SLICES: Slice[] = [tasks, shopping, farm, map, eventday, live, manage, events, vendor, broadcast, profile, projects, guest];
 const cache = new Map<Scenario, Seed>();
 export function seedFor(scenario: Scenario): Seed {
   let s = cache.get(scenario);

@@ -35,13 +35,14 @@ export type Trail = {
   geometry: string;
   status: 'draft' | 'confirmed';
   modes: Mode[];
+  unsuitableModes?: Mode[];
   connections: Connection[];
   count: number;
   chunks: number;
   updatedAt: number;
 };
 export type PlacePoint = Fix & { source: 'gps' | 'manual' | 'legacy' };
-export type PlaceDraft = {
+export type PlaceDraft = Pick<Place, 'icon' | 'markerStyle'> & {
   id: string;
   editing: boolean;
   point: PlacePoint;

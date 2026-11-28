@@ -283,12 +283,22 @@ service cloud.firestore {
   match /places/{id} {
    function coordinates(p){return p.lat is number && p.lat >= -90 && p.lat <= 90 && p.lng is number && p.lng >= -180 && p.lng <= 180;}
    function placeExtras(){let p=incoming(); let a=p.get('accuracy',null); return photoOk(p.get('photo','')) && (a == null || (a is number && a >= 0)) && coordinates(p)
-     && str(p.name,120) && p.name.size()>0 && ((p.get('source',null) == null && p.get('measuredAt',null) == null) || (p.source in ['gps','manual'] && p.measuredAt is int && p.measuredAt > 0));}
+     && p.get('icon','pin') in ['pin','gate','sprout','tree','paw','box','flower','store']
+     && p.get('markerStyle','icon') in ['icon','thumbnail'] && str(p.name,120) && p.name.size()>0 && ((p.get('source',null) == null && p.get('measuredAt',null) == null) || (p.source in ['gps','manual'] && p.measuredAt is int && p.measuredAt > 0));}
    allow read: if isStaff();
-   allow create: if isOwner() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt'])
+   allow create: if isOwner() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt','icon','markerStyle'])
      && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
-   allow update: if isOwner() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt']);
+   allow update: if isOwner() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt','icon','markerStyle']);
    allow update: if isOwner() && changed().hasOnly(['archived']) && incoming().archived is bool;
+  }
+  match /farm_map/settings {
+   function point(p){return p is map && p.lat is number && p.lat >= -90 && p.lat <= 90 && p.lng is number && p.lng >= -180 && p.lng <= 180;}
+   function camera(c){return point(c) && c.keys().hasOnly(['lat','lng','zoom']) && c.zoom is number && c.zoom >= 0 && c.zoom <= 22;}
+   function setup(s){return s is map && s.keys().hasOnly(['entrance','placeId','trailId']) && point(s.entrance)
+     && s.entrance.keys().hasOnly(['lat','lng']) && str(s.placeId,128) && s.placeId.size()>0 && str(s.trailId,128) && s.trailId.size()>0;}
+   allow get: if isStaff();
+   allow create, update: if isOwner() && incoming().keys().hasOnly(['homeView','setup']) && incoming().keys().hasAny(['homeView','setup'])
+     && (!('homeView' in incoming()) || camera(incoming().homeView)) && (!('setup' in incoming()) || setup(incoming().setup));
   }
   // Each immutable chunk is bounded well below a Firestore document. Retries write identical content.
   function chunkShape(){let d=incoming();return d.keys().hasOnly(['writer','index','points']) && d.writer==uid() && d.index is int && d.index>=0 && d.points is list && d.points.size()>0 && d.points.size()<=128
@@ -305,9 +315,11 @@ service cloud.firestore {
    }
   }
   match /farmTrails/{tid} {
-   function trailShape(){let d=incoming();return d.keys().hasOnly(['name','ownerUid','recordingId','revision','geometry','status','modes','connections','count','chunks','updatedAt','placeIds'])
+   function trailShape(){let d=incoming();return d.keys().hasOnly(['name','ownerUid','recordingId','revision','geometry','status','modes','unsuitableModes','connections','count','chunks','updatedAt','placeIds'])
      && str(d.name,120) && d.name.size()>0 && str(d.recordingId,80) && str(d.revision,80) && str(d.geometry,80)
-     && d.status in ['draft','confirmed'] && d.modes is list && d.modes.size()<=3 && d.modes.hasOnly(['walk','bike','vehicle']) && d.connections is list && d.connections.size()<=32
+     && d.status in ['draft','confirmed'] && d.modes is list && d.modes.size()<=3 && d.modes.hasOnly(['walk','bike','vehicle'])
+     && (!('unsuitableModes' in d) || (d.unsuitableModes is list && d.unsuitableModes.size()<=3 && d.unsuitableModes.hasOnly(['walk','bike','vehicle']) && !d.unsuitableModes.hasAny(d.modes)))
+     && d.connections is list && d.connections.size()<=32
      && d.get('placeIds',[]) is list && d.get('placeIds',[]).size()<=32 && d.count is int && d.count>=0 && d.chunks is int && d.count <= d.chunks * 128 && d.count > (d.chunks - 1) * 128 && d.updatedAt is int
      && (d.status=='draft' || (d.modes.size()>0 && d.count>=2));}
    allow read: if isOwner() || (isStaff() && resource.data.status == 'confirmed');
