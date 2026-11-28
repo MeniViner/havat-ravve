@@ -35,7 +35,7 @@ try {
   const button=(name,scope=p)=>scope.getByRole('button',{name,exact:true});
   const dialog=()=>p.getByRole('dialog').last();
   const close=async()=>{await p.keyboard.press('Escape');};
-  await p.goto(base+'/app/manage');await p.getByText('תחנות עבודה',{exact:true}).click();
+  await p.goto(base+'/app/manage/events');await p.getByText('תחנות עבודה',{exact:true}).click();
   await p.getByRole('heading',{name:'תחנות עבודה',exact:true}).waitFor();
   await button('הוספת תחנה').click();await dialog().getByLabel('שם התחנה').fill('הרשמה');await button('הוספת התחנה',dialog()).click();
   await button('עריכת הרשמה').click();await dialog().getByLabel('שם התחנה').fill('רישום');await button('שמירת השם',dialog()).click();

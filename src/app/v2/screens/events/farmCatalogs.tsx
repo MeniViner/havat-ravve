@@ -15,9 +15,9 @@ export function FarmCatalogsScreen({ ctx }: ScreenProps) {
   const closeEdit = useCallback(() => setEditor(null), []), closeChange = useCallback(() => setChange(null), []);
   const current = catalogs.items.find((c) => c.id === cid);
   const open = (id: string) => { showArchive(false); navigate(catalogManagementPath(eid, id)); };
-  const exit = () => go(eid ? '/manage/events/' + encodeURIComponent(eid) + '/products' : '/manage');
+  const exit = () => go(eid ? '/manage/events/' + encodeURIComponent(eid) + '/products' : '/manage/events');
   if (!ctx.manager) return <AppScreen variant="detail"><PageTitle>אין גישה לניהול הקטלוגים</PageTitle></AppScreen>;
-  const header = <TopBar back={{ label: current ? 'כל הקטלוגים' : eid ? 'בחירת מוצרים לאירוע' : 'ניהול', onClick: current ? () => open('') : exit }} />;
+  const header = <TopBar back={{ label: current ? 'כל הקטלוגים' : eid ? 'בחירת מוצרים לאירוע' : 'אירועים', onClick: current ? () => open('') : exit }} />;
   const visibleCatalogs = sortedCatalogRows(catalogs.items.filter((c) => archive || !c.archived));
   const visibleProducts = sortedCatalogRows(products.items.filter((p) => archive || !p.archived));
   return <AppScreen variant="detail" gap={12}>

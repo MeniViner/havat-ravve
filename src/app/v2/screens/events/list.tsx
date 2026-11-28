@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useEventClock } from '../../data/eventClock';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, go } from '../../core';
-import { TopBar, PageTitle, SectionTitle, Card, DateBox, Tag, Button, EmptyState } from '../../kit';
+import { TopBar, PageTitle, SectionTitle, Tile, TileGrid, Card, DateBox, Tag, Button, EmptyState } from '../../kit';
 import { useAllEvents, useVendors } from '../../../data';
 import { nowMs, useClockVersion } from '../../../clock';
 import { useTicketsIn, useTabsIn } from '../../data/events';
@@ -49,6 +49,11 @@ export function EventsList({ ctx }: ScreenProps) {
     <AppScreen variant="detail" gap={10}>
       <TopBar back={backTo('ניהול', '/manage')} end={<Button icon="plus" iconSize={18} onClick={() => go('/manage/events/new')}>אירוע חדש</Button>} />
       <PageTitle>אירועים</PageTitle>
+      <TileGrid className="events-resources">
+        <Tile icon="pin" title="תחנות עבודה" {...link('/manage/work-stations')} />
+        <Tile icon="cart" title="קטלוגים ומוצרים" {...link('/manage/farm-catalogs')} />
+        <Tile icon="people" title="מאגר בעלי הדוכנים" meta={pool.loading ? undefined : pool.items.length + ' במאגר'} {...link('/manage/vendors')} />
+      </TileGrid>
       {!all.loading && !all.items.length && (
         <EmptyState variant="card" icon="calendar" title="עוד אין אירועים" />
       )}
@@ -56,10 +61,6 @@ export function EventsList({ ctx }: ScreenProps) {
       {upcoming.map((e) => <EventCard key={e.id} e={e} tickets={of(tickets.items, e.id)} tabs={[]} now={now} next={e.id === nextId} />)}
       {shownPast.length > 0 && <SectionTitle spaced>ארכיון אירועים</SectionTitle>}
       {shownPast.map((e) => <EventCard key={e.id} e={e} tickets={of(tickets.items, e.id)} tabs={of(tabs.items, e.id)} now={now} next={false} />)}
-      <a className="events-linkrow" {...link('/manage/vendors')}>
-        <span>מאגר בעלי הדוכנים · {pool.items.length}</span>
-        <Chev />
-      </a>
       {older.length > 0 && !showOlder && (
         <button type="button" className="events-linkrow events-linkrow--quiet" onClick={() => setShowOlder(true)} aria-expanded={false}>
           <span>אירועים קודמים · {older.length}</span>

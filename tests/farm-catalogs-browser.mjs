@@ -41,7 +41,7 @@ try {
    await dialog().getByLabel('מחיר בשקלים').fill(String(price));await button('שמירה',dialog()).click();await p.getByText(product,{exact:true}).waitFor();
   }
   const eventPath='/app/manage/events/demo-e-festival/products',globalTitle='ניהול הקטלוגים והמוצרים';
-  await p.goto(base+'/app/manage');await p.getByText('קטלוגים ומוצרים',{exact:true}).click();await heading(globalTitle).waitFor();
+  await p.goto(base+'/app/manage/events');await p.getByText('קטלוגים ומוצרים',{exact:true}).click();await heading(globalTitle).waitFor();
   assert.equal(new URL(p.url()).search,'');
   await create('משקאות בדיקה','תה בדיקה',6);
   await button('עריכת שם הקטלוג').click();await dialog().getByLabel('שם הקטלוג').fill('חליטות בדיקה');await button('שמירה',dialog()).click();

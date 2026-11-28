@@ -71,7 +71,7 @@ export function WorkStationsScreen({ ctx }: ScreenProps) {
     finally { setProgress(false); }
   };
   return <AppScreen variant="detail">
-    <TopBar back={eventId ? backTo('צוות האירוע', '/manage/events/' + encodeURIComponent(eventId) + '/staffing') : backTo('ניהול', '/manage')} />
+    <TopBar back={eventId ? backTo('צוות האירוע', '/manage/events/' + encodeURIComponent(eventId) + '/staffing') : backTo('אירועים', '/manage/events')} />
     <PageTitle>תחנות עבודה</PageTitle>
     <p className="k-note">התחנות זמינות לשיבוץ בכל אירוע של החווה.</p>
     {registry.moving && <section className="k-card events-sheet" aria-label="העברת שיבוצים">

@@ -52,8 +52,6 @@ export function ManageRoot({ ctx }: ScreenProps) {
         <Tile icon="pin" title="ביקורים" badge={freshVisits} badgeLabel={`${freshVisits} בקשות חדשות`} meta={`${approvedSoon(visits, ctx.today)} מאושרים החודש`} {...lnk('/manage/visits')} />
         <Tile icon="heart" title="תרומות" badge={d.toApprove} badgeLabel={`${d.toApprove} לאישור`} meta={`${money(d.month)} החודש`} {...lnk('/manage/donations')} />
         <Tile icon="chart" title="דוחות" meta="משימות, כסף, חובות" {...lnk('/manage/reports')} />
-        <Tile icon="cart" title="קטלוגים ומוצרים" meta="הקטלוגים והמחירים של דוכן החווה" {...lnk('/manage/farm-catalogs')} />
-        <Tile icon="people" title="תחנות עבודה" meta="מאגר התחנות לשיבוץ באירועים" {...lnk('/manage/work-stations')} />
         <Tile icon="sliders" title="הגדרות" meta="תשלום, הודעות, מנהלים" {...lnk('/manage/settings')} />
       </TileGrid>
       <LinkCard path="/manage/activity" title="כל הפעילות" meta="מי עשה מה באפליקציה, ומתי" />
