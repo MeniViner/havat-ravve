@@ -709,5 +709,5 @@ html[data-theme='dark'] .farm-map-workspace {
 .survey-map-credit{height:auto;min-height:24px}
 .farm-source-credit{line-height:1.2}
 .fm-dock bdi{font-variant-numeric:tabular-nums}
-@media(max-width:760px){.fm-background select{font-size:14px;padding-inline:3px}.fm-brand h1{display:none}.fm-actions{gap:4px}.fm-location-prompt{max-width:none}}
+@media(max-width:760px){.fm-background select{font-size:14px;padding-inline:3px}.fm-brand strong{display:none}.fm-brand h1{display:block;white-space:nowrap}.fm-actions{gap:4px}.fm-location-prompt{max-width:none}}
 @media(max-width:370px){.fm-brand>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}

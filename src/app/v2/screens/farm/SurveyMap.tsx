@@ -428,9 +428,9 @@ export function SurveyMap(props: Props) {
         const shift = Math.max(0, bounds.left + 5 - x + half) - Math.max(0, x + half - bounds.right + 5);
         label.style.marginLeft = shift ? shift + 'px' : '';
       }
-      const entries = Array.from(labels, el => ({el,priority:!!el.closest('.chosen')}));
+      const entries = Array.from(labels, el => ({el,priority:!!el.closest('.chosen'),symbol:el.parentElement?.querySelector('.survey-pin-shape')}));
       entries.sort((a,b) => Number(b.priority)-Number(a.priority));
-      const obstacles = Array.from(m.getContainer().querySelectorAll('.survey-endpoint,.survey-pin-shape'), el=>el.getBoundingClientRect());
+      const obstacles = Array.from(m.getContainer().querySelectorAll('.survey-endpoint'), el=>el.getBoundingClientRect());
       arrangeMapLabels(entries, obstacles, bounds);
     };
     const id = requestAnimationFrame(fitLabels);

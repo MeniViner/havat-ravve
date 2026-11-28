@@ -100,6 +100,9 @@ function mountBackground(L, map, key, notify, images, creditChanged) {
 // Keep marker buttons in place. Only their non-interactive labels are suppressed.
 function arrangeMapLabels(entries, obstacles, frame) {
   const occupied = [...obstacles];
+  const symbols = entries.filter(entry => entry.symbol).map(entry => ({
+    owner: entry.el, rect: entry.symbol.getBoundingClientRect(),
+  }));
   for (const entry of entries) {
     const el = entry.el;
     if (!el) continue;
@@ -108,8 +111,9 @@ function arrangeMapLabels(entries, obstacles, frame) {
     if (!box.width || !box.height) continue;
     const clipped = box.left < frame.left || box.right > frame.right ||
       box.top < frame.top || box.bottom > frame.bottom;
-    const overlaps = occupied.some(r => box.left < r.right + 2 && box.right > r.left - 2 &&
-      box.top < r.bottom + 2 && box.bottom > r.top - 2);
+    const intersects = r => box.left < r.right + 2 && box.right > r.left - 2 &&
+      box.top < r.bottom + 2 && box.bottom > r.top - 2;
+    const overlaps = occupied.some(intersects) || symbols.some(s => s.owner !== el && intersects(s.rect));
     if (!entry.priority && (overlaps || clipped)) el.style.visibility = 'hidden';
     else occupied.push(box);
   }

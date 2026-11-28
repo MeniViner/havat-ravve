@@ -1,8 +1,30 @@
 // Phone-sized browser checks; deny external tile traffic during scripted map interaction.
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { build } from 'esbuild';
 import { chromium } from 'playwright';
 const origin = process.env.SURVEY_WEB_ORIGIN || 'http://127.0.0.1:62276';
+// The test-only entry supplies local personas to the real screens. It is never part of dist.
+const fixture = await build({
+  stdin: { resolveDir:process.cwd(),loader:'tsx',contents:`
+    import React from 'react'; import {createRoot} from 'react-dom/client';
+    import {V2Root} from './src/app/v2/App';
+    import {GuestRoot} from './src/app/v2/screens/guest';
+    import {setDemoAccess,setDemo,PERSONA_UID,demoDoc} from './src/app/demo/store';
+    import {settings} from './src/app/demo/data';
+    const query = new URLSearchParams(location.search), persona = query.get('example') || 'owner';
+    setDemoAccess('map-test-owner','owner');
+    setDemo({on:true,persona,scenario:query.get('scenario') || 'regular'});
+    const uid=PERSONA_UID[persona];
+    const profile=uid ? demoDoc('users/'+uid) : null;
+    const user=profile ? {uid,displayName:profile.displayName,email:profile.email} : null;
+    const Root = persona === 'guest' || persona === 'anon' ? GuestRoot : V2Root;
+    createRoot(document.getElementById('root')).render(<Root user={user} profile={profile} settings={settings}/>);
+  `},
+  bundle:true,write:false,outfile:'test-entry.js',jsx:'automatic',format:'iife',
+  define:{'process.env.NODE_ENV':'"production"'},external:['/assets/*'],logLevel:'silent',
+});
+const fixtureJS = fixture.outputFiles.find(file=>file.path.endsWith('.js')).text;
 const browser = await chromium.launch({ headless: true });
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers:'block' });
@@ -17,6 +39,7 @@ try {
       }
       return route.abort();
     }
+    if(url.pathname==='/app.js') return route.fulfill({contentType:'text/javascript',body:fixtureJS});
     const file = path.resolve('dist',url.pathname.startsWith('/app/') || url.pathname==='/app' ? 'app.html' : '.'+url.pathname);
     if (!file.startsWith(path.resolve('dist')+path.sep)) return route.abort();
     try {await route.fulfill({path:file});} catch {await route.fulfill({status:404,body:''});}
