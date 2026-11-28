@@ -1,6 +1,7 @@
 import { deleteApp, initializeApp } from 'firebase/app';
 import { browserPopupRedirectResolver, connectAuthEmulator, GoogleAuthProvider, inMemoryPersistence, initializeAuth, signInWithPopup } from 'firebase/auth';
-import { config, emulatorMode, readyAuth } from '../../firebase';
+import { chooseNativeGoogleAccount, config, emulatorMode, readyAuth } from '../../firebase';
+import { isNative } from '../../native';
 import { demoItems, demoOnly } from '../../demo/store';
 import { useDoc, useList, write } from '../../db';
 import { nowIso } from '../../clock';
@@ -8,18 +9,19 @@ import { apiBase } from '../../upload';
 import type { ContactGuest, Profile } from '../../types';
 
 export type ReplyAccount = { email: string; token: string };
-export async function chooseReplyAccount(): Promise<ReplyAccount> {
+export async function chooseReplyAccount(): Promise<ReplyAccount | null> {
   if (demoOnly()) return { email: 'guest@example.invalid', token: '' };
   const signed = (await readyAuth()).currentUser;
   if (signed?.email) return { email: signed.email, token: await signed.getIdToken() };
   // An optional address picker must not switch the application's real account or open registration.
   const secondary = initializeApp(config.firebase, 'contact-' + crypto.randomUUID());
   try {
-    const auth = initializeAuth(secondary, { persistence: inMemoryPersistence, popupRedirectResolver: browserPopupRedirectResolver });
+    const auth = initializeAuth(secondary, { persistence: inMemoryPersistence, ...(isNative ? {} : { popupRedirectResolver: browserPopupRedirectResolver }) });
     if (emulatorMode) connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    const { user } = await signInWithPopup(auth, provider);
+    const user = isNative ? await chooseNativeGoogleAccount(auth) : (await signInWithPopup(auth, provider)).user;
+    if (!user) return null;
     if (!user.email) throw new Error('לא התקבלה כתובת מייל. אפשר להקליד אותה.');
     return { email: user.email, token: await user.getIdToken() };
   } finally { await deleteApp(secondary); }

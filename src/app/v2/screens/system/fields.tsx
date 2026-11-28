@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { now } from '../../../clock';
 import { Button, Checkbox, CheckboxBox, Field, ChoiceGroup } from '../../kit';
 import type { RegistrationField } from '../../../types';
+import { isNative, publicOrigin } from '../../../native';
 import { href } from '../../../router';
 import { answerOf } from '../../data/system';
 import './registrationTerms.css';
@@ -50,8 +51,8 @@ export function RegistrationTerms({ read, onChange, invalid }: { read: boolean; 
         <CheckboxBox checked={read} />
       </label>
       <span id={id + '-label'}><label htmlFor={id}>קראתי את</label>{' '}
-        <a href={href('/terms') + local} target="_blank" rel="noopener">תנאי השימוש</a>{' ואת '}
-        <a href={href('/privacy') + local} target="_blank" rel="noopener">מדיניות הפרטיות</a>
+        <a href={(isNative ? publicOrigin() : '') + href('/terms') + local} target="_blank" rel="noopener">תנאי השימוש</a>{' ואת '}
+        <a href={(isNative ? publicOrigin() : '') + href('/privacy') + local} target="_blank" rel="noopener">מדיניות הפרטיות</a>
       </span>
     </div>
     {invalid && <span className="k-field__error" id={id + '-error'} role="alert">כדי להיכנס, צריך לסמן שקראת את התנאים.</span>}

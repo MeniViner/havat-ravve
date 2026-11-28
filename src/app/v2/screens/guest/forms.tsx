@@ -165,7 +165,7 @@ export function ContactForm({ ctx }: { ctx: GuestCtx }) {
   const valid = method === 'phone' ? contactPhoneOk(reply) : /^[^\s@?&/#]+@[^\s@?&/#]+\.[^\s@?&/#]+$/.test(reply);
   const choose = async () => {
     setPicking(true);
-    try { const account = await chooseReplyAccount(); setGoogle(account); setEmail(account.email); }
+    try { const account = await chooseReplyAccount(); if (!account) return; setGoogle(account); setEmail(account.email); }
     catch { toast.refused('לא התקבל מייל מ־Google. אפשר להקליד כתובת.'); }
     finally { setPicking(false); }
   };
