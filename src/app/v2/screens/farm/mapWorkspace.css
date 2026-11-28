@@ -699,3 +699,15 @@ html[data-theme='dark'] .farm-map-workspace {
   min-height: 44px;
   padding-inline: 9px;
 }
+
+.fm-background select{min-height:44px;background:var(--fm-paper,#fffefa);color:#214e3c;
+ border:1px solid #c7d1c6;border-radius:9px;font:inherit;font-weight:600;padding-inline:8px;cursor:pointer}
+.fm-background select:focus-visible{outline:3px solid #236a95;outline-offset:2px}
+.fm-actions .fm-btn,.fm-brand strong{white-space:nowrap}
+.fm-location-prompt{width:auto;display:flex;align-items:center;gap:0;padding:0 4px}
+.fm-location-prompt button{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:none;border:0;color:inherit;font:inherit;min-width:44px;min-height:44px;cursor:pointer}
+.survey-map-credit{height:auto;min-height:24px}
+.farm-source-credit{line-height:1.2}
+.fm-dock bdi{font-variant-numeric:tabular-nums}
+@media(max-width:760px){.fm-background select{font-size:14px;padding-inline:3px}.fm-brand strong{display:none}.fm-brand h1{display:block;white-space:nowrap}.fm-actions{gap:4px}.fm-location-prompt{max-width:none}}
+@media(max-width:370px){.fm-brand>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}

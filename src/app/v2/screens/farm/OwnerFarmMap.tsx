@@ -1526,7 +1526,7 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
             following={following}
             onStopFollowing={() => setFollowing(false)}
             sketch={page === 'sketch' && movingSketch === null}
-            demoBase={ui.demoBase}
+            base={ui.base}
             draftPlace={place || undefined}
             draft={page === 'position' ? candidate || undefined : page === 'form' ? place?.point : undefined}
             edit={

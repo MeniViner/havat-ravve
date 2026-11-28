@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as L from 'leaflet';
 import type { Place, PlaceIcon } from '../../../types';
 import { coordinate, quality, sections, type Fix, type Point, type Trail, type Vertex } from '../../../survey/model';
-import basemap from '../../../survey/basemap.json';
+import { MAP_SOURCES, mountBackground, arrangeMapLabels, type Base, type TileState } from '../../../survey/background';
 import { useDemo } from '../../../demo/store';
 import './survey-map-canvas.css';
 
@@ -26,7 +26,7 @@ type Props = {
   sketch?: boolean;
   view: View | null;
   online: boolean;
-  demoBase?: 'terrain' | 'osm';
+  base?: Base;
   homeView?: MapCamera | null;
   onCameraChange?: (camera: MapCamera) => void;
   following?: boolean;
@@ -157,7 +157,7 @@ function home(map: L.Map, props: Props) {
     map.fitBounds(L.latLngBounds(points), {
       paddingTopLeft: [side, Math.min(compact ? 115 : 155, size.y * 0.22)],
       paddingBottomRight: [side, Math.min(compact ? 125 : 140, size.y * 0.22)],
-      maxZoom: compact ? 18.4 : 18.9,
+      maxZoom: compact ? 17.9 : 18.1,
       animate: false,
     });
   } else if (props.live && ['fresh', 'weak'].includes(quality(props.live, props.clock)))
@@ -215,10 +215,11 @@ export function SurveyMap(props: Props) {
   const userMoved = useRef(false);
   const initializedHome = useRef<string | undefined>(undefined);
   current.current = props;
-  const [tiles, setTiles] = useState<'loading' | 'ok' | 'error'>('loading');
+  const base = props.base || 'aerial';
+  const [tiles, setTiles] = useState<TileState>('loading');
+  const [credit, setCredit] = useState(MAP_SOURCES[base].credit);
   const [reload, setReload] = useState(0);
-  const [illustrated, setIllustrated] = useState(false);
-  const showDemoTerrain = useDemo().on && props.demoBase !== 'osm';
+  const isDemo = useDemo().on;
   const [scale, setScale] = useState({ width: 0, label: '' });
   useEffect(() => {
     const m = L.map(el.current!, {
@@ -280,67 +281,11 @@ export function SurveyMap(props: Props) {
   }, []);
   useEffect(() => {
     const m = map.current;
-    if (!m || !showDemoTerrain) {
-      setIllustrated(false);
-      return;
-    }
-    // This drawing belongs only to the published demo seed, at the design's exact bounds.
-    const bounds = L.latLngBounds(
-      [31.2436 - 2900 / 398000, 34.7283 - 900 / 340000],
-      [31.2436 + 900 / 398000, 34.7283 + 3500 / 340000]
-    );
-    const artwork = L.imageOverlay('/assets/farm-map-demo-terrain.svg', bounds, {
-      alt: 'תוואי שטח להמחשה',
-      interactive: false,
-    });
-    let failed = false;
-    const update = () => {
-      const visible = !failed && bounds.contains(m.getBounds());
-      if (visible && !m.hasLayer(artwork)) artwork.addTo(m);
-      if (!visible && m.hasLayer(artwork)) m.removeLayer(artwork);
-      setIllustrated(visible);
-    };
-    artwork.on('error', () => {
-      failed = true;
-      update();
-    });
-    m.on('moveend', update);
-    update();
-    return () => {
-      m.off('moveend', update);
-      m.removeLayer(artwork);
-      artwork.off();
-    };
-  }, [showDemoTerrain]);
-  useEffect(() => {
-    const m = map.current;
-    if (!m || !props.online || (illustrated && showDemoTerrain)) return;
-    setTiles('loading');
-    const layer = L.tileLayer(basemap.tiles, {
-      maxZoom: 21,
-      maxNativeZoom: 19,
-      updateWhenIdle: true,
-      keepBuffer: 1,
-      referrerPolicy: 'strict-origin-when-cross-origin',
-    });
-    const failed = new Set<HTMLElement>();
-    layer.on('tileload', () => {
-      if (!failed.size) setTiles('ok');
-    });
-    layer.on('tileerror', (event: L.TileErrorEvent) => {
-      failed.add(event.tile);
-      setTiles('error');
-    });
-    layer.on('tileunload', (event: L.TileEvent) => {
-      failed.delete(event.tile);
-    });
-    layer.on('load', () => setTiles(failed.size ? 'error' : 'ok'));
-    layer.addTo(m);
-    return () => {
-      m.removeLayer(layer);
-      layer.off();
-    };
-  }, [props.online, illustrated, showDemoTerrain, reload]);
+    if (!m) return;
+    return mountBackground(L, m, base, setTiles, {
+      aerial: '/assets/beersheba-ortho-2015.jpg', satellite: '/assets/negev-s2-20261122.jpg',
+    }, setCredit);
+  }, [base, props.online, reload]);
   useEffect(() => {
     const m = map.current;
     if (!m || userMoved.current) return;
@@ -405,7 +350,7 @@ export function SurveyMap(props: Props) {
         const text = document.createElement('span');
         text.textContent = name;
         L.marker(p, {
-          icon: L.divIcon({ className: 'survey-endpoint', html: text, iconSize: [42, 19], iconAnchor: [21, 25] }),
+          icon: L.divIcon({ className: 'survey-endpoint', html: text, iconSize: [42, 19], iconAnchor: name === 'סיום' ? [-4, -3] : [21, 25] }),
           interactive: false,
           keyboard: false,
         }).addTo(group);
@@ -483,6 +428,10 @@ export function SurveyMap(props: Props) {
         const shift = Math.max(0, bounds.left + 5 - x + half) - Math.max(0, x + half - bounds.right + 5);
         label.style.marginLeft = shift ? shift + 'px' : '';
       }
+      const entries = Array.from(labels, el => ({el,priority:!!el.closest('.chosen'),symbol:el.parentElement?.querySelector('.survey-pin-shape')}));
+      entries.sort((a,b) => Number(b.priority)-Number(a.priority));
+      const obstacles = Array.from(m.getContainer().querySelectorAll('.survey-endpoint'), el=>el.getBoundingClientRect());
+      arrangeMapLabels(entries, obstacles, bounds);
     };
     const id = requestAnimationFrame(fitLabels);
     m.on('moveend resize', fitLabels);
@@ -563,15 +512,17 @@ export function SurveyMap(props: Props) {
           −
         </button>
       </div>
-      {!(showDemoTerrain && illustrated) && (!props.online || tiles !== 'ok') && (
+      {tiles !== 'ok' && (
         <div className="survey-tile-status" role="status">
-          {!props.online ? (
-            'אין רשת · מפת הרקע אינה זמינה'
+          {tiles === 'outside' ? (
+            'אין כיסוי אווירי באזור הזה. אפשר לבחור לוויין או מפה.'
+          ) : !props.online ? (
+            'אין חיבור לרשת · חלק מהרקע חסר'
           ) : tiles === 'loading' ? (
             'טוען את מפת הרקע…'
           ) : (
             <>
-              חלק ממפת הרקע לא נטען{' '}
+              {tiles === 'partial' ? 'חלק מהרקע חסר' : 'הרקע באזור הזה לא נטען'}{' '}
               <button type="button" onClick={() => setReload((n) => n + 1)}>
                 ניסיון נוסף
               </button>
@@ -580,13 +531,10 @@ export function SurveyMap(props: Props) {
         </div>
       )}
       <div className="survey-map-credit">
-        {showDemoTerrain && illustrated ? (
-          <span>מפת הדגמה · תוואי שטח להמחשה</span>
-        ) : (
-          <a href={basemap.creditUrl} target="_blank" rel="noopener noreferrer" dir="ltr">
-            {basemap.credit}
-          </a>
-        )}
+        <span className="farm-source-credit">
+          {isDemo && <span>נתוני חווה לדוגמה · </span>}
+          <span dir="auto" dangerouslySetInnerHTML={{__html: credit}} />
+        </span>
         <span className="survey-distance" style={{ width: scale.width }} aria-label={'קנה מידה ' + scale.label}>
           {scale.label}
         </span>
