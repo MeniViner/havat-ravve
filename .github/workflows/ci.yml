@@ -61,3 +61,18 @@ jobs:
 
       - name: API Worker gate A (wrangler dev + Firestore emulator, synthetic data)
         run: npm run test:api
+
+  farm-map:
+    name: Farm map interactions (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/survey-browser.mjs

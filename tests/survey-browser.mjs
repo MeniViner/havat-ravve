@@ -1,11 +1,26 @@
 // Phone-sized browser checks; deny external tile traffic during scripted map interaction.
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { chromium } from 'playwright';
 const origin = process.env.SURVEY_WEB_ORIGIN || 'http://127.0.0.1:62276';
 const browser = await chromium.launch({ headless: true });
 try {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await ctx.route('https://tile.openstreetmap.org/**', (r) => r.abort());
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers:'block' });
+  let missing = '', allowRoads = false;
+  const live = process.env.SURVEY_LIVE_BASEMAP === '1';
+  await ctx.route('**/*',async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) {
+      if (live && ['tile.openstreetmap.org','tiles.arcgis.com','tiles.maps.eox.at'].includes(url.hostname)) return route.continue();
+      if (allowRoads && url.hostname==='tile.openstreetmap.org' && missing !== url.pathname) {
+        return route.fulfill({path:'public/assets/beersheba-ortho-2015.jpg',contentType:'image/jpeg'});
+      }
+      return route.abort();
+    }
+    const file = path.resolve('dist',url.pathname.startsWith('/app/') || url.pathname==='/app' ? 'app.html' : '.'+url.pathname);
+    if (!file.startsWith(path.resolve('dist')+path.sep)) return route.abort();
+    try {await route.fulfill({path:file});} catch {await route.fulfill({status:404,body:''});}
+  });
   await ctx.addInitScript(() => {
     let success, fail;
     Object.defineProperty(navigator, 'permissions', {
@@ -69,6 +84,50 @@ try {
   }
   await marker.click();
   await heading(placeName).waitFor();
+  const chooseBase = page.getByRole('combobox',{name:'רקע למפה'});
+  const chosen = page.locator('.survey-marker.chosen').first();
+  const before = await chosen.boundingBox();
+  for (const key of ['satellite','osm','aerial']) {
+    await chooseBase.selectOption(key);
+    await heading(placeName).waitFor();
+    if (key !== 'osm') await page.waitForFunction(() => {
+      const image = document.querySelector('.regional-satellite');
+      return image?.complete && image.naturalWidth>0;
+    });
+    const after = await chosen.boundingBox();
+    assert.ok(Math.abs(before.x-after.x)<1 && Math.abs(before.y-after.y)<1,'background switch preserves position and zoom');
+  }
+  await chooseBase.selectOption('osm');
+  const status = page.locator('.survey-tile-status');
+  if (live) {
+    await status.waitFor({state:'hidden',timeout:45000});
+    const centerLoaded = await page.evaluate(() => {
+      const b = document.querySelector('.survey-map-canvas').getBoundingClientRect();
+      const x=b.left+b.width/2,y=b.top+b.height/2;
+      return [...document.querySelectorAll('img.leaflet-tile')].some(i => {
+        const r=i.getBoundingClientRect(); return i.naturalWidth===256 && r.left<=x && x<r.right && r.top<=y && y<r.bottom;
+      });
+    });
+    assert.ok(centerLoaded,'real road image decoded at viewport center');
+  } else {
+    await status.getByRole('button').waitFor();
+    missing = await page.evaluate(() => {
+      const b=document.querySelector('.survey-map-canvas').getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
+      const tile=[...document.querySelectorAll('img.leaflet-tile')].find(i => {
+        const r=i.getBoundingClientRect();return r.left<=x && x<r.right && r.top<=y && y<r.bottom;
+      });
+      return new URL(tile.src).pathname;
+    });
+    allowRoads=true;
+    await status.getByRole('button').click();
+    await page.waitForFunction(()=>document.querySelector('.leaflet-tile[data-state="ok"]') && document.querySelector('.leaflet-tile[data-state="error"]'));
+    await status.getByText('הרקע באזור הזה לא נטען',{exact:false}).waitFor();
+    missing='';
+    await status.getByRole('button').click();
+    await status.waitFor({state:'hidden'});
+    allowRoads=false;
+  }
+  await chooseBase.selectOption('aerial');
   await button('סגירה').click();
   await ctx.setOffline(true);
   await page.waitForFunction(() => !navigator.onLine);

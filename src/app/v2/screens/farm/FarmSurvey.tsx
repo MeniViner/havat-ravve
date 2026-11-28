@@ -205,7 +205,7 @@ function TeamFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
             following={following && hasFreshFix}
             onStopFollowing={() => setFollowing(false)}
             panelRef={ui.panelRef}
-            demoBase={ui.demoBase}
+            base={ui.base}
             onPlace={ui.onPlace}
             onTrail={ui.onTrail}
             onPick={() => {}}

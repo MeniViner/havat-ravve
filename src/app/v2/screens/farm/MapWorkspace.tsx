@@ -4,6 +4,7 @@ import { connectionCurrent, sections, type Point, type Trail } from '../../../su
 import { AppScreen, go } from '../../core';
 import { Icon } from '../../kit';
 import { PlaceGlyph, type DrawnTrail } from './SurveyMap';
+import type { Base } from '../../../survey/background';
 import './mapWorkspace.css';
 
 type Layer = 'places' | 'walk' | 'vehicle' | 'unknown' | 'current';
@@ -11,7 +12,7 @@ type Selection = { kind: 'place' | 'trail'; id: string };
 type MapUI = {
   selected?: string;
   selectedTrail?: string;
-  demoBase: 'terrain' | 'osm';
+  base: Base;
   onPlace: (id: string) => void;
   onTrail: (id: string) => void;
   panelOpen: boolean;
@@ -415,8 +416,23 @@ function MapSearch({
 export function MapWorkspace(p: Props) {
   const [selection, setSelection] = useState<Selection | 'layers' | null>(null);
   const [layers, setLayers] = useState<MapUI['layers']>({});
-  const [legend, setLegend] = useState(() => window.matchMedia('(min-width:761px)').matches);
-  const [demoBase, setDemoBase] = useState<'terrain' | 'osm'>('terrain');
+  const [base,setBase] = useState<Base>(() => {
+    try {
+      const saved = localStorage.getItem('farm-map-background');
+      return saved === 'osm' || saved === 'satellite' ? saved : 'aerial';
+    } catch { return 'aerial'; }
+  });
+  const [hint,setHint] = useState(() => {
+    try { return !localStorage.getItem('farm-map-location-hint'); } catch { return true; }
+  });
+  function chooseBase(value: Base) {
+    setBase(value);
+    try {localStorage.setItem('farm-map-background',value);} catch {}
+  }
+  function dismissHint() {
+    setHint(false);
+    try {localStorage.setItem('farm-map-location-hint','1');} catch {}
+  }
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const place =
@@ -475,20 +491,9 @@ export function MapWorkspace(p: Props) {
               />
             </label>
           ))}
-        {p.isDemo ? (
-          <label className="fm-demo-base">
-            מפת בסיס
-            <select
-              value={demoBase}
-              onChange={(e) => setDemoBase(e.target.value === 'osm' ? 'osm' : 'terrain')}
-            >
-              <option value="terrain">מפה טופוגרפית להמחשה</option>
-              <option value="osm">מפה גאוגרפית · OpenStreetMap</option>
-            </select>
-          </label>
-        ) : (
-          <small>מפת בסיס · OpenStreetMap</small>
-        )}
+        <small>{base === 'aerial' ? 'מפ״י · תצלום אוויר מ־2015 · כשני מטר לפיקסל' :
+          base === 'satellite' ? 'צילום לוויין · כעשרה מטרים לפיקסל. שנת הצילום מופיעה בתחתית המפה.' :
+          'מפת דרכים · OpenStreetMap'}</small>
       </MapPanel>
     ) : place ? (
       <MapPanel title={place.name} onClose={close}>
@@ -514,12 +519,6 @@ export function MapWorkspace(p: Props) {
     ) : (
       p.panel
     );
-  const legendKeys = layerKeys.filter(
-    (k) =>
-      layers[k] !== false &&
-      (k !== 'unknown' || p.trails.some((t) => !t.trail.modes?.some((m) => m === 'vehicle' || m === 'walk'))) &&
-      (k !== 'current' || p.dock)
-  );
   return (
     <AppScreen className={'farm-map-workspace' + (p.toolbar ? ' map-home-framing' : '')} variant="plain">
       <header className={'fm-header' + (p.editing ? ' fm-header-edit' : '')}>
@@ -536,10 +535,17 @@ export function MapWorkspace(p: Props) {
               </div>
             </div>
             <div className="fm-actions">
+              <label className="fm-background">
+                <select aria-label="רקע למפה" value={base} onChange={e=>chooseBase(e.target.value as Base)}>
+                  <option value="osm">מפת דרכים</option>
+                  <option value="aerial">תצלום אוויר</option>
+                  <option value="satellite">לוויין</option>
+                </select>
+              </label>
               {p.onToggleEdit && (
                 <button className="fm-btn fm-primary" onClick={() => run(p.onToggleEdit)}>
                   <Icon name={p.editing ? 'check' : 'edit'} size={18} />
-                  {p.editing ? 'סיום עריכה' : 'עריכת המפה'}
+                  {p.editing ? (p.dock ? 'חזרה למפה' : 'סיום עריכה') : 'עריכת המפה'}
                 </button>
               )}
               <button className="fm-back" aria-label="חזרה לחווה" onClick={() => go('/farm')}>
@@ -568,7 +574,7 @@ export function MapWorkspace(p: Props) {
             panelOpen: !!panel,
             panelRef,
             layers,
-            demoBase,
+            base,
           })}
         </div>
         {!p.toolbar && (
@@ -580,7 +586,7 @@ export function MapWorkspace(p: Props) {
                   className="fm-icon"
                   title="המיקום שלי"
                   aria-label="המיקום שלי"
-                  onClick={() => run(p.onLocate)}
+                  onClick={() => {dismissHint(); run(p.onLocate);}}
                 >
                   <Glyph kind="target" />
                 </button>
@@ -615,37 +621,13 @@ export function MapWorkspace(p: Props) {
                 כלי עריכה
               </button>
             )}
-            {!panel && !p.dock && (
-              <>
-                <section className="fm-legend">
-                  <button className="fm-legend-head" aria-expanded={legend} onClick={() => setLegend(!legend)}>
-                    <b>מקרא המפה</b>
-                    <Icon name="chevron-down" size={17} />
-                  </button>
-                  {legend && (
-                    <ul>
-                      {legendKeys.map((k) => (
-                        <li key={k}>
-                          <span className={'fm-swatch fm-' + k} />
-                          {layerNames[k][1]}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-                {(p.onLocationDetails || p.onLocate) && (
-                  <button className="fm-location" onClick={() => run(p.onLocationDetails || p.onLocate)}>
-                    <span className="fm-key">
-                      <Glyph kind="target" />
-                    </span>
-                    <span>
-                      <b>{p.locationLabel || 'הצגת המיקום שלי'}</b>
-                      <small>{p.locationDetail || 'כדי להתמצא בשטח'}</small>
-                    </span>
-                    <Icon name="chevron" size={16} />
-                  </button>
-                )}
-              </>
+            {!panel && !p.dock && !p.editing && hint && (p.onLocationDetails || p.onLocate) && (
+              <div className="fm-location fm-location-prompt">
+                <button type="button" onClick={() => {dismissHint(); run(p.onLocationDetails || p.onLocate);}}>
+                  <Glyph kind="target" /> הצגת המיקום שלי
+                </button>
+                <button type="button" aria-label="אחר כך" onClick={dismissHint}><Icon name="close" size={16}/></button>
+              </div>
             )}
           </>
         )}
