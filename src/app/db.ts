@@ -128,18 +128,18 @@ export function useDoc<T extends Row>(path: string, enabled = true, verifyProfil
     setFs({ path, item: null, loading: true });
     let active = true;
     let revision = 0;
-    let checking = false;
+    let pendingRevision: number | undefined;
     const confirmProfile = async () => {
-      if (checking) return;
-      checking = true;
       const at = revision;
+      if (pendingRevision === at) return;
+      pendingRevision = at;
       try {
         const { readProfileFromServer } = await import('./profileRead');
         const item = await readProfileFromServer(path);
         if (active && at === revision) setFs({ path, item: item as T | null, loading: false });
       } catch (e) {
         if (active && at === revision) setFs({ path, item: null, loading: false, error: readError(e) });
-      } finally { checking = false; }
+      } finally { if (pendingRevision === at) pendingRevision = undefined; }
     };
     // A disconnected listener can also stay pending without emitting any snapshot.
     const timer = verifyProfile ? setTimeout(confirmProfile, 3500) : undefined;
