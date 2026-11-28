@@ -1,7 +1,7 @@
 // Phone-sized browser checks; deny external tile traffic during scripted map interaction.
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-const origin = process.env.SURVEY_WEB_ORIGIN || 'http://localhost:5194';
+const origin = process.env.SURVEY_WEB_ORIGIN || 'http://127.0.0.1:62276';
 const browser = await chromium.launch({ headless: true });
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -35,7 +35,7 @@ try {
   const page = await ctx.newPage();
   const exceptions = [];
   page.on('pageerror', (e) => exceptions.push(e.message));
-  await page.goto(origin + '/app/farm/map?demo=owner');
+  await page.goto(origin + '/app/farm/map?example=owner');
   const button = (name) => page.getByRole('button', { name, exact: true });
   await button('בחירה ידנית במפה').and(page.locator(':enabled')).waitFor();
   const marker = page.locator('.survey-place-button').first();
@@ -75,7 +75,7 @@ try {
   await page.getByLabel('חיפוש במפה').fill('טיוטה לביטול');
   await page.getByText('אין תוצאות לחיפוש הזה').waitFor();
   await page.getByLabel('חיפוש במפה').fill('');
-  await button('מפה').click();
+  await page.getByRole('main').getByRole('button', { name: 'מפה', exact: true }).click();
   await button('בחירה ידנית במפה').click();
   await page.getByRole('region', { name: 'מפת החווה' }).click({ position: { x: 130, y: 115 } });
   await page.getByLabel('שם המקום').fill('שער ידני לבדיקה');
@@ -152,12 +152,12 @@ try {
   await page.getByText(/נדרש אישור מחדש/).waitFor();
   await button('אישור ושמירת השביל').click();
   await page.getByText(/אחד היעדים השתנה/).waitFor();
-  await page.goto(origin + '/app/farm/map?demo=owner&day=eventDay');
+  await page.goto(origin + '/app/farm/map?example=owner&scenario=eventDay');
   await page.getByRole('heading', { name: 'מפת החווה' }).waitFor();
-  assert.ok((await page.locator('nav').innerText()).includes('אירוע'));
+  await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('button', { name: 'אירוע', exact: true }).waitFor();
   for (const role of ['staff', 'manager']) {
     for (const day of ['regular', 'eventDay']) {
-      await page.goto(origin + '/app/farm/map?demo=' + role + '&day=' + day);
+      await page.goto(origin + '/app/farm/map?example=' + role + '&scenario=' + day);
       await page.getByRole('heading', { name: 'מפת החווה' }).waitFor();
       await page.locator('.leaflet-container').waitFor();
       assert.equal(await button('בחירה ידנית במפה').count(), 0);
@@ -167,11 +167,11 @@ try {
       assert.ok(Math.abs(map.x + map.width / 2 - bar.x - bar.width / 2) < 2);
     }
   }
-  await page.goto(origin + '/app/farm/map?demo=anon');
+  await page.goto(origin + '/app/farm/map?example=anon');
   await page.getByRole('heading', { name: 'כניסה למפת החווה' }).waitFor();
   await page.getByRole('button', { name: /Google/ }).waitFor();
   assert.equal(await page.locator('.leaflet-container').count(), 0);
-  await page.goto(origin + '/app/farm/map?demo=guest');
+  await page.goto(origin + '/app/farm/map?example=guest');
   await page.getByText('מפת החווה זמינה לצוות החווה').waitFor();
   assert.equal(await page.locator('.leaflet-container').count(), 0);
   assert.deepEqual(exceptions, []);
