@@ -71,6 +71,7 @@ type EditPage =
   | 'places'
   | 'trails'
   | 'add'
+  | 'needGPS'
   | 'form'
   | 'position'
   | 'review'
@@ -177,6 +178,10 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const camera = useRef<MapCamera | null>(null),
     beforeFrame = useRef<MapCamera | null>(null);
   const photo = useRef<HTMLInputElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+  }, [page]);
   const shared = useFarmHomeView();
   const [wizard, setWizard] = useState<SetupDraft>(() => readSetup(scope));
   const [setupReturn, setSetupReturn] = useState(false);
@@ -685,6 +690,7 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
     places: 'בחירת מקום לעריכה',
     trails: 'בחירת שביל לעריכה',
     add: 'הוספת מקום',
+    needGPS: 'מיקום להוספת מקום',
     form: place?.editing ? 'עריכת מקום' : 'שמירת מקום',
     position: selection === 'entrance' ? 'מיקום הכניסה' : 'אישור נקודה במפה',
     review: 'סקירת השביל',
@@ -891,12 +897,12 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
                 <>
                   {action(
                     'הוספת מקום',
-                    'סימון במפה או מדידה בשטח',
+                    'בחירת מיקום והוספת שם ותמונה',
                     'plus',
                     () => open(place ? 'form' : 'add'),
                     !ready,
                   )}
-                  {action('עריכת מקום', 'שם, תמונה או מיקום', 'pin', () => open('places'))}
+                  {action('עריכת מקום', 'עדכון פרטים, הזזה או הסרה', 'edit', () => open('places'))}
                 </>
               )}
               {tab === 'trails' && (
@@ -940,12 +946,16 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
                 </>
               )}
             </div>
-            <div className="fme-section-label">עבודה אחרונה</div>
-            {action(
-              'הטיוטות שלי',
-              draftCount ? draftCount + ' טיוטות פתוחות' : 'אין טיוטות פתוחות',
-              'clock',
-              () => open('drafts'),
+            {!!draftCount && (
+              <>
+                <div className="fme-section-label">עבודה אחרונה</div>
+                {action(
+                  'הטיוטות שלי',
+                  draftCount ? draftCount + ' טיוטות פתוחות' : 'אין טיוטות פתוחות',
+                  'clock',
+                  () => open('drafts'),
+                )}
+              </>
             )}
           </>
         );
@@ -975,19 +985,32 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
           <>
             <p>איפה נמצא המקום?</p>
             <Button
-              disabled={busy}
-              onClick={() => {
-                if (current) position('new', { ...current, source: 'gps' });
-                else void locationAction();
-              }}
+              onClick={() =>
+                current && q === 'fresh' ? position('new', { ...current, source: 'gps' }) : open('needGPS')
+              }
             >
               שימוש במיקום שלי
             </Button>
-            {!current && <small>{statusText}</small>}
             <Button variant="outline" icon="pin" onClick={() => position('new')}>
               בחירת נקודה במפה
             </Button>
             <small>לאחר אישור המיקום אפשר להוסיף שם ותמונה.</small>
+          </>
+        );
+      case 'needGPS':
+        return (
+          <>
+            {locationInfo}
+            {current && q === 'fresh' ? (
+              <Button onClick={() => position('new', { ...current, source: 'gps' })}>
+                בחירת המיקום שנמדד
+              </Button>
+            ) : (
+              locationButton
+            )}
+            <Button variant="outline" icon="pin" onClick={() => position('new')}>
+              בחירת נקודה ידנית
+            </Button>
           </>
         );
       case 'position':
@@ -1122,6 +1145,8 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
                 disabled={busy}
                 onClick={() =>
                   act(async () => {
+                    if (shared.setup?.placeId === removing.id)
+                      throw new Error('בחרו מקום ראשון אחר בהגדרת החווה לפני העברה לארכיון.');
                     if (
                       cloud.loading ||
                       cloud.error ||
@@ -1384,11 +1409,13 @@ export function OwnerFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
   }
   const panel =
     page && page !== 'home' ? (
-      <section className="fme-panel">
+      <section className="fme-panel" aria-labelledby="farm-map-owner-panel-title">
         <div className="fme-heading">
           <div>
             {editing && <small>מצב עריכה</small>}
-            <h2>{titles[page]}</h2>
+            <h2 id="farm-map-owner-panel-title" tabIndex={-1} ref={heading}>
+              {titles[page]}
+            </h2>
           </div>
           <button aria-label="סגירה" onClick={closePanel}>
             <Icon name="close" size={18} />

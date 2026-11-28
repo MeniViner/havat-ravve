@@ -291,3 +291,11 @@
   font: inherit;
   border-radius: 7px;
 }
+.fme-heading h2:focus {
+  outline: none;
+}
+@media (max-width: 760px) {
+  .fme-heading small {
+    display: none;
+  }
+}
