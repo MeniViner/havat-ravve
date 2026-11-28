@@ -103,7 +103,9 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
   const fresh = param('new') === '1';
   const [name, setName] = useState(fresh && p.name === 'מקום חדש' ? '' : p.name);
   const [pos, setPos] = useState<{ lat: number; lng: number; accuracy?: number }>({ lat: p.lat, lng: p.lng, accuracy: p.accuracy });
-  const [photo, setPhoto] = useState(p.photo || '');
+  const [draftPhoto, setPhoto] = useState(p.photo || '');
+  const photo = ctx.owner ? draftPhoto : p.photo;
+  const point = ctx.owner ? pos : p;
   const [busy, setBusy] = useState(false);
   const pick = usePhotoPicker(setPhoto, 'place');
   const tasks = useTasksAt(p.id, ctx.manager);
@@ -128,15 +130,15 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
           onConfirm: () => remove(() => removePlace(ctx.actor, p), { text: 'המקום הועבר לארכיון', after: () => go('/places', true) }) },
       }]} />} />
       {ctx.owner ? <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} /> : <PageTitle>{p.name}</PageTitle>}
-      <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(pos.lat, pos.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(pos.lat, pos.lng)); }}>
+      <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(point.lat, point.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(point.lat, point.lng)); }}>
         {photo && <img src={photo} alt="" />}
-        {!photo && <><Icon name="pin" size={30} />{pos.accuracy ? `נקודה על המפה · דיוק ${pos.accuracy} מטר` : 'נקודה על המפה'}</>}
+        {!photo && <><Icon name="pin" size={30} />{point.accuracy ? `נקודה על המפה · דיוק ${point.accuracy} מטר` : 'נקודה על המפה'}</>}
       </a>
       {ctx.owner && <div className="tasks-btnrow">
         <Button variant="outline" size="tall" icon="pin" iconSize={18} onClick={relocate}>לעדכן למקום שבו אני עומד</Button>
       </div>}
       <div className="tasks-btnrow">
-        <Button variant="outline" size="tall" icon="nav" iconSize={16} onClick={() => external(mapsUrl(pos.lat, pos.lng))}>ניווט חיצוני ב־Google Maps</Button>
+        <Button variant="outline" size="tall" icon="nav" iconSize={16} onClick={() => external(mapsUrl(point.lat, point.lng))}>ניווט חיצוני ב־Google Maps</Button>
         {ctx.owner && <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'להסיר את התמונה' : 'תמונה של המקום'}</Button>}
       </div>
       {rows.length > 0 ? (
