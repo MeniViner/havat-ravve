@@ -57,7 +57,7 @@ export function TrailReview({
   const [connections, setConnections] = useState(false);
   const [page, setPage] = useState(0);
   const candidates = trails.filter(
-    (x) => x.trail.id !== t.id && x.trail.status === 'confirmed' && x.trail.modes.includes(mode)
+    (x) => x.trail.id !== t.id && x.trail.status === 'confirmed' && x.trail.modes.includes(mode),
   );
   const other = candidates.find((x) => target === 'trail:' + x.trail.id);
   const targetPlace = places.find((x) => target === 'place:' + x.id);
@@ -83,7 +83,7 @@ export function TrailReview({
   const source = useList<{ index: number; points: Sample[] }>(
     `surveyRecordings/${t.recordingId}/chunks`,
     { orderBy: [['index', 'asc']] },
-    !r.raw
+    !r.raw,
   );
   const raw = r.raw?.samples ?? source.items.flatMap((c) => c.points);
   const troubled = raw?.filter((p) => p.quality !== 'ok') || [];
@@ -114,8 +114,8 @@ export function TrailReview({
           <ol className="survey-samples">
             {raw.slice(page * 20, page * 20 + 20).map((s) => (
               <li key={s.seq}>
-                <b>{new Date(s.at).toLocaleTimeString('he-IL', { hour12: false })}</b> · מקטע {s.segment} · נקודה{' '}
-                {s.seq}
+                <b>{new Date(s.at).toLocaleTimeString('he-IL', { hour12: false })}</b> · מקטע {s.segment} ·
+                נקודה {s.seq}
                 <br />
                 <bdi>
                   {s.lat.toFixed(6)}, {s.lng.toFixed(6)}
@@ -128,7 +128,11 @@ export function TrailReview({
             <Button variant="quiet" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
               הקודמות
             </Button>
-            <Button variant="quiet" disabled={(page + 1) * 20 >= raw.length} onClick={() => setPage((p) => p + 1)}>
+            <Button
+              variant="quiet"
+              disabled={(page + 1) * 20 >= raw.length}
+              onClick={() => setPage((p) => p + 1)}
+            >
               הבאות
             </Button>
           </div>
@@ -158,7 +162,11 @@ export function TrailReview({
             <Button variant="outline" disabled={!p} onClick={move}>
               הזזה במפה
             </Button>
-            <Button variant="neutral" disabled={!p} onClick={() => edit(r.points.filter((v) => v.seq !== anchor))}>
+            <Button
+              variant="neutral"
+              disabled={!p}
+              onClick={() => edit(r.points.filter((v) => v.seq !== anchor))}
+            >
               הסרת נקודה
             </Button>
             <Button
@@ -176,22 +184,32 @@ export function TrailReview({
           ביטול התיקון האחרון
         </Button>
       )}
-      <fieldset>
+      <fieldset className="fme-passability">
         <legend>למי השביל מתאים?</legend>
-        <div className="survey-modes">
-          {(Object.keys(MODES) as Mode[]).map((m) => (
-            <label key={m}>
-              <input
-                type="checkbox"
-                checked={t.modes.includes(m)}
-                onChange={(e) =>
+        <div>
+          {(Object.keys(MODES) as Mode[]).map((mode) => (
+            <label key={mode}>
+              {MODES[mode]}
+              <select
+                aria-label={'התאמה ל' + MODES[mode]}
+                value={t.modes.includes(mode) ? 'yes' : t.unsuitableModes?.includes(mode) ? 'no' : 'unknown'}
+                onChange={(e) => {
+                  const choice = e.target.value;
+                  const modes = t.modes.filter((v) => v !== mode),
+                    unsuitableModes = (t.unsuitableModes || []).filter((v) => v !== mode);
+                  if (choice === 'yes') modes.push(mode);
+                  if (choice === 'no') unsuitableModes.push(mode);
                   update({
-                    modes: e.target.checked ? [...t.modes, m] : t.modes.filter((v) => v !== m),
-                    connections: t.connections.filter((c) => e.target.checked || c.mode !== m),
-                  })
-                }
-              />
-              {MODES[m]}
+                    modes,
+                    unsuitableModes,
+                    connections: t.connections.filter((c) => c.mode !== mode || choice === 'yes'),
+                  });
+                }}
+              >
+                <option value="unknown">טרם נקבע</option>
+                <option value="yes">מתאים</option>
+                <option value="no">אינו מתאים</option>
+              </select>
             </label>
           ))}
         </div>
@@ -201,7 +219,12 @@ export function TrailReview({
         <p>בחרו נקודה על השביל ואת המקום או השביל שאפשר להגיע אליו בפועל.</p>
         <label>
           נקודת הכניסה בשביל הזה{' '}
-          <input type="number" min={1} value={anchor || ''} onChange={(e) => onAnchor(Number(e.target.value))} />
+          <input
+            type="number"
+            min={1}
+            value={anchor || ''}
+            onChange={(e) => onAnchor(Number(e.target.value))}
+          />
         </label>
         <label>
           אופן המעבר{' '}
@@ -277,7 +300,7 @@ export function TrailReview({
               {!connectionCurrent(
                 c,
                 places,
-                trails.map((x) => x.trail)
+                trails.map((x) => x.trail),
               ) && ' · נדרש אישור מחדש'}
             </span>
             <Button

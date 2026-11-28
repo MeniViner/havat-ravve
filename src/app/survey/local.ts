@@ -89,6 +89,8 @@ export function placeFields(job: PlaceJob) {
     lat,
     lng,
     photo: draft.photo,
+    ...(draft.icon ? { icon: draft.icon } : {}),
+    ...(draft.markerStyle ? { markerStyle: draft.markerStyle } : {}),
     accuracy: accuracy ?? null,
     ...(source === 'legacy' ? {} : { source, measuredAt: draft.point.at }),
     ...(draft.editing ? {} : { createdBy: actor, createdAt: at }),
@@ -108,7 +110,9 @@ async function applyPlace(tx: Tx, job: PlaceJob, key: string) {
         (current.lat !== draft.original.lat ||
           current.lng !== draft.original.lng ||
           current.name !== draft.original.name ||
-          (current.photo || '') !== (draft.original.photo || '')))
+          (current.photo || '') !== (draft.original.photo || '') ||
+          (current.icon || 'pin') !== (draft.original.icon || 'pin') ||
+          (current.markerStyle || 'icon') !== (draft.original.markerStyle || 'icon')))
     )
       throw new Error('המקום השתנה במכשיר אחר. הטיוטה שלך נשמרה');
     tx.update('places', path, placeFields(job));
@@ -221,6 +225,7 @@ export async function recoverJob(scope: string, key: string) {
       name: j.review.trail.name + ' (עותק)',
       status: 'draft' as const,
       modes: [],
+      unsuitableModes: [],
       connections: [],
       geometry: crypto.randomUUID(),
       revision: crypto.randomUUID(),

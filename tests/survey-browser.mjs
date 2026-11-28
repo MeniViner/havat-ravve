@@ -33,64 +33,90 @@ try {
     };
   });
   const page = await ctx.newPage();
+  page.setDefaultTimeout(8000);
   const exceptions = [];
   page.on('pageerror', (e) => exceptions.push(e.message));
   await page.goto(origin + '/app/farm/map?example=owner');
   const button = (name) => page.getByRole('button', { name, exact: true });
-  await button('בחירה ידנית במפה').and(page.locator(':enabled')).waitFor();
+  const find = page.getByRole('combobox', { name: 'חיפוש מקום או שביל בחווה' });
+  const heading = name => page.getByRole('heading', { name, exact: true });
+  const editMode = async () => { await button('עריכת המפה').click(); };
+  const add = async () => {
+    await page.getByRole('button', { name: /^הוספת מקום/ }).click();
+    await button('בחירת נקודה במפה').click();
+    await page.getByRole('region', { name: 'מפת החווה' }).click({ position: { x: 110, y: 150 } });
+    await button('אישור הנקודה').click();
+  };
+  const searchFor = async (name) => {
+    await find.fill(name);
+    await page.getByRole('option', { name: new RegExp(name) }).click();
+    await heading(name).waitFor();
+  };
+  const editTrail = async name => {
+    await editMode();
+    await button('סגירה').click();
+    await searchFor(name);
+    await button('עריכת השביל').click();
+  };
   const marker = page.locator('.survey-place-button').first();
+  await marker.waitFor();
   const placeName = await marker.getAttribute('aria-label');
-  const placeHeading = page.getByRole('heading', { name: placeName, exact: true });
   for (const key of ['Enter', 'Space']) {
     await marker.press(key);
-    await placeHeading.waitFor();
-    assert.ok(await placeHeading.evaluate(el => el === document.activeElement));
+    await heading(placeName).waitFor();
+    assert.ok(await heading(placeName).evaluate(el => el === document.activeElement));
     await button('סגירה').click();
   }
   await marker.click();
-  await placeHeading.waitFor();
+  await heading(placeName).waitFor();
   await button('סגירה').click();
-  // Disconnecting disposes the basemap. Zooming after reconnect must not call the detached layer.
   await ctx.setOffline(true);
-  await page.getByText(/אין רשת · מפת הרקע/).waitFor();
+  await page.waitForFunction(() => !navigator.onLine);
   await ctx.setOffline(false);
-  await page.locator('.leaflet-control-zoom-out').click();
-  await page.locator('.leaflet-control-zoom-in').click();
+  await page.setViewportSize({ width: 1180, height: 800 });
+  await button('התרחקות').click();
+  await button('התקרבות').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await button('המיקום שלי').click();
   await button('לאפשר גישה למיקום').click();
-  await page.evaluate(() => window.feedTestFix('timeout'));
-  await page.getByRole('heading', { name: 'הזמן לקבלת מדידה חלף' }).waitFor();
-  await page.evaluate(() => window.feedTestFix('unavailable'));
-  await page.getByRole('heading', { name: 'המיקום אינו זמין' }).waitFor();
-  await page.evaluate(() => window.feedTestFix('weak'));
-  await page.getByText(/דיוק משוער 45/).waitFor();
-  await page.evaluate(() => window.feedTestFix('stale'));
-  assert.ok(await button('שמירת מקום כאן').isDisabled());
-  await page.evaluate(() => window.feedTestFix('denied'));
-  await page.getByRole('heading', { name: 'הגישה למיקום חסומה' }).waitFor();
-  await button('בחירה ידנית במפה').click();
-  await page.getByRole('region', { name: 'מפת החווה' }).click({ position: { x: 125, y: 110 } });
+  for (const [fix, message] of [
+    ['timeout', 'הזמן לקבלת מדידה חלף'], ['unavailable', 'המיקום אינו זמין'],
+    ['weak', 'דיוק משוער 45'], ['stale', 'מדידה ישנה'], ['denied', 'הגישה למיקום חסומה'],
+  ]) {
+    await page.evaluate(mode => window.feedTestFix(mode), fix);
+    await page.locator('.fm-sheet').getByText(message, { exact: false }).first().waitFor();
+  }
+  await button('סגירה').click();
+  await editMode();
+  await add();
   await page.getByLabel('שם המקום').fill('טיוטה לביטול');
-  await button('ביטול').click();
-  await button('חיפוש ורשימה').click();
-  await page.getByLabel('חיפוש במפה').fill('טיוטה לביטול');
-  await page.getByText('אין תוצאות לחיפוש הזה').waitFor();
-  await page.getByLabel('חיפוש במפה').fill('');
-  await page.getByRole('main').getByRole('button', { name: 'מפה', exact: true }).click();
-  await button('בחירה ידנית במפה').click();
-  await page.getByRole('region', { name: 'מפת החווה' }).click({ position: { x: 130, y: 115 } });
+  await button('ביטול הטיוטה').click();
+  await button('מחיקת הטיוטה').click();
+  await button('סגירה').click();
+  await find.fill('טיוטה לביטול');
+  await page.getByText('לא נמצאו מקומות או שבילים בשם הזה.').waitFor();
+  await find.press('Escape');
+  await button('כלי עריכה').click();
+  await add();
   await page.getByLabel('שם המקום').fill('שער ידני לבדיקה');
+  await button('שער').click();
   await page.reload();
-  await page.getByLabel('שם המקום').waitFor();
+  await editMode();
+  await page.getByRole('button', { name: /^הטיוטות שלי/ }).click();
+  await page.getByRole('button', { name: /שער ידני לבדיקה/ }).click();
   assert.equal(await page.getByLabel('שם המקום').inputValue(), 'שער ידני לבדיקה');
   await button('שמירת המקום').click();
-  await page.getByRole('heading', { name: 'שער ידני לבדיקה' }).waitFor();
-  await button('עריכת מקום').click();
+  await button('חזרה למפה').click();
+  await searchFor('שער ידני לבדיקה');
+  await button('עריכת המקום').click();
   await page.getByLabel('שם המקום').fill('שער לאחר תיקון');
-  await button('תיקון במפה').click();
-  await page.getByRole('region', { name: 'מפת החווה' }).click({ position: { x: 140, y: 116 } });
+  await button('הזזה במפה').click();
+  await button('בחירת מרכז המפה').click();
+  await button('אישור הנקודה').click();
   await button('שמירת המקום').click();
-  await page.getByRole('heading', { name: 'שער לאחר תיקון' }).waitFor();
-  assert.equal(await page.locator('.survey-screen').evaluate((x) => getComputedStyle(x).direction), 'rtl');
+  await button('חזרה למפה').click();
+  await searchFor('שער לאחר תיקון');
+  assert.equal(await page.locator('.farm-map-workspace').evaluate(x => getComputedStyle(x).direction), 'rtl');
   for (const label of ['משימות', 'קניות', 'החווה', 'ניהול'])
     assert.ok((await page.locator('nav').innerText()).includes(label), label);
   // Two independently surveyed paths can be joined only at vertices the owner selects.
@@ -120,8 +146,7 @@ try {
     localStorage.setItem('farm-demo-overrides', JSON.stringify(overrides));
   });
   await page.reload();
-  await button('חיפוש ורשימה').click();
-  await button('שביל צפוני · מאושר').click();
+  await editTrail('שביל צפוני');
   await page.getByText('כניסות וחיבורים (0)').click();
   await page.getByLabel('יעד החיבור').selectOption('trail:second');
   assert.ok(await button('אישור החיבור בשטח').isDisabled());
@@ -146,8 +171,7 @@ try {
     localStorage.setItem('farm-demo-overrides', JSON.stringify(data));
   });
   await page.reload();
-  await button('חיפוש ורשימה').click();
-  await button('שביל צפוני · מאושר').click();
+  await editTrail('שביל צפוני');
   await page.getByText('כניסות וחיבורים (1)').click();
   await page.getByText(/נדרש אישור מחדש/).waitFor();
   await button('אישור ושמירת השביל').click();
@@ -160,7 +184,9 @@ try {
       await page.goto(origin + '/app/farm/map?example=' + role + '&scenario=' + day);
       await page.getByRole('heading', { name: 'מפת החווה' }).waitFor();
       await page.locator('.leaflet-container').waitFor();
-      assert.equal(await button('בחירה ידנית במפה').count(), 0);
+      assert.equal(await button('עריכת המפה').count(), 0);
+      await searchFor('שביל החממה');
+      assert.equal(await button('עריכת השביל').count(), 0);
       const nav = page.getByRole('navigation', { name: 'ניווט ראשי' });
       const map = await nav.getByRole('button', { name: 'מפה', exact: true }).boundingBox();
       const bar = await nav.boundingBox();
