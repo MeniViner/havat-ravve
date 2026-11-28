@@ -1,8 +1,8 @@
 // The configurable registration questions (settings.registrationFields) as v2 fields: C13 (my details) and C9 (first entry).
 // The same questions and rules as the old RegistrationFields.tsx; a required question carries " *" as it did.
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { now } from '../../../clock';
-import { Button, Checkbox, CheckboxBox, Field, ChoiceGroup } from '../../kit';
+import { CheckboxBox, Field, ChoiceGroup } from '../../kit';
 import type { RegistrationField } from '../../../types';
 import { href } from '../../../router';
 import { answerOf } from '../../data/system';
@@ -58,35 +58,81 @@ export function RegistrationTerms({ read, onChange, invalid }: { read: boolean; 
   </div>;
 }
 
-/** Scroll-snap wheel. Browsing years does not fill the optional field until the user confirms. */
-export function BirthYearField({ value, onChange }: { value?: number; onChange: (year: number) => void }) {
-  const [open, setOpen] = useState(false);
+/** Each year occupies one fixed-width snap point, independent of the screen width. */
+const YEAR_WIDTH = 56;
+export function BirthYearField({ value, onChange, invalid = false }: {
+  value?: number;
+  onChange: (year: number) => void;
+  invalid?: boolean;
+}) {
   const current = now().getFullYear();
-  const min = Math.min(1900, value ?? current);
-  const [draft, setDraft] = useState(value || current);
+  const oldest = 1900;
+  const years = Array.from({ length: current - oldest + 1 }, (_, i) => current - i);
+  // An imported historical value remains readable without offering new dates outside the supported range.
+  if (value !== undefined && Number.isInteger(value) && value > 0 && value < oldest) years.push(value);
+  const selected = value !== undefined && years.includes(value) ? value : undefined;
+  const centered = selected ?? Math.min(2000, current);
+  const index = years.indexOf(centered);
   const wheel = useRef<HTMLDivElement>(null);
-  const hintId = useId();
-  const choose = (y: number) => {
-    const year = Math.max(min, Math.min(current, y));
-    if (wheel.current) wheel.current.scrollTop = (year - min) * 44;
-    setDraft(year);
-  };
+  const visible = useRef(-1);
+  const hint = useId();
+
   useLayoutEffect(() => {
-    if (open) { choose(value || current); wheel.current?.focus({ preventScroll: true }); }
-  }, [open, value, current]);
-  if (!open) return <Button variant="outline" onClick={() => setOpen(true)}>{value ? `שנת לידה · ${value}` : 'בחירת שנת לידה (רשות)'}</Button>;
+    if (visible.current !== index && wheel.current) {
+      visible.current = index;
+      wheel.current.scrollLeft = index * YEAR_WIDTH;
+    }
+  }, [index]);
+
+  // Touch and trackpads scroll horizontally. A conventional vertical mouse wheel steps through the same years.
+  useEffect(() => {
+    const el = wheel.current;
+    if (!el) return;
+    const step = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      const pos = Math.round(el.scrollLeft / YEAR_WIDTH);
+      el.scrollLeft = (pos + Math.sign(event.deltaY)) * YEAR_WIDTH;
+    };
+    el.addEventListener('wheel', step, { passive: false });
+    return () => el.removeEventListener('wheel', step);
+  }, []);
+
+  function choose(position: number) {
+    const next = Math.max(0, Math.min(years.length - 1, position));
+    visible.current = next;
+    if (wheel.current) wheel.current.scrollLeft = next * YEAR_WIDTH;
+    onChange(years[next]);
+  }
+
   return <div className="birth-year">
-    <p id={hintId} className="k-note">החליקו לשנה הרצויה. אפשר גם להשתמש בחצים.</p>
-    <div className="birth-year__frame"><div className="birth-year__wheel" ref={wheel} tabIndex={0} role="spinbutton" aria-label="שנת לידה"
-      aria-describedby={hintId} aria-valuemin={min} aria-valuemax={current} aria-valuenow={draft}
-      onScroll={(e) => setDraft(Math.max(min, Math.min(current, min + Math.round(e.currentTarget.scrollTop / 44))))}
-      onKeyDown={(e) => { const next: Record<string, number> = { ArrowUp: draft - 1, ArrowDown: draft + 1, PageUp: draft - 10, PageDown: draft + 10, Home: min, End: current };
-        if (e.key in next) { e.preventDefault(); choose(next[e.key]); } }}>
-      {Array.from({ length: current - min + 1 }, (_, i) => <div aria-hidden="true" key={i} className={i + min === draft ? 'is-current' : ''} onClick={() => choose(i + min)}>{i + min}</div>)}
-    </div></div>
-    <div className="birth-year__actions"><Button variant="outline" onClick={() => choose(draft - 1)} disabled={draft === min}>שנה קודמת</Button>
-      <Button variant="outline" onClick={() => choose(draft + 1)} disabled={draft === current}>שנה הבאה</Button></div>
-    <div className="birth-year__actions"><Button onClick={() => { onChange(draft); setOpen(false); }}>בחירת {draft}</Button>
-      <Button variant="quiet" onClick={() => setOpen(false)}>דילוג</Button></div>
+    <span id={hint + '-label'} className="birth-year__label">אנא בחר שנת לידה</span>
+    <div className="birth-year__frame">
+      <div className="birth-year__wheel" dir="ltr" style={{ '--year-width': YEAR_WIDTH + 'px' } as CSSProperties}
+        ref={wheel} tabIndex={0} role="spinbutton" aria-labelledby={hint + '-label'} aria-describedby={hint}
+        aria-required="true" aria-invalid={invalid || undefined} aria-valuemin={years[years.length - 1]}
+        aria-valuemax={current} aria-valuenow={selected} aria-valuetext={selected === undefined ? 'טרם נבחרה שנה' : String(selected)}
+        onScroll={(e) => {
+          const next = Math.max(0, Math.min(years.length - 1, Math.round(e.currentTarget.scrollLeft / YEAR_WIDTH)));
+          if (next !== visible.current) {
+            visible.current = next;
+            onChange(years[next]);
+          }
+        }}
+        onKeyDown={(e) => {
+          const pos = visible.current;
+          const keys: Record<string, number> = {
+            ArrowUp: pos - 1, ArrowDown: pos + 1, ArrowLeft: pos - 1, ArrowRight: pos + 1,
+            PageUp: pos - 10, PageDown: pos + 10, Home: years.length - 1, End: 0, Enter: pos, ' ': pos,
+          };
+          if (e.key in keys) { e.preventDefault(); choose(keys[e.key]); }
+        }}>
+        {years.map((year, i) => <span key={year} aria-hidden="true" className={selected === year ? 'is-selected' : undefined}
+          onClick={() => choose(i)}>{year}</span>)}
+      </div>
+    </div>
+    <small id={hint} className={invalid ? 'k-field__error birth-year__hint' : 'birth-year__hint'}>
+      {selected === undefined ? (invalid ? 'צריך לבחור שנת לידה' : 'גללו או הקישו על שנה') : `גילך הוא ${current - selected} שנים`}
+    </small>
   </div>;
 }

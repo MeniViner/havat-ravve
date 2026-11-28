@@ -76,6 +76,11 @@ assert.deepEqual([invites.count,invites.joined.length,invites.expired.length],[2
 const birthFields=[{id:'birth',type:'date',label:'תאריך לידה'}];
 const older={birthDate:'1982-05-19',fields:{birth:'1982-05-19',member:'yes'}};
 assert.equal(storedBirthYear(older,birthFields),1982);
+assert.equal(storedBirthYear({...older,birthYear:-1,birthDate:'bad'},birthFields),1982);
+assert.equal(storedBirthYear({birthYear:1898},[]),1898);
+assert.deepEqual(birthChange({birthDate:'1898-05-19'},1898,[]),{});
+assert.throws(() => birthChange({birthYear:1898},1899,[]), /שנת לידה/);
+assert.throws(() => birthChange(older, 2800, birthFields), /שנת לידה/);
 assert.deepEqual(birthChange(older,undefined,birthFields),{});
 assert.deepEqual(birthChange(older,1980,birthFields),{birthYear:1980,birthDate:'',fields:{member:'yes'}});
 
@@ -102,8 +107,12 @@ for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest',
 }
 assert.equal((await readListFromCache('tasks',{where:[['title','==','x']]})).some(t=>t.id==='a-real-looking-id'),true);
 assert.ok(demoItems('tasks').some((t) => t.id === 'a-real-looking-id'), 'the write landed in the local demo store');
-const signup = { displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
+const signup = { displayName: 'אורח חדש', phone: '0500000000', birthYear: 1996, fields: { city: 'באר שבע', source: 'חברים' } };
+for (const invalid of [undefined, 0, 1899, 1990.5, new Date().getFullYear() + 1]) {
+  await assert.rejects(createProfile(NEW_DEMO_SESSION, { ...signup, birthYear: invalid }), /שנת לידה/);
+}
 await createProfile(NEW_DEMO_SESSION, signup);
+assert.equal(demoDoc('users/' + NEW_DEMO_SESSION.uid).birthYear, 1996);
 await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { receiptPreference: 'email' } });
 await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { city: 'עומר' } });
 assert.deepEqual(demoDoc('users/' + NEW_DEMO_SESSION.uid).fields, { city: 'עומר', source: 'חברים', receiptPreference: 'email' });
