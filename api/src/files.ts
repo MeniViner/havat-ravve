@@ -6,7 +6,7 @@
 //   GET  /v1/files/<key>         the file, cached for a year (keys are random and never reused)
 //
 // Who may upload follows firestore.rules for the field the file goes into: a profile photo is anyone's own,
-// task / shopping / place photos are the team's, event images and event files are managers', a stall photo is
+// task / shopping photos are the team's, place photos are the owner's, event images and event files are managers', a stall photo is
 // its vendor's or a manager's. The key carries 192 random bits, so a link is as private as the document that
 // holds it (the same model as a Firebase Storage download link). Content is checked by its first bytes, and
 // served with nosniff and a sandbox CSP, so a file can never run as a page.
@@ -27,7 +27,7 @@ const KINDS = {
   avatar: { who: 'anyone', pdf: false },
   task: { who: 'team', pdf: false },
   shopping: { who: 'team', pdf: false },
-  place: { who: 'team', pdf: false },
+  place: { who: 'owner', pdf: false },
   event: { who: 'manager', pdf: false },
   eventfile: { who: 'manager', pdf: true },
   stall: { who: 'vendor', pdf: false },
@@ -65,6 +65,7 @@ function mayUpload(kind: Kind, profile: Record<string, unknown>) {
   const who = KINDS[kind].who;
   if (who === 'anyone') return true;
   if (who === 'team') return TEAM.has(role);
+  if (who === 'owner') return role === 'owner';
   if (who === 'manager') return MANAGERS.has(role);
   return role === 'vendor' || MANAGERS.has(role);
 }

@@ -68,7 +68,7 @@ function useItems(ctx: GuestCtx) {
 const ItemRow = ({ it }: { it: Item }) => <Row minHeight={58} onClick={() => go(it.go)} title={it.title} tags={<Tag tone={it.tag.tone}>{it.tag.text}</Tag>} meta={it.meta || undefined} />;
 
 // ---------- U12 ----------
-const ABOUT: [RegExp, string][] = [[/^\/farm\/map$/, 'כדי לפתוח את המפה בחשבון הבעלים של החווה'], [/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
+const ABOUT: [RegExp, string][] = [[/^\/farm\/map$/, 'כדי לפתוח את המפה בחשבון הצוות של החווה'], [/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
 /** U12: the account page signed out, and /login?next=... (then the copy says why, and signing in goes on to `next`). */
 export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
   const sign = useSignIn();

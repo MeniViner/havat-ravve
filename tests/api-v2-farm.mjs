@@ -46,7 +46,7 @@ const sha = (s) => createHash('sha256').update(s).digest('hex');
 const KEYS = { owner: newKey(), users: newKey() };
 const CREDENTIALS = [
   { id: 'cred-v2-owner', sha256: sha(KEYS.owner), actors: ['actor-demo-owner'] },
-  { id: 'cred-v2-users', sha256: sha(KEYS.users), actors: ['user:syn-mgr', 'user:syn-staff', 'user:syn-staff2'] },
+  { id: 'cred-v2-users', sha256: sha(KEYS.users), actors: ['user:syn-mgr', 'user:syn-staff', 'user:syn-staff2', 'user:syn-owner-acct'] },
 ];
 
 // ---------- Worker under wrangler dev ----------
@@ -433,7 +433,7 @@ try {
     check(L && L.keyLabel === 'האינסטינקט של הבדיקה' && L.credential === 'cred-v2-users' && L.actor.uid === 'syn-mgr' && L.actor.role === 'manager', 'the entry names the key (KEY_LABELS) and the person it acts as', L);
     check(L && L.kind === 'write' && L.op === 'calendar.create' && L.verb === 'יצר' && L.opHe && L.ok === true && L.status === made.status, 'operation, verb and outcome', L);
     check(L && JSON.parse(L.body).title === 'יומן בדיקה ללוג' && L.result.includes(made.json.data.itemId || made.json.data.refs?.[0]?.id) && L.refs.length > 0 && L.idempotencyKey, 'what was sent, what came back and the records touched', L);
-    const pl = await w(MGR, 'places.add', { name: 'מקום ללוג', lat: 31.5, lng: 34.6 });
+    const pl = await w(U('syn-owner-acct'), 'places.add', { name: 'מקום ללוג', lat: 31.5, lng: 34.6 });
     const act = (await where('activity', 'refId', pl.json.data.placeId || pl.json.data.refs?.[0]?.id || pl.json.data.record?.id))[0];
     check(act && act.via && act.via.label === 'האינסטינקט של הבדיקה' && act.via.credential === 'cred-v2-users', 'the app\'s activity line says which key did it', act);
     const rd = await r(MGR, '/v1/calendar?limit=5');
@@ -560,13 +560,13 @@ try {
 
     // ---------- recycle bin (whatever an API request deletes is kept for 30 days) ----------
     const placeIdOf = (res) => res.json?.data?.placeId || res.json?.data?.refs?.[0]?.id || res.json?.data?.record?.id;
-    const pDel = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לסל המחזור', lat: 31.4, lng: 34.5 }));
+    const pDel = placeIdOf(await w(U('syn-owner-acct'), 'places.add', { name: 'מקום לסל המחזור', lat: 31.4, lng: 34.5 }));
     const placeBefore = await docOf('places/' + pDel);
-    const del = await w(MGR, 'places.delete', { placeId: pDel });
+    const del = await w(U('syn-owner-acct'), 'places.delete', { placeId: pDel });
     check(del.status === 200 && !(await docOf('places/' + pDel)), 'a key deletes a place', del.json?.error);
     const tr = await api('GET', '/v1/console/trash', C(own));
     const item = tr.json?.data?.items?.find((x) => x.path === 'places/' + pDel);
-    check(tr.status === 200 && item && item.by === 'האינסטינקט של הבדיקה' && item.who === 'מנהלת בדיקה' && item.title === 'מקום לסל המחזור' && item.collection === 'places' && item.requestId === del.json.meta.requestId, 'the deleted place is in the recycle bin, with the key and the person', item);
+    check(tr.status === 200 && item && item.by === 'האינסטינקט של הבדיקה' && item.who === 'חשבון הבעלים' && item.title === 'מקום לסל המחזור' && item.collection === 'places' && item.requestId === del.json.meta.requestId, 'the deleted place is in the recycle bin, with the key and the person', item);
     check(!tr.json.data.items.some((x) => /^(api_idempotency|push_jobs|api_log)\//.test(x.path)), 'the API\'s own housekeeping is not kept in the bin');
     check((await api('GET', '/v1/console/trash', C(mgr))).status === 403, 'a manager cannot open the recycle bin');
     const back = await api('POST', '/v1/console/trash/restore', { ...C(own), body: { keys: [item.key] } });
@@ -653,7 +653,7 @@ try {
     const colOf = (g) => cols.json?.data?.items?.find((c) => c.group === g);
     check(cols.status === 200 && colOf('users')?.count >= 10 && colOf('users').readOnly === true && colOf('places')?.readOnly === false && cols.json.data.backupDate === day, 'data: every collection with a live count; people and logs are read-only', cols.json?.data?.items?.slice(0, 4));
     check((await api('GET', '/v1/console/data', C(mgr))).status === 403, 'a manager cannot browse the data');
-    const pDat = placeIdOf(await w(MGR, 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
+    const pDat = placeIdOf(await w(U('syn-owner-acct'), 'places.add', { name: 'מקום לדפדוף', lat: 31.45, lng: 34.55 }));
     const pg = await api('GET', '/v1/console/data/docs?collection=places', C(own));
     check(pg.status === 200 && pg.json.data.items.some((d) => d.path === `places/${pDat}` && d.title === 'מקום לדפדוף'), 'data: a page of records with titles', pg.json?.data?.items?.length);
     const dv = await api('GET', `/v1/console/data/doc?path=places/${pDat}`, C(own));

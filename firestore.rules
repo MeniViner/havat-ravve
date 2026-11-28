@@ -280,18 +280,16 @@ service cloud.firestore {
    allow update: if isManager() && changed().hasOnly(['kind']) && resource.data.kind in ['task','task_private'] && incoming().kind in ['task','task_private'];
    allow delete: if false;
   }
-  // L3, L4: anyone on the team saves a place where they stand and names it; only managers delete one
+  // Places are shared with team workflows; only owners maintain the farm map.
   match /places/{id} {
    function coordinates(p){return p.lat is number && p.lat >= -90 && p.lat <= 90 && p.lng is number && p.lng >= -180 && p.lng <= 180;}
    function placeExtras(){let p=incoming(); let a=p.get('accuracy',null); return photoOk(p.get('photo','')) && (a == null || (a is number && a >= 0)) && coordinates(p)
      && str(p.name,120) && p.name.size()>0 && ((p.get('source',null) == null && p.get('measuredAt',null) == null) || (p.source in ['gps','manual'] && p.measuredAt is int && p.measuredAt > 0));}
    allow read: if isStaff();
-   allow create: if isStaff() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt'])
-     && (!incoming().keys().hasAny(['source','measuredAt']) || isOwner()) && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
-   allow update: if isStaff() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt'])
-     && (isOwner() || (!changed().hasAny(['source','measuredAt']) && (!changed().hasAny(['lat','lng']) || resource.data.get('source',null) == null))
-       || (changed().hasAny(['lat','lng']) && incoming().get('source',null) == null && incoming().get('measuredAt',null) == null));
-   allow update: if isManager() && changed().hasOnly(['archived']) && incoming().archived is bool;
+   allow create: if isOwner() && incoming().keys().hasOnly(['name','lat','lng','createdBy','createdAt','photo','accuracy','source','measuredAt'])
+     && actorOk(incoming().createdBy) && str(incoming().createdAt,40) && placeExtras();
+   allow update: if isOwner() && placeExtras() && changed().hasOnly(['name','lat','lng','photo','accuracy','source','measuredAt']);
+   allow update: if isOwner() && changed().hasOnly(['archived']) && incoming().archived is bool;
   }
   // Each immutable chunk is bounded well below a Firestore document. Retries write identical content.
   function chunkShape(){let d=incoming();return d.keys().hasOnly(['writer','index','points']) && d.writer==uid() && d.index is int && d.index>=0 && d.points is list && d.points.size()>0 && d.points.size()<=128
@@ -313,7 +311,7 @@ service cloud.firestore {
      && d.status in ['draft','confirmed'] && d.modes is list && d.modes.size()<=3 && d.modes.hasOnly(['walk','bike','vehicle']) && d.connections is list && d.connections.size()<=32
      && d.get('placeIds',[]) is list && d.get('placeIds',[]).size()<=32 && d.count is int && d.count>=0 && d.chunks is int && d.count <= d.chunks * 128 && d.count > (d.chunks - 1) * 128 && d.updatedAt is int
      && (d.status=='draft' || (d.modes.size()>0 && d.count>=2));}
-   allow read: if isOwner();
+   allow read: if isOwner() || (isStaff() && resource.data.status == 'confirmed');
    allow create: if isOwner() && trailShape() && incoming().ownerUid==uid();
    allow update: if isOwner() && trailShape() && incoming().ownerUid==resource.data.ownerUid && incoming().recordingId==resource.data.recordingId;
    match /revisions/{rev} {
@@ -322,7 +320,9 @@ service cloud.firestore {
       && getAfter(/databases/$(database)/documents/farmTrails/$(tid)).data.revision==rev;
    }
    match /versions/{geometry}/chunks/{index} {
-    allow read: if isOwner();
+    function publishedGeometry(){let trail=get(/databases/$(database)/documents/farmTrails/$(tid)).data;
+      return trail.status == 'confirmed' && trail.geometry == geometry;}
+    allow read: if isOwner() || (isStaff() && publishedGeometry());
     allow create: if isOwner() && chunkShape();
     allow update: if isOwner() && incoming()==resource.data && incoming().writer==uid();
    }
