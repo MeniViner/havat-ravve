@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, readyAuth, ownerEmail, nowIso, todayKey, hoursAgoIso, isAccountUser, type Session } from './firebase';
+import { isBirthYear, birthYearRequired } from './birthYear';
 import { useList, useDoc, write, newId } from './db';
 import { useDemo, getDemo, PERSONA_UID, NEW_DEMO_SESSION, demoDoc, demoOnly } from './demo/store';
 import { logActivity, taskKind, reclassifyTaskActivity, sweepAgain } from './activity';
@@ -52,7 +53,7 @@ export function useAuth(): { loading: boolean; user: Session | null; real: boole
 
 // ---------- profile ----------
 export function useProfile(user: Session | null) {
-  const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user);
+  const { item, loading, error } = useDoc<Profile>('users/' + (user?.uid || '_'), !!user, true);
   // a profile that could not be read is not a missing profile: never send an existing member to registration because of a network error
   const online = useOnline();
   const offlineError = user && !loading && !item && !online ? 'פרטי החשבון עוד לא נשמרו במכשיר. צריך להתחבר לרשת פעם אחת' : '';
@@ -88,10 +89,11 @@ export function useCmsEditor(user: Session, enabled: boolean) {
 /** The role for a brand-new account: owner for the verified Google bootstrap account; otherwise the role of the one-time team link the person came
  *  through (Q27, used up in the same transaction; a link that is gone refuses the sign-up so the person can ask again);
  *  otherwise whatever a manager pre-assigned to this email; otherwise guest. */
-export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string> }, link = '') {
+export async function createProfile(user: Session, data: { displayName: string; phone: string; fields: Record<string, string>; birthYear: number }, link = '') {
+  if (!isBirthYear(data.birthYear)) throw new Error(birthYearRequired);
   const now = nowIso();
   const email = (user.email || '').toLowerCase();
-  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
+  const details = { uid: user.uid, email, displayName: data.displayName.trim(), phone: data.phone.trim(), fields: data.fields, birthYear: data.birthYear, status: 'active' as const, acceptedTermsAt: now, createdAt: now, updatedAt: now };
   if (demoOnly() && getDemo().persona === 'new' && user.uid === NEW_DEMO_SESSION.uid) {
     if (!demoDoc('users/' + user.uid)) await write.set('users', user.uid, { ...details, role: 'guest', customerNumber: 999 });
     return;

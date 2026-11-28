@@ -33,6 +33,7 @@ export type Profile = {
   /** The Google account photo URL, copied at sign-in. */
   googlePhoto?: string;
   town?: string;
+  birthYear?: number;
   birthDate?: string;
   /** Push opt-in (L6 / C12 notification rows). */
   push?: { enabled: boolean; kinds?: string[]; updatedAt?: string };

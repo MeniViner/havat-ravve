@@ -16,10 +16,11 @@ import type { Profile, RegistrationField, RoleInvite, Settings } from '../../../
 import type { Session } from '../../../firebase';
 import {
   useInviteFor, INVITE_ROLE_WORD, firstName, markWelcomed, registrationQuestions, answersFor, missingAnswers, useInstallPrompt, promptInstall, isIos,
-  afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
+  storedBirthYear, birthChange, afterFirstEntry, useOfflineQueue, setOfflineSince, suspendedAt,
 } from '../../data/system';
 import { signOutEverywhere } from './profile';
-import { RegistrationQuestions } from './fields';
+import { isBirthYear } from '../../../birthYear';
+import { RegistrationQuestions, RegistrationTerms, BirthYearField } from './fields';
 import { forgetVendorInvite } from '../../data/vendor';
 import './system.css';
 
@@ -30,6 +31,9 @@ import './system.css';
 export function WelcomeForm({ user, profile, invite, fields, link }: { user: Session; profile: Profile | null; invite: RoleInvite | null; fields?: RegistrationField[]; link?: string }) {
   const toast = useToast();
   const [name, setName] = useState(profile?.displayName || '');
+  const [termsRead, setTermsRead] = useState(false);
+  const [birthYear, setBirthYear] = useState<number>();
+  const selectedYear = birthYear ?? (profile && storedBirthYear(profile, fields || []));
   const [phone, setPhone] = useState(profile?.phone || '');
   const questions = registrationQuestions(fields);
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(profile?.fields, questions));
@@ -40,18 +44,20 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
   const phoneErr = tried && !contactPhoneOk(phone) ? 'מספר טלפון לא תקין' : '';
   const submit = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !isBirthYear(selectedYear, profile ? 1 : 1900) || (!profile && !termsRead) || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
     try {
       // an existing profile keeps its other fields; its answers are written only when there are questions
-      const d = { displayName: name, phone, ...(profile && questions.length ? { fields: { ...(profile.fields || {}), ...answers } } : {}) };
-      if (profile) await markWelcomed(profile.uid, d);
-      else if (demoOnly()) {
+      if (profile) {
+        const changed = birthChange(profile, birthYear, fields || []);
+        await markWelcomed(profile.uid, { displayName: name, phone, ...changed,
+          ...(questions.length ? { fields: { ...(changed.fields || profile.fields), ...answers } } : {}) });
+      } else if (demoOnly()) {
         const at = nowIso();
-        await write.set('users', user.uid, { uid: user.uid, email: (invite?.email || user.email).toLowerCase(), displayName: name.trim(), phone: phone.trim(), role: invite?.role || 'staff', status: 'active', customerNumber: 999, acceptedTermsAt: at, createdAt: at, updatedAt: at, welcomedAt: at, fields: given });
+        await write.set('users', user.uid, { uid: user.uid, email: (invite?.email || user.email).toLowerCase(), displayName: name.trim(), phone: phone.trim(), role: invite?.role || 'staff', status: 'active', customerNumber: 999, acceptedTermsAt: at, createdAt: at, updatedAt: at, welcomedAt: at, fields: given, birthYear: selectedYear });
       } else {
-        await createProfile(user, { displayName: name, phone, fields: given }, link);
+        await createProfile(user, { displayName: name, phone, fields: given, birthYear: selectedYear }, link);
         if (link) forgetVendorInvite();
         void write.update('users', user.uid, { welcomedAt: nowIso() }, { quiet: true }).catch(() => {});
       }
@@ -85,7 +91,9 @@ export function WelcomeForm({ user, profile, invite, fields, link }: { user: Ses
           </li>
         </MoreDetails>
       )}
-      <span className="system-note">השם יופיע ליד כל משימה שתבצע. <button type="button" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
+      <span className="system-note">השם יופיע ליד כל משימה שתבצע.</span>
+      <BirthYearField value={selectedYear ?? undefined} onChange={setBirthYear} invalid={tried && !isBirthYear(selectedYear, profile ? 1 : 1900)} />
+      {!profile && <RegistrationTerms read={termsRead} onChange={setTermsRead} invalid={tried && !termsRead} />}
     </AppScreen>
   );
 }

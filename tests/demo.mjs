@@ -86,7 +86,8 @@ for (const persona of ['owner', 'manager', 'staff', 'vendor', 'helper', 'guest',
   assert.deepEqual(writes(), [], `no Firestore write as ${persona}`);
 }
 assert.ok(demoItems('tasks').some((t) => t.id === 'a-real-looking-id'), 'the write landed in the local demo store');
-const signup = { displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
+const signup = { birthYear: 2000, displayName: 'אורח חדש', phone: '0500000000', fields: { city: 'באר שבע', source: 'חברים' } };
+await assert.rejects(createProfile(NEW_DEMO_SESSION, { ...signup, birthYear: undefined }), /שנת לידה/);
 await createProfile(NEW_DEMO_SESSION, signup);
 await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { receiptPreference: 'email' } });
 await updateOwnProfile(NEW_DEMO_SESSION.uid, { fields: { city: 'עומר' } });

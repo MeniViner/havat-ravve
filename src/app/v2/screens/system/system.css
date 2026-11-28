@@ -126,3 +126,16 @@
 /* outside the shell (first entry, suspended) src/app/App.tsx puts the demo strip above the screen: keep the screen inside the viewport */
 .v2:has(> .k-demo) + .k-screen { height: calc(100vh - 28px); height: calc(100dvh - 28px); }
 .v2:has(> .k-demo) + .v2 .system-suspended { min-height: calc(100dvh - 28px); }
+
+.birth-year { direction: rtl; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 3px 8px; align-items: center; }
+.birth-year__label { font-size: 14px; line-height: 1.25; font-weight: 600; }
+.birth-year__frame { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.birth-year__frame:focus-within { outline: 2px solid var(--action); outline-offset: 1px; }
+.birth-year__frame::before { content: ''; position: absolute; left: 50%; transform: translateX(-50%); inset-block: 3px; width: 54px; border-radius: 5px; background: var(--bg); border-bottom: 2px solid var(--action); pointer-events: none; }
+.birth-year__wheel { display: flex; position: relative; height: 42px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; outline: none; font-variant-numeric: tabular-nums; }
+.birth-year__wheel::-webkit-scrollbar { display: none; }
+.birth-year__wheel::before, .birth-year__wheel::after { content: ''; flex: 0 0 calc((100% - var(--year-width)) / 2); }
+.birth-year__wheel > span { flex: 0 0 var(--year-width); display: grid; place-items: center; scroll-snap-align: center; color: var(--soft); font-size: 15px; cursor: pointer; }
+.birth-year__wheel .is-selected { color: var(--action); font-weight: 700; }
+.birth-year__hint { grid-column: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); }
+.birth-year__hint.k-field__error { color: var(--red); }

@@ -83,7 +83,7 @@ export function useSwitchesSnapshot<T extends Row & { maintenance?: boolean; rea
   return st;
 }
 
-export function useDoc<T extends Row>(path: string, enabled = true): { item: T | null; loading: boolean; error?: string } {
+export function useDoc<T extends Row>(path: string, enabled = true, verifyProfile = false): { item: T | null; loading: boolean; error?: string } {
   const demo = useDemo(); const v = useDemoVersion();
   const local = demo.on;
   // the state remembers which document it holds, so a new path never shows the previous document, not even for one render
@@ -91,8 +91,38 @@ export function useDoc<T extends Row>(path: string, enabled = true): { item: T |
   useEffect(() => {
     if (!enabled || local) { setFs({ path, item: null, loading: false }); return; }
     setFs({ path, item: null, loading: true });
-    return onSnapshot(doc(db, path), (snap) => setFs({ path, item: snap.exists() ? ({ id: snap.id, ...(snap.data() as DocumentData) } as unknown as T) : null, loading: false }), (e) => setFs({ path, item: null, loading: false, error: readError(e) })); // a failed read is not "the document does not exist"
-  }, [path, enabled, local]);
+    let active = true;
+    let revision = 0;
+    let pendingRevision: number | undefined;
+    const confirmProfile = async () => {
+      const at = revision;
+      if (pendingRevision === at) return;
+      pendingRevision = at;
+      try {
+        const { readProfileFromServer } = await import('./profileRead');
+        const item = await readProfileFromServer(path);
+        if (active && at === revision) setFs({ path, item: item as T | null, loading: false });
+      } catch (e) {
+        if (active && at === revision) setFs({ path, item: null, loading: false, error: readError(e) });
+      } finally { if (pendingRevision === at) pendingRevision = undefined; }
+    };
+    // A disconnected listener can also stay pending without emitting any snapshot.
+    const timer = verifyProfile ? setTimeout(confirmProfile, 3500) : undefined;
+    const unsubscribe = onSnapshot(doc(db, path), { includeMetadataChanges: verifyProfile }, (snap) => {
+      clearTimeout(timer);
+      if (!snap.exists() && verifyProfile) {
+        void confirmProfile();
+        return;
+      }
+      revision++;
+      setFs({ path, item: snap.exists() ? ({ id: snap.id, ...snap.data() } as unknown as T) : null, loading: false });
+    }, (e) => {
+      clearTimeout(timer);
+      revision++;
+      setFs({ path, item: null, loading: false, error: readError(e) });
+    });
+    return () => { active = false; clearTimeout(timer); unsubscribe(); };
+  }, [path, enabled, local, verifyProfile]);
   return useMemo(() => {
     if (!enabled) return { item: null, loading: false };
     if (local) return { item: (demoDoc(path) as T | null), loading: false };

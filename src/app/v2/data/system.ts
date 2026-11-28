@@ -1,3 +1,4 @@
+import { isBirthYear, birthYearRequired } from '../../birthYear';
 // Data for the system area: my profile (L6, C12, C13), profile photo (A1, A2), global search (C2), first entry (C9),
 // install (C10), the offline queue (C8) and the suspended screen (X2). Everything goes through db.ts, so the same code
 // runs on demo data and on Firestore. All "now" comes from clock.ts.
@@ -108,9 +109,30 @@ export function useGooglePhotoSync(profile: Profile) {
 }
 
 // ---------- registration questions (settings.registrationFields; the same rules as the old RegistrationFields.tsx) ----------
+export const birthQuestion = (f: RegistrationField) => f.type === 'date' && (f.label.includes('לידה') || /^(birthdate|dob)$/i.test(f.id));
+export function storedBirthYear(p: Profile, fields: RegistrationField[]) {
+  if (isBirthYear(p.birthYear, 1)) return p.birthYear;
+  const dates = [p.birthDate, ...fields.filter(birthQuestion).map((f) => p.fields?.[f.id])];
+  for (const date of dates) {
+    const year = Number(/^(\d{4})-\d{2}-\d{2}$/.exec(date || '')?.[1]);
+    if (isBirthYear(year, 1)) return year;
+  }
+  return undefined;
+}
+/** Drop the old full-date answer only when the person explicitly replaces it with a year. */
+export function birthChange(p: Profile, year: number | undefined, fields: RegistrationField[]): Partial<Pick<Profile, 'birthYear' | 'birthDate' | 'fields'>> {
+  if (year === undefined) return {};
+  if (!isBirthYear(year)) {
+    if (year === storedBirthYear(p, fields)) return {};
+    throw new Error(birthYearRequired);
+  }
+  const answers = { ...p.fields };
+  fields.filter(birthQuestion).forEach((f) => { delete answers[f.id]; });
+  return { birthYear: year, ...(p.birthDate ? { birthDate: '' } : {}), fields: answers };
+}
 /** The questions a person answers: a label, and options for a choice; the receipt preference has its own toggle. */
 export const registrationQuestions = (fields: RegistrationField[] | undefined) => (fields || []).filter((f) => (
-  f.id !== RECEIPT_PREFERENCE_FIELD && (f.label || '').trim() && (f.type !== 'choice' || (f.options || []).length)
+  !birthQuestion(f) && f.id !== RECEIPT_PREFERENCE_FIELD && (f.label || '').trim() && (f.type !== 'choice' || (f.options || []).length)
 ));
 /** The stored answer, or '' (a choice answer that is no longer one of the options counts as none). */
 export function answerOf(answers: Record<string, string> | undefined, field: RegistrationField) {
@@ -131,7 +153,7 @@ export const answerText = (answers: Record<string, string> | undefined, field: R
 
 // ---------- profile ----------
 /** `answers`: the registration questions (optional; kept as they are when left out). */
-export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate: string; receipt: 'whatsapp' | 'email'; answers?: Record<string, string> };
+export type ProfileDraft = { displayName: string; phone: string; town: string; birthDate?: string; birthYear?: number; receipt: 'whatsapp' | 'email'; answers?: Record<string, string> };
 export const receiptOf = (p: Profile): 'whatsapp' | 'email' => (p.fields?.[RECEIPT_PREFERENCE_FIELD] === 'email' ? 'email' : 'whatsapp');
 /** "14.3.1975" / "14/03/1975" / "1975-03-14" -> "1975-03-14"; '' stays ''; null when it is not a date. */
 export function parseBirth(s: string): string | null {
@@ -151,10 +173,13 @@ export function parseBirth(s: string): string | null {
 export const birthText = (iso?: string) => { const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : iso || ''; };
 const trimmed = (a: Record<string, string> | undefined) => Object.fromEntries(Object.entries(a || {}).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
 /** Only the person's own fields; never role, status or anything a manager owns. */
-export function saveProfile(p: Profile, d: ProfileDraft) {
+export function saveProfile(p: Profile, d: ProfileDraft, questions: RegistrationField[] = []) {
+  const date = d.birthDate ? parseBirth(d.birthDate) : undefined;
+  if (!isBirthYear(d.birthYear ?? storedBirthYear(p, questions) ?? Number(date?.slice(0, 4)), 1)) throw new Error(birthYearRequired);
+  const changedBirth = birthChange(p, d.birthYear, questions);
   return saveAccountChange(p.uid, 'profile_updated', {
-    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), birthDate: parseBirth(d.birthDate) || '',
-    fields: { ...(p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
+    displayName: d.displayName.trim(), phone: d.phone.trim(), town: d.town.trim(), ...(date ? { birthDate: date } : {}), ...changedBirth,
+    fields: { ...(changedBirth.fields || p.fields || {}), ...trimmed(d.answers), [RECEIPT_PREFERENCE_FIELD]: d.receipt }, updatedAt: nowIso(),
   });
 }
 

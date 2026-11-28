@@ -17,8 +17,9 @@ import { isNative } from '../../../native';
 import { dayName, daysFromToday, ddmm, longDate, money } from '../../format';
 import { isRead, markRead, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import { DevicePushRow } from '../broadcast/PushSheet';
-import { registrationQuestions, answerOf, answersFor, missingAnswers } from '../../data/system';
-import { RegistrationQuestions } from '../system/fields';
+import { registrationQuestions, storedBirthYear, birthChange, answerOf, answersFor, missingAnswers } from '../../data/system';
+import { isBirthYear } from '../../../birthYear';
+import { RegistrationQuestions, BirthYearField } from '../system/fields';
 import { gw } from '../../gender';
 import { AccountDemoRow, AccountFooter, signOutEverywhere } from '../system/profile';
 import type { Broadcast, Donation, Profile, ReceiptPreference, Tab, Visit } from '../../../types';
@@ -186,7 +187,10 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const [name, setName] = useState(p.displayName || '');
   const [phone, setPhone] = useState(p.phone || '');
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(p.fields, questions));
-  const [optIn, setOptIn] = useState(!!p.updatesOptIn);
+  const [updatesChoice, setOptIn] = useState<boolean>();
+  const optIn = updatesChoice ?? !!p.updatesOptIn;
+  const [birthYear, setBirthYear] = useState<number>();
+  const selectedYear = birthYear ?? storedBirthYear(p, ctx.settings.registrationFields);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const missing = missingAnswers(answers, questions);
@@ -195,11 +199,12 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const done = () => back(paths(ctx).account);
   const save = async () => {
     setTried(true);
-    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || busy) return;
+    if (name.trim().length < 2 || !contactPhoneOk(phone) || missing.length || !isBirthYear(selectedYear, 1) || busy) return;
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]));
     try {
-      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), fields: { ...(p.fields || {}), ...given }, updatesOptIn: optIn, updatedAt: nowIso() });
+      const changedBirth = birthChange(p, birthYear, ctx.settings.registrationFields);
+      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), ...changedBirth, fields: { ...(changedBirth.fields || p.fields || {}), ...given }, ...(updatesChoice === undefined ? {} : { updatesOptIn: updatesChoice }), updatedAt: nowIso() });
       toast.show({ text: 'נשמר', duration: 2500 }); done();
     } catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); }
     finally { setBusy(false); }
@@ -210,6 +215,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       <Field label="השם שלך בעברית" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
       <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      <BirthYearField value={selectedYear} onChange={setBirthYear} invalid={tried && !isBirthYear(selectedYear, 1)} />
       <UpdatesSwitch checked={optIn} onChange={setOptIn} />
       <DetailList><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>
       <Note>המייל מגיע מחשבון Google, ולכן אי אפשר לשנות אותו כאן.</Note>
