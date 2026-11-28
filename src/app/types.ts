@@ -52,7 +52,8 @@ export const RECEIPT_PREFERENCE_FIELD = 'receiptPreference';
 export const RECEIPT_PREFERENCE_LABELS: Record<ReceiptPreference, string> = { whatsapp: 'וואטסאפ', email: 'מייל' };
 export type PaymentConfirmation = { by: Actor; at: string };
 
-export type Place = { id: string; name: string; lat: number; lng: number; createdBy: Actor; createdAt: string; photo?: string; accuracy?: number | null; measuredAt?: number | null; source?: 'gps' | 'manual' | null; archived?: boolean };
+export type PlaceIcon = 'pin' | 'gate' | 'sprout' | 'tree' | 'paw' | 'box' | 'flower' | 'store';
+export type Place = { icon?: PlaceIcon; markerStyle?: 'icon' | 'thumbnail'; id: string; name: string; lat: number; lng: number; createdBy: Actor; createdAt: string; photo?: string; accuracy?: number | null; measuredAt?: number | null; source?: 'gps' | 'manual' | null; archived?: boolean };
 
 export type TaskLocation = { lat: number; lng: number; placeId?: string; placeName?: string };
 

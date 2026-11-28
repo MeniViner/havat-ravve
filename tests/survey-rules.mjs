@@ -33,6 +33,21 @@ try {
     createdAt: '2026-11-26T09:00:00Z',
   };
   await yes(setDoc(ref(owner, 'places/gate'), { ...base, source: 'gps', measuredAt: 100, accuracy: 4 }));
+  await yes(updateDoc(ref(owner, 'places/gate'), { icon: 'gate', markerStyle: 'icon' }));
+  await no(updateDoc(ref(owner, 'places/gate'), { icon: 'unknown' }));
+  await no(updateDoc(ref(manager, 'places/gate'), { icon: 'pin' }));
+  const mapId = 'farm_map/settings';
+  const homeView = {lat: 50, lng: 10, zoom: 17.5};
+  const setup = {entrance: {lat: 50, lng: 10}, placeId: 'gate', trailId: 'run'};
+  await yes(setDoc(ref(owner, mapId), {homeView}));
+  await yes(updateDoc(ref(owner, mapId), {setup}));
+  await no(updateDoc(ref(owner, mapId), {homeView: {...homeView, zoom: 50}}));
+  await no(updateDoc(ref(owner, mapId), {setup: {...setup, entrance: {lat: 91, lng: 0}}}));
+  for (const reader of [manager, staff]) {
+    assert.deepEqual((await yes(getDoc(ref(reader, mapId)))).data(), {homeView, setup});
+    await no(updateDoc(ref(reader, mapId), {homeView}));
+  }
+  await no(getDoc(ref(guest, mapId)));
   await no(
     setDoc(ref(staff, 'places/s'), {
       ...base,
@@ -84,8 +99,10 @@ try {
   await no(setDoc(ref(staff, 'farmTrails/run'), t));
   await no(setDoc(ref(owner, 'farmTrails/run'), { ...t, modes: [] }));
   await no(setDoc(ref(owner, 'farmTrails/run'), { ...t, chunks: 2 }));
+  await no(setDoc(ref(owner, 'farmTrails/run'), { ...t, unsuitableModes: ['walk'] }));
+  await no(setDoc(ref(owner, 'farmTrails/run'), { ...t, unsuitableModes: ['boat'] }));
   const batch = writeBatch(owner);
-  batch.set(ref(owner, 'farmTrails/run'), t);
+  batch.set(ref(owner, 'farmTrails/run'), { ...t, unsuitableModes: ['vehicle'] });
   batch.set(ref(owner, 'farmTrails/run/revisions/r1'), { revision: 'r1', at: 200 });
   await yes(batch.commit());
   await no(setDoc(ref(owner, 'farmTrails/run/revisions/r2'), { revision: 'r2', at: 220 }));
