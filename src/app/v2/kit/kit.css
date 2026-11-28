@@ -186,6 +186,7 @@ html[data-theme="dark"] .v2 {
   flex: none; height: 66px; display: flex; background: var(--surface); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+.k-nav.k-nav--center-map { display: grid; grid-template-columns: repeat(2, minmax(0, 3fr)) minmax(0, 2fr) repeat(3, minmax(0, 2fr)); }
 .k-nav__item {
   position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   text-decoration: none; color: var(--soft); font-size: 13px; font-weight: 400;
