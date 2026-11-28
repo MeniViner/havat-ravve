@@ -155,19 +155,28 @@ try {
   await page.goto(origin + '/app/farm/map?demo=owner&day=eventDay');
   await page.getByRole('heading', { name: 'מפת החווה' }).waitFor();
   assert.ok((await page.locator('nav').innerText()).includes('אירוע'));
-  await page.goto(origin + '/app/farm/map?demo=staff');
-  await page.waitForTimeout(500);
-  assert.equal(await page.getByRole('heading', { name: 'מפת החווה' }).count(), 0);
+  for (const role of ['staff', 'manager']) {
+    for (const day of ['regular', 'eventDay']) {
+      await page.goto(origin + '/app/farm/map?demo=' + role + '&day=' + day);
+      await page.getByRole('heading', { name: 'מפת החווה' }).waitFor();
+      await page.locator('.leaflet-container').waitFor();
+      assert.equal(await button('בחירה ידנית במפה').count(), 0);
+      const nav = page.getByRole('navigation', { name: 'ניווט ראשי' });
+      const map = await nav.getByRole('button', { name: 'מפה', exact: true }).boundingBox();
+      const bar = await nav.boundingBox();
+      assert.ok(Math.abs(map.x + map.width / 2 - bar.x - bar.width / 2) < 2);
+    }
+  }
   await page.goto(origin + '/app/farm/map?demo=anon');
   await page.getByRole('heading', { name: 'כניסה למפת החווה' }).waitFor();
   await page.getByRole('button', { name: /Google/ }).waitFor();
   assert.equal(await page.locator('.leaflet-container').count(), 0);
   await page.goto(origin + '/app/farm/map?demo=guest');
-  await page.getByText('מפת החווה זמינה לבעלים').waitFor();
+  await page.getByText('מפת החווה זמינה לצוות החווה').waitFor();
   assert.equal(await page.locator('.leaflet-container').count(), 0);
   assert.deepEqual(exceptions, []);
   console.log(
-    'PASS mobile RTL map, browser measurement states, manual selection, cancellation, reload, edit, search, explicit trail connection, stale target and owner route guard'
+    'PASS mobile RTL map, browser measurement states, manual selection, cancellation, reload, edit, search, explicit trail connection, stale target and read-only team access, centered navigation and guest route guard'
   );
 } finally {
   await browser.close();

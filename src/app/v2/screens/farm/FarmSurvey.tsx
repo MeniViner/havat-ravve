@@ -53,7 +53,45 @@ function Geometry({ trail, update }: { trail: Trail; update: (key: string, layer
   return null;
 }
 export function FarmSurvey({ ctx }: ScreenProps) {
-  return <Survey key={scopeOf(ctx.user.uid)} ctx={ctx} />;
+  return ctx.owner ? <Survey key={scopeOf(ctx.user.uid)} ctx={ctx} /> : <TeamFarmMap key={ctx.user.uid} ctx={ctx} />;
+}
+
+function TeamFarmMap({ ctx }: { ctx: ScreenProps['ctx'] }) {
+  const online = useOnline();
+  const cloud = useList<Trail>('farmTrails', { where: [['status', '==', 'confirmed']] });
+  const [layers, setLayers] = useState<Record<string, Layer>>({});
+  const updateLayer = useCallback((key: string, layer: Layer) => setLayers((v) => ({ ...v, [key]: layer })), []);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState('');
+  const [view, setView] = useState<View | null>(null);
+  const query = search.trim();
+  const places = useMemo(() => ctx.places.filter((p) => !p.archived && coordinate(p) && p.name.includes(query)), [ctx.places, query]);
+  const trails = useMemo(() => cloud.items.filter((t) => t.status === 'confirmed' && t.name.includes(query)), [cloud.items, query]);
+  const drawn = useMemo(() => trails.map((trail) => ({ trail, points: layers[trail.id + '@' + trail.geometry]?.points ?? EMPTY })), [trails, layers]);
+  const selectedPlace = places.find((p) => p.id === selected);
+  const selectedTrail = drawn.find((t) => t.trail.id === selected);
+  const focus = (id: string, points: Point[]) => {
+    setSelected(id);
+    if (points.length) setView((previous) => ({ id: (previous?.id || 0) + 1, points }));
+  };
+  return (
+    <AppScreen variant="detail" className="survey-screen">
+      {trails.map((t) => <Geometry key={t.id + '@' + t.geometry} trail={t} update={updateLayer} />)}
+      <TopBar back={{ label: 'החווה', onClick: () => go('/farm') }} />
+      <header className="survey-title"><div><h1>מפת החווה</h1><p>מקומות ושבילים מאושרים</p></div></header>
+      <Field label="חיפוש במפה" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="שם מקום או שביל" />
+      <SurveyMap places={places} trails={drawn} live={null} clock={0} raw={EMPTY} selected={selected} selecting={false}
+        online={online} view={view} onPlace={setSelected} onTrail={setSelected} onPick={() => {}} onVertex={() => {}} />
+      {(selectedPlace || selectedTrail) && <p role="status">{selectedPlace?.name || selectedTrail?.trail.name}</p>}
+      {cloud.error && <p role="alert">{cloud.error}</p>}
+      {trails.some((t) => layers[t.id + '@' + t.geometry]?.error) && <p role="status">חלק מהשבילים עדיין לא נטענו במלואם.</p>}
+      {query && <section className="survey-panel">
+        {places.map((p) => <Button key={p.id} variant="quiet" icon="pin" onClick={() => focus(p.id, [p])}>{p.name}</Button>)}
+        {drawn.map(({trail, points}) => <Button key={trail.id} variant="quiet" disabled={!points.length} onClick={() => focus(trail.id, points)}>{trail.name}</Button>)}
+        {!cloud.loading && !places.length && !trails.length && <p>אין תוצאות לחיפוש הזה</p>}
+      </section>}
+    </AppScreen>
+  );
 }
 function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const scope = scopeOf(ctx.user.uid),

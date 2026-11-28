@@ -36,10 +36,10 @@ export function FarmRoot({ ctx }: ScreenProps) {
 
       <StaffingSummary items={cal.items} ctx={ctx} now={nowMin} loading={cal.loading} error={cal.error} />
 
-      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go(ctx.owner ? '/farm/map' : '/places?from=farm'); }}>
+      <a href="#" className="farm-linkcard" onClick={(e) => { e.preventDefault(); go('/farm/map'); }}>
         <span className="farm-linkcard__box farm-linkcard__box--count"><Icon name="pin" size={22} /></span>
         <div className="farm-linkcard__body">
-          <span className="farm-linkcard__sub">{ctx.owner ? 'מפת החווה' : 'מקומות בחווה'}</span>
+          <span className="farm-linkcard__sub">מפת החווה</span>
           <span className="farm-linkcard__over">{ctx.places.length === 1 ? 'מקום אחד שמור' : ctx.places.length ? `${ctx.places.length} מקומות שמורים` : ctx.owner ? 'פתיחת מפה וסקר שטח' : 'עוד לא נשמר מקום'}</span>
         </div>
         <span className="farm-linkcard__chev"><Icon name="chevron" size={20} /></span>
