@@ -527,24 +527,26 @@ try {
 
   section('places');
   {
-    const a = await w(RONIT, 'places.add', { name: 'מחסן', lat: 31.55, lng: 34.65, accuracy: 12.5 });
-    ok(a, 'staff adds a place (rules: create isStaff)');
+    const a = await w(OWNER, 'places.add', { name: 'מחסן', lat: 31.55, lng: 34.65, accuracy: 12.5 });
+    ok(a, 'owner adds a place');
     const pid = a.json.data.placeId;
     const p = await docOf('places/' + pid);
-    check(sameKeys(p, [...PLACE_KEYS, 'accuracy']) && p.accuracy === 12.5 && p.createdBy.uid === 'syn-ronit', 'with accuracy (createPlace)', p);
+    check(sameKeys(p, [...PLACE_KEYS, 'accuracy']) && p.accuracy === 12.5 && p.createdBy.uid === 'synthetic-owner', 'with accuracy (createPlace)', p);
     check((await acts(pid)).map((x) => x.action + ':' + x.kind + ':' + x.text).join() === 'created:place:מחסן', 'activity created');
-    const noAcc = await w(RONIT, 'places.add', { name: 'בלי דיוק', lat: 31, lng: 34 });
+    const noAcc = await w(OWNER, 'places.add', { name: 'בלי דיוק', lat: 31, lng: 34 });
     check(sameKeys(await docOf('places/' + noAcc.json.data.placeId), PLACE_KEYS), 'without accuracy: no accuracy field');
-    ok(await w(NOA, 'places.update', { placeId: pid, name: 'מחסן כלים', accuracy: 5 }), 'staff edits a place');
+    ok(await w(OWNER, 'places.update', { placeId: pid, name: 'מחסן כלים', accuracy: 5 }), 'owner edits a place');
     const ph = PHOTO('syn-noa').replace('/task/', '/place/');
-    ok(await w(NOA, 'places.update', { placeId: pid, photo: ph }), 'a stored photo for the place');
+    ok(await w(OWNER, 'places.update', { placeId: pid, photo: ph }), 'a stored photo for the place');
     const p2 = await docOf('places/' + pid);
     check(p2.name === 'מחסן כלים' && p2.accuracy === 5 && p2.photo === ph && !('updatedAt' in p2), 'name, accuracy and photo; no updatedAt (the rules allow none)', p2);
     check((await acts(pid)).map((x) => x.action + ':' + x.text).join() === 'created:מחסן,edited:מחסן כלים,edited:מחסן כלים', 'activity edited each time (savePlace)', await acts(pid));
-    check((await w(NOA, 'places.update', { placeId: pid, photo: 'data:image/jpeg;base64,AA' })).status === 400, 'base64 place photo refused');
+    check((await w(OWNER, 'places.update', { placeId: pid, photo: 'data:image/jpeg;base64,AA' })).status === 400, 'base64 place photo refused');
     check((await w(RONIT, 'places.delete', { placeId: pid })).status === 403, 'staff cannot delete a place');
-    const d = await w(MGR, 'places.delete', { placeId: pid });
-    check(d.status === 200 && !(await docOf('places/' + pid)) && (await acts(pid)).at(-1).action === 'deleted' && (await acts(pid)).at(-1).text === 'מחסן כלים', 'a manager deletes it, activity deleted');
+    check((await w(MGR, 'places.update', { placeId: pid, lat: 32 })).status === 403, 'manager cannot move a place');
+    check((await w(MGR, 'places.delete', { placeId: pid })).status === 403, 'manager cannot delete a place');
+    const d = await w(OWNER, 'places.delete', { placeId: pid });
+    check(d.status === 200 && !(await docOf('places/' + pid)) && (await acts(pid)).at(-1).action === 'deleted' && (await acts(pid)).at(-1).text === 'מחסן כלים', 'an owner deletes it, activity deleted');
   }
 
   section('projects');
@@ -658,8 +660,8 @@ try {
       // an API-created template and place are valid app documents
       const tpl = (await w(MGR, 'templates.create', { title: 'חוקים', assignee: 'syn-ronit', placeId: 'pl-tpl', days: [0, 1, 2, 3, 4, 5, 6] })).json.data.templateId;
       label = 'a manager edits an API-created template in the app'; await assertSucceeds(updateDoc(doc(dani, 'task_templates', tpl), { active: false, updatedAt: n })); check(true, label);
-      const pl = (await w(RONIT, 'places.add', { name: 'חוקים', lat: 31, lng: 34, accuracy: 3 })).json.data.placeId;
-      label = 'staff edits an API-added place in the app'; await assertSucceeds(updateDoc(doc(noa, 'places', pl), { name: 'חוקים 2', lat: 31, lng: 34 })); check(true, label);
+      const pl = (await w(OWNER, 'places.add', { name: 'חוקים', lat: 31, lng: 34, accuracy: 3 })).json.data.placeId;
+      label = 'staff cannot edit an API-added place in the app'; await assertFails(updateDoc(doc(noa, 'places', pl), { name: 'חוקים 2', lat: 31, lng: 34 })); check(true, label);
       // projects: API steps are valid for the app's take / update; staff sees nothing
       const pid = (await w(MGR, 'projects.create', { title: 'חוקים', steps: JSON.stringify([{ title: 'א' }, { title: 'ב' }]) })).json.data.projectId;
       const steps = await listOf(`projects/${pid}/steps`);

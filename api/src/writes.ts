@@ -248,13 +248,13 @@ def('shopping.delete', 'shopping:delete', 'מחיקת פריט מרשימת הק
 
 // ======================= places =======================
 
-// createPlace() in src/app/v2/data/tasks.ts: anyone on the team saves a place
+// places:write is restricted to owners across all three operations.
 def('places.add', 'places:write', 'הוספת מקום בחווה', { name: str(120, 'שם', true, 1), lat: num(-90, 90, 'קו רוחב', true), lng: num(-180, 180, 'קו אורך', true), accuracy: num(0, 100000, 'דיוק המיקום במטרים') }, async (c) => {
   const id = autoId();
   const data: Record<string, unknown> = { name: c.input.name, lat: c.input.lat, lng: c.input.lng, createdBy: c.me, createdAt: nowIso() };
   if (c.input.accuracy !== null && c.input.accuracy !== undefined) data.accuracy = c.input.accuracy;
   return { status: 201, writes: [c.fs.create('places', id, data), activity(c.fs, c.me, 'place', id, 'created', String(data.name))], refs: [{ col: 'places', id, expected: { name: data.name } }], data: { placeId: id } };
-}, ['Every team member may add and edit places (as in the app); only managers delete them.']);
+}, ['Only owners may add, edit or delete farm map places.']);
 // savePlace()
 def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, דיוק, תמונה', {
   placeId: req(), name: str(120, 'שם', false, 1), lat: num(-90, 90, 'קו רוחב'), lng: num(-180, 180, 'קו אורך'), accuracy: num(0, 100000, 'דיוק המיקום במטרים'),
@@ -274,15 +274,14 @@ def('places.update', 'places:write', 'עדכון מקום: שם, מיקום, ד�
   return { writes: [c.fs.patch('places', p.id, patch, p.updateTime), activity(c.fs, c.me, 'place', p.id, 'edited', String(patch.name ?? p.data.name))], refs: [{ col: 'places', id: p.id, expected }] };
 });
 // removePlace()
-def('places.delete', 'places:write', 'מחיקת מקום (רק מנהל)', { placeId: req() }, async (c) => {
-  if (!isManager(c.caller)) throw forbidden('only managers can delete a place');
+def('places.delete', 'places:write', 'מחיקת מקום (בעלים בלבד)', { placeId: req() }, async (c) => {
   const p = await mustGet(c.fs, 'places', c.input.placeId, c.tx, 'place');
   if (await placeIsReferenced(c.fs,p.id,c.tx)) {
     return {writes:[c.fs.patch('places',p.id,{archived:true},p.updateTime),activity(c.fs,c.me,'place',p.id,'archived',String(p.data.name))],
       refs:[{col:'places',id:p.id,expected:{archived:true}}],data:{archived:true}};
   }
   return { writes: [c.fs.remove('places', p.id, p.updateTime), activity(c.fs, c.me, 'place', p.id, 'deleted', String(p.data.name))], refs: [{ col: 'places', id: p.id, gone: true }], data: { deleted: project('places', p.id, p.data) } };
-}, ['Destructive: confirm with the user first. Managers only.']);
+}, ['Destructive: confirm with the user first. Owners only.']);
 
 // ======================= people =======================
 

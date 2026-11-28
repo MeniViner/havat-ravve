@@ -48,8 +48,8 @@ export function PlacesScreen({ ctx }: ScreenProps) {
     <AppScreen variant="detail">
       <TopBar back={placesBack()} end={<MoreMenu title="מקומות" items={table.items.map((i) => ({ ...i, hidden: !ctx.manager || !ctx.places.length }))} />} />
       <PageTitle size="root">מקומות בחווה</PageTitle>
-      {ctx.owner && <Button block icon="pin" onClick={()=>go('/farm/map')}>פתיחת מפת החווה</Button>}
-      {point ? <Card><Field label="שם המקום" maxLength={120} value={name} onChange={e=>setName(e.target.value)}/><Button disabled={busy||!name.trim()} onClick={confirm}>שמירת המקום</Button><Button variant="quiet" onClick={()=>setPoint(null)}>ביטול</Button></Card> : <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>}
+      <Button block icon="pin" onClick={()=>go('/farm/map')}>פתיחת מפת החווה</Button>
+      {ctx.owner && (point ? <Card><Field label="שם המקום" maxLength={120} value={name} onChange={e=>setName(e.target.value)}/><Button disabled={busy||!name.trim()} onClick={confirm}>שמירת המקום</Button><Button variant="quiet" onClick={()=>setPoint(null)}>ביטול</Button></Card> : <Button className="tasks-here" icon="pin" iconSize={22} disabled={busy} onClick={here}>אני עומד כאן, לשמור מקום</Button>)}
       {ctx.places.length > 0 ? (
         <Card as="section">
           <ul className="k-list k-list--flush" style={{ margin: 0 }}>
@@ -57,7 +57,7 @@ export function PlacesScreen({ ctx }: ScreenProps) {
           </ul>
         </Card>
       ) : (
-        <EmptyState variant="card" title="עוד אין מקומות שמורים" text="עמדו במקום ולחצו על הכפתור למעלה" />
+        <EmptyState variant="card" title="עוד אין מקומות שמורים" text={ctx.owner ? 'עמדו במקום ולחצו על הכפתור למעלה' : undefined} />
       )}
     </AppScreen>
   );
@@ -120,25 +120,24 @@ function PlaceForm({ ctx, p }: ScreenProps & { p: PlaceV2 }) {
   };
   const remove = useRemove();
   return (
-    <AppScreen variant="detail" bar={<BottomBar><Button size="bar" grow disabled={busy || !name.trim()} onClick={save}>שמירה</Button></BottomBar>}>
-      {pick.input}
-      {/* rule 6: delete is ⋯ → "מחיקה" → Q8 (managers) */}
+    <AppScreen variant="detail" bar={ctx.owner && <BottomBar><Button size="bar" grow disabled={busy || !name.trim()} onClick={save}>שמירה</Button></BottomBar>}>
+      {ctx.owner && pick.input}
       <TopBar back={{ label: 'מקומות', ...to('/places') }} end={<MoreMenu title="מקום" items={[{
-        label: 'העברה לארכיון', icon: 'trash', tone: 'danger', hidden: !ctx.manager,
+        label: 'העברה לארכיון', icon: 'trash', tone: 'danger', hidden: !ctx.owner,
         confirm: { title: 'להעביר את המקום לארכיון?', text: `"${p.name}" יועבר לארכיון. משימות שקשורות אליו נשארות.`,
           onConfirm: () => remove(() => removePlace(ctx.actor, p), { text: 'המקום הועבר לארכיון', after: () => go('/places', true) }) },
       }]} />} />
-      <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} />
+      {ctx.owner ? <Field label="שם המקום" value={name} placeholder="למשל: ליד הלול" autoFocus={fresh} onChange={(e) => setName(e.target.value)} /> : <PageTitle>{p.name}</PageTitle>}
       <a className="tasks-map" role="img" aria-label="נקודה על המפה" href={mapsUrl(pos.lat, pos.lng)} onClick={(e) => { e.preventDefault(); external(mapsUrl(pos.lat, pos.lng)); }}>
         {photo && <img src={photo} alt="" />}
         {!photo && <><Icon name="pin" size={30} />{pos.accuracy ? `נקודה על המפה · דיוק ${pos.accuracy} מטר` : 'נקודה על המפה'}</>}
       </a>
-      <div className="tasks-btnrow">
+      {ctx.owner && <div className="tasks-btnrow">
         <Button variant="outline" size="tall" icon="pin" iconSize={18} onClick={relocate}>לעדכן למקום שבו אני עומד</Button>
-      </div>
+      </div>}
       <div className="tasks-btnrow">
         <Button variant="outline" size="tall" icon="nav" iconSize={16} onClick={() => external(mapsUrl(pos.lat, pos.lng))}>ניווט חיצוני ב־Google Maps</Button>
-        <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'להסיר את התמונה' : 'תמונה של המקום'}</Button>
+        {ctx.owner && <Button variant="dashed" size="tall" icon="camera" iconSize={20} disabled={pick.busy} onClick={() => (photo ? setPhoto('') : pick.pick(true))}>{photo ? 'להסיר את התמונה' : 'תמונה של המקום'}</Button>}
       </div>
       {rows.length > 0 ? (
         <ListCard title="משימות במקום הזה">

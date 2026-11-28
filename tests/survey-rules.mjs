@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertSucceeds as yes, assertFails as no } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, writeBatch, collection, getDocs, query, where } from 'firebase/firestore';
 const env = await initializeTestEnvironment({
   projectId: 'demo-farm-survey-rules',
   firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') },
@@ -42,11 +42,13 @@ try {
     })
   );
   await no(updateDoc(ref(staff, 'places/gate'), { lat: 51 }));
-  await yes(updateDoc(ref(staff, 'places/gate'), { lat: 51, source: null, measuredAt: null, accuracy: 8 }));
+  await no(updateDoc(ref(staff, 'places/gate'), { lat: 51, source: null, measuredAt: null, accuracy: 8 }));
+  await yes(updateDoc(ref(owner, 'places/gate'), { lat: 51, source: null, measuredAt: null, accuracy: 8 }));
   await no(updateDoc(ref(staff, 'places/gate'), { source: 'gps', measuredAt: 110 }));
   await no(updateDoc(ref(owner, 'places/gate'), { lat: 91 }));
   await no(deleteDoc(ref(owner, 'places/gate')));
-  await yes(updateDoc(ref(manager, 'places/gate'), { archived: true }));
+  await no(updateDoc(ref(manager, 'places/gate'), { archived: true }));
+  await yes(updateDoc(ref(owner, 'places/gate'), { archived: true }));
   assert.equal((await getDoc(ref(staff, 'places/gate'))).data().archived, true);
   const samples = {
     index: 0,
@@ -87,9 +89,28 @@ try {
   batch.set(ref(owner, 'farmTrails/run/revisions/r1'), { revision: 'r1', at: 200 });
   await yes(batch.commit());
   await no(setDoc(ref(owner, 'farmTrails/run/revisions/r2'), { revision: 'r2', at: 220 }));
-  await no(getDoc(ref(manager, 'farmTrails/run')));
+  await yes(setDoc(ref(owner, 'farmTrails/draft'), { ...t, status: 'draft' }));
+  await yes(setDoc(ref(owner, 'farmTrails/draft/versions/g1/chunks/0'), samples));
+  await yes(setDoc(ref(owner, 'farmTrails/run/versions/old/chunks/0'), samples));
+  for (const reader of [staff, manager]) {
+    await yes(getDoc(ref(reader, 'farmTrails/run')));
+    const trails = await yes(getDocs(query(collection(reader, 'farmTrails'), where('status', '==', 'confirmed'))));
+    assert.deepEqual(trails.docs.map(d => d.id), ['run']);
+    await yes(getDocs(collection(reader, 'farmTrails/run/versions/g1/chunks')));
+    for (const path of ['farmTrails/draft', 'farmTrails/run/revisions/r1', 'farmTrails/run/versions/old/chunks/0',
+      'farmTrails/draft/versions/g1/chunks/0', 'surveyRecordings/run', 'surveyRecordings/run/chunks/0']) {
+      await no(getDoc(ref(reader, path)));
+    }
+    await no(getDocs(collection(reader, 'farmTrails')));
+    await no(updateDoc(ref(reader, 'farmTrails/run'), { status: 'draft' }));
+  }
+  await no(getDoc(ref(guest, 'farmTrails/run')));
+  await no(getDoc(ref(guest, 'farmTrails/run/versions/g1/chunks/0')));
+  await yes(updateDoc(ref(owner, 'farmTrails/run'), { geometry: 'old' }));
+  await no(getDoc(ref(staff, 'farmTrails/run/versions/g1/chunks/0')));
+  await yes(getDoc(ref(staff, 'farmTrails/run/versions/old/chunks/0')));
   console.log(
-    'PASS owner-only survey, repeatable chunks, immutable raw samples, receipts and legacy place history'
+    'PASS owner-only map editing, team confirmed geometry, private drafts, recordings and revisions'
   );
 } finally {
   await env.cleanup();

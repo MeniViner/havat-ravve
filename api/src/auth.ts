@@ -27,8 +27,6 @@ export type Caller = { credentialId: string; actor: ActorDef; scopes: ReadonlySe
 /** Mirrors firestore.rules: staff = isStaff(), manager/owner = isManager(). Owner-only cases are checked in the operation. */
 const STAFF: Scope[] = [
   'tasks:read', 'tasks:create', 'tasks:complete', 'tasks:edit', 'tasks:delete', 'templates:read', 'shopping:read', 'shopping:write', 'shopping:delete', 'places:read',
-  // places: anyone on the team saves and names a place (rules: create/update isStaff); delete stays manager-only in the operation
-  'places:write',
   'events:read', 'tickets:read', 'tabs:read', 'tabs:write', 'vendors:read', 'activity:read', 'settings:read', 'overview:read',
   // the farm calendar and their own presence (firestore.rules calendar: read isStaff, presence own), broadcasts sent to them, their own notifications
   'calendar:read', 'presence:write', 'presence:remove', 'broadcasts:read', 'me:read', 'me:write',
@@ -38,9 +36,9 @@ const MANAGER: Scope[] = [
   'vendors:write', 'visits:read', 'visits:write', 'donations:read', 'donations:write', 'donations:delete', 'notifications:read', 'notifications:write',
   'calendar:write', 'settings:write', 'system:read', 'presence:write:any', 'broadcasts:write', 'broadcasts:urgent', 'notify:team', 'notify:all',
 ];
-export const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: MANAGER, manager: MANAGER, staff: STAFF };
+export const ROLE_SCOPES: Record<ActorRole, Scope[]> = { owner: [...MANAGER, 'places:write'], manager: MANAGER, staff: STAFF };
 /** Every scope there is (the console offers a key a part of them). */
-export const ALL_SCOPES: readonly Scope[] = [...new Set(MANAGER)];
+export const ALL_SCOPES: readonly Scope[] = [...new Set(ROLE_SCOPES.owner)];
 
 /**
  * Synthetic actors, for tests. Real people are actors named "user:<uid>": a credential lists them, and

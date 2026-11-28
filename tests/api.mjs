@@ -494,11 +494,11 @@ try {
     check((await actsOf('app')) === 'saved,saved', 'settings activity "saved" (one per save)');
 
     // places
-    // as in the app (firestore.rules): the team adds and edits places; only managers delete them
-    check([200, 201].includes((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status), 'staff can add places, as in the app');
-    const pl = await w(MGR, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
+    // Map places are read-only for the team.
+    check((await w(STAFF, 'places.add', { name: 'דיר', lat: 31.5, lng: 34.6 })).status === 403, 'staff cannot add map places');
+    const pl = await w(OWNER, 'places.add', { name: 'דיר הכבשים', lat: 31.51, lng: 34.62 });
     ok(pl, 'places.add'); const placeId = pl.json.data.placeId;
-    ok(await w(MGR, 'places.update', { placeId, name: 'דיר' }), 'places.update');
+    ok(await w(OWNER, 'places.update', { placeId, name: 'דיר' }), 'places.update');
     check((await r(STAFF, '/v1/places')).json.data.items.some((p) => p.id === placeId && p.name === 'דיר'), 'places.list (staff can read)');
 
     // tasks: the new fields, edit, note, delete
@@ -712,7 +712,7 @@ try {
     ok(await w(MGR, 'templates.delete', { templateId: tpm.json.data.templateId }), 'templates.delete');
     // A saved entrance remains a stable reference even after its place is archived.
     await seed('farmTrails','syn-place-entrance',{placeIds:[placeId]});
-    const archived = await w(MGR, 'places.delete', { placeId });
+    const archived = await w(OWNER, 'places.delete', { placeId });
     ok(archived, 'places.delete');
     check(archived.json.data.archived && (await docOf('places/' + placeId)).archived, 'deleting a referenced place archives its original ID');
     const newAtArchive = await create(KEYS.users, {title:'מקום בארכיון',placeId},randomUUID(),{'x-actor-id':'user:syn-ronit'});
@@ -1500,7 +1500,7 @@ section('files: R2 uploads for the app (Firebase sign-in token, roles, types, se
   const signUp = async (email) => (await (await fetch(`${authBase}/accounts:signUp?key=fake`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'synthetic-pass-1', returnSecureToken: true }) })).json());
   const t = new Date().toISOString();
   const people = {};
-  for (const [name, role, status] of [['guest', 'guest', 'active'], ['staff', 'staff', 'active'], ['manager', 'manager', 'active'], ['vendor', 'vendor', 'active'], ['blocked', 'staff', 'blocked']]) {
+  for (const [name, role, status] of [['owner', 'owner', 'active'], ['guest', 'guest', 'active'], ['staff', 'staff', 'active'], ['manager', 'manager', 'active'], ['vendor', 'vendor', 'active'], ['blocked', 'staff', 'blocked']]) {
     const a = await signUp(`files-${name}-${Date.now()}@synthetic.test`);
     people[name] = a;
     await seed('users', a.localId, { uid: a.localId, email: a.email, displayName: 'קבצים ' + name, phone: '0500000000', role, status, customerNumber: 3, acceptedTermsAt: t, createdAt: t, updatedAt: t });
@@ -1531,6 +1531,9 @@ section('files: R2 uploads for the app (Firebase sign-in token, roles, types, se
     const s = await up('task', WEBP, 'image/webp', people.staff.idToken);
     check(s.status === 201 && (await s.json()).data.key.endsWith('.webp'), 'staff uploads a task photo (WebP) → 201');
     check((await up('event', JPEG, 'image/jpeg', people.staff.idToken)).status === 403, 'staff may not upload an event image → 403');
+    for (const role of ['staff', 'manager', 'owner']) {
+      check((await up('place', JPEG, 'image/jpeg', people[role].idToken)).status === (role === 'owner' ? 201 : 403), 'place photo upload: ' + role);
+    }
     const m = await up('eventfile', PDF, 'application/pdf', people.manager.idToken);
     const mj = await m.json();
     check(m.status === 201 && mj.data.key.endsWith('.pdf') && (await fetch(mj.data.url)).headers.get('content-type') === 'application/pdf', 'a manager uploads an event PDF → 201, served as application/pdf', mj);

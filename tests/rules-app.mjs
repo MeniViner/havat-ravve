@@ -200,10 +200,10 @@ try{
  await assertSucceeds(deleteDoc(doc(beni,'account_deletions','stranger')));
 
  // --- places ---
- // v2 (L3 "אני עומד כאן"): a volunteer saves a place too (was managers-only); deleting stays with managers
- await assertSucceeds(setDoc(doc(vol,'places','p0'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('vol'),createdAt:now}));
+ // Staff can read places; only owners may write them.
+ await assertFails(setDoc(doc(vol,'places','p0'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('vol'),createdAt:now}));
  await assertFails(deleteDoc(doc(vol,'places','p0')));
- await assertSucceeds(setDoc(doc(beni,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('beni'),createdAt:now}));
+ await assertFails(setDoc(doc(beni,'places','p1'),{name:'עץ',lat:31.3,lng:35,createdBy:actor('beni'),createdAt:now}));
  await assertSucceeds(getDocs(collection(vol,'places')));
 
  // --- blocked user loses everything ---
@@ -689,24 +689,24 @@ try{
  await v2ok(updateDoc(doc(mgr,'task_templates','tpl-old'),{active:false,updatedAt:now}),'templates 17 old template toggled');
  await v2ok(setDoc(doc(mgr,'task_templates','tp4'),tpl({assignee:null,managersOnly:true})),'templates assignee null');
  // ---------------- places (tasks.md 12-15) ----------------
- await v2ok(setDoc(doc(vol,'places','pl-v'),{name:'מקום חדש',lat:31.3,lng:35,createdBy:A('vol'),createdAt:now,accuracy:4}),'places 12 staff saves where they stand');
- await v2ok(updateDoc(doc(vol,'places','pl-1'),{photo:jpeg}),'places 13 staff adds a photo');
- await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:'http://x'}),'places 14 photo not a data URL');
+ await v2ok(setDoc(doc(owner,'places','pl-v'),{name:'מקום חדש',lat:31.3,lng:35,createdBy:A('owner'),createdAt:now,accuracy:4}),'places 12 owner saves where they stand');
+ await v2ok(updateDoc(doc(owner,'places','pl-1'),{photo:jpeg}),'places 13 owner adds a photo');
+ await v2no(updateDoc(doc(owner,'places','pl-1'),{photo:'http://x'}),'places 14 photo not a data URL');
  // photos stored in R2 by the farm's Worker: only that host and key shape
  const r2=(kind,ext='jpg')=>`https://havat-ravve-api.meniviner.workers.dev/v1/files/${kind}/vol/${'Ab_-'.repeat(8)}.${ext}`;
- await v2ok(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place')}),'places 15 photo stored in R2');
+ await v2ok(updateDoc(doc(owner,'places','pl-1'),{photo:r2('place')}),'places 15 photo stored in R2');
  await v2ok(updateDoc(doc(vol,'tasks','t-noa'),{photo:r2('task','webp'),updatedAt:now}),'tasks R2 photo link');
- await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:'https://evil.example/v1/files/place/vol/'+'A'.repeat(32)+'.jpg'}),'places 16 photo on another host');
- await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place','pdf')}),'places 17 a PDF link as a photo');
- await v2no(updateDoc(doc(vol,'places','pl-1'),{photo:r2('place')+'?track=1'}),'places 18 R2 link with extra text');
+ await v2no(updateDoc(doc(owner,'places','pl-1'),{photo:'https://evil.example/v1/files/place/vol/'+'A'.repeat(32)+'.jpg'}),'places 16 photo on another host');
+ await v2no(updateDoc(doc(owner,'places','pl-1'),{photo:r2('place','pdf')}),'places 17 a PDF link as a photo');
+ await v2no(updateDoc(doc(owner,'places','pl-1'),{photo:r2('place')+'?track=1'}),'places 18 R2 link with extra text');
  await v2no(deleteDoc(doc(vol,'places','pl-1')),'places 15 staff deletes');
- await v2ok(updateDoc(doc(vol,'places','pl-v'),{name:'הלול',lat:31.31,lng:35.01,accuracy:6}),'places staff names it (L4)');
- await v2no(updateDoc(doc(vol,'places','pl-v'),{createdBy:A('dana')}),'places createdBy changed');
- await v2no(setDoc(doc(vol,'places','pl-w'),{name:'x',lat:1,lng:1,createdBy:A('vol'),createdAt:now,accuracy:'4'}),'places accuracy not a number');
+ await v2ok(updateDoc(doc(owner,'places','pl-v'),{name:'הלול',lat:31.31,lng:35.01,accuracy:6}),'places owner names it (L4)');
+ await v2no(updateDoc(doc(owner,'places','pl-v'),{createdBy:A('dana')}),'places createdBy changed');
+ await v2no(setDoc(doc(owner,'places','pl-w'),{name:'x',lat:1,lng:1,createdBy:A('owner'),createdAt:now,accuracy:'4'}),'places accuracy not a number');
  await v2no(setDoc(doc(raz,'places','pl-r'),{name:'x',lat:1,lng:1,createdBy:A('raz'),createdAt:now}),'places vendor creates');
  await v2no(getDoc(doc(guest,'places','pl-1')),'places guest reads');
  await v2no(deleteDoc(doc(mgr,'places','pl-v')),'place IDs survive linked history');
- await v2ok(updateDoc(doc(mgr,'places','pl-v'),{archived:true}),'manager archives a place');
+ await v2ok(updateDoc(doc(owner,'places','pl-v'),{archived:true}),'owner archives a place');
  // ---------------- shopping (shopping.md; tasks.md 16) ----------------
  await v2ok(setDoc(doc(vol,'shopping','sh1'),item('vol')),'shopping old shape');
  await v2ok(setDoc(doc(vol,'shopping','sh2'),item('vol',{taskId:'t1'})),'shopping 16 with taskId');
