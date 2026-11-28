@@ -81,13 +81,13 @@ export const roleInvites: RoleInvite[] = [
 const place = (id: string, name: string, lat: number, lng: number, by: Actor, days: number): Place => ({ id, name, lat, lng, createdBy: by, createdAt: ago(days * 24) });
 export const P = { gate: 'demo-p-gate', container: 'demo-p-container', greenhouse: 'demo-p-greenhouse', petting: 'demo-p-petting', tree: 'demo-p-tree', pots: 'demo-p-pots', stall: 'demo-p-stall' };
 export const places: Place[] = [
-  place(P.gate, 'ליד הכניסה', 31.2412, 34.7301, A.beni, 240),
-  place(P.container, 'מכולה ומחסן', 31.2408, 34.7312, A.eliya, 205),
-  place(P.greenhouse, 'חממה', 31.2421, 34.7318, A.beni, 238),
+  { ...place(P.gate, 'ליד הכניסה', 31.2412, 34.7301, A.beni, 240), markerIcon: 'gate' },
+  { ...place(P.container, 'מכולה ומחסן', 31.2408, 34.7312, A.eliya, 205), markerIcon: 'farm' },
+  { ...place(P.greenhouse, 'חממה', 31.2421, 34.7318, A.beni, 238), markerIcon: 'farm' },
   place(P.petting, 'פינת החי', 31.2415, 34.7325, A.beni, 240),
-  place(P.tree, 'העץ מאחורי הביתן', 31.2418, 34.7309, A.beni, 210),
+  { ...place(P.tree, 'העץ מאחורי הביתן', 31.2418, 34.7309, A.beni, 210), markerIcon: 'tree' },
   place(P.pots, 'שורת העציצים הצפונית', 31.2425, 34.7298, A.beni, 240),
-  place(P.stall, 'אזור הדוכן', 31.2410, 34.7304, A.noa, 150),
+  { ...place(P.stall, 'אזור הדוכן', 31.2410, 34.7304, A.noa, 150), markerIcon: 'view' },
 ];
 const loc = (id: keyof typeof P, placeName?: string) => { const p = places.find((x) => x.id === P[id])!; return { lat: p.lat, lng: p.lng, placeId: p.id, placeName: placeName || p.name }; };
 

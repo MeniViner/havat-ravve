@@ -11,13 +11,14 @@ import {
   type Trail,
   type Vertex,
 } from '../../../survey/model';
-import basemap from '../../../survey/basemap.json';
+import { MAP_SOURCES, mountBackground, arrangeMapLabels, type Base, type TileState } from '../../../survey/background';
 
 export type DrawnTrail = { trail: Trail; points: Vertex[] };
 export type View = { id: number; point?: Point; points?: Point[]; zoom?: number; detail?: boolean };
 type Props = {
   places: MapPlace[];
   trails: { trail: MapTrail; points: Vertex[] }[];
+  base?: Base;
   home?: MapHome | null;
   homeLoading?: boolean;
   onCamera?: (home: MapHome) => void;
@@ -26,6 +27,7 @@ type Props = {
   live: Fix | null;
   clock: number;
   draft?: Point;
+  previewPlace?: MapPlace;
   selected?: string;
   raw: Vertex[];
   edit?: Vertex[];
@@ -48,6 +50,13 @@ const glyphs: Record<MarkerIcon, string> = {
   parking: 'M8 20V4h6a5 5 0 0 1 0 10H8',
   view: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0',
 };
+export function PlaceSymbol({place}: { place: Pick<MapPlace,'photo' | 'markerDisplay' | 'markerIcon'> }) {
+  const [failed, setFailed] = useState('');
+  const photo = place.markerDisplay === 'photo' && place.photo;
+  return <span className="map-place-symbol" aria-hidden="true">{photo && photo !== failed
+    ? <img src={photo} alt="" onError={() => setFailed(photo)} />
+    : <svg viewBox="0 0 24 24"><path d={glyphs[place.markerIcon || 'pin'] || glyphs.pin}/></svg>}</span>;
+}
 function markerGlyph(icon: MarkerIcon) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -69,7 +78,8 @@ function frame(m: L.Map, points: Point[]) {
 }
 function draw(group: L.LayerGroup, points: Vertex[], color: string, action?: () => void, dashed = false) {
   for (const line of sections(points)) {
-    if (line.length > 1)
+    if (line.length > 1) {
+      L.polyline(line, {color: '#fff', weight: 8, opacity: .85, interactive: false}).addTo(group);
       L.polyline(line, {
         color,
         weight: 5,
@@ -84,7 +94,7 @@ function draw(group: L.LayerGroup, points: Vertex[], color: string, action?: () 
             action();
           }
         });
-    else L.circleMarker(line[0], { color, radius: 3, interactive: false }).addTo(group);
+    } else L.circleMarker(line[0], { color, radius: 3, interactive: false }).addTo(group);
   }
 }
 export function SurveyMap(props: Props) {
@@ -93,11 +103,13 @@ export function SurveyMap(props: Props) {
     current = useRef(props),
     initial = useRef(false);
   current.current = props;
-  const [tiles, setTiles] = useState<'loading' | 'ok' | 'error'>('loading');
+  const base = props.base || 'aerial';
+  const [tiles, setTiles] = useState<TileState>('loading');
+  const [credit, setCredit] = useState(MAP_SOURCES[base].credit);
   const [reload, setReload] = useState(0);
   useEffect(() => {
     const m = L.map(el.current!, {
-      zoomControl: false,
+      minZoom: 2, maxZoom: 19, zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
       zoomAnimation: false,
@@ -114,13 +126,6 @@ export function SurveyMap(props: Props) {
     });
     camera();
     L.control.zoom({ position: 'topleft', zoomInTitle: 'התקרבות', zoomOutTitle: 'התרחקות' }).addTo(m);
-    const attribution = L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(m);
-    const credit = document.createElement('a');
-    credit.href = basemap.creditUrl;
-    credit.textContent = basemap.credit;
-    credit.target = '_blank';
-    credit.rel = 'noopener';
-    attribution.addAttribution(credit.outerHTML);
     const click = (e: L.LeafletMouseEvent) => {
       if (current.current.selecting) current.current.onPick({ lat: e.latlng.lat, lng: e.latlng.lng });
     };
@@ -136,23 +141,9 @@ export function SurveyMap(props: Props) {
   }, []);
   useEffect(() => {
     const m = map.current;
-    if (!m || !props.online) return;
-    setTiles('loading');
-    const layer = L.tileLayer(basemap.tiles, {
-      maxZoom: 19,
-      updateWhenIdle: true,
-      keepBuffer: 1,
-      referrerPolicy: 'strict-origin-when-cross-origin',
-    });
-    layer.on('tileload', () => setTiles('ok'));
-    layer.on('tileerror', () => setTiles('error'));
-    layer.addTo(m);
-    return () => {
-      // Leaflet detaches the layer's map listeners on its own remove event.
-      m.removeLayer(layer);
-      layer.off();
-    };
-  }, [props.online, reload]);
+    if (!m) return;
+    return mountBackground(L, m, base, setTiles, {satellite:'/assets/negev-s2-20261122.jpg',aerial:'/assets/beersheba-ortho-2015.jpg'}, setCredit);
+  }, [base, props.online, reload]);
   useEffect(() => {
     const m = map.current;
     if (!m || initial.current || props.homeLoading) return;
@@ -209,12 +200,16 @@ export function SurveyMap(props: Props) {
         trail.status === 'draft' || !trail.modes.includes('vehicle')
       );
     draw(group, props.edit ?? props.raw, '#925114');
-    for (const p of props.places.filter(coordinate)) {
+    const names: { marker: L.Marker; priority: boolean }[] = [];
+    const preview = props.previewPlace;
+    const points = preview ? [preview, ...props.places.filter(p => p.id !== preview.id)] : props.places;
+    for (const p of points.filter(coordinate)) {
+      const isDraft = p === preview;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'survey-place-button';
       button.setAttribute('aria-label', p.name);
-      button.disabled = !!props.selecting;
+      button.disabled = isDraft || !!props.selecting;
       const badge = document.createElement('span');
       badge.className = 'survey-place-badge';
       const icon = markerGlyph(p.markerIcon || 'pin');
@@ -232,7 +227,7 @@ export function SurveyMap(props: Props) {
       });
       const marker = L.marker(p, {
         icon: L.divIcon({
-          className: 'survey-marker' + (props.selected === p.id ? ' chosen' : ''),
+          className: 'survey-marker' + (isDraft || props.selected === p.id ? ' chosen' : ''),
           html: button,
           iconSize: [44, 48],
           iconAnchor: [22, 41],
@@ -242,6 +237,7 @@ export function SurveyMap(props: Props) {
         keyboard: false,
         interactive: !props.selecting,
       }).addTo(group);
+      names.push({ marker, priority: isDraft || props.selected === p.id });
       marker.bindTooltip(label(p.name), {
         direction: 'top',
         permanent: true,
@@ -254,7 +250,7 @@ export function SurveyMap(props: Props) {
       ends.forEach((p, i) =>
         L.circleMarker(p, { radius: 6, color: '#214e3c', fillColor: '#fff', fillOpacity: 1, interactive: false })
           .addTo(group)
-          .bindTooltip(label(i ? 'סיום' : 'התחלה'), { permanent: true, direction: i ? 'right' : 'left' })
+          .bindTooltip(label(i ? 'סיום' : 'התחלה'), { permanent: true, direction: i ? 'right' : 'left', className: 'survey-end-name' })
       );
     }
     if (props.edit?.length) {
@@ -294,7 +290,18 @@ export function SurveyMap(props: Props) {
         fillOpacity: 1,
         interactive: false,
       }).addTo(group);
+    names.sort((a,b) => Number(b.priority) - Number(a.priority));
+    const layout = () => arrangeMapLabels(
+      names.map(({marker, priority}) => ({ el: marker.getTooltip()?.getElement(), priority })),
+      Array.from(m.getContainer().querySelectorAll('.survey-end-name')).map(el => el.getBoundingClientRect()),
+      m.getContainer().getBoundingClientRect()
+    );
+    let raf = requestAnimationFrame(layout);
+    const schedule = () => {cancelAnimationFrame(raf); raf = requestAnimationFrame(layout);};
+    m.on('moveend zoomend resize', schedule);
     return () => {
+      cancelAnimationFrame(raf);
+      m.off('moveend zoomend resize',schedule);
       m.removeLayer(group);
     };
   }, [
@@ -306,6 +313,7 @@ export function SurveyMap(props: Props) {
     props.selected,
     props.selectedTrail,
     props.draft,
+    props.previewPlace,
     props.selecting,
   ]);
   useEffect(() => {
@@ -331,15 +339,18 @@ export function SurveyMap(props: Props) {
   return (
     <div className={'survey-map' + (props.selecting ? ' picking' : '')}>
       <div ref={el} className="survey-map-canvas" role="region" aria-label="מפת החווה" />
-      {(!props.online || tiles !== 'ok') && (
-        <div className="survey-tile-status">
-          {!props.online ? (
-            'אין רשת · מפת הרקע אינה זמינה'
+      <div className="survey-base-credit" dir="ltr" dangerouslySetInnerHTML={{ __html: credit }} />
+      {tiles !== 'ok' && (
+        <div className="survey-tile-status" role="status">
+          {tiles === 'outside' ? (
+            'אין כיסוי אווירי באזור הזה. אפשר לבחור לוויין או מפה.'
+          ) : !props.online ? (
+            'אין חיבור לרשת · חלק מהרקע עשוי להיות חסר'
           ) : tiles === 'loading' ? (
             'טוען את מפת הרקע…'
           ) : (
             <>
-              חלק ממפת הרקע לא נטען <button onClick={() => setReload((n) => n + 1)}>ניסיון נוסף</button>
+              {tiles === 'partial' ? 'חלק מהרקע חסר' : 'הרקע באזור הזה לא נטען'} <button onClick={() => setReload((n) => n + 1)}>ניסיון נוסף</button>
             </>
           )}
         </div>

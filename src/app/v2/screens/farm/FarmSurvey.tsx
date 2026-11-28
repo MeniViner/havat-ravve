@@ -31,6 +31,7 @@ import {
   type Review,
 } from '../../../survey/local';
 import { MapWorkspace } from './MapWorkspace';
+import { PlaceSymbol } from './SurveyMap';
 import { Setup } from './MapSetup';
 import { PublicFarmMap } from './PublicFarmMap';
 import { markerIcons, type MarkerIcon } from '../../../../../shared/farm-map';
@@ -88,6 +89,11 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
   const [tool, setTool] = useState<'menu' | 'places' | 'trails' | 'location' | 'setup'>('menu');
   const [candidate, setCandidate] = useState<Point | null>(null);
   const [remove, setRemove] = useState(false);
+  const previewPlace = useMemo(() => editing && place ? {
+    id: place.id, name: place.name || 'מקום חדש', photo: place.photo,
+    markerIcon: place.markerIcon, markerDisplay: place.markerDisplay,
+    lat: (candidate || place.point).lat, lng: (candidate || place.point).lng,
+  } : undefined, [editing,place,candidate]);
   const [selection, setSelection] = useState<'new' | 'place' | 'vertex' | 'draw' | null>(null),
     [anchor, setAnchor] = useState(0);
   const [selected, setSelected] = useState('');
@@ -555,6 +561,7 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
       <MapWorkspace
         gps={gps}
         editing={editing}
+        homeTool={tool === 'menu' && !place && !workingReview && !selection}
         toggleEdit={() => {
           setEditing(!editing);
           cancelPick();
@@ -586,7 +593,8 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
           live: gps.fix,
           clock: gps.clock,
           raw: gps.raw,
-          draft: editing ? candidate || place?.point : undefined,
+          draft: editing && !place ? candidate || undefined : undefined,
+          previewPlace,
           selected,
           edit: editing && workingReview ? review?.points : undefined,
           anchor,
@@ -748,6 +756,7 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
                 />
                 <fieldset>
                   <legend>סמן במפה</legend>
+                  <div className="map-marker-preview"><PlaceSymbol place={place}/> {place.name || 'מקום חדש'}</div>
                   <label className="map-choice">
                     <input
                       type="radio"
@@ -918,7 +927,7 @@ function Survey({ ctx }: { ctx: ScreenProps['ctx'] }) {
             )}
             {!place && !workingReview && !selection && tool === 'trails' && (
               <section className="survey-panel">
-                <h2>{session ? 'הסקר הנוכחי' : places.length ? 'המשך הסקר' : 'המקום הראשון בחווה'}</h2>
+                <h2>{session ? 'הסקר הנוכחי' : 'הקלטת שביל'}</h2>
                 {session && (
                   <p>
                     <b>

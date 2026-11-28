@@ -9,8 +9,13 @@ let currentPage;
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   // Serve the built app in-process. No farm, tile or authentication request leaves this context.
+  let failTile = '';
+  let allowTiles = false;
   await ctx.route('**/*', async (route) => {
     const url = new URL(route.request().url());
+    if (allowTiles && url.hostname === 'tile.openstreetmap.org' && url.pathname !== failTile) {
+      return route.fulfill({path: 'public/assets/beersheba-ortho-2015.jpg',contentType:'image/jpeg'});
+    }
     if (url.origin !== origin) return route.abort();
     const file = path.resolve(
       'dist',
@@ -97,6 +102,44 @@ try {
   await search.fill(name);
   await button(name).and(page.locator('.survey-hit')).click();
   await heading(name).waitFor();
+  const base = page.getByRole('combobox', {name:'רקע למפה'});
+  const chosen = page.locator('.survey-marker.chosen');
+  const position = await chosen.boundingBox();
+  assert.equal(await base.inputValue(), 'aerial');
+  for (const mode of ['satellite','osm','aerial']) {
+    await base.selectOption(mode);
+    await heading(name).waitFor();
+    const after = await chosen.boundingBox();
+    assert.ok(Math.abs(after.x-position.x) < 1 && Math.abs(after.y-position.y) < 1, 'camera kept at selected place');
+    if (mode !== 'osm') {
+      await page.waitForFunction(() => {
+        const img = document.querySelector('.regional-satellite');
+        return img && img.complete && img.naturalWidth > 0;
+      });
+    }
+  }
+  await base.selectOption('osm');
+  const status = page.locator('.survey-tile-status');
+  await status.getByRole('button').waitFor();
+  // Identify the tile under the actual viewport center, regardless of the camera saved by the fixture.
+  failTile = await page.evaluate(() => {
+    const box = document.querySelector('.survey-map-canvas').getBoundingClientRect();
+    const x = box.x + box.width/2, y = box.y + box.height/2;
+    const tile = [...document.querySelectorAll('img.leaflet-tile')].find(img => {
+      const r = img.getBoundingClientRect(); return r.left<=x && x<r.right && r.top<=y && y<r.bottom;
+    });
+    return new URL(tile.src).pathname;
+  });
+  allowTiles = true;
+  await status.getByRole('button').click();
+  await page.waitForFunction(() => document.querySelector('.leaflet-tile[data-state="ok"]') &&
+    document.querySelector('.leaflet-tile[data-state="error"]'));
+  await status.getByText('הרקע באזור הזה לא נטען', {exact:false}).waitFor();
+  failTile = '';
+  await status.getByRole('button').click();
+  await status.waitFor({state:'hidden'});
+  allowTiles = false;
+  await base.selectOption('aerial');
   await button('סגירה').click();
   await openEdit();
   await button('הגדרת מבט הפתיחה').click();
@@ -175,6 +218,9 @@ try {
   await page.evaluate(() => window.feedTestFix('fresh'));
   await button('התחלת הקלטת שביל').click();
   await button('השהיית ההקלטה').waitFor();
+  await base.selectOption('satellite');
+  await button('השהיית ההקלטה').waitFor();
+  await base.selectOption('aerial');
   await page.evaluate(() => window.feedTestFix('fresh', 0.00001));
   await button('השהיית ההקלטה').click();
   await button('חידוש ההקלטה').click();

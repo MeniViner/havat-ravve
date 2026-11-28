@@ -1,0 +1,61 @@
+{
+  "aerial": {
+    "file": "beersheba-ortho-2015.jpg",
+    "size": [
+      768,
+      768
+    ],
+    "author": "המרכז למיפוי ישראל, מדינת ישראל",
+    "captureYear": 2015,
+    "nativeResolutionMetres": 2,
+    "dataset": "https://data.gov.il/dataset/bsv",
+    "license": "https://data.gov.il/he/terms-of-use",
+    "tileService": "https://www.arcgis.com/home/item.html?id=8d0dd08eb67847b2b5b6439c0c1fe000",
+    "boundsSouthWestNorthEast": [
+      [
+        31.23863703909767,
+        34.727783203125
+      ],
+      [
+        31.245681880715512,
+        34.73602294921875
+      ]
+    ],
+    "processing": "Nine georeferenced tiles in the original Web Mercator grid, assembled to JPEG."
+  },
+  "regionalSatellite": {
+    "file": "negev-s2-20261122.jpg",
+    "size": [
+      640,
+      640
+    ],
+    "author": "Copernicus Sentinel-2",
+    "captureDate": "2026-11-22",
+    "nativeResolutionMetres": 10,
+    "source": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/S2A_36RXV_20261122_0_L2A",
+    "license": "https://dataspace.copernicus.eu/terms-and-conditions",
+    "boundsSouthWestNorthEast": [
+      [
+        31.212,
+        34.698
+      ],
+      [
+        31.27,
+        34.765
+      ]
+    ],
+    "processing": "Contains modified Copernicus Sentinel data 2026. Regional subset from the L2A true-color COG, resampled from EPSG:32636 to EPSG:3857 and encoded in JPEG."
+  },
+  "globalSatellite": {
+    "author": "EOX IT Services GmbH",
+    "source": "https://cloudless.eox.at",
+    "attribution": "EOxCloudless by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
+    "terms": "https://cloudless.eox.at/documentation/faq",
+    "license": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "roads": {
+    "source": "https://www.openstreetmap.org/copyright",
+    "author": "OpenStreetMap contributors",
+    "terms": "https://operations.osmfoundation.org/policies/tiles/"
+  }
+}

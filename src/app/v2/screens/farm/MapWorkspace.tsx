@@ -5,8 +5,9 @@ import { age, quality, MODES } from '../../../survey/model';
 import type { useSurveyLocation } from '../../../survey/useLocation';
 import { AppScreen, mapsUrl, useExternal } from '../../core';
 import { Button, Icon } from '../../kit';
-import { SurveyMap, type View } from './SurveyMap';
+import { PlaceSymbol, SurveyMap, type View } from './SurveyMap';
 import { validHome, type MapHome } from '../../../../../shared/farm-map';
+import type { Base } from '../../../survey/background';
 import './survey.css';
 
 type MapProps = ComponentProps<typeof SurveyMap>;
@@ -15,6 +16,7 @@ type Props = {
   map: MapProps;
   gps: ReturnType<typeof useSurveyLocation>;
   editing?: boolean;
+  homeTool?: boolean;
   toggleEdit?: () => void;
   editPlace?: (id: string) => void;
   editTrail?: (id: string) => void;
@@ -27,6 +29,7 @@ export function MapWorkspace({
   map,
   gps,
   editing = false,
+  homeTool = false,
   toggleEdit,
   editPlace,
   editTrail,
@@ -44,6 +47,16 @@ export function MapWorkspace({
   const [view, setView] = useState<View | null>(null),
     [message, setMessage] = useState(''),
     [saving, setSaving] = useState(false);
+  const [base,setBase] = useState<Base>(() => {
+    try {
+      const saved = localStorage.getItem('farm-background-v1');
+      return saved === 'osm' || saved === 'satellite' ? saved : 'aerial';
+    } catch { return 'aerial'; }
+  });
+  function chooseBase(value: Base) {
+    setBase(value);
+    try { localStorage.setItem('farm-background-v1',value); } catch {}
+  }
   const [previewCamera, setPreviewCamera] = useState<MapHome | null>(null);
   const [locHint, setLocHint] = useState(() => {
     try {
@@ -193,6 +206,7 @@ export function MapWorkspace({
       <div className="map-stage">
         <SurveyMap
           {...map}
+          base={base}
           home={home}
           homeLoading={homeDoc.loading}
           places={layers.places ? map.places : []}
@@ -227,6 +241,12 @@ export function MapWorkspace({
               }}
             />
           </label>
+          <label className="map-base-choice">
+            <Icon name="globe" size={18} />
+            <select aria-label="רקע למפה" value={base} onChange={e => chooseBase(e.target.value as Base)}>
+              <option value="osm">מפה</option><option value="aerial">תצלום אוויר</option><option value="satellite">לוויין</option>
+            </select>
+          </label>
           {toggleEdit && (
             <Button
               icon={editing ? 'check' : 'edit'}
@@ -237,7 +257,7 @@ export function MapWorkspace({
                 toggleEdit();
               }}
             >
-              {editing ? 'סיום עריכה' : 'עריכת המפה'}
+              {editing ? (dock ? 'חזרה למפה' : 'סיום עריכה') : 'עריכת המפה'}
             </Button>
           )}
         </div>
@@ -314,7 +334,7 @@ export function MapWorkspace({
                 <h2>{query ? 'תוצאות החיפוש' : 'מקומות ושבילים'}</h2>
                 {placeHits.map((p) => (
                   <button key={p.id} className="survey-hit" onClick={() => showPlace(p.id)}>
-                    <Icon name="pin" />
+                    <PlaceSymbol place={p} />
                     {p.name}
                   </button>
                 ))}
@@ -389,6 +409,7 @@ export function MapWorkspace({
             {sheet === 'layers' && (
               <>
                 <h2>שכבות המפה</h2>
+                <p>רקע {base === 'aerial' ? 'תצלום אוויר · מפ״י, 2015 · כשני מטר לפיקסל' : base === 'satellite' ? 'לוויין · רזולוציה של כ־10 מטר לפיקסל' : 'דרכים · OpenStreetMap'}</p>
                 {Object.entries({
                   places: 'מקומות',
                   walk: 'שבילי הליכה · קו מקווקו',
@@ -402,7 +423,7 @@ export function MapWorkspace({
                       checked={layers[key as keyof typeof layers]}
                       onChange={(e) => setLayers({ ...layers, [key]: e.target.checked })}
                     />
-                    {label}
+                    <i aria-hidden="true" className={"map-layer-sample " + key} />{label}
                   </label>
                 ))}
               </>
@@ -458,7 +479,7 @@ export function MapWorkspace({
               </>
             )}
             {!sheet && children}
-            {!sheet && editing && !map.selecting && (
+            {!sheet && editing && homeTool && !map.selecting && (
               <Button
                 variant="quiet"
                 icon="map"
