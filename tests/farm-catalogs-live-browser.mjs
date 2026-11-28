@@ -44,7 +44,8 @@ try{
  const [a,b,m]=pages;
  const row=p=>p.locator('.events-prodrow__name').getByText(master.name,{exact:true});
  await Promise.all([row(a).waitFor(),row(b).waitFor()]);
- await m.getByText('קטלוגים ומוצרים',{exact:true}).click();await m.getByText('משקאות בדיקת חווה',{exact:true}).click();await m.getByText(master.name,{exact:true}).click();
+ await m.getByText('אירועים',{exact:true}).click();
+ await m.getByRole('link',{name:/הדוכן של החווה/}).click();await m.getByText('משקאות בדיקת חווה',{exact:true}).click();await m.getByText(master.name,{exact:true}).click();
  await m.getByRole('dialog').getByRole('button',{name:'העברת המוצר לארכיון'}).click();await m.getByRole('dialog').getByRole('button',{name:'העברה לארכיון',exact:true}).click();
  await Promise.all([row(a).waitFor({state:'hidden'}),row(b).waitFor({state:'hidden'})]);
  await m.getByLabel('הצגת מוצרים בארכיון').check();await m.locator('.k-row__hit').filter({hasText:master.name}).click();await m.getByRole('dialog').getByRole('button',{name:'החזרה מהארכיון'}).click();
