@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRoute, useSearch, navigate } from '../router';
 import { useSync, useList } from '../db';
 import { flush, scopeOf } from '../survey/local';
-import { useOnline, useOpenTasks, useOpenShopping, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
+import { useOpenTasks, useOpenShopping, useOnline, useTemplates, useTodayInstances, materializeToday, usePlaces, useTeam, usePeople, actorOf, canManage, isOwner, useCmsEditor } from '../store';
+import { inboxRows } from './screens/manage/inboxRows';
 import { useAllEvents, useNotifications } from '../data';
 import { isNativeAndroid } from '../native';
 import { useDemo, useDemoStates, setDemo, PERSONA_ROLE, SCENARIOS } from '../demo/store';
 import { leaveDemoTarget } from '../demo/intro';
-import { DemoIntro } from './DemoIntro';
 import { todayKey, useClockVersion } from '../clock';
 import { sweepPrivateTaskActivity } from '../activity';
 import type { Profile, Settings, Staffing } from '../types';
@@ -23,6 +23,7 @@ import { BottomNav, DemoStrip, Strip, type IconName } from './kit';
 import { DemoSheet } from './screens/system';
 import { READ_ONLY_TEXT, useAppSwitches } from '../switches';
 import { useVendorRequests } from './data/manage';
+import { EventOfflineProvider } from './screens/events/offline';
 import * as legacy from './legacy';
 import { Guard } from '../guard';
 import { AppScreen as Frame2 } from './core';
@@ -129,7 +130,7 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
 
   // nav badges (RULES.md rule 11): a red count only on ניהול (what waits in "לטיפול", the manage root's count). Not on משימות,
   // קניות or החווה; the bell carries the personal count in each root header.
-  const inbox = useNotifications(ctx.manager).items.length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
+  const inbox = inboxRows(useNotifications(ctx.manager).items).length + useVendorRequests(eventToday?.id || '', ctx.manager && !!eventToday).items.length;
   const badges: Partial<Record<NavItem['key'], number>> = { manage: ctx.manager ? inbox : 0 };
   const nav: NavItem[] = [TEAM_NAV.tasks, TEAM_NAV.shopping, TEAM_NAV.farm, ...(ctx.manager ? [TEAM_NAV.manage] : []), ...(eventToday ? [TEAM_NAV.event] : [])]
     .map((i) => (badges[i.key] ? { ...i, badge: badges[i.key] } : i)); // on the event day every team member gets the tab (the old events tab); `crew` stays in ctx
@@ -137,7 +138,10 @@ export function TeamAppV2({ user, profile, settings }: { user: Session; profile:
   if (redirect || (hit && !allowed)) screen = null;
   else if (hit) { const S = hit.screen; screen = <S ctx={ctx} params={hit.params} />; }
   else screen = legacy.teamFallback(route, { user, profile, settings }) ?? <AppScreen variant="plain" noNav><legacy.NotFound /></AppScreen>;
-  return <V2Provider value={ctx}><Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame></V2Provider>;
+  const offlineEvent = !redirect && allowed && hit?.route.eventOffline ? hit.params.id : '';
+  return <V2Provider value={ctx}><EventOfflineProvider eventId={offlineEvent} ctx={ctx}>
+    <Frame nav={nav} tab={hit?.tab ?? null} showNav={!!hit && hit.kind === 'tab'}>{screen}</Frame>
+  </EventOfflineProvider></V2Provider>;
 }
 
 // ---------- vendors and helpers ----------
@@ -161,16 +165,6 @@ export function VendorAppV2({ user, profile, settings }: { user: Session; profil
 /** Entry used by src/app/App.tsx. */
 export function V2Root(props: { user: Session; profile: Profile; settings: Settings }) {
   const isVendor = props.profile.role === 'vendor';
-  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}<IntroV2 {...props} /></ToastProvider>;
-}
-/** First visits in demo, for the real account only (the demo personas never see it). */
-function IntroV2({ user, profile }: { user: Session; profile: Profile }) {
-  const demo = useDemo(); const toast = useToast();
-  // C10 right after the first entry comes first: the first-visit demo starts once it is answered ("אחר כך" or installing)
-  const route = useRoute(); const search = useSearch();
-  const params = new URLSearchParams(search);
-  const firstInstall = route === '/install' && params.get('first') === '1';
-  if (demo.on || firstInstall || params.get('notifications') === '1') return null;
-  return <DemoIntro shell="team" profile={profile} owner={isOwner(profile, user)} manager={canManage(profile, user)} notify={(text) => toast.show({ text, check: false, duration: 4500 })} />;
+  return <ToastProvider>{isVendor ? <VendorAppV2 {...props} /> : <TeamAppV2 {...props} />}</ToastProvider>;
 }
 export { canManage };

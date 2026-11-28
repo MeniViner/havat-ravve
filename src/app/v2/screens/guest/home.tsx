@@ -1,20 +1,23 @@
+import { eventMillis } from '../events/logic';
 // U1 GuestHome and U2 GuestEvent. Both open signed out.
 import { useEffect, useMemo, useState } from 'react';
 import { AppScreen, go, useExternal } from '../../core';
 import { Button, BottomBar, DateBox, DetailList, DetailRow, EmptyState, Icon, IconButton, ListCard, Quote, Row, Tag, TextLink, TopBar, cx } from '../../kit';
+import { useEventClock } from '../../data/eventClock';
 import { useEvent, useMyTickets } from '../../../data';
 import { useDemo } from '../../../demo/store';
 import { demoPreviousGuestVisit } from '../../../demo/data';
-import { nowIso, now as clockNow } from '../../../clock';
+import { nowIso } from '../../../clock';
 import { back } from '../../../router';
 import { publicOrigin } from '../../../native';
 import { dayName, daysFromToday, hhmm, ddmm } from '../../format';
 import { isRead, markRead, markSeen, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
 import type { Broadcast, Profile } from '../../../types';
 import {
-  type GuestCtx, actorOf, paths, useEvents, isPast, hours, monthShort, dayNum, priceLine, whenLong, ordersOf, byDate, ticketsWord, dayShort, downloadIcs, share, mapsSearch,
+  type GuestCtx, actorOf, paths, useEvents, isPast, hours, monthShort, dayNum, priceLine, whenLong, ordersOf, byDate, ticketsWord, dayShort, downloadIcs, mapsSearch,
 } from './data';
 import { PhotoHeader } from './parts';
+import { EventShareActions } from '../events/EventShareActions';
 
 // ---------- "חדש" on events published since the previous visit ----------
 // Kept stable while the guest opens an event and comes back to the home screen.
@@ -97,8 +100,8 @@ function TicketShortcut({ ctx }: { ctx: GuestCtx }) {
 export function GuestHome({ ctx }: { ctx: GuestCtx }) {
   const { items, loading, error } = useEvents();
   const previous = usePreviousVisit(ctx.profile?.uid, !loading && !error);
-  const now = clockNow().toISOString();
-  const upcoming = items.filter((e) => (e.end || e.start) >= now);
+  const now = useEventClock(items.map((event)=>event.end));
+  const upcoming = items.filter((e) => eventMillis(e.end) > now);
   const presets = ctx.settings.donationPresets.slice(0, 2).map((p) => p.label).join(', ');
   return (
     <AppScreen variant="root" gap={10} bodyClassName="guest-bleed">
@@ -132,6 +135,7 @@ function GuestTile({ icon, title, meta, onClick }: { icon: 'pin' | 'heart' | 'ph
 // ---------- U2 ----------
 export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const { item: e, loading } = useEvent(id);
+  useEventClock([e?.end || '']);
   const open = useExternal();
   if (loading) return <AppScreen variant="detail" />;
   if (!e || !e.published) {
@@ -145,14 +149,14 @@ export function EventPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
   const past = isPast(e);
   const place = e.location || 'חוות רווה, ליד טנא עומרים';
   const bar = past ? <Button size="bar" grow disabled>האירוע הסתיים</Button>
-    : !e.open ? <Button size="bar" grow disabled>ההרשמה עוד לא נפתחה</Button>
+    : !e.open || ('closed' in e && !!e.closed) ? <Button size="bar" grow disabled>ההרשמה עוד לא נפתחה</Button>
     : <Button size="bar" grow icon="ticket" onClick={() => go(`/events/${e.id}/order`)}>{e.price ? 'הזמנת כרטיסים' : 'הרשמה'}</Button>;
   return (
     <AppScreen variant="detail" gap={12} bodyClassName="guest-bleed" bar={<BottomBar>{bar}</BottomBar>}>
       <PhotoHeader src={e.image} height={190} overline={whenLong(e)} title={e.title} label={`תמונה מ${e.title}`} />
       <TopBar className="guest-pull" back={{ label: 'בית', onClick: () => back('/') }} end={<span className="guest-icons">
         <IconButton icon="calendar" label="להוסיף ליומן" variant="bordered" onClick={() => downloadIcs(e)} />
-        <IconButton icon="share" label="שיתוף" variant="bordered" onClick={() => share({ title: e.title, text: `${e.title} בחוות רווה · ${whenLong(e)}`, url: `${publicOrigin()}/app/events/${e.id}` })} />
+        <EventShareActions event={e} compact />
       </span>} />
       <DetailList>
         <DetailRow term="איפה" action={<TextLink onClick={() => open(mapsSearch(place))}>ניווט</TextLink>}>{place}</DetailRow>

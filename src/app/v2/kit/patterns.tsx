@@ -316,6 +316,7 @@ export function UnderlineLink({ icon, children, href, onClick, className, style 
 /* ═════════════ Table view (Q9) ═════════════ */
 
 export type TableCell = string | number;
+export type TableCellRenderer = (value: TableCell, column: number, sourceRow: number) => ReactNode;
 /** Money ("1,076 ₪") sorts as a number and a date ("19.11.2026", with or without a time) by year, month, day. */
 const sortKey = (c: TableCell): TableCell => {
   if (typeof c === 'number') return c;
@@ -329,12 +330,13 @@ const sortKey = (c: TableCell): TableCell => {
  * The table view's card: a header row of soft 13/600 headings, 15px cells, the first column bold, horizontal scroll inside
  * the card. Tapping a heading sorts by that column (again to reverse).
  */
-export function DataTable({ headers, rows, label = 'טבלה', className, style }: Base & { headers: string[]; rows: TableCell[][]; label?: string }) {
+export function DataTable({ headers, rows, renderCell, label = 'טבלה', className, style }: Base & { headers: string[]; rows: TableCell[][]; renderCell?: TableCellRenderer; label?: string }) {
   const [sort, setSort] = useState<{ col: number; dir: 1 | -1 } | null>(null);
   const visible = useMemo(() => {
-    if (!sort) return rows;
-    return [...rows].sort((a, b) => {
-      const x = sortKey(a[sort.col] ?? ''), y = sortKey(b[sort.col] ?? '');
+    const indices = rows.map((_, i) => i);
+    if (!sort) return indices;
+    return indices.sort((a, b) => {
+      const x = sortKey(rows[a][sort.col] ?? ''), y = sortKey(rows[b][sort.col] ?? '');
       const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'he', { numeric: true });
       return r * sort.dir;
     });
@@ -351,7 +353,7 @@ export function DataTable({ headers, rows, label = 'טבלה', className, style 
               </th>
             ))}</tr>
           </thead>
-          <tbody>{visible.map((r, i) => <tr key={i}>{r.map((v, c) => <td key={c}><bdi>{v}</bdi></td>)}</tr>)}</tbody>
+          <tbody>{visible.map((i) => <tr key={i}>{rows[i].map((v, c) => <td key={c}><bdi>{renderCell ? renderCell(v, c, i) : v}</bdi></td>)}</tr>)}</tbody>
         </table>
       </div>
     </section>

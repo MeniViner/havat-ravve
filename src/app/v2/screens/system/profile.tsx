@@ -16,9 +16,9 @@ import { setUpdatesOptIn } from '../../data/broadcast';
 import type { V2Ctx } from '../../ctx';
 import {
   roleWord, sinceText, photoOf, sourceOf, useMyCounts, usePresenceText, useGooglePhotoSync,
-  receiptOf, saveProfile, parseBirth, birthText, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
+  receiptOf, saveProfile, storedBirthYear, registrationQuestions, answersFor, missingAnswers, type ProfileDraft,
 } from '../../data/system';
-import { RegistrationQuestions } from './fields';
+import { RegistrationQuestions, BirthYearField } from './fields';
 import { isNative } from '../../../native';
 import './system.css';
 
@@ -61,7 +61,7 @@ export function ProfileScreen({ ctx }: ScreenProps) {
   const vendor = ctx.role === 'vendor';
   const lead = ctx.manager || ctx.owner;
   const counts = useMyCounts(ctx);
-  const presence = usePresenceText(ctx.user.uid, ctx.today, !vendor);
+  const presence = usePresenceText(ctx.user.uid, ctx.today, ctx.manager, !vendor);
   const notifs = useParam('notifications') === '1';
   useGooglePhotoSync(p);
   const src = photoOf(p);
@@ -125,28 +125,24 @@ export function ProfileEdit({ ctx }: ScreenProps) {
   // C13 has its own "יישוב" and "תאריך לידה" fields: a sign-up question asking the same is not asked twice (rule 7);
   // on save its answer follows the field
   const townQ = all.find((f) => f.type !== 'date' && f.label.includes('יישוב'));
-  const birthQ = all.find((f) => f.type === 'date' && f.label.includes('לידה'));
-  const questions = all.filter((f) => f !== townQ && f !== birthQ);
+  const questions = all.filter((f) => f !== townQ);
   const a0 = answersFor(p.fields, all);
   const [d, setD] = useState<ProfileDraft>({ displayName: p.displayName || '', phone: p.phone || '', town: p.town || (townQ ? a0[townQ.id] || '' : ''),
-    birthDate: birthText(p.birthDate || (birthQ ? a0[birthQ.id] || '' : '')), receipt: receiptOf(p), answers: a0 });
+    receipt: receiptOf(p), answers: a0 });
   const [optIn, setOptIn] = useState(p.updatesOptIn === true);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const src = photoOf(p);
   const nameErr = tried && !d.displayName.trim() ? 'צריך שם' : '';
-  const birthErr = tried && parseBirth(d.birthDate) === null ? 'תאריך בצורה 14.03.1975' : '';
   const townMissing = !!townQ?.required && !d.town.trim();
-  const birthMissing = !!birthQ?.required && !d.birthDate.trim();
-  const missing = [...missingAnswers(d.answers, questions), ...(townMissing ? [townQ!.id] : []), ...(birthMissing ? [birthQ!.id] : [])];
+  const missing = [...missingAnswers(d.answers, questions), ...(townMissing ? [townQ!.id] : [])];
   const save = async () => {
     setTried(true);
-    if (!d.displayName.trim() || parseBirth(d.birthDate) === null || missing.length || busy) return;
+    if (!d.displayName.trim() || missing.length || busy) return;
     setBusy(true);
     const answers = { ...(d.answers || {}) };
     if (townQ) answers[townQ.id] = d.town.trim();
-    if (birthQ) answers[birthQ.id] = parseBirth(d.birthDate) || '';
-    try { await saveProfile(p, { ...d, answers }); if (optIn !== (p.updatesOptIn === true)) await setUpdatesOptIn(p.uid, optIn); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
+    try { await saveProfile(p, { ...d, answers }, ctx.settings.registrationFields); if (optIn !== (p.updatesOptIn === true)) await setUpdatesOptIn(p.uid, optIn); toast.show({ text: 'נשמר', duration: 2500 }); back('/me'); }
     catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -162,8 +158,7 @@ export function ProfileEdit({ ctx }: ScreenProps) {
       <Field label="שם בעברית" value={d.displayName} onChange={set('displayName')} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={d.phone} onChange={set('phone')} maxLength={25} inputMode="tel" autoComplete="tel" />
       <Field label={townQ?.required ? 'יישוב *' : 'יישוב'} value={d.town} onChange={set('town')} maxLength={60} error={tried && townMissing ? 'צריך למלא' : ''} />
-      <Field label={birthQ?.required ? 'תאריך לידה *' : 'תאריך לידה'} value={d.birthDate} onChange={set('birthDate')} placeholder={birthQ?.required ? '14.03.1975' : 'לא חובה'} inputMode="numeric"
-        error={birthErr || (tried && birthMissing ? 'צריך למלא' : '')} />
+      <BirthYearField value={d.birthYear ?? storedBirthYear(p, ctx.settings.registrationFields)} onChange={(birthYear) => setD((s) => ({ ...s, birthYear }))} />
       <RegistrationQuestions questions={questions} answers={d.answers || {}} missing={tried ? missing : []}
         onChange={(id, v) => setD((s) => ({ ...s, answers: { ...s.answers, [id]: v } }))} />
       <DetailList className="system-dl"><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>

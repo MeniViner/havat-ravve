@@ -15,10 +15,11 @@ import { nowIso } from '../../../clock';
 import { back, navigate, param, useParam } from '../../../router';
 import { isNative } from '../../../native';
 import { dayName, daysFromToday, ddmm, longDate, money } from '../../format';
-import { isRead, markRead, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
+import { isRead, markRead, useNotifications, useBroadcastNotification, useMyBroadcasts, useReceipt } from '../../data/broadcast';
+import { markNotificationsRead } from '../../data/notify';
 import { DevicePushRow } from '../broadcast/PushSheet';
-import { registrationQuestions, answerOf, answersFor, missingAnswers } from '../../data/system';
-import { RegistrationQuestions } from '../system/fields';
+import { registrationQuestions, storedBirthYear, birthChange, answerOf, answersFor, missingAnswers } from '../../data/system';
+import { RegistrationQuestions, BirthYearField } from '../system/fields';
 import { gw } from '../../gender';
 import { AccountDemoRow, AccountFooter, signOutEverywhere } from '../system/profile';
 import type { Broadcast, Donation, Profile, ReceiptPreference, Tab, Visit } from '../../../types';
@@ -50,7 +51,7 @@ const tabItem = (t: Tab): Item => ({
   go: `/me/stall/${t.id}`, rank: t.status === 'open' || t.status === 'claimed' ? 1 : 2, at: t.createdAt,
 });
 const visitItem = (v: Visit): Item => ({
-  key: 'v' + v.id, title: `ביקור · ${dayShort(v.date)} · ${v.people} אנשים`, tag: visitTag(v), meta: v.status === 'approved' && v.managerNote ? v.managerNote : v.type,
+  key: 'v' + v.id, title: `ביקור · ${dayShort(v.status === 'approved' && v.approvedDate || v.date)} · ${v.people} אנשים`, tag: visitTag(v), meta: v.replyText || (v.status === 'approved' && v.managerNote) || v.type,
   go: `/me/visits/${v.id}`, rank: v.status === 'new' ? 1 : 2, at: v.createdAt,
 });
 /** Upcoming orders first, then what still waits (to pay, to approve), then the rest; newest first inside each. */
@@ -67,7 +68,7 @@ function useItems(ctx: GuestCtx) {
 const ItemRow = ({ it }: { it: Item }) => <Row minHeight={58} onClick={() => go(it.go)} title={it.title} tags={<Tag tone={it.tag.tone}>{it.tag.text}</Tag>} meta={it.meta || undefined} />;
 
 // ---------- U12 ----------
-const ABOUT: [RegExp, string][] = [[/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
+const ABOUT: [RegExp, string][] = [[/^\/farm\/map$/, 'כדי לפתוח את המפה בחשבון הבעלים של החווה'], [/\/order/, 'כדי שהכרטיסים יהיו שלך ויישמרו בטלפון'], [/^\/visit/, 'כדי שנוכל לחזור אליך על הביקור'], [/^\/donate/, 'כדי שנוכל לשלוח אישור תשלום ולומר תודה'], [/^\/contact/, 'כדי שהמנהלים ידעו למי לחזור']];
 /** U12: the account page signed out, and /login?next=... (then the copy says why, and signing in goes on to `next`). */
 export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
   const sign = useSignIn();
@@ -78,13 +79,12 @@ export function SignInPage({ ctx, next }: { ctx: GuestCtx; next?: string }) {
       {next && <TopBar className="guest-pull" back={{ label: 'חזרה', onClick: () => back('/') }} />}
       <main className="guest-signin__main">
         <span className="guest-signin__mark" aria-hidden="true"><Icon name="farm" size={32} /></span>
-        <h1 className="guest-signin__title">{next?.includes('/order') ? 'רגע לפני הכרטיסים' : 'החשבון שלי בחוות רווה'}</h1>
+        <h1 className="guest-signin__title">{next === '/farm/map' ? 'כניסה למפת החווה' : next?.includes('/order') ? 'רגע לפני הכרטיסים' : 'החשבון שלי בחוות רווה'}</h1>
         <p className="guest-signin__text">{about}, נכנסים פעם אחת עם חשבון {ACCOUNT_WORD}. לא נשאל שוב.</p>
         <SignInButtons sign={sign} next={next} />
         {sign.error && <span className="k-field__error" role="alert">{sign.error}</span>}
         <span className="guest-signin__fine">בהרשמה ממלאים שם בעברית וטלפון. <button type="button" className="guest-inlinelink" onClick={() => go('/terms')}>תנאי שימוש ופרטיות</button></span>
       </main>
-      <div className="guest-signin__demo"><Button variant="quiet" onClick={() => go('/demo')}>לראות איך האפליקציה עובדת, בנתוני הדגמה</Button></div>
     </AppScreen>
   );
 }
@@ -101,7 +101,8 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const demo = useDemo();
   const { items } = useItems(ctx);
   const messages = useMyBroadcasts(p.uid, 30);
-  const msgs = messages.items;
+  const service = useNotifications(p?.uid || '');
+  const msgs = [...messages.items, ...service.items.filter((item) => item.kind === 'event' && item.id.startsWith('op_'))].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const [sheet, setSheet] = useState<'receipt' | null>(null);
   const notifications = useParam('notifications') === '1';
   const toast = useToast();
@@ -134,7 +135,7 @@ function Account({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
         <Row leading={<IconTile icon="sliders" />} title="עיצוב" meta="מצב כהה" onClick={() => go('/me/appearance')} />
         <AccountDemoRow />
         {canChooseReceipt(p) && <Row leading={<IconTile icon="message" />} title="אישור תשלום" meta={method ? `נשלח אליי ב${RECEIPT_WORD[method]}` : 'עוד לא בחרת לאן'} onClick={() => setSheet('receipt')} />}
-        <Row leading={<IconTile icon="phone" />} title="פנייה לחווה" onClick={() => go('/contact')} />
+        <Row leading={<IconTile icon="phone" />} title="הודעות לחווה" onClick={() => go('/contact')} />
         {!isNative && <Row leading={<IconTile icon="download" />} title="התקנה למסך הבית" onClick={() => go('/install')} />}
       </ListCard>
       <AccountFooter onSignOut={() => signOutEverywhere(demo.on, p)} />
@@ -186,7 +187,9 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
   const [name, setName] = useState(p.displayName || '');
   const [phone, setPhone] = useState(p.phone || '');
   const [answers, setAnswers] = useState<Record<string, string>>(() => answersFor(p.fields, questions));
-  const [optIn, setOptIn] = useState(!!p.updatesOptIn);
+  const [updatesChoice, setOptIn] = useState<boolean>();
+  const optIn = updatesChoice ?? !!p.updatesOptIn;
+  const [birthYear, setBirthYear] = useState<number>();
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const missing = missingAnswers(answers, questions);
@@ -199,7 +202,8 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
     setBusy(true);
     const given = Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, v.trim()]));
     try {
-      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), fields: { ...(p.fields || {}), ...given }, updatesOptIn: optIn, updatedAt: nowIso() });
+      const changedBirth = birthChange(p, birthYear, ctx.settings.registrationFields);
+      await write.update('users', p.uid, { displayName: name.trim(), phone: phone.trim(), ...changedBirth, fields: { ...(changedBirth.fields || p.fields || {}), ...given }, ...(updatesChoice === undefined ? {} : { updatesOptIn: updatesChoice }), updatedAt: nowIso() });
       toast.show({ text: 'נשמר', duration: 2500 }); done();
     } catch (e) { toast.refused(`לא נשמר. ${authErrorMessage(e)}`); }
     finally { setBusy(false); }
@@ -210,6 +214,7 @@ function Edit({ ctx, p }: { ctx: GuestCtx; p: Profile }) {
       <Field label="השם שלך בעברית" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} error={nameErr} autoComplete="name" />
       <Field label="טלפון" ltr value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={25} inputMode="tel" error={phoneErr} autoComplete="tel" />
       <RegistrationQuestions questions={questions} answers={answers} missing={tried ? missing : []} onChange={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))} />
+      <BirthYearField value={birthYear ?? storedBirthYear(p, ctx.settings.registrationFields)} onChange={setBirthYear} />
       <UpdatesSwitch checked={optIn} onChange={setOptIn} />
       <DetailList><DetailRow term="מייל"><span dir="ltr">{p.email}</span></DetailRow></DetailList>
       <Note>המייל מגיע מחשבון Google, ולכן אי אפשר לשנות אותו כאן.</Note>
@@ -243,15 +248,23 @@ export function MessagesPage({ ctx }: { ctx: GuestCtx }) {
   const toast = useToast();
   const events = useEvents();
   const messages = useMyBroadcasts(p?.uid || '', 30);
+  const personal = useNotifications(p?.uid || '');
   if (!p) return <SignInPage ctx={ctx} next="/me/messages" />;
-  const list = messages.items;
+  const list = [
+    ...messages.items.map((b) => ({ key: b.id, at: b.createdAt, row: <MessageRow key={'b-' + b.id} p={p} b={b} byId={events.byId} /> })),
+    ...personal.items.filter((n) => n.id.startsWith('op_') && n.kind === 'event').map((n) => ({
+      key: n.id, at: n.createdAt, row: <Row key={n.id} title={n.sub} meta={messageWhen(n.createdAt) + ' · ' + n.title} chevron={n.link !== '/me/messages'}
+        leading={<span className={n.readAt ? 'guest-dot guest-dot--off' : 'guest-dot'} aria-label={n.readAt ? undefined : 'חדש'} />}
+        onClick={() => { if (!n.readAt) void markNotificationsRead(p.uid, [n.id]).catch(() => {}); if (n.link !== '/me/messages') go(n.link); }} />,
+    })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
   const flip = (on: boolean) => setUpdatesOptIn(p.uid, on).then(() => toast.show({ text: on ? 'עדכונים על אירועים חדשים: פעיל' : 'לא תקבלו עדכונים על אירועים חדשים', check: true, actions: [{ label: 'ביטול', onClick: () => void setUpdatesOptIn(p.uid, !on) }] }), (e) => toast.refused(`לא נשמר. ${authErrorMessage(e)}`));
   return (
     <AppScreen variant="detail" gap={12}>
       <TopBar className="guest-pull" back={{ label: 'החשבון שלי', onClick: () => go(paths(ctx).account) }} />
       <PageTitle size="detail">הודעות מהחווה</PageTitle>
-      {!list.length ? (!messages.loading && <EmptyState variant="card" icon="megaphone" title="אין הודעות עדיין" text="הודעות מהחווה על אירועים שנרשמת אליהם יופיעו כאן." />)
-        : <ListCard>{list.map((b) => <MessageRow key={b.id} p={p} b={b} byId={events.byId} />)}</ListCard>}
+      {!list.length ? (!messages.loading && !personal.loading && <EmptyState variant="card" icon="megaphone" title="אין הודעות עדיין" text="הודעות מהחווה על אירועים שנרשמת אליהם יופיעו כאן." />)
+        : <ListCard>{list.map((item) => item.row)}</ListCard>}
       <ListCard>
         {p.updatesOptIn
           ? <Row title="לא לקבל עדכונים על אירועים חדשים" meta="הודעות על אירוע שנרשמת אליו יגיעו בכל מקרה" onClick={() => void flip(false)} />
@@ -281,13 +294,16 @@ export function VisitPage({ ctx, id }: { ctx: GuestCtx; id: string }) {
       {!v ? (!mine.loading && <EmptyState variant="fill" icon="pin" title="הבקשה לא נמצאה" />) : <>
         <div className="guest-titleblock">
           <span className="guest-sub guest-sub--sm">בקשת ביקור</span>
-          <div className="guest-titlerow"><PageTitle size="detail">{dayName(v.date)}, {longDate(v.date)}</PageTitle><Tag tone={tag!.tone}>{tag!.text}</Tag></div>
+          <div className="guest-titlerow"><PageTitle size="detail">{dayName(v.status === 'approved' && v.approvedDate || v.date)}, {longDate(v.status === 'approved' && v.approvedDate || v.date)}</PageTitle><Tag tone={tag!.tone}>{tag!.text}</Tag></div>
         </div>
         <DetailList>
+          {v.status === 'approved' && v.approvedDate && v.approvedDate !== (v.requestedDate || v.date) && <DetailRow term="המועד שביקשת">{longDate(v.requestedDate || v.date)} <Tag tone="waiting">אושר מועד שונה</Tag></DetailRow>}
+          {v.status === 'approved' && v.approvedTime && <DetailRow term="שעה שאושרה">{v.approvedTime}</DetailRow>}
+          {v.replyText && <DetailRow term="תשובת החווה">{v.replyText}</DetailRow>}
           <DetailRow term="כמה">{v.people} אנשים</DetailRow>
           <DetailRow term="סוג">{v.type}</DetailRow>
           {v.note && <DetailRow term="כתבת">{v.note}</DetailRow>}
-          {v.managerNote && v.status !== 'approved' && <DetailRow term="מהחווה">{v.managerNote}</DetailRow>}
+          {v.managerNote && !v.replyText && v.status !== 'approved' && <DetailRow term="מהחווה">{v.managerNote}</DetailRow>}
         </DetailList>
         {(v.status === 'new' || v.status === 'approved') && <VisitSteps v={v} />}
         {(wa || canCancel) && (
@@ -308,7 +324,7 @@ function VisitSteps({ v }: { v: Visit }) {
   const steps = [
     { title: 'הבקשה נשלחה', meta: messageWhen(v.createdAt), done: true },
     { title: 'החווה חוזרת אליך', meta: set ? '' : 'בדרך כלל תוך יום, בוואטסאפ או בטלפון', done: set },
-    { title: 'הביקור נקבע', meta: set ? (v.managerNote || `${dayName(v.date)}, ${longDate(v.date)}`) : 'יופיע כאן עם השעה', done: set },
+    { title: 'הביקור נקבע', meta: set ? (v.replyText ? [longDate(v.approvedDate || v.date), v.approvedTime].filter(Boolean).join(' · ') : v.managerNote || longDate(v.date)) : 'יופיע כאן עם השעה', done: set },
   ];
   return (
     <section className="k-card guest-steps" aria-label="מצב הבקשה">

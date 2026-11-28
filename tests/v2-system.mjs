@@ -17,7 +17,7 @@ const stub = {
     b.onLoad({ filter: /^fs$/, namespace: 'stub' }, () => ({ contents: `
       const rec = (n) => (...a) => { globalThis.__calls.push(n); return n === 'onSnapshot' ? () => {} : {}; };
       export const collection = rec('collection'), doc = rec('doc'), documentId = rec('documentId'), onSnapshot = rec('onSnapshot'), query = rec('query'), where = rec('where'), orderBy = rec('orderBy'), limit = rec('limit');
-      export const setDoc = async () => rec('setDoc')(), updateDoc = async () => rec('updateDoc')(), deleteDoc = async () => rec('deleteDoc')(), getDocsFromServer = async () => rec('get')();
+      export const setDoc = async () => rec('setDoc')(), updateDoc = async () => rec('updateDoc')(), deleteDoc = async () => rec('deleteDoc')(), getDocsFromServer = async () => rec('get')(), getDocsFromCache = async () => rec('getDocsFromCache')();
       export const writeBatch = () => { rec('writeBatch')(); return { set() {}, update() {}, delete() {}, commit: async () => {} }; };
       export const runTransaction = async () => rec('runTransaction')();
       export const arrayUnion = rec('arrayUnion'), arrayRemove = rec('arrayRemove'), increment = rec('increment'), serverTimestamp = rec('serverTimestamp');
@@ -30,7 +30,7 @@ const stub = {
 await build({
   stdin: { contents: `
     export * as sys from './src/app/v2/data/system';
-    export { setDemo, demoDoc, demoItems } from './src/app/demo/store';
+    export { setDemoAccess, setDemo, demoDoc, demoItems } from './src/app/demo/store';
     export { freezeClock } from './src/app/clock';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'esm', outfile: '.build/v2-system-test.mjs', plugins: [stub], logLevel: 'silent', jsx: 'automatic',
@@ -137,6 +137,7 @@ assert.deepEqual(sys.searchAll(ctxOf(true), data, '052 222').map((h) => h.id), [
 assert.deepEqual(sys.searchAll(ctxOf(true), data, '   '), []);
 
 // ---------- writes: demo only, own fields only ----------
+m.setDemoAccess('system-test-manager', 'manager');
 m.setDemo({ on: true, persona: 'staff' });
 globalThis.__calls.length = 0;
 const yoav = m.demoDoc('users/demo-u-yoav');

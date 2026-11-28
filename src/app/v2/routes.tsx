@@ -20,7 +20,7 @@ export type NavTab = 'tasks' | 'shopping' | 'farm' | 'manage' | 'event' | 'vendo
 type Screen = (p: ScreenProps) => ReactNode;
 /** kind: 'tab' = the bottom nav shows under the screen; 'page' = no nav (detail screens, forms, sheets, gate), exactly as each design shows.
  *  Capture bars are part of the screens that have them (T1, F1, S1 ...), rendered with the kit's CaptureBar. */
-type Route = { path: string; screen: Screen; tab: NavTab; kind: 'tab' | 'page'; manager?: boolean; owner?: boolean };
+type Route = { path: string; screen: Screen; tab: NavTab; kind: 'tab' | 'page'; manager?: boolean; owner?: boolean; eventOffline?: boolean };
 
 const R = (path: string, screen: Screen, tab: NavTab, kind: Route['kind'] = 'page', o: Partial<Route> = {}): Route => ({ path, screen, tab, kind, ...o });
 
@@ -59,7 +59,7 @@ export const TEAM_ROUTES: Route[] = [
   R('/farm/calendar/:id/edit', farm.CalItemForm, 'farm', 'page'),
   R('/farm/presence', farm.PresenceScreen, 'farm', 'page'),
   R('/farm/today', farm.FeedScreen, 'farm', 'tab'),
-  R('/farm/events/:id', farm.FarmEventScreen, 'farm', 'page'),
+  R('/farm/events/:id', farm.FarmEventScreen, 'farm', 'page', { eventOffline: true }),
   R('/people/:uid', farm.TeammateScreen, 'farm', 'tab'),
   // Event tab (event day only)
   R('/event', eventday.EventHome, 'event', 'tab'),
@@ -92,24 +92,27 @@ export const TEAM_ROUTES: Route[] = [
   R('/manage/events/:id/vendors', vendor.EventVendors, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/products/new', events.ProductForm, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/products/:pid', events.ProductForm, 'manage', 'page', { manager: true }),
-  R('/manage/events/:id/products', events.ProductsScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/events/:id/products', events.ProductsScreen, 'manage', 'tab', { manager: true, eventOffline: true }),
   R('/manage/events/:id/tabs/:tid', events.TabScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/tabs', events.TabsScreen, 'manage', 'tab', { manager: true }), // Q12 shows the nav like its siblings
-  R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true }),
-  R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true }),
+  R('/manage/events/:id/files', events.FilesScreen, 'manage', 'tab', { manager: true, eventOffline: true }),
+  R('/manage/farm-catalogs', events.FarmCatalogsScreen, 'manage', 'page', { manager: true }),
+  R('/manage/work-stations', events.WorkStationsScreen, 'manage', 'page', { manager: true }),
+  R('/manage/events/:id/staffing', events.StaffingScreen, 'manage', 'page', { manager: true, eventOffline: true }),
   R('/manage/events/:id/debts', events.DebtsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/events/:id/live/scans/:sid', eventday.RejectedScan, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/live/scans', eventday.ScansScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/live/waiting', eventday.WaitingScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/live', eventday.LiveScreen, 'manage', 'page', { manager: true }),
   R('/manage/events/:id/close', eventday.CloseEvent, 'manage', 'page', { manager: true }),
-  R('/manage/events/:id', events.EventScreen, 'manage', 'tab', { manager: true }),
+  R('/manage/events/:id', events.EventScreen, 'manage', 'tab', { manager: true, eventOffline: true }),
   R('/manage/vendors', vendor.VendorPool, 'manage', 'tab', { manager: true }),
   R('/manage/vendors/:id/access', vendor.VendorAccess, 'manage', 'tab', { manager: true }),
   R('/manage/vendors/:id', vendor.VendorCard, 'manage', 'page', { manager: true }),
   R('/manage/people', manage.PeopleScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/invite', manage.InviteScreen, 'manage', 'page', { manager: true }),
   R('/manage/people/messages/:id', broadcast.BroadcastReads, 'manage', 'tab', { manager: true }), // B3 under People (Q25)
+  R('/manage/people/contact/:id', manage.ContactPersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/people/:uid', manage.PersonScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports', manage.ReportsScreen, 'manage', 'tab', { manager: true }),
   R('/manage/reports/:section', manage.ReportsScreen, 'manage', 'tab', { manager: true }), // Q14 drill-ins: people, events
@@ -153,7 +156,7 @@ export const VENDOR_ROUTES: Route[] = [
 ];
 
 /** Guest pages a vendor may open (rendered by legacy.teamFallback). */
-export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact'];
+export const VENDOR_LEGACY = ['/terms', '/privacy', '/delete-account', '/contact', '/vendor-registration', '/me/messages'];
 
 /** Old paths (bookmarks, notification links stored in Firestore, the Worker) -> new paths. */
 export function redirectOf(route: string, search: URLSearchParams, role: V2Ctx['role']): string | null {

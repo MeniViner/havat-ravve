@@ -75,7 +75,7 @@ async function nativeSheet(open: () => Promise<{ credential: { idToken?: string;
 }
 
 export async function signOutUser() {
-  if (isNative && getAppAuth().currentUser) {
+  if (getAppAuth().currentUser) {
     const { disconnectSurvey } = await import('./survey/native');
     await disconnectSurvey(getAppAuth().currentUser!.uid);
   }

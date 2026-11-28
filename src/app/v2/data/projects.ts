@@ -73,14 +73,14 @@ type Who = Pick<TeamCtx, 'actor'>;
 const memberPatch = (a: Actor) => ({ members: push(a), memberUids: push(a.uid) });
 
 /** P5 "יצירת הפרויקט": the project and its steps in one batch; people given a step get a notification. Returns the new id. */
-export async function createProject(ctx: Who, form: { title: string; deadline: string; steps: DraftStep[] }): Promise<string> {
+export async function createProject(ctx: Who, form: { title: string; deadline: string; steps: DraftStep[]; eventId?:string }): Promise<string> {
   const at = nowIso(); const me = ctx.actor;
   const pid = newId(PROJECTS);
   const plan = planSteps(form.steps, []);
   const members: Actor[] = [me];
   for (const s of plan.create) if (s.assignee && !members.some((m) => m.uid === s.assignee!.uid)) members.push(s.assignee);
   const project: ProjectDoc = {
-    id: pid, title: form.title.trim(), goal: form.title.trim(), ...parseDeadline(form.deadline),
+    id: pid, ...(form.eventId ? {eventId:form.eventId} : {}), title: form.title.trim(), goal: form.title.trim(), ...parseDeadline(form.deadline),
     members, memberUids: members.map((m) => m.uid), status: 'active', createdBy: me, createdAt: at, updatedAt: at, doneAt: null,
   } as ProjectDoc;
   if (!project.deadlineText) delete project.deadlineText;

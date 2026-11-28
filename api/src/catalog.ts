@@ -6,12 +6,13 @@ import { resourceOperations } from './resources';
 import { WRITE_DEFS } from './writes';
 import './v2'; // the redesign's actions register themselves into WRITE_DEFS (after writes.ts is evaluated)
 import { OVERVIEW_OPS } from './overview';
+import { WHOAMI_OPS } from './whoami';
 import { FAILURE_OPS } from './failures';
 
 export const CATALOG_VERSION = '3.0.0';
 
 export type Param =
-  | { type: 'string'; required?: boolean; min?: number; max: number; he?: string }
+  | { type: 'string'; required?: boolean; min?: number; max: number; default?: string; he?: string }
   | { type: 'uid' | 'id'; required?: boolean; he?: string }
   | { type: 'date'; format: 'YYYY-MM-DD'; timezone: 'Asia/Jerusalem'; required?: boolean; he?: string }
   // ignored accepts an obsolete boolean without changing validation of the other fields or the idempotency fingerprint.
@@ -178,7 +179,7 @@ export const OPERATIONS: Operation[] = [
     path: '/v1/shopping',
     params: {
       bought: { type: 'bool', default: false, he: 'false לרשימה הפתוחה, true למה שנקנה (נעלם מהאפליקציה אחרי 24 שעות)' },
-      category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], he: 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה' },
+      category: { type: 'string', min: 1, max: 327, he: 'מזהה קטגוריה מובנית או מזהה מהרשימה shoppingCategories.list' },
       limit: { type: 'int', min: 1, max: 100, default: 50 },
     },
     requiredScope: 'shopping:read',
@@ -194,7 +195,8 @@ export const OPERATIONS: Operation[] = [
     body: {
       title: { type: 'string', required: true, min: 1, max: 200, he: 'מה לקנות' },
       qty: { type: 'string', max: 40, he: 'כמות, טקסט חופשי, למשל "2 שקים"' },
-      category: { type: 'enum', values: ['super', 'building', 'online', 'giveaway'], default: 'super', he: 'super סופר, building חומרי בניין, online אינטרנט, giveaway מוצרי מסירה' },
+      category: { type: 'string', min: 1, max: 327, default: 'super', he: 'מזהה קטגוריה מובנית או מזהה מהרשימה shoppingCategories.list' },
+      urgentDueAt: { type: 'string', max: 24, he: 'מועד הדחיפות בשעון UTC' },
       urgent: { type: 'bool', default: false, he: 'דחוף: כל הצוות מקבל התראה (באפליקציה ובטלפון)' },
       note: { type: 'string', max: 1000 },
       link: { type: 'string', max: 2000, he: 'קישור https למוצר' },
@@ -227,7 +229,7 @@ export const OPERATIONS: Operation[] = [
 ];
 
 /** Every operation: the hand-written ones above, then the generated reads, the overview and every app action. */
-export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...OPERATIONS, ...FAILURE_OPS, ...resourceOperations(), ...WRITE_DEFS.map((d) => d.op)];
+export const ALL_OPERATIONS: Operation[] = [...OVERVIEW_OPS, ...WHOAMI_OPS, ...OPERATIONS, ...FAILURE_OPS, ...resourceOperations(), ...WRITE_DEFS.map((d) => d.op)];
 
 export const CATALOG = {
   version: CATALOG_VERSION,

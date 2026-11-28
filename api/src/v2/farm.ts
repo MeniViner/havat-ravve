@@ -88,7 +88,7 @@ def('presence.save', 'presence:write', 'רישום נוכחות בחווה לי�
       updated++;
     } else {
       const id = autoId();
-      writes.push(c.fs.create('calendar', id, { ...fields, date: day, kind: 'presence', ownerUid: who.uid, ownerName: who.name, refId: '', createdAt: now }));
+      writes.push(c.fs.create('calendar', id, { ...fields, date: day, kind: 'presence', audience: 'all', ownerUid: who.uid, ownerName: who.name, refId: '', createdAt: now }));
       refs.push({ col: 'calendar', id, expected: { ...fields, date: day, kind: 'presence', ownerUid: who.uid } });
       writes.push(activity(c.fs, c.me, 'calendar', id, 'created', `נוכחות · ${day}`, { subjectUid: who.uid }));
       created++;

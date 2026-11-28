@@ -1,15 +1,19 @@
 // E7-StallWho, E8-StallSell, E9-Tabs. The stall sells to a guest's account (no money changes hands at the stall):
-// pick the buyer (scan the ticket, search, recent buyers, or a walk-in), tap products, "רישום לחשבון". Works offline.
+// Pick a buyer, tap products and register the cart. Catalog items require a current connection.
 // Q28/Q29: "כבר בחשבון: …" under the buyer opens the account sheet, where the crew removes a line, marks the account paid,
 // and clears the cart (with the undo toast). E9 rows open the account; they carry no buttons (rule 4).
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TopBar, PageTitle, SearchField, ListCard, Row, Avatar, Button, Sheet, Field, BottomBar, Icon, IconTile, Chip, ChipRow, EmptyState, GateCamera, UnderlineLink } from '../../kit';
 import { gw } from '../../gender';
 import { AppScreen, useToast } from '../../core';
 import { hhmm, money, firstName } from '../../format';
 import { useDemo } from '../../../demo/store';
+import { hasCatalogReference } from '../../../../../shared/farm-catalogs';
+import { saleBuyerKey, standaloneOfflineMessage } from '../../../../../shared/stall-sale';
+import { hasUnresolvedStallSale } from '../../data/stallCheckout';
+import { readStallCart, sameOfferedLine, useStallCart } from './stallCart';
 import { navigate } from '../../../router';
-import { parseQr, hasTabPurchases } from '../../../data';
+import { contactPhoneOk, parseQr, hasTabPurchases } from '../../../data';
 import type { Product, Tab } from '../../../types';
 import type { ScreenProps, V2Ctx } from '../../ctx';
 import {
@@ -108,7 +112,7 @@ export function StallWho({ ctx, params }: ScreenProps): ReactNode {
 function WalkInTab({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (g: StallGuest) => void }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const ok = !!name.trim();
+  const ok = !!name.trim() && contactPhoneOk(phone);
   return (
     <Sheet open={open} onClose={onClose} title="לקוח בלי כרטיס">
       <div className="eventday-sheetbody">
@@ -129,17 +133,11 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
   const { id, event, loading } = useRouteEvent(ctx, { ...params, e: params.e || tab?.eventId || '' });
   const buyer = useMemo(() => (fresh && id ? pendingBuyer(id) : null), [fresh, id]);
   const tabs = useEventTabs(id, fresh);
-  const products = useStallProducts(id);
-  const toast = useToast();
-  const [cart, setCart] = useState<Record<string, number>>({});
-  const [busy, setBusy] = useState(false);
-  const [account, setAccount] = useState(false);
-  const saving = useRef(false);
-  const cartVersion = useRef(0);
+  const demo = useDemo().on;
   const qs = q(ctx, id, params.from);
   if (!fresh && !tab && tabDoc.loading) return <AppScreen variant="detail">{null}</AppScreen>;
-  if (!stallOpen(event) && !loading) return <NoEvent closed={isEventClosed(event)} off={moduleOff(event, 'stall')} back="/event" backLabel="אירוע" />;
-  if (fresh ? !buyer : !tab || tab.status !== 'open') {
+  if (!event || !stallOpen(event)) return <NoEvent loading={loading} closed={isEventClosed(event)} off={moduleOff(event, 'stall')} back="/event" backLabel="אירוע" />;
+  if (fresh ? !buyer : !tab || tab.eventId !== id || tab.status !== 'open') {
     return (
       <AppScreen variant="detail">
         <TopBar back={{ label: 'החלפת קונה', ...to('/event/stall' + qs) }} />
@@ -147,49 +145,109 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
       </AppScreen>
     );
   }
+  const person = tab ? { uid:tab.guestUid, ticketId:tab.ticketId, name:tab.guestName, phone:tab.guestPhone } : buyer!;
+  const scopeFor = (identity: string[]) => 'farm-pos-cart-v1/' + JSON.stringify([demo,ctx.actor.uid,id,...identity]);
+  const buyerScope = scopeFor(['new',...saleBuyerKey(person)]);
+  const tabScope = tab ? scopeFor(['tab',tab.id]) : '';
+  // A lost first response can create the account before the cashier picks the same buyer again.
+  const earlier = tab && readStallCart(buyerScope);
+  const useBuyer = !tab || (!!earlier && (earlier.attempted || !readStallCart(tabScope)));
+  const scope = useBuyer ? buyerScope : tabScope;
+  return <StallSale key={scope} scope={scope} ctx={ctx} event={event} tab={tab} buyer={useBuyer ? person : null} tabs={tabs.items} qs={qs} />;
+}
+
+function StallSale({scope,ctx,event,tab,buyer,tabs,qs}: {
+  scope:string;ctx:V2Ctx;event:EventV2;tab:Tab | null;buyer:StallGuest | null;tabs:Tab[];qs:string;
+}) {
+  const id = event.id;
+  const products = useStallProducts(id);
+  const {cart, change, begin, settle} = useStallCart(scope);
+  const toast = useToast();
+  const [busy,setBusy] = useState(false);
+  const [account,setAccount] = useState(false);
+  const saving = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const cartVersion = useRef(0);
+  const locked = cart.attempted || busy;
   const walkIn = tab ? isWalkInTab(tab) : !buyer!.uid && !buyer!.ticketId;
   const guestName = tab ? tab.guestName : buyer!.name;
   const shown = walkIn ? `לקוח בלי כרטיס: ${guestName}` : guestName;
   const list = products.items;
-  const lines = list.map((p) => ({ product: p, qty: cart[p.id] || 0 })).filter((l) => l.qty > 0);
-  const count = lines.reduce((s, l) => s + l.qty, 0);
-  const sum = lines.reduce((s, l) => s + l.qty * l.product.price, 0);
-  const set = (p: Product, n: number) => { if (!saving.current) setCart((c) => ({ ...c, [p.id]: Math.max(0, n) })); };
-  const resetCart = () => { cartVersion.current++; setCart({}); };
-  // "נקה הכל" with undo (old stall)
-  const clear = () => {
-    const before = cart;
-    resetCart();
-    const version = cartVersion.current;
-    toast.show({ text: 'העגלה נוקתה', duration: 5000, actions: [{ label: 'ביטול', onClick: () => {
-      if (version !== cartVersion.current || saving.current) return;
-      setCart((c) => { const back = { ...c }; for (const [pid, n] of Object.entries(before)) back[pid] = (back[pid] || 0) + n; return back; });
-    } }] });
+  const offered = new Map(list.map(p => [p.id,p]));
+  const selected = new Map(cart.lines.map(l => [l.product.id,l]));
+  const count = cart.lines.reduce((all,l) => all + l.qty,0);
+  const sum = cart.lines.reduce((all,l) => all + l.qty*l.product.price,0);
+  const problems = cart.lines.flatMap(l => {
+    const p = offered.get(l.product.id);
+    if (p && sameOfferedLine(l.product,p)) return [];
+    const state = products.status.get(l.product.id);
+    const waiting = state === 'connection' || state === 'checking' || (!state && (products.loading || !!products.error));
+    return [{ id:l.product.id, name:l.product.name, waiting }];
+  });
+  const problemIds = new Set(problems.map(l => l.id));
+  const sourceStates = new Set(products.status.values());
+  const waitingForSource = sourceStates.has('checking') || sourceStates.has('connection');
+  const set = (p: Product, qty: number) => {
+    if (locked || saving.current || problemIds.has(p.id)) return;
+    cartVersion.current++;
+    change(lines => {
+      const other = lines.filter(l => l.product.id !== p.id);
+      return qty > 0 ? [...other,{ product:p, qty }] : other;
+    });
   };
+  const clear = () => {
+    if (locked || saving.current) return;
+    const before = cart.lines;
+    const version = ++cartVersion.current;
+    change(() => []);
+    toast.show({text:'העגלה נוקתה',duration:5000,actions:[{label:'ביטול',onClick:() => {
+      if (version === cartVersion.current && !saving.current) change(() => before);
+    }}]});
+  };
+  const removeUnavailable = () => {
+    if (locked || saving.current) return;
+    cartVersion.current++;
+    change(lines => lines.filter(l => !problemIds.has(l.product.id)));
+  };
+  const multipleLocalOffline = !cart.attempted && !products.online && products.catalogEnabled && cart.lines.length > 1
+    && cart.lines.every(line => !hasCatalogReference(line.product));
+  const canRegister = count > 0 && !busy && !multipleLocalOffline && (cart.attempted ? products.online : problems.length === 0);
   const save = async () => {
-    if (!count || saving.current || !event) return;
+    if (!canRegister || saving.current) return;
     saving.current = true; setBusy(true);
+    cartVersion.current++;
+    const order = begin(products.catalogEnabled || cart.lines.some(l => hasCatalogReference(l.product)),buyer);
     try {
-      if (tab) {
-        const total = await sellToTab(ctx.actor, tab, lines);
-        resetCart();
-        toast.show({ text: `נרשם ${money(total)} לחשבון של ${firstName(tab.guestName)}`, check: true });
+      const options = { operationId:order.operationId, catalogEnabled:order.catalogEnabled };
+      if (tab && !order.buyer) {
+        const total = await sellToTab(ctx.actor,tab,order.lines,options);
+        settle(order.operationId,true);
+        if (mounted.current) toast.show({text:`נרשם ${money(total)} לחשבון של ${firstName(tab.guestName)}`,check:true});
       } else {
-        const r = await sellToGuest(ctx.actor, event, tabs.items, buyer!, lines);
-        resetCart();
-        toast.show({ text: `נרשם ${money(r.total)} לחשבון של ${firstName(guestName)}`, check: true });
-        if (r.tab) { forgetBuyer(id); navigate(`/event/stall/${r.tab.id}${qs}`, true); }
+        const original = order.buyer!;
+        const r = await sellToGuest(ctx.actor,event,tab ? [tab,...tabs] : tabs,original,order.lines,options);
+        settle(order.operationId,true);
+        if (mounted.current) toast.show({text:`נרשם ${money(r.total)} לחשבון של ${firstName(guestName)}`,check:true});
+        if (r.tab) {
+          const pending = pendingBuyer(id);
+          if (pending && JSON.stringify(saleBuyerKey(pending)) === JSON.stringify(saleBuyerKey(original))) forgetBuyer(id);
+          if (mounted.current && tab?.id !== r.tab.id) navigate(`/event/stall/${r.tab.id}${qs}`,true);
+        }
       }
-    } catch (e) { toast.refused(`לא נשמר. ${(e as Error).message}`); }
+    } catch (e) {
+      if (!hasUnresolvedStallSale(order.operationId)) settle(order.operationId,false);
+      if (mounted.current) toast.refused((e as Error).message || 'הרישום לא אושר. אפשר לנסות שוב עם אותה העגלה.');
+    }
     finally { saving.current = false; setBusy(false); }
   };
   const remove = (index: number) => {
-    if (!tab) return;
+    if (!tab || locked || saving.current) return;
     removeTabItem(ctx.actor, tab, index).catch((e) => toast.refused(`לא נשמר. ${(e as Error).message}`));
   };
   // the old stall: the crew marks an account paid on the spot (the rules allow it while the event is open)
   const markPaid = async () => {
-    if (!tab || busy) return;
+    if (!tab || locked || saving.current) return;
     setBusy(true);
     try {
       await setTabStatus(ctx.actor, tab, 'paid');
@@ -204,7 +262,9 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
     <AppScreen variant="detail" bar={
       <BottomBar>
         <span className="eventday-total"><b>{money(sum)}</b><span>{itemsWord(count)}</span></span>
-        <Button size="bar" grow disabled={!count || busy} onClick={() => void save()}>רישום לחשבון</Button>
+        <Button size="bar" grow disabled={!canRegister} onClick={() => void save()}>
+          {busy ? 'ממתינים לאישור' : cart.attempted ? 'ניסיון חוזר עם אותה עגלה' : 'רישום לחשבון'}
+        </Button>
       </BottomBar>
     }>
       <TopBar back={{ label: 'החלפת קונה', ...to('/event/stall' + qs) }} />
@@ -217,25 +277,36 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
             : <span className="eventday-who__meta">חשבון חדש, עוד לא נרשם כלום</span>}
         </div>
       </div>
-      {list.length === 0 && !products.loading ? <EmptyState variant="card" icon="cart" title="אין מוצרים בדוכן" text="מנהל מוסיף מוצרים במסך האירוע." /> : (
+      {problems.length > 0 && <div className="k-card eventday-sheetbody" role="alert">
+        <strong>{problems.every(l => l.waiting) ? 'ממתינים לאימות העגלה' : 'יש בעגלה פריטים שהשתנו או שאינם זמינים'}</strong>
+        <p className="k-note">{problems.map(l => l.name).join(' · ')}</p>
+        <Button variant="outline" disabled={locked} onClick={removeUnavailable}>הסרת הפריטים האלה מהעגלה</Button>
+      </div>}
+      {cart.attempted && !busy && <div className="eventday-sheetbody" role="status">
+        <p className="k-note">לרישום הקודם עדיין אין אישור בעמדה. העגלה נעולה עד לבירור. אפשר לנסות שוב עם אותה עגלה.</p>
+      </div>}
+      {multipleLocalOffline && <p className="k-note" role="status">{standaloneOfflineMessage}</p>}
+      {waitingForSource && <p className="k-note" role="status">{sourceStates.has('connection') ? 'מכירת מוצרי קטלוג מחכה לחיבור לחווה.' : 'בודקים אילו מוצרי קטלוג זמינים.'}</p>}
+      {products.error && <p className="k-note" role="alert">{products.error}</p>}
+      {list.length === 0 && !products.loading && !waitingForSource && !products.error ? <EmptyState variant="card" icon="cart" title="אין מוצרים בדוכן" text="מנהל מוסיף מוצרים במסך האירוע." /> : (
         <div className="eventday-grid">
           {list.map((p) => {
-            const n = cart[p.id] || 0;
+            const n = selected.get(p.id)?.qty || 0;
             return (
               <div key={p.id} className={`eventday-tile${n ? ' eventday-tile--on' : ''}`}>
                 {/* long press takes one off (old stall) */}
-                <button type="button" className="eventday-tile__head" onClick={() => set(p, n + 1)} onContextMenu={(e) => { if (n) { e.preventDefault(); set(p, n - 1); } }}
+                <button type="button" className="eventday-tile__head" disabled={locked || problemIds.has(p.id)} onClick={() => set(p, n + 1)} onContextMenu={(e) => { if (n) { e.preventDefault(); set(p, n - 1); } }}
                   aria-label={`${p.name}, ${money(p.price)}${n ? `, ${n} בעגלה` : ''}`}>
                   <span className="eventday-tile__name">{p.name}</span>
                   <span className="eventday-tile__price">{money(p.price)}</span>
                 </button>
                 {n === 0 ? (
-                  <button type="button" className="eventday-tile__add" aria-label={`הוספת ${p.name}`} onClick={() => set(p, 1)}><Icon name="plus" size={22} /></button>
+                  <button type="button" className="eventday-tile__add" disabled={locked || problemIds.has(p.id)} aria-label={`הוספת ${p.name}`} onClick={() => set(p, 1)}><Icon name="plus" size={22} /></button>
                 ) : (
                   <div className="eventday-tile__qty">
-                    <button type="button" className="eventday-tile__step eventday-tile__step--dec" aria-label={`פחות ${p.name}`} onClick={() => set(p, n - 1)}>−</button>
+                    <button type="button" className="eventday-tile__step eventday-tile__step--dec" disabled={locked || problemIds.has(p.id)} aria-label={`פחות ${p.name}`} onClick={() => set(p, n - 1)}>−</button>
                     <b aria-live="polite">{n}</b>
-                    <button type="button" className="eventday-tile__step eventday-tile__step--inc" aria-label={`עוד ${p.name}`} onClick={() => set(p, n + 1)}><Icon name="plus" size={22} /></button>
+                    <button type="button" className="eventday-tile__step eventday-tile__step--inc" disabled={locked || problemIds.has(p.id)} aria-label={`עוד ${p.name}`} onClick={() => set(p, n + 1)}><Icon name="plus" size={22} /></button>
                   </div>
                 )}
               </div>
@@ -243,7 +314,7 @@ export function StallSell({ ctx, params }: ScreenProps): ReactNode {
           })}
         </div>
       )}
-      <AccountSheet open={account} onClose={() => setAccount(false)} tab={tab} guestName={guestName} busy={busy} cart={{ count, sum }}
+      <AccountSheet open={account} onClose={() => setAccount(false)} tab={tab} guestName={guestName} busy={locked} cart={{ count, sum }}
         onRemove={remove} onPaid={() => void markPaid()} onClear={() => { setAccount(false); clear(); }} />
     </AppScreen>
   );

@@ -1,3 +1,6 @@
+import { catalogSelectionId, copiedEventItemId, hasCatalogPair, hasCatalogReference, isCurrentCatalogSelection } from '../../../shared/farm-catalogs';
+import { activeCatalogProduct, stallMarkerWrites } from '../farmCatalog';
+import { assignmentKey, defaultStations, emptyRegistry, stationCollection, stationRegistryId, stationWritable, type StationRegistry, type StationPerson } from '../../../shared/work-stations';
 // Events management in the redesigned app (M3-M7, N9-N12, V3-V5): src/app/v2/data/events.ts, closeEvent/reopenEvent in
 // src/app/v2/data/eventday.ts and the shared writes in src/app/data.ts. Each operation writes what the app's function writes
 // (fields, activity, notifications), in one transaction with the idempotency record. events.create/update/saveProduct and the
@@ -82,7 +85,7 @@ def('events.reopen', 'events:write', 'פתיחה מחדש של אירוע שנס
 
 // ======================= stall products (N9) =======================
 
-const productsOf = async (c: Ctx, eventId: string) => c.fs.query({ from: [{ collectionId: 'products' }], limit: 500 }, `events/${eventId}`);
+const productsOf = async (c: Ctx, eventId: string) => c.fs.query({ from: [{ collectionId: 'products' }], limit: 500 }, `events/${eventId}`, c.tx);
 const bySort = (a: Doc, b: Doc) => (Number(a.data.sort) || 0) - (Number(b.data.sort) || 0);
 
 // reorderProducts()
@@ -110,15 +113,39 @@ def('events.copyProducts', 'events:write', 'העתקת מוצרי הדוכן מ�
   if (src.id === ev.id) throw invalid('fromEventId', 'copy from another event');
   const from = (await productsOf(c, src.id)).sort(bySort);
   if (!from.length) throw invalid('fromEventId', 'that event has no products');
-  const after = (await productsOf(c, ev.id)).reduce((m, p) => Math.max(m, Number(p.data.sort) || 0), 0);
-  const col = `events/${ev.id}/products`;
-  const made = from.map((p, i) => ({ id: autoId(), data: { name: p.data.name, price: p.data.price, active: p.data.active, sort: after + i + 1 } }));
-  return {
-    status: 201,
-    writes: [...made.map((m) => c.fs.create(col, m.id, m.data)), activity(c.fs, c.me, 'event', ev.id, 'edited', `הועתקו ${from.length} מוצרים מ${src.data.title}`, { eventId: ev.id })],
-    refs: made.map((m) => ({ col, id: m.id, expected: m.data })), data: { productIds: made.map((m) => m.id) },
-  };
-}, ['New products, placed after the ones the event already has. As in the app, the name, price and availability are copied (not the unit).']);
+  const existing = await productsOf(c, ev.id);
+  const after = existing.reduce((m, p) => Math.max(m, Number(p.data.sort) || 0), 0);
+  const col = `events/${ev.id}/products`, writes: Write[] = [];
+  const refs: {col: string; id: string; expected: Data}[] = [];
+  const handled = new Set<string>();
+  let hasCatalogSelection = false;
+  for (const p of from) {
+    const cid = String(p.data.catalogId || ''), pid = String(p.data.catalogProductId || '');
+    if (hasCatalogReference(p.data) && (!hasCatalogPair(p.data) || !p.data.active)) continue;
+    const id = cid && pid ? catalogSelectionId(cid, pid) : copiedEventItemId(src.id, p.id);
+    if (handled.has(id)) continue;
+    handled.add(id);
+    const old = existing.find((item) => item.id === id);
+    if (old && (!cid || !pid || old.data.catalogId !== cid || old.data.catalogProductId !== pid)) continue;
+    let name = p.data.name, price = p.data.price;
+    let catalogFields = {};
+    if (cid && pid) {
+      const master = await activeCatalogProduct(c.fs, cid, pid, c.tx);
+      if (!master || !isCurrentCatalogSelection(p.data, master.parent, master.data)) continue;
+      hasCatalogSelection = true;
+      if (old && isCurrentCatalogSelection(old.data, master.parent, master.data)) continue;
+      name = master.data.name; price = master.data.price;
+      catalogFields = {catalogId: cid, catalogProductId: pid, ...master.generations};
+    }
+    const data = { name, price, active: p.data.active !== false, sort: old?.data.sort ?? after + refs.length + 1,
+      ...catalogFields };
+    writes.push(old ? c.fs.patch(col, id, data, old.updateTime) : c.fs.create(col, id, data));
+    refs.push({col, id, expected: data});
+  }
+  if (writes.length) writes.push(activity(c.fs, c.me, 'event', ev.id, 'edited', `הועתקו ${refs.length} מוצרים מ${src.data.title}`, {eventId: ev.id}));
+  if (hasCatalogSelection) writes.push(...await stallMarkerWrites(c.fs, ev.id, c.tx));
+  return {status: refs.length ? 201 : 200, writes, refs, data: {productIds: refs.map((r) => r.id)}};
+}, ['Copies one-off products and current selections from active farm catalogs. Existing selections keep their event price.']);
 
 // ======================= files (V3) =======================
 
@@ -163,9 +190,17 @@ def('events.removeFile', 'events:write', 'מחיקת קובץ מהאירוע', {
 
 // ======================= staffing (V4) =======================
 
-type Staff = { uid: string; name: string; hours: string };
+type Staff = StationPerson;
+const dutyFields = { role:str(80,'התפקיד בתחנה'), startsAt:str(40,'תחילת השיבוץ, ISO עם אזור זמן'), endsAt:str(40,'סיום השיבוץ, ISO עם אזור זמן') };
+function dutyOf(c:Ctx) {
+  const {role,startsAt,endsAt}=c.input;
+  if (!role && !startsAt && !endsAt) return {};
+  const offset = /(?:Z|[+-]\d\d:\d\d)$/;
+  if (!role?.trim() || !offset.test(startsAt || '') || !offset.test(endsAt || '') || !(Date.parse(endsAt) > Date.parse(startsAt))) throw invalid('startsAt','a station role and an ordered pair of zoned datetimes are required');
+  return {role:role.trim(),startsAt:new Date(startsAt).toISOString(),endsAt:new Date(endsAt).toISOString()};
+}
 /** logic.ts stationsOf(): the usual three stations, shown even before anyone saved them. */
-const STATION_NAMES: Record<string, string> = { gate: 'שער', stall: 'דוכן', parking: 'חניה' };
+const STATION_NAMES: Record<string, string> = defaultStations;
 /** logic.ts hoursText(): "16:00-20:00" -> "16:00–20:00". */
 const hoursText = (h: string) => h.replace(/\s*-\s*/, '–');
 const HOURS = str(40, 'שעות, למשל "16:00-20:00"; ריק = כל האירוע');
@@ -173,13 +208,16 @@ function hoursOk(h: string | null) { if (h && !/^\d{1,2}:\d{2}\s*[-–]\s*\d{1,2
 /** changeStation(): read, change and write the station inside the transaction, so two managers never overwrite each other. */
 async function station(c: Ctx, eventId: string, sid: string, name: string | null, needed: number | null, mustExist: boolean) {
   const col = `events/${eventId}/staffing`;
+  const registryDoc = await c.fs.get(stationCollection, stationRegistryId, c.tx);
+  const registry = (registryDoc?.data as StationRegistry | undefined) || emptyRegistry;
+  if (!stationWritable(registry, sid)) throw invalid('station', 'this station was removed or is being transferred');
   const cur = await c.fs.get(col, sid, c.tx);
   if (!cur && mustExist) throw notFound('station');
-  const title = String(cur?.data.station || name || STATION_NAMES[sid] || '');
+  const title = String(registry.stations[sid]?.name || cur?.data.station || name || STATION_NAMES[sid] || '');
   if (!title) throw invalid('stationName', 'a new station needs stationName');
-  const people = ((cur?.data.people as Staff[]) || []).map((p) => ({ uid: p.uid, name: p.name, hours: p.hours || '' }));
+  const people = ((cur?.data.people as Staff[]) || []).map((p) => ({ ...p, hours: p.hours || '' }));
   const write = (next: Staff[]) => {
-    if (next.length > 30) throw invalid('uid', 'a station holds at most 30 people');
+    if (next.length > Math.max(30, people.length)) throw invalid('uid', 'a station holds at most 30 people');
     return c.fs.set(col, sid, { station: title, people: next, needed: Number(cur?.data.needed ?? needed ?? 1) });
   };
   return { col, title, people, write };
@@ -188,15 +226,16 @@ async function station(c: Ctx, eventId: string, sid: string, name: string | null
 def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמדה באירוע (שער, דוכן, חניה או עמדה אחרת)', {
   eventId: req(), station: req('מזהה העמדה: gate שער, stall דוכן, parking חניה, או מזהה של עמדה אחרת מתוך eventStaffing.list'),
   stationName: str(60, 'שם העמדה, רק לעמדה חדשה', false, 1), needed: int(1, 30, 'כמה צריך בעמדה (לעמדה חדשה; ברירת מחדל 1)'),
-  uid: req('איש הצוות, מתוך people.search'), hours: HOURS,
+  uid: req('איש הצוות, מתוך people.search'), hours: HOURS, ...dutyFields,
 }, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   hoursOk(c.input.hours);
   const who = await member(c.fs, c.input.uid, 'uid', c.tx);
   const st = await station(c, ev.id, c.input.station, c.input.stationName, c.input.needed, false);
   if (st.people.some((p) => p.uid === who.uid)) throw invalid('uid', `${who.name} is already on this station`);
   const hours = c.input.hours || '';
-  const person: Staff = { uid: who.uid, name: who.name, hours };
+  const person: Staff = { uid: who.uid, name: who.name, hours, ...dutyOf(c) };
   const h = hours ? ' · ' + hoursText(hours) : '';
   return {
     writes: [st.write([...st.people, person]),
@@ -205,26 +244,37 @@ def('events.assignStation', 'events:write', 'שיבוץ איש צוות לעמד
     refs: [{ col: st.col, id: c.input.station }],
   };
 }, ['Adds one in-app notification and queues a phone push for the assignee, including a self-assignment.']);
+function selectedAssignment(people:Staff[],uid:string,id?:string): Staff {
+  const matches = people.filter((p) => p.uid === uid && (!id || assignmentKey(p) === id));
+  if (!matches.length) throw notFound('person on this station');
+  if (matches.length > 1) throw invalid('assignmentId','select the individual shift using its assignmentId');
+  return matches[0];
+}
 // updateStationPerson()
-def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS }, async (c) => {
+def('events.updateStationPerson', 'events:write', 'עדכון שעות של איש צוות בעמדה', { eventId: req(), station: req('מזהה העמדה'), uid: req(), hours: HOURS, ...dutyFields,
+  assignmentId: str(240,'מזהה שיבוץ כשיש לאדם יותר מתפקיד אחד בתחנה'),
+}, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   hoursOk(c.input.hours);
   const st = await station(c, ev.id, c.input.station, null, null, true);
-  if (!st.people.some((p) => p.uid === c.input.uid)) throw notFound('person on this station');
+  const selected = selectedAssignment(st.people,c.input.uid,c.input.assignmentId);
   return {
-    writes: [st.write(st.people.map((p) => (p.uid === c.input.uid ? { ...p, hours: c.input.hours || '' } : p))),
+    writes: [st.write(st.people.map((p) => (assignmentKey(p) === assignmentKey(selected) ? { ...p, ...(c.input.hours !== undefined && c.input.hours !== null ? {hours:c.input.hours} : {}), ...dutyOf(c) } : p))),
       activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: שעות ב${st.title} עודכנו`, { eventId: ev.id, subjectUid: c.input.uid })],
     refs: [{ col: st.col, id: c.input.station }],
   };
 });
 // removeFromStation()
-def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמדה באירוע', { eventId: req(), station: req('מזהה העמדה'), uid: req() }, async (c) => {
+def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמדה באירוע', { eventId: req(), station: req('מזהה העמדה'), uid: req(),
+  assignmentId: str(240,'מזהה שיבוץ כשיש לאדם יותר מתפקיד אחד בתחנה'),
+}, async (c) => {
+  managerOnly(c,'edit event staffing');
   const ev = await eventFor(c, c.input.eventId);
   const st = await station(c, ev.id, c.input.station, null, null, true);
-  const p = st.people.find((x) => x.uid === c.input.uid);
-  if (!p) throw notFound('person on this station');
+  const p = selectedAssignment(st.people,c.input.uid,c.input.assignmentId);
   return {
-    writes: [st.write(st.people.filter((x) => x.uid !== p.uid)), activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: ${p.name} הוסר/ה מ${st.title}`, { eventId: ev.id, subjectUid: p.uid })],
+    writes: [st.write(st.people.filter((x) => assignmentKey(x) !== assignmentKey(p))), activity(c.fs, c.me, 'event', ev.id, 'edited', `${ev.data.title}: ${p.name} הוסר/ה מ${st.title}`, { eventId: ev.id, subjectUid: p.uid })],
     refs: [{ col: st.col, id: c.input.station }],
   };
 });
@@ -234,10 +284,12 @@ def('events.removeFromStation', 'events:write', 'הסרת איש צוות מעמ
 // addGuestOrder(): a registration a manager adds by hand (phone call, walk-in before the day). The manager owns the tickets
 // (the create rule allows only one's own); the guest's name and phone are on them.
 def('tickets.addGuestOrder', 'tickets:write', 'הוספת נרשם לאירוע ידנית (טלפון, וואטסאפ)', {
-  eventId: req(), name: str(80, 'שם הנרשם', true, 1), phone: str(25, 'טלפון'), count: int(1, 20, 'כמה כרטיסים', false, 1), paid: bool('כבר שילם (רק באירוע בתשלום)', false),
+  eventId: req(), name: str(80, 'שם הנרשם', true, 1), phone: str(25, 'טלפון', true, 9), count: int(1, 20, 'כמה כרטיסים', false, 1), paid: bool('כבר שילם (רק באירוע בתשלום)', false),
 }, async (c) => {
+  if (!/^\+?[\d(). -]+$/.test(String(c.input.phone)) || !/^\d{9,15}$/.test(String(c.input.phone).replace(/\D/g,''))) throw invalid('phone','valid phone required');
   const e = await eventFor(c, c.input.eventId);
   // firestore.rules tickets create: the event is published and open, and the order is within maxPerOrder
+  if (e.data.closed || !(Date.parse(eventIso(e.data.end)) > Date.now())) throw invalid('eventId','registration ended');
   if (!e.data.published || !e.data.open) throw invalid('eventId', 'the event must be published and open for registration');
   if (c.input.count > Number(e.data.maxPerOrder || 20)) throw invalid('count', `at most ${e.data.maxPerOrder} tickets in one order for this event`);
   const price = Number(e.data.price) || 0;
@@ -247,7 +299,7 @@ def('tickets.addGuestOrder', 'tickets:write', 'הוספת נרשם לאירוע 
   const name = c.input.name as string, count = c.input.count as number;
   const ids = Array.from({ length: count }, () => autoId());
   const writes: Write[] = ids.map((id, i) => withServerTime(c.fs.create('tickets', id, {
-    eventId: e.id, eventTitle: e.data.title, orderId, index: i + 1, total: count, ownerUid: c.me.uid, ownerName: name, ownerPhone: c.input.phone || '',
+    eventId: e.id, eventTitle: e.data.title, orderId, index: i + 1, total: count, ownerUid: c.me.uid, selfRegistered: false, ownerName: name, ownerPhone: c.input.phone || '',
     holderName: '', secret: randomSecret(), price, paymentStatus: paid ? 'paid' : price > 0 ? 'pending' : 'free', status: 'valid', scans: [], entries: 0, answers: {}, createdAt: now, updatedAt: now,
   }), paid ? ['paidAt'] : []));
   writes.push(activity(c.fs, c.me, 'ticket', orderId, 'ordered', `${name} · ${count} כרטיסים · ${e.data.title} · נוסף/ה על ידי ${c.me.name}`, { eventId: e.id }));

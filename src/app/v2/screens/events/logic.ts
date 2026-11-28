@@ -1,7 +1,9 @@
+import { defaultStations, emptyRegistry, type StationRegistry } from '../../../../../shared/work-stations';
 // Events area: pure helpers (no data access), shared by the screens and tests/v2-events.mjs.
 import { isFemale as sharedIsFemale } from '../../gender';
+import { registeredTickets } from '../manage/calc';
 // Numbers here are what the screens show: summary sums (M7), debts (V5, M3, M7), guests (M5), staffing (V4, M4), live (M6).
-import type { FarmEvent, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
+import type { Activity, FarmEvent, Profile, Ticket, Tab, TabItem, Staffing, CalendarItem, GateScan, Debt, PaymentStatus } from '../../../types';
 import { MONTHS, dayName, ddmm, hhmm, inDays, money, firstName, keyOf } from '../../format';
 
 const TZ = 'Asia/Jerusalem';
@@ -10,9 +12,10 @@ const TZ = 'Asia/Jerusalem';
 export type Phase = 'before' | 'during' | 'after';
 /** Before the start, between start and end, after the end (or closed). */
 export function phaseOf(e: Pick<FarmEvent, 'start' | 'end'> & { closed?: unknown }, now: number): Phase {
-  if (e.closed) return 'after';
-  if (now < Date.parse(e.start)) return 'before';
-  if (now <= Date.parse(e.end)) return 'during';
+  const end = eventMillis(e.end);
+  if (e.closed || !(end > now)) return 'after';
+  if (now < eventMillis(e.start)) return 'before';
+  if (now < end) return 'during';
   return 'after';
 }
 export type EventTab = 'prep' | 'guests' | 'day' | 'summary';
@@ -55,6 +58,22 @@ export function isoFromLocal(dateKey: string, time: string): string {
   let ms = target - 2 * 3600_000;
   for (let i = 0; i < 2; i++) ms += target - wall(ms);
   return new Date(ms).toISOString();
+}
+/**
+ * Event timestamps without a zone were entered in Israeli local time.
+ * Missing or impossible cutoff dates never authorize new registrations.
+ */
+export function eventMillis(value: string): number {
+  if (typeof value !== 'string') return NaN;
+  const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?$/i.exec(value);
+  if (!parts) return NaN;
+  const [, date, time, seconds = '00', fraction = '', zone] = parts;
+  const wallTime = Date.parse(date + 'T' + time + ':' + seconds + 'Z');
+  if (!Number.isFinite(wallTime) || new Date(wallTime).toISOString().slice(0, 19) !== date + 'T' + time + ':' + seconds) return NaN;
+  if (zone) return Date.parse(value);
+  const instant = Date.parse(isoFromLocal(date, time));
+  if (wall(instant) !== Date.parse(date + 'T' + time + ':00Z')) return NaN;
+  return instant + Number(seconds) * 1000 + Number(fraction.padEnd(3, '0'));
 }
 /** ISO -> { date: "2026-11-28", time: "16:00" } in Israel. */
 export function localOf(iso: string): { date: string; time: string } {
@@ -110,6 +129,19 @@ export type Order = {
   /** Every ticket of the order was cancelled (the "בוטלו" chip); ordersOf never returns these. */
   cancelled?: boolean;
 };
+/** A link describes the whole order. A manual, unproven or mixed-owner order has no person target. */
+export function eventOrderPeople(eventId: string, tickets: Ticket[], activity: Activity[], people: ReadonlyMap<string, Profile>) {
+  const registered = new Set(registeredTickets(tickets, activity));
+  const result = new Map<string, Profile | undefined>();
+  for (const t of tickets) {
+    if (t.eventId !== eventId || !t.orderId) continue;
+    const person = registered.has(t) ? people.get(t.ownerUid) : undefined;
+    if (!result.has(t.orderId)) result.set(t.orderId, person);
+    else if (result.get(t.orderId) !== person) result.set(t.orderId, undefined);
+  }
+  return result;
+}
+
 function orderOf(list: Ticket[], cancelled: boolean): Order {
   const t = list[0];
   const owing = cancelled ? [] : list.filter((x) => isOwing(x.paymentStatus));
@@ -311,15 +343,14 @@ export function boardCard(e: FarmEvent & { closed?: unknown }, tickets: Ticket[]
 // ---------- staffing (V4, M4) ----------
 export type Station = Staffing & { virtual?: boolean };
 /** Stations of the event: the saved ones, plus the usual gate / stall / parking when they were never saved. */
-export function stationsOf(e: Pick<FarmEvent, 'entry' | 'stall'>, saved: Staffing[]): Station[] {
-  const defaults: Station[] = [
-    ...(e.entry !== false ? [{ id: 'gate', station: 'שער', people: [], needed: 1, virtual: true }] : []),
-    ...(e.stall !== false ? [{ id: 'stall', station: 'דוכן', people: [], needed: 1, virtual: true }] : []),
-    { id: 'parking', station: 'חניה', people: [], needed: 1, virtual: true },
-  ];
+export function stationsOf(e: Pick<FarmEvent, 'entry' | 'stall'>, saved: Staffing[], registry: StationRegistry = emptyRegistry): Station[] {
+  const defaults = Object.entries(defaultStations)
+    .filter(([id]) => !(id === 'gate' && e.entry === false || id === 'stall' && e.stall === false))
+    .map(([id, station]) => ({ id, station, people: [], needed: 1, virtual: true }));
   const out: Station[] = defaults.map((d) => saved.find((s) => s.id === d.id) || d);
   for (const s of saved) if (!out.some((x) => x.id === s.id)) out.push(s);
-  return out;
+  return out.filter((s) => !registry.stations[s.id]?.archived)
+    .map((s) => registry.stations[s.id]?.name ? { ...s, station: registry.stations[s.id].name } : s);
 }
 export const stationMissing = (s: Staffing) => s.people.length < Math.max(1, s.needed || 0);
 /** V4 tiles: assigned people, stations short of people, team members at the farm that day who are not assigned. */
@@ -429,7 +460,7 @@ export function productsMeta(products: { active: boolean }[]): string {
 // ---------- details row (M4) ----------
 export function detailsMeta(e: Pick<FarmEvent, 'price' | 'maxPerOrder' | 'entry' | 'stall'>): string {
   const parts = [e.price > 0 ? `${e.price} ₪ לכרטיס` : 'חינם', `עד ${e.maxPerOrder} בהזמנה`];
-  const day = e.entry !== false && e.stall !== false ? 'כניסה ודוכן' : e.entry !== false ? 'כניסה בסריקה' : e.stall !== false ? 'דוכן החווה' : '';
+  const day = e.entry !== false && e.stall !== false ? 'כניסה ודוכן' : e.entry !== false ? 'כניסה בסריקה' : e.stall !== false ? 'אירוע עם דוכנים' : '';
   if (day) parts.push(day);
   return parts.join(' · ');
 }

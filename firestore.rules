@@ -103,8 +103,8 @@ service cloud.firestore {
   match /users/{id} {
    // vendor keys (vendorId, helper, addedBy, inviteCode) are written only by a claim; photo, town, birthDate, push, welcomedAt and
    // updatesOptIn ("לקבל עדכונים מהחווה", the consent a message to all users needs) only by the person
-   function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt','vendorId','helper','addedBy','inviteCode','teamLink','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt','updatesOptIn']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && str(incoming().get('vendorId', ''), 60) && incoming().get('helper', false) is bool && str(incoming().get('addedBy', ''), 60) && str(incoming().get('inviteCode', ''), 40) && str(incoming().get('teamLink', ''), 40) && ownShapeOk();}
-   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40)) && incoming().get('updatesOptIn', false) is bool;}
+   function profileShape(){return incoming().keys().hasOnly(['uid','email','displayName','phone','role','status','customerNumber','acceptedTermsAt','joinCode','notes','fields','log','createdAt','updatedAt','vendorId','helper','addedBy','inviteCode','teamLink','photo','photoSource','googlePhoto','town','birthDate','birthYear','push','welcomedAt','updatesOptIn']) && incoming().uid == id && str(incoming().email, 200) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25) && incoming().customerNumber is int && str(incoming().acceptedTermsAt, 40) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && str(incoming().get('vendorId', ''), 60) && incoming().get('helper', false) is bool && str(incoming().get('addedBy', ''), 60) && str(incoming().get('inviteCode', ''), 40) && str(incoming().get('teamLink', ''), 40) && ownShapeOk();}
+   function ownShapeOk(){return (!('photo' in incoming()) || storedPhoto(incoming().photo) || (str(incoming().photo, 120000) && incoming().photo.matches('data:image/(jpeg|webp|png);base64,[A-Za-z0-9+/=]+'))) && incoming().get('photoSource', 'none') in ['custom','google','none'] && (!('googlePhoto' in incoming()) || (str(incoming().googlePhoto, 500) && incoming().googlePhoto.matches('https://.*'))) && str(incoming().get('town', ''), 60) && (incoming().get('birthDate', '') == '' || incoming().get('birthDate', '').matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')) && (!('birthYear' in incoming()) || (incoming().birthYear is int && incoming().birthYear >= 1 && incoming().birthYear <= request.time.year())) && (!('push' in incoming()) || pushOk()) && (!('welcomedAt' in incoming()) || str(incoming().welcomedAt, 40)) && incoming().get('updatesOptIn', false) is bool;}
    function pushOk(){let p = incoming().push; return p is map && p.keys().hasOnly(['enabled','kinds','devices','updatedAt']) && p.get('enabled', false) is bool && p.get('kinds', []) is list && p.get('kinds', []).size() <= 10 && p.get('devices', []) is list && p.get('devices', []).size() <= 6 && str(p.get('updatedAt', ''), 40);}
    // a vendor profile is written only in the commit that uses up a matching invite (claimVendorInvite)
    function inviteBefore(){return get(/databases/$(database)/documents/vendor_invites/$(incoming().inviteCode)).data;}
@@ -119,7 +119,7 @@ service cloud.firestore {
    function claimsTeamLink(){return incoming().get('teamLink', '') is string && incoming().get('teamLink', '').size() >= 8 && linkBefore().active == true && linkBefore().usedBy == null && request.time.toMillis() < linkBefore().expiresMs && linkAfter().usedBy == id && linkAfter().active == false && incoming().role == linkBefore().role;}
    function createRole(){return incoming().status == 'active' && ((incoming().role == 'guest') || (incoming().role == 'owner' && bootstrapOwner()) || (hasEmailInvite() && incoming().role == emailInvite().role && incoming().role in ['staff','manager','owner']) || claimsInvite() || (incoming().role in ['staff','manager','owner'] && claimsTeamLink()));}
    // the person's own details; never role, status, email, customerNumber, notes, log or the vendor link
-   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','push','welcomedAt','updatesOptIn']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
+   function selfEdit(){return changed().hasOnly(['displayName','phone','acceptedTermsAt','fields','updatedAt','photo','photoSource','googlePhoto','town','birthDate','birthYear','push','welcomedAt','updatesOptIn']) && str(incoming().displayName, 80) && incoming().displayName.size() >= 1 && str(incoming().phone, 25);}
    // a vendor stays a vendor (status, notes); a manager never makes one: only a claim can (V6 sets the role back to guest)
    function managerEdit(){return changed().hasOnly(['role','status','notes','updatedAt','log']) && (incoming().role in ['guest','staff','manager','owner'] || (incoming().role == 'vendor' && resource.data.role == 'vendor')) && incoming().status in ['active','pending','blocked'] && str(incoming().notes, 2000) && (resource.data.role != 'owner' || isOwner()) && (incoming().role != 'owner' || isOwner()) && (incoming().role != 'manager' || isOwner() || resource.data.role == 'manager');}
    function claimEdit(){return self(id) && resource.data.role in ['guest','vendor'] && resource.data.status == 'active' && changed().hasOnly(['role','vendorId','helper','addedBy','inviteCode','updatedAt']) && claimsInvite();}
@@ -155,7 +155,7 @@ service cloud.firestore {
     function noteShape(){return incoming().keys().hasOnly(['id','kind','title','sub','link','refId','action','by','createdAt','readAt']) && incoming().id == nid && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 120) && str(incoming().sub, 240) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().get('refId', ''), 80) && (!('action' in incoming()) || (incoming().action is map && incoming().action.keys().hasOnly(['label','kind']) && str(incoming().action.label, 40) && incoming().action.kind in ['addToTrip','open'])) && isoTime(incoming().createdAt);}
     function sender(){return actorOk(incoming().by) && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor' && (self(id) || get(/databases/$(database)/documents/users/$(id)).data.role in ['owner','manager','staff'])));}
     allow read: if self(id);
-    allow create: if noteShape() && incoming().readAt == null && sender();
+    allow create: if !nid.matches('op_.*') && noteShape() && incoming().readAt == null && sender();
     // the owner of the list only marks read; "לשלוח שוב" rewrites b_<id> as new (a manager overwrites a broadcast notification)
     allow update: if (self(id) && changed().hasOnly(['readAt']) && isoTime(incoming().readAt)) || (isManager() && noteShape() && resource.data.kind == 'broadcast' && incoming().kind == 'broadcast' && incoming().readAt == null && actorOk(incoming().by));
     allow delete: if self(id);
@@ -217,8 +217,18 @@ service cloud.firestore {
    allow update: if isManager() && templateShape() && incoming().createdBy == resource.data.createdBy;
    allow delete: if isManager();
   }
+  function shoppingCategory(key){
+   return key in ['super','building','online','giveaway'] || (key is string && key.matches('custom_[A-Za-z0-9_-]{1,320}') && existsAfter(/databases/$(database)/documents/shopping_categories/$(key)));
+  }
+  match /shopping_categories/{id} {
+   allow read: if isStaff();
+   function categoryOk(){return incoming().keys().hasOnly(['name']) && str(incoming().name, 60) && incoming().name.size() > 0
+     && id == 'custom_' + incoming().name.toUtf8().toBase64().replace('=+$', '').replace('[+]', '-').replace('/', '_');}
+   allow create: if isStaff() && categoryOk();
+   allow update: if isStaff() && incoming() == resource.data;
+  }
   match /shopping/{id} {
-   function itemShape(){return incoming().keys().hasOnly(['title','note','link','photo','category','createdBy','createdAt','bought','boughtBy','boughtAt','expireAt','updatedAt','qty','urgent','taskId','notAvailable','notAvailableAt','tripId','foundWhere']) && photoOk(incoming().get('photo','')) && str(incoming().get('taskId', ''), 80) && incoming().get('notAvailable', false) is bool && optStr('notAvailableAt', 40) && str(incoming().get('tripId', ''), 80) && str(incoming().get('foundWhere', ''), 200) && str(incoming().qty, 40) && incoming().urgent is bool && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 1000) && str(incoming().link, 2000) && (incoming().link == '' || incoming().link.matches('https://.*')) && incoming().category in ['super','building','online','giveaway'] && incoming().bought is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ((incoming().bought == false && incoming().boughtBy == null && incoming().boughtAt == null && incoming().expireAt == null) || (incoming().bought == true && incoming().boughtBy is map && str(incoming().boughtAt, 40) && str(incoming().expireAt, 40)));}
+   function itemShape(){return incoming().keys().hasOnly(['title','note','link','photo','category','createdBy','createdAt','bought','boughtBy','boughtAt','expireAt','updatedAt','qty','urgent','urgentDueAt','taskId','notAvailable','notAvailableAt','tripId','foundWhere']) && photoOk(incoming().get('photo','')) && str(incoming().get('taskId', ''), 80) && incoming().get('notAvailable', false) is bool && optStr('notAvailableAt', 40) && str(incoming().get('tripId', ''), 80) && str(incoming().get('foundWhere', ''), 200) && str(incoming().qty, 40) && incoming().urgent is bool && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().note, 1000) && str(incoming().link, 2000) && (incoming().link == '' || incoming().link.matches('https://.*')) && shoppingCategory(incoming().category) && optIso('urgentDueAt') && incoming().bought is bool && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ((incoming().bought == false && incoming().boughtBy == null && incoming().boughtAt == null && incoming().expireAt == null) || (incoming().bought == true && incoming().boughtBy is map && str(incoming().boughtAt, 40) && str(incoming().expireAt, 40)));}
    function optStr(field, max){return incoming().get(field, null) == null || str(incoming().get(field, null), max);}
    allow read: if isStaff();
    allow create: if isStaff() && itemShape() && actorOk(incoming().createdBy) && incoming().bought == false;
@@ -227,10 +237,10 @@ service cloud.firestore {
   }
   // S6, S7: a shopping trip. Only the shopper writes it; a manager may delete it (the items keep what happened to them)
   match /shopping_trips/{id} {
-   function tripShape(){return incoming().keys().hasOnly(['id','by','list','startedAt','closedAt','bought','missing']) && incoming().get('id', id) == id && incoming().list in ['super','building','online','giveaway'] && str(incoming().startedAt, 40) && (incoming().closedAt == null || str(incoming().closedAt, 40)) && incoming().bought is list && incoming().bought.size() <= 200 && incoming().missing is list && incoming().missing.size() <= 200;}
+   function tripShape(){return incoming().keys().hasOnly(['id','by','list','startedAt','closedAt','bought','missing','recipientUids']) && incoming().get('id', id) == id && shoppingCategory(incoming().list) && (incoming().get('recipientUids', []) is list && incoming().get('recipientUids', []).size() <= 2000) && str(incoming().startedAt, 40) && (incoming().closedAt == null || str(incoming().closedAt, 40)) && incoming().bought is list && incoming().bought.size() <= 200 && incoming().missing is list && incoming().missing.size() <= 200;}
    allow read: if isStaff();
    allow create: if isStaff() && tripShape() && actorOk(incoming().by) && incoming().closedAt == null;
-   allow update: if isStaff() && tripShape() && resource.data.by.uid == uid() && incoming().by == resource.data.by && incoming().startedAt == resource.data.startedAt && incoming().list == resource.data.list;
+   allow update: if isStaff() && tripShape() && resource.data.by.uid == uid() && incoming().by == resource.data.by && incoming().startedAt == resource.data.startedAt && incoming().list == resource.data.list && !changed().hasAny(['recipientUids']);
    allow delete: if isManager();
   }
   // The assistant log ("יומן אינסטינקט"): one entry per API request, written only by the API Worker (service account). Owners only.
@@ -317,12 +327,12 @@ service cloud.firestore {
     allow update: if isOwner() && incoming()==resource.data && incoming().writer==uid();
    }
   }
-  // P1-P6: manager projects. Nobody below a manager reads or writes any of it
+  // Volunteers can read event-linked projects and steps. Manager editing stays unchanged.
   match /projects/{pid} {
-   function projectShape(){return incoming().keys().hasOnly(['id','title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','createdBy','createdAt','updatedAt']) && incoming().get('id', pid) == pid && str(incoming().title, 120) && incoming().title.size() > 0 && str(incoming().get('goal', ''), 120) && str(incoming().get('deadline', ''), 10) && str(incoming().get('deadlineText', ''), 60) && str(incoming().get('short', ''), 40) && incoming().get('members', []) is list && incoming().get('members', []).size() <= 50 && incoming().get('memberUids', []) is list && incoming().get('memberUids', []).size() <= 50 && incoming().status in ['active','done'] && optIso('doneAt') && str(incoming().updatedAt, 40);}
-   allow read: if isManager();
+   function projectShape(){return incoming().keys().hasOnly(['id','eventId','title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','createdBy','createdAt','updatedAt']) && str(incoming().get('eventId', ''), 80) && (incoming().get('eventId', '') == '' || existsAfter(/databases/$(database)/documents/events/$(incoming().eventId))) && incoming().get('id', pid) == pid && str(incoming().title, 120) && incoming().title.size() > 0 && str(incoming().get('goal', ''), 120) && str(incoming().get('deadline', ''), 10) && str(incoming().get('deadlineText', ''), 60) && str(incoming().get('short', ''), 40) && incoming().get('members', []) is list && incoming().get('members', []).size() <= 50 && incoming().get('memberUids', []) is list && incoming().get('memberUids', []).size() <= 50 && incoming().status in ['active','done'] && optIso('doneAt') && str(incoming().updatedAt, 40);}
+   allow read: if isManager() || (isStaff() && resource.data.eventId is string && resource.data.eventId != '');
    allow create: if isManager() && projectShape() && incoming().status == 'active' && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
-   allow update: if isManager() && projectShape() && changed().hasOnly(['title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','updatedAt']);
+   allow update: if isManager() && projectShape() && changed().hasOnly(['eventId','title','goal','deadline','deadlineText','short','members','memberUids','status','doneAt','updatedAt']);
    allow delete: if isOwner();
    match /steps/{sid} {
     function stepShape(){return incoming().keys().hasOnly(['id','projectId','n','title','assignee','due','note','done','doneBy','doneAt','parentId','updates','createdBy','createdAt','updatedAt']) && incoming().get('id', sid) == sid && incoming().projectId == pid && incoming().n is number && str(incoming().title, 200) && incoming().title.size() > 0 && str(incoming().get('note', ''), 1000) && str(incoming().get('due', ''), 10) && (incoming().get('assignee', null) == null || actorMap(incoming().assignee)) && (incoming().get('parentId', null) == null || str(incoming().parentId, 80)) && incoming().done is bool && incoming().get('updates', []) is list && incoming().get('updates', []).size() <= 300 && str(incoming().updatedAt, 40);}
@@ -330,7 +340,7 @@ service cloud.firestore {
     function doneOk(){return !changed().hasAny(['done','doneBy','doneAt']) || (incoming().done == true && resource.data.done == false && actorOk(incoming().doneBy) && isoTime(incoming().doneAt)) || (incoming().done == false && incoming().doneBy == null && incoming().doneAt == null);}
     // the P4 thread only grows, by one entry written by the poster
     function updatesOk(){let before = resource.data.get('updates', []); let after = incoming().updates; return !changed().hasAny(['updates']) || (after.size() == before.size() + 1 && (before.size() == 0 || after[0:before.size()] == before) && after[before.size()] is map && after[before.size()].keys().hasOnly(['by','at','text']) && actorOk(after[before.size()].by) && isoTime(after[before.size()].at) && str(after[before.size()].text, 500));}
-    allow read: if isManager();
+    allow read: if isManager() || (isStaff() && get(/databases/$(database)/documents/projects/$(pid)).data.get('eventId', '') != '');
     allow create: if isManager() && stepShape() && incoming().done == false && incoming().get('doneBy', null) == null && incoming().get('doneAt', null) == null && incoming().get('updates', []).size() == 0 && actorOk(incoming().createdBy) && str(incoming().createdAt, 40);
     allow update: if isManager() && stepShape() && changed().hasOnly(['n','title','assignee','due','note','done','doneBy','doneAt','updates','updatedAt']) && doneOk() && updatesOk();
     // managers delete open steps; the owner deletes any step (deleting a whole project takes its done steps too)
@@ -377,16 +387,146 @@ service cloud.firestore {
    allow update: if isManager() && name == 'app' && (isOwner() || !changed().hasAny(['payment','demoIntro'])) && (!changed().hasAny(['contact']) || contactOk()) && (!changed().hasAny(['templates']) || confirmationTemplateOk()) && (!changed().hasAny(['demoIntro']) || demoIntroOk());
    allow delete: if isOwner() && name == 'app';
   }
+  function stationAvailable(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return !exists(registry) || (
+     !get(registry).data.stations.get(sid, {}).get('archived', false)
+     && (get(registry).data.moving == null || get(registry).data.moving.from != sid));
+  }
+  function movingStation(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return exists(registry) && get(registry).data.moving != null && get(registry).data.moving.from == sid
+     && get(registry).data.moving.to != '';
+  }
+  function transferredPeople(eventId,sid){
+   let destination = get(/databases/$(database)/documents/work_stations/farm).data.moving.to;
+   let target = /databases/$(database)/documents/events/$(eventId)/staffing/$(destination);
+   let previousCount = exists(target) ? get(target).data.people.size() : 0;
+   return getAfter(target).data.people.size() == previousCount + resource.data.people.size();
+  }
+  function stationSizeOk(sid){
+   let registry = /databases/$(database)/documents/work_stations/farm;
+   return incoming().people.size() <= 30 || (request.method == 'update' && incoming().people.size() <= resource.data.people.size())
+    || (exists(registry) && get(registry).data.moving != null && get(registry).data.moving.to == sid);
+  }
+  match /work_stations/{registry} {
+   allow get: if registry == 'farm' && isStaff();
+   allow create, update: if registry == 'farm' && isManager()
+      && incoming().keys().hasOnly(['stations','moving']) && incoming().stations is map
+      && (incoming().moving == null || (incoming().moving is map && incoming().moving.keys().hasOnly(['from','to','startedAt'])
+        && str(incoming().moving.from,140) && incoming().moving.from.size()>0 && str(incoming().moving.to,140)
+        && incoming().moving.from != incoming().moving.to && isoTime(incoming().moving.startedAt)));
+  }
+  function catalogEntryTimes() {
+   return isoTime(incoming().createdAt) && isoTime(incoming().updatedAt) && incoming().get('archived', false) is bool
+    && incoming().get('generation',0) is int && incoming().get('generation',0) >= 0;
+  }
+  function catalogEditAllowed() {
+   let before = resource.data.get('archived',false);
+   let after = incoming().get('archived',false);
+   let oldGeneration = resource.data.get('generation',0);
+   return incoming().createdAt == resource.data.createdAt
+    && (after == before
+        ? incoming().get('generation',0) == oldGeneration && (!before || changed().hasOnly(['updatedAt']))
+        : changed().hasOnly(['archived','generation','updatedAt'])
+          && incoming().get('generation',0) == oldGeneration + ((after || !('generation' in resource.data)) ? 1 : 0));
+  }
+  match /farm_catalogs/{catalog} {
+   function catalogShape(){return incoming().keys().hasOnly(['name','createdAt','updatedAt','archived','generation']) && str(incoming().name, 120) && incoming().name.size() > 0 && catalogEntryTimes();}
+   allow get: if isStaff();
+   allow list: if isManager();
+   allow create: if isManager() && catalogShape() && incoming().get('generation',0) == 0 && !incoming().get('archived',false);
+   allow update: if isManager() && catalogShape() && catalogEditAllowed();
+   match /products/{product} {
+    function parentActive(){return !getAfter(/databases/$(database)/documents/farm_catalogs/$(catalog)).data.get('archived', false);}
+    function masterShape(){return incoming().keys().hasOnly(['name','price','createdAt','updatedAt','archived','generation']) && str(incoming().name, 200) && incoming().name.size() > 0 && incoming().price is number && incoming().price >= 0 && catalogEntryTimes();}
+    allow get: if isStaff();
+    allow list: if isManager();
+    allow create: if isManager() && parentActive() && masterShape() && incoming().get('generation',0) == 0 && !incoming().get('archived',false);
+    allow update: if isManager() && parentActive() && masterShape() && catalogEditAllowed();
+   }
+  }
+  function applicationDetails(person){return incoming().ownerUid == person && str(incoming().name, 200) && incoming().name.size() > 0
+    && str(incoming().phone, 25) && incoming().products is list && incoming().products.size() <= 60 && incoming().needs is list && incoming().needs.size() <= 60
+    && isoTime(incoming().createdAt) && isoTime(incoming().updatedAt);}
+  match /vendor_applications/{person} {
+   allow read: if isManager() || (signed() && uid() == person);
+   allow create, update: if signed() && uid() == person && applicationDetails(person)
+    && incoming().keys().hasOnly(['ownerUid','name','phone','products','needs','createdAt','updatedAt','appliedEventIds'])
+    && incoming().get('appliedEventIds', []) is list && incoming().get('appliedEventIds', []).size() <= 500;
+  }
+  // Event end as stored by the app (UTC), older API clocks (Jerusalem wall time), or an explicit numeric offset.
+  function jerusalemOffset(wall){
+   let y = wall.year();
+   let mar = timestamp.date(y, 3, 31);
+   let oct = timestamp.date(y, 10, 31);
+   let summer = mar - duration.value(mar.dayOfWeek() % 7 + 2, 'd') + duration.value(2, 'h');
+   let winter = oct - duration.value(oct.dayOfWeek() % 7, 'd') + duration.value(2, 'h');
+   return wall >= summer && wall < winter ? 180 : 120;
+  }
+  function eventOffset(s, wall){
+   let tail = s.size();
+   return s.matches('.*Z') ? 0 : s.matches('.*[+-][0-9]{2}:[0-9]{2}') ?
+     (s[tail-6:tail-5] == '-' ? -1 : 1) * (int(s[tail-5:tail-3]) * 60 + int(s[tail-2:tail])) :
+     jerusalemOffset(wall);
+  }
+  function eventInstant(s){
+   let wall = timestamp.date(int(s[0:4]), int(s[5:7]), int(s[8:10])) + duration.time(int(s[11:13]), int(s[14:16]), s.size() >= 19 && s[16:17] == ':' ? int(s[17:19]) : 0, 0);
+   return wall - duration.value(eventOffset(s, wall), 'm') + (s.size() >= 23 && s[19:20] == '.' ? duration.value(int(s[20:23]), 'ms') : duration.value(0, 'ms'));
+  }
+  function validEventClock(s){return s is string && s.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]{3})?)?(Z|[+-][0-9]{2}:[0-9]{2})?');}
+  function beforeEventEnd(e){
+   let s = e.get('end', '');
+   // Dates more than a year away cannot cross today's boundary at any supported timezone offset.
+   return validEventClock(s) && (int(s[0:4]) > request.time.year() + 1 || (int(s[0:4]) >= request.time.year() - 1 && request.time < eventInstant(s)));
+  }
   match /events/{id} {
    // closed (Y5): when and by whom, and until when it may reopen. The event document is public once published, so the cash
    // counts stay in counters/cash (managers only) and never in here.
    function closedOk(){let c = incoming().get('closed', null); return c == null || (c is map && c.keys().hasOnly(['at','by','reopenUntil']) && isoTime(c.at) && actorOk(c.by) && isoTime(c.reopenUntil));}
-   function eventShape(){return incoming().keys().hasOnly(['title','description','image','location','start','end','price','maxPerOrder','capacity','open','published','publishedAt','questions','files','entry','stall','closed','reopenedAt','reopenedBy','createdBy','createdAt','updatedAt']) && (!('publishedAt' in incoming()) || isoTime(incoming().publishedAt)) && incoming().get('entry', true) is bool && incoming().get('stall', true) is bool && (!('files' in incoming()) || (incoming().files is list && incoming().files.size() <= 30)) && str(incoming().title, 200) && incoming().title.size() >= 1 && str(incoming().description, 8000) && photoOk(incoming().image) && str(incoming().location, 300) && str(incoming().start, 40) && str(incoming().end, 40) && incoming().price is number && incoming().price >= 0 && incoming().maxPerOrder is int && incoming().maxPerOrder >= 1 && incoming().maxPerOrder <= 20 && incoming().capacity is int && incoming().open is bool && incoming().published is bool && incoming().questions is list && incoming().questions.size() <= 10 && (!changed().hasAny(['closed']) || closedOk()) && optIso('reopenedAt') && (incoming().get('reopenedBy', null) == null || actorMap(incoming().reopenedBy));}
+   function eventShape(){let d = request.resource.data; return d.keys().hasOnly(['title','description','image','location','shareWords','start','end','price','maxPerOrder','capacity','open','published','publishedAt','questions','files','entry','stall','closed','reopenedAt','reopenedBy','createdBy','createdAt','updatedAt']) && (!('publishedAt' in d) || isoTime(d.publishedAt)) && d.get('entry', true) is bool && d.get('stall', true) is bool && (!('files' in d) || (d.files is list && d.files.size() <= 30)) && str(d.title, 200) && d.title.size() >= 1 && str(d.get('shareWords', ''), 300) && str(d.description, 8000) && photoOk(d.image) && str(d.location, 300) && str(d.start, 40) && str(d.end, 40) && d.price is number && d.price >= 0 && d.maxPerOrder is int && d.maxPerOrder >= 1 && d.maxPerOrder <= 20 && d.capacity is int && d.open is bool && d.published is bool && d.questions is list && d.questions.size() <= 10 && (!changed().hasAny(['closed']) || closedOk()) && optIso('reopenedAt') && (d.get('reopenedBy', null) == null || actorMap(d.reopenedBy));}
    allow get: if resource.data.published == true || isStaff() || invitedTo(id);
    allow list: if resource.data.published == true || isStaff();
-   allow create: if isManager() && eventShape() && actorOk(incoming().createdBy) && (!('publishedAt' in incoming()) || (incoming().published && incoming().publishedAt == incoming().createdAt));
-   allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy && (!changed().hasAny(['publishedAt']) || (incoming().published && !resource.data.published && incoming().publishedAt == incoming().updatedAt));
+   allow create: if isManager() && eventShape() && actorOk(incoming().createdBy) && (!incoming().published || (beforeEventEnd(incoming()) && validEventClock(incoming().start) && eventInstant(incoming().end) > eventInstant(incoming().start))) && (!('publishedAt' in incoming()) || (incoming().published && incoming().publishedAt == incoming().createdAt));
+   allow update: if isManager() && eventShape() && incoming().createdBy == resource.data.createdBy && (!incoming().published || ((!changed().hasAny(['start','end','published']) || (validEventClock(incoming().start) && validEventClock(incoming().end) && eventInstant(incoming().end) > eventInstant(incoming().start))) && (resource.data.published || beforeEventEnd(incoming())))) && (!changed().hasAny(['publishedAt']) || (incoming().published && !resource.data.published && incoming().publishedAt == incoming().updatedAt));
    allow delete: if isManager();
+   match /supplier_passes/{token} {
+    allow read: if isStaff();
+    allow create: if isManager() && token.matches('[a-zA-Z0-9_-]{16,100}') && incoming().keys().hasOnly(['eventId','name','people','createdAt'])
+      && incoming().eventId == id && str(incoming().name, 120) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500 && isoTime(incoming().createdAt);
+   }
+   match /test_tickets/{person} {
+    allow get, list: if isStaff();
+    allow create: if isStaff() && uid() == person && incoming().keys().hasOnly(['eventId','ownerUid','ownerName','secret','createdAt','isTest'])
+      && incoming().eventId == id && incoming().ownerUid == person && incoming().isTest == true && str(incoming().ownerName, 80)
+      && str(incoming().secret, 80) && incoming().secret.size() >= 16 && isoTime(incoming().createdAt)
+      && exists(/databases/$(database)/documents/events/$(id));
+   }
+   match /shopping/{item} {
+    allow read: if isStaff();
+    allow create, update: if isManager() && incoming().get('id', item) == item
+      && incoming().keys().hasOnly(['id','title','qty','category','bought','boughtBy','boughtAt','updatedAt','createdBy','createdAt','linkedItemId','linkedAt'])
+      && str(incoming().title, 200) && incoming().title.size() > 0 && str(incoming().qty, 40) && shoppingCategory(incoming().category)
+      && incoming().bought is bool && (incoming().get('boughtBy', null) == null || actorMap(incoming().boughtBy))
+      && optIso('boughtAt') && actorMap(incoming().createdBy) && isoTime(incoming().createdAt) && isoTime(incoming().updatedAt)
+      && (incoming().get('linkedItemId', null) == null || str(incoming().linkedItemId, 80)) && optIso('linkedAt');
+    allow delete: if isManager();
+   }
+   match /vendor_applications/{person} {
+    allow read: if isManager() || (signed() && person == uid());
+    function acceptingApplications(){let e = get(/databases/$(database)/documents/events/$(id)).data;
+     return e.published == true && e.get('stall', true) && e.get('closed', null) == null && beforeEventEnd(e) && incoming().eventStart == e.start;}
+    function eventApplication(){return applicationDetails(person)
+      && incoming().keys().hasOnly(['ownerUid','name','phone','products','needs','createdAt','updatedAt','eventId','eventStart','people','vehicles','sourceEventId','status','qrToken'])
+      && incoming().eventId == id && validEventClock(incoming().eventStart) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500
+      && incoming().vehicles is int && incoming().vehicles >= 0 && incoming().vehicles <= 500 && str(incoming().get('sourceEventId', ''), 80);}
+    allow create: if signed() && uid() == person && eventApplication() && incoming().status == 'requested' && !('qrToken' in incoming())
+      && acceptingApplications();
+    allow update: if acceptingApplications() && signed() && uid() == person && eventApplication() && incoming().status == 'requested' && resource.data.status == 'requested'
+      && incoming().createdAt == resource.data.createdAt && !('qrToken' in incoming());
+    allow update: if isManager() && resource.data.status == 'requested' && incoming().status == 'approved' && isoTime(incoming().updatedAt)
+      && changed().hasOnly(['status','qrToken','updatedAt']) && (!('qrToken' in incoming()) || (str(incoming().qrToken, 100) && incoming().qrToken.size() >= 16));
+   }
    match /vendors/{vid} {
     function recShape(){return incoming().keys().hasOnly(['vendorId','name','confirmed','notes','status','invitedAt','invitedBy','answeredAt','sells','needs','people','withVehicle','vehicle','note','spot','spotNote','arrivedAt','arrivedBy','guidelinesReadAt','feedback','remindedAt','updatedAt']) && str(incoming().name, 200) && incoming().confirmed is bool && str(incoming().notes, 1000) && incoming().get('status', 'invited') in ['invited','confirmed','declined'] && str(incoming().get('sells', ''), 300) && incoming().get('needs', []) is list && incoming().get('needs', []).size() <= 5 && str(incoming().get('note', ''), 1000) && str(incoming().get('vehicle', ''), 100) && incoming().get('withVehicle', false) is bool && (incoming().get('people', 1) is int && incoming().get('people', 1) >= 1 && incoming().get('people', 1) <= 10);}
     // D1/D2: the owner answers; the answer can be changed until a manager closes the invite
@@ -426,14 +566,41 @@ service cloud.firestore {
     allow read: if isManager();
     allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','url','kind','by','at','mime','size']) && str(incoming().name, 200) && incoming().name.size() >= 1 && str(incoming().url, 700000) && (incoming().url.matches('https://.*') || incoming().url.matches('data:(image/(jpeg|webp|png)|application/pdf);base64,[A-Za-z0-9+/=]+')) && incoming().kind in ['doc','image'] && actorOf(incoming().by) && str(incoming().at, 40) && str(incoming().get('mime', ''), 60) && incoming().get('size', 0) is int));
    }
+   // Permanent after the first catalog selection, including when the event's catalog is emptied.
+   match /stall_config/catalog {
+    allow get: if isStaff();
+    allow create, update: if isManager() && incoming() == {'enabled':true};
+   }
    match /products/{pid} {
+    function referenced(d){return d.keys().hasAny(['catalogId','catalogProductId']);}
+    function linked(d){return d.get('catalogId','') is string && d.get('catalogProductId','') is string
+     && d.get('catalogId','').matches('[^/]+') && d.get('catalogProductId','').matches('[^/]+');}
+    function eventProductShape(){return incoming().keys().hasOnly(['name','price','active','sort','unit','catalogId','catalogProductId','catalogGeneration','catalogProductGeneration']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number && str(incoming().get('catalogId', ''), 80) && str(incoming().get('catalogProductId', ''), 80) && str(incoming().get('unit', ''), 20);}
+    function currentSelection(d){
+     let catalog = getAfter(/databases/$(database)/documents/farm_catalogs/$(d.catalogId)).data;
+     let master = getAfter(/databases/$(database)/documents/farm_catalogs/$(d.catalogId)/products/$(d.catalogProductId)).data;
+     return existsAfter(/databases/$(database)/documents/events/$(id)/stall_config/catalog)
+      && !catalog.get('archived',false) && !master.get('archived',false)
+      && d.get('catalogGeneration',0) == catalog.get('generation',0) && d.get('catalogProductGeneration',0) == master.get('generation',0)
+      && d.name == master.name && d.price == master.price;
+    }
+    function catalogChangeAllowed(){
+     let updatedSelection = changed().hasAny(['name','price','catalogGeneration','catalogProductGeneration']);
+     let reselected = (!resource.data.active || incoming().get('catalogGeneration',0) != resource.data.get('catalogGeneration',0)
+        || incoming().get('catalogProductGeneration',0) != resource.data.get('catalogProductGeneration',0));
+     return !changed().hasAny(['catalogId','catalogProductId'])
+      && (!referenced(resource.data) || (linked(resource.data) && ((updatedSelection || (!resource.data.active && incoming().active)) ? incoming().active && reselected && currentSelection(incoming()) : true)));
+    }
     allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['name','price','active','sort','unit']) && str(incoming().name, 200) && incoming().name.size() >= 1 && incoming().price is number && incoming().price >= 0 && incoming().active is bool && incoming().sort is number && str(incoming().get('unit', ''), 20)));
+    allow create: if isManager() && eventProductShape() && (!referenced(incoming()) || (linked(incoming()) && incoming().active && currentSelection(incoming())));
+    allow update: if isManager() && eventProductShape() && catalogChangeAllowed();
+    allow delete: if isManager() && !referenced(resource.data);
    }
    // V4: stations, their people and hours. The crew (F6) and the broadcast audience read it
    match /staffing/{sid} {
     allow read: if isStaff();
-    allow write: if isManager() && (request.method == 'delete' || (incoming().keys().hasOnly(['station','people','needed']) && str(incoming().station, 60) && incoming().station.size() >= 1 && incoming().people is list && incoming().people.size() <= 30 && incoming().needed is int && incoming().needed >= 1 && incoming().needed <= 30));
+    allow delete: if isManager() && (resource.data.people.size() == 0 || (movingStation(sid) && transferredPeople(id,sid)));
+    allow create, update: if isManager() && stationAvailable(sid) && stationSizeOk(sid) && (incoming().keys().hasOnly(['station','people','needed']) && str(incoming().station, 60) && incoming().station.size() >= 1 && incoming().people is list && incoming().needed is int && incoming().needed >= 1 && incoming().needed <= 30);
    }
    // E2-E6, Y1-Y3: the gate log. Create-only: two gates that let in the same entry write the same id ("<ticket>-<n>"),
    // so the second (also a late offline one) is refused. Managers only mark a rejected scan reopened or kept, once.
@@ -461,16 +628,17 @@ service cloud.firestore {
   }
   match /tickets/{id} {
    function event(){return get(/databases/$(database)/documents/events/$(incoming().eventId)).data;}
-   function ticketShape(){return incoming().keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','paymentConfirmation','paidAt','createdAt','updatedAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().orderId, 60) && incoming().index is int && incoming().total is int && incoming().index >= 1 && incoming().index <= incoming().total && str(incoming().ownerName, 80) && str(incoming().ownerPhone, 25) && str(incoming().holderName, 80) && str(incoming().secret, 40) && incoming().price is number && incoming().paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && incoming().status in ['valid','cancelled'] && incoming().scans is list && incoming().entries is int && incoming().answers is map && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && ticketExtras();}
-   function ticketExtras(){return incoming().get('payLater', false) is bool && str(incoming().get('payLaterAt', ''), 40) && (incoming().get('payLaterBy', null) == null || actorMap(incoming().payLaterBy)) && optIso('cancelledAt') && (incoming().get('cancelledBy', null) == null || actorMap(incoming().cancelledBy)) && str(incoming().get('cancelNote', ''), 500) && incoming().get('walkIn', false) is bool && optIso('reminderSentAt');}
+   function ticketShape(){let d = request.resource.data; return d.keys().hasOnly(['eventId','eventTitle','orderId','index','total','ownerUid','selfRegistered','ownerName','ownerPhone','holderName','secret','price','paymentStatus','status','scans','entries','answers','paymentConfirmation','paidAt','createdAt','updatedAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && str(d.eventId, 60) && str(d.eventTitle, 200) && str(d.orderId, 60) && d.index is int && d.total is int && d.index >= 1 && d.index <= d.total && str(d.ownerName, 80) && str(d.ownerPhone, 25) && str(d.holderName, 80) && str(d.secret, 40) && d.price is number && d.paymentStatus in ['free','pending','claimed','paid','paid_onsite','cancelled'] && d.status in ['valid','cancelled'] && d.scans is list && d.entries is int && d.answers is map && str(d.createdAt, 40) && str(d.updatedAt, 40) && ticketExtras();}
+   function ticketExtras(){let d = request.resource.data; return d.get('payLater', false) is bool && str(d.get('payLaterAt', ''), 40) && (d.get('payLaterBy', null) == null || actorMap(d.payLaterBy)) && optIso('cancelledAt') && (d.get('cancelledBy', null) == null || actorMap(d.cancelledBy)) && str(d.get('cancelNote', ''), 500) && d.get('walkIn', false) is bool && optIso('reminderSentAt');}
    // E4 "להכניס, ישלמו אחר כך": the crew lets an unpaid ticket in as a debt, stamped by themselves
    function laterOk(){return !changed().hasAny(['payLater','payLaterAt','payLaterBy']) || (resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'pending' && incoming().payLater == true && actorOk(incoming().payLaterBy) && isoTime(incoming().payLaterAt));}
    function crewOpen(){return eventOpen(resource.data.eventId);}
    allow read: if isStaff() || mine('ownerUid');
-   allow create: if signed() && !incoming().keys().hasAny(['paymentConfirmation','paidAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && ticketShape() && incoming().ownerUid == uid() && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
+   allow create: if signed() && !incoming().keys().hasAny(['paymentConfirmation','paidAt','payLater','payLaterAt','payLaterBy','cancelledAt','cancelledBy','cancelNote','walkIn','createdBy','reminderSentAt']) && ticketShape() && incoming().ownerUid == uid() && incoming().get('selfRegistered', false) is bool && incoming().status == 'valid' && incoming().entries == 0 && incoming().scans.size() == 0 && event().published == true && event().open == true && event().get('closed', null) == null && beforeEventEnd(event()) && incoming().total <= event().maxPerOrder && incoming().price == event().price && incoming().paymentStatus == (event().price > 0 ? 'pending' : 'free');
    // (both creates test their cheap marker first: Firestore counts the expressions of every allow statement it evaluates, 1000 at most)
    // E6 "אורח בלי כרטיס": the crew creates tickets for a guest without one, already inside, on an event that is not closed
-   allow create: if incoming().get('walkIn', false) == true && isStaff() && ticketShape() && actorOk(incoming().createdBy) && incoming().ownerUid == '' && incoming().status == 'valid' && incoming().entries == 1 && incoming().scans.size() == 1 && actorOk(incoming().scans[0].by) && incoming().total <= 20 && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && !incoming().keys().hasAny(['cancelledAt','cancelledBy','cancelNote','reminderSentAt']) && eventOpen(incoming().eventId) && incoming().price == event().price && (event().price > 0 ? ((incoming().paymentStatus == 'paid_onsite' && incoming().get('payLater', false) == false) || (incoming().paymentStatus == 'pending' && incoming().payLater == true && actorOk(incoming().payLaterBy) && isoTime(incoming().payLaterAt))) : incoming().paymentStatus == 'free');
+   function walkInAllowed(d,e){return isStaff() && beforeEventEnd(e) && ticketShape() && actorOk(d.createdBy) && d.ownerUid == '' && d.get('selfRegistered', false) == false && d.status == 'valid' && d.entries == 1 && d.scans.size() == 1 && actorOk(d.scans[0].by) && d.total <= 20 && !('paymentConfirmation' in d) && !('paidAt' in d) && !d.keys().hasAny(['cancelledAt','cancelledBy','cancelNote','reminderSentAt']) && e.get('closed', null) == null && d.price == e.price && (e.price > 0 ? ((d.paymentStatus == 'paid_onsite' && d.get('payLater', false) == false) || (d.paymentStatus == 'pending' && d.payLater == true && actorOk(d.payLaterBy) && isoTime(d.payLaterAt))) : d.paymentStatus == 'free');}
+   allow create: if incoming().get('walkIn', false) == true && walkInAllowed(incoming(), event());
    // each branch tests the cheap changed() first and the role last: Firestore stops a rule after 1000 evaluated expressions
    function ownerClaim(){return changed().hasOnly(['paymentStatus','updatedAt']) && resource.data.paymentStatus == 'pending' && incoming().paymentStatus == 'claimed' && mine('ownerUid');}
    function ownerCancel(){return changed().hasOnly(['status','updatedAt']) && resource.data.status == 'valid' && resource.data.entries == 0 && incoming().status == 'cancelled' && mine('ownerUid');}
@@ -478,16 +646,27 @@ service cloud.firestore {
    function crewPaidOnsite(){return changed().hasOnly(['paymentStatus','paidAt','updatedAt']) && resource.data.paymentStatus in ['pending','claimed'] && incoming().paymentStatus == 'paid_onsite' && isStaff() && crewOpen();}
    function crewLater(){return changed().hasOnly(['payLater','payLaterAt','payLaterBy','updatedAt']) && resource.data.status == 'valid' && laterOk() && isStaff() && crewOpen();}
    function managerTicket(){return (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'valid' && resource.data.price > 0 && resource.data.paymentStatus in ['paid','paid_onsite'] && marksConfirmation())) && isManager();}
-   allow update: if ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && paidAtOk(incoming().paymentStatus in ['paid','paid_onsite'])
+   allow update: if !changed().hasAny(['selfRegistered']) && ticketShape() && incoming().eventId == resource.data.eventId && incoming().ownerUid == resource.data.ownerUid && incoming().secret == resource.data.secret && incoming().createdAt == resource.data.createdAt && paidAtOk(incoming().paymentStatus in ['paid','paid_onsite'])
      && (ownerClaim() || ownerCancel() || crewScan() || crewPaidOnsite() || crewLater() || managerTicket());
    allow delete: if isManager();
   }
   match /visits/{id} {
-   function visitShape(){return incoming().keys().hasOnly(['uid','name','phone','date','people','type','note','status','managerNote','handledBy','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && str(incoming().date, 10) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500 && str(incoming().type, 100) && str(incoming().note, 2000) && incoming().status in ['new','approved','rejected','cancelled'] && str(incoming().managerNote, 2000) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
+   function visitShape(){return incoming().keys().hasOnly(['uid','name','phone','date','people','type','note','status','managerNote','handledBy','createdAt','updatedAt','requestedDate','approvedDate','approvedTime','replyText','replyChannel','replyChannels']) && str(incoming().name, 80) && str(incoming().phone, 25) && str(incoming().date, 10) && incoming().people is int && incoming().people >= 1 && incoming().people <= 500 && str(incoming().type, 100) && str(incoming().note, 2000) && incoming().status in ['new','approved','rejected','cancelled'] && str(incoming().managerNote, 2000) && str(incoming().get('requestedDate', ''), 10) && str(incoming().get('approvedDate', ''), 10) && str(incoming().get('approvedTime', ''), 5) && str(incoming().get('replyText', ''), 2000) && incoming().get('replyChannel', 'app') in ['app','app-email','whatsapp'] && incoming().get('replyChannels', []) is list && incoming().get('replyChannels', []).size() <= 3 && incoming().get('replyChannels', []).hasOnly(['whatsapp','email','push']) && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
    allow read: if isManager() || mine('uid');
-   allow create: if signed() && visitShape() && incoming().uid == uid() && incoming().status == 'new' && incoming().handledBy == null;
-   allow update: if visitShape() && incoming().uid == resource.data.uid && ((isManager() && changed().hasOnly(['status','managerNote','handledBy','updatedAt']) && actorOk(incoming().handledBy)) || (mine('uid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'new' && incoming().status == 'cancelled'));
+   allow create: if signed() && visitShape() && incoming().uid == uid() && incoming().status == 'new' && incoming().handledBy == null && incoming().managerNote == ''
+    && incoming().get('requestedDate', incoming().date) == incoming().date && !incoming().keys().hasAny(['approvedDate','approvedTime','replyText','replyChannel','replyChannels']);
+   // Legacy approvals stored their public reply in managerNote. Visits with a dedicated reply keep staff notes private.
+   function publicNoteOk(){return (!('replyText' in resource.data) || 'replyText' in incoming())
+     && (!changed().hasAny(['managerNote']) || incoming().managerNote == '' || (!('replyText' in resource.data) && !('replyText' in incoming())));}
+   allow update: if visitShape() && incoming().uid == resource.data.uid && ((isManager() && publicNoteOk() && changed().hasOnly(['status','managerNote','handledBy','updatedAt','requestedDate','approvedDate','approvedTime','replyText','replyChannel']) && actorOk(incoming().handledBy)) || (mine('uid') && changed().hasOnly(['status','updatedAt']) && resource.data.status == 'new' && incoming().status == 'cancelled'));
    allow delete: if isManager();
+   match /private/{noteId} {
+    function currentVisit(){return exists(/databases/$(database)/documents/visits/$(id));}
+    allow get: if noteId == 'staff' && isManager() && currentVisit();
+    allow create, update: if noteId == 'staff' && isManager() && currentVisit()
+      && incoming().keys().hasOnly(['note','updatedAt']) && str(incoming().note, 1000) && isoTime(incoming().updatedAt);
+    allow delete: if noteId == 'staff' && isManager();
+   }
   }
   match /donations/{id} {
    function donationShape(){return incoming().keys().hasOnly(['uid','name','phone','amount','label','note','memorial','receiptWanted','receiptName','receiptSent','paymentStatus','paymentConfirmation','paidAt','createdAt','updatedAt']) && str(incoming().name, 80) && str(incoming().phone, 25) && incoming().amount is number && incoming().amount > 0 && incoming().amount <= 1000000 && str(incoming().label, 100) && str(incoming().note, 2000) && str(incoming().memorial, 500) && incoming().receiptWanted is bool && str(incoming().receiptName, 120) && incoming().receiptSent is bool && incoming().paymentStatus in ['pending','claimed','paid','cancelled'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40);}
@@ -546,11 +725,34 @@ service cloud.firestore {
   }
   match /tabs/{id} {
    function tabShape(){return incoming().keys().hasOnly(['eventId','eventTitle','guestUid','guestName','guestPhone','ticketId','items','total','status','createdBy','paymentConfirmation','paidAt','createdAt','updatedAt','reminderSentAt','claimedAt']) && str(incoming().eventId, 60) && str(incoming().eventTitle, 200) && str(incoming().guestUid, 60) && str(incoming().guestName, 80) && str(incoming().guestPhone, 25) && str(incoming().ticketId, 60) && incoming().items is list && incoming().items.size() <= 500 && incoming().total is number && incoming().total >= 0 && incoming().status in ['open','claimed','paid','waived'] && str(incoming().createdAt, 40) && str(incoming().updatedAt, 40) && optIso('reminderSentAt') && optIso('claimedAt');}
+   function standaloneLine(eid, row) {
+    let product = get(/databases/$(database)/documents/events/$(eid)/products/$(row.productId)).data;
+    return product.get('active',true) == true && !product.keys().hasAny(['catalogId','catalogProductId'])
+      && row.price == product.price && row.name == product.name && row.qty is int && row.qty > 0 && actorOk(row.by);
+   }
+   function addsOneStandalone(eid, before, after) {
+    let last = after[after.size()-1];
+    return resource.data.status == 'open' && incoming().status == 'open' && after == before.concat([last]) && standaloneLine(eid,last)
+      && incoming().total >= resource.data.total + last.qty*last.price - 0.005
+      && incoming().total <= resource.data.total + last.qty*last.price + 0.005;
+   }
+   function saleChangeAllowed() {
+    let before = resource.data.items;
+    let after = incoming().items;
+    let eid = resource.data.eventId;
+    return !changed().hasAny(['items','total'])
+      || !existsAfter(/databases/$(database)/documents/events/$(eid)/stall_config/catalog)
+      || (after.size() < before.size() && after == before.removeAll(before.removeAll(after)) && incoming().total <= resource.data.total)
+      || (after.size() == before.size()+1 && addsOneStandalone(eid,before,after));
+   }
    allow read: if isStaff() || mine('guestUid');
    allow create: if isStaff() && tabShape() && !('paymentConfirmation' in incoming()) && !('paidAt' in incoming()) && !incoming().keys().hasAny(['reminderSentAt','claimedAt']) && actorOk(incoming().createdBy) && incoming().status == 'open' && incoming().items.size() == 0 && incoming().total == 0 && (isManager() || eventOpen(incoming().eventId));
-   allow update: if tabShape() && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
+   allow update: if tabShape() && incoming().eventId == resource.data.eventId && saleChangeAllowed()
+    && incoming().createdBy == resource.data.createdBy && incoming().guestUid == resource.data.guestUid && paidAtOk(incoming().status == 'paid') && ((isManager() && (!changed().hasAny(['paymentConfirmation']) || (resource.data.status == 'paid' && resource.data.total > 0 && marksConfirmation()))) || (isStaff() && changed().hasOnly(['items','total','updatedAt']) && eventOpen(resource.data.eventId)) || (isStaff() && changed().hasOnly(['status','paidAt','updatedAt']) && resource.data.status in ['open','claimed'] && incoming().status == 'paid' && eventOpen(resource.data.eventId)) || (mine('guestUid') && changed().hasOnly(['status','claimedAt','updatedAt']) && resource.data.status == 'open' && incoming().status == 'claimed'));
    allow delete: if isManager();
   }
+  // The write-only contact Worker creates correspondence records. Only managers can read their reply details.
+  match /contact_people/{id} { allow read: if isManager(); }
   match /notifications/{id} {
    allow read: if isManager();
    allow create: if signed() && incoming().keys().hasOnly(['type','title','text','link','refId','createdAt','handled','handledBy','handledAt']) && incoming().type in ['visit','donation','join','order','receipt','tab','claim','contact'] && str(incoming().title, 200) && str(incoming().text, 500) && str(incoming().link, 300) && str(incoming().refId, 80) && (incoming().type != 'contact' || (incoming().refId == uid() && incoming().link == '/manage/inbox' && incoming().title.size() > 0 && incoming().text.size() > 0 && isoTime(incoming().createdAt))) && incoming().handled == false && incoming().handledBy == null && incoming().handledAt == null;
@@ -562,10 +764,11 @@ service cloud.firestore {
    function calendarShape(){return incoming().keys().hasOnly(['ownerUid','ownerName','title','date','time','kind','refId','createdAt','from','to','note','audience','participants','reminder','remindAt','reminderSentAt']) && str(incoming().title, 200) && str(incoming().date, 10) && str(incoming().time, 11) && incoming().kind in ['manual','visit','event','presence','meeting','planning'] && str(incoming().get('from', ''), 5) && str(incoming().get('to', ''), 5) && str(incoming().get('note', ''), 200) && incoming().get('audience', 'all') in ['all','managers'] && incoming().get('participants', []) is list && incoming().get('participants', []).size() <= 30 && incoming().get('reminder', '') in ['', '60'] && str(incoming().get('remindAt', ''), 40) && (incoming().get('reminderSentAt', null) == null || str(incoming().reminderSentAt, 40));}
    function ownsPresence(){return isStaff() && resource.data.kind == 'presence' && resource.data.ownerUid == uid();}
    // a volunteer's own presence carries no manager fields
-   function createsPresence(){return isStaff() && incoming().kind == 'presence' && incoming().ownerUid == uid() && incoming().ownerName == get(userPath()).data.displayName && incoming().refId == '' && str(incoming().createdAt, 40) && !incoming().keys().hasAny(['audience','participants','reminder','remindAt','reminderSentAt']);}
-   allow read: if isStaff();
+   function createsPresence(){return isStaff() && incoming().kind == 'presence' && incoming().ownerUid == uid() && incoming().ownerName == get(userPath()).data.displayName && incoming().refId == '' && str(incoming().createdAt, 40) && incoming().get('audience', 'all') == 'all' && !incoming().keys().hasAny(['participants','reminder','remindAt','reminderSentAt']);}
+   allow get: if isManager() || (isStaff() && resource.data.get('audience', 'all') == 'all');
+   allow list: if isManager() || (isStaff() && resource.data.audience == 'all');
    allow create: if calendarShape() && (isManager() || createsPresence());
-   allow update: if calendarShape() && (isManager() || (ownsPresence() && changed().hasOnly(['title','date','time','from','to','note'])));
+   allow update: if calendarShape() && (isManager() || (ownsPresence() && incoming().get('audience', 'all') == 'all' && changed().hasOnly(['title','date','time','from','to','note','audience'])));
    allow delete: if isManager() || ownsPresence();
   }
   // B1-B4, D3, Q25-Q26: broadcasts. Managers send, to the team or outside it (an event's registrants, vendors, users who agreed
@@ -590,7 +793,7 @@ service cloud.firestore {
   // the push outbox: the app creates jobs, only the Worker (service account) reads and updates them
   match /push_jobs/{jid} {
    allow read: if false;
-   allow create: if incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId','includeSelf']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && incoming().get('includeSelf', false) is bool && incoming().urgent is bool
+   allow create: if !jid.matches('op_.*') && incoming().keys().hasOnly(['id','kind','title','body','link','to','createdBy','createdAt','sentAt','urgent','tag','refId','includeSelf']) && incoming().id == jid && actorOk(incoming().createdBy) && incoming().sentAt == null && incoming().kind in ['task','urgent','trip','event','broadcast','vendor','system'] && str(incoming().title, 80) && str(incoming().body, 180) && str(incoming().link, 200) && incoming().link.matches('/([^/].*)?') && str(incoming().tag, 64) && str(incoming().get('refId', ''), 80) && isoTime(incoming().createdAt) && incoming().to is list && incoming().to.size() >= 1 && incoming().to.size() <= 200 && incoming().get('includeSelf', false) is bool && incoming().urgent is bool
      && ((isStaff() && (!(incoming().kind in ['broadcast','system']) || isManager())) || (isVendor() && incoming().kind == 'vendor'));
    allow update, delete: if false;
   }

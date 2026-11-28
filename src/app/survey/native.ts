@@ -1,5 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
-import { isNativeAndroid } from '../native';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { readyAuth } from '../firebase';
 import { demoOnly } from '../demo/store';
 import type { Fix, Recording, Sample } from './model';
@@ -19,11 +18,13 @@ interface Recorder {
   readFix(args: Key): Promise<Fix>;
   samples(args: Key & { id: string; after: number }): Promise<{ items: Sample[] }>;
 }
+// The hosted site and older Android wrappers use browser location. Only the trusted local app can record trails.
+export const hasSurveyRecorder = location.origin === 'https://localhost' && Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('FarmSurvey');
 export const recorder = registerPlugin<Recorder>('FarmSurvey');
 const prefix = 'farm-survey-auth:';
 export async function connectSurvey(uid: string) {
   const user = (await readyAuth()).currentUser;
-  if (!isNativeAndroid || demoOnly() || !user || user.uid !== uid) throw new Error('נדרשת כניסה לחשבון הבעלים');
+  if (!hasSurveyRecorder || demoOnly() || !user || user.uid !== uid) throw new Error('נדרשת כניסה לחשבון הבעלים');
   const token = await user.getIdToken().catch((e: { code?: string }) => {
     if (e.code === 'auth/network-request-failed' || !navigator.onLine) return '';
     throw e;
@@ -37,7 +38,7 @@ export async function connectSurvey(uid: string) {
   return grant;
 }
 export async function disconnectSurvey(uid?: string) {
-  if (!isNativeAndroid || !uid) return;
+  if (!hasSurveyRecorder || !uid) return;
   const key = localStorage.getItem(prefix + uid);
   if (key) {
     try {

@@ -18,9 +18,15 @@
 //  4. broadcast lane: the app's "לשלוח גם במייל" jobs (bc_<broadcastId>_<uid>), only on runs with no confirmation due, through
 //            Brevo only, at most BROADCAST_DAILY a day and never into the share kept for confirmations (see the lane below).
 // Nothing runs, and nothing is read, while EMAIL_ENABLED is not "true" or neither provider is configured.
+import { allowsOperationalChannel } from './operationalMessages';
 import { type Doc, type Env, Firestore, type Write } from './firestore';
 import { whereEq } from './core';
 import { sha256hex } from './util';
+
+function operationalMailId(job: Doc) {
+  const id = job.data.operationalId;
+  return typeof id === 'string' && /^op_[0-9a-f]{40}$/.test(id) && job.data.broadcastId === id && job.id === 'op_mail_' + id + '_' + job.data.uid ? id : '';
+}
 
 export const OUTBOX = 'email_outbox';
 const STATE = '_state';
@@ -216,10 +222,11 @@ export async function emailView(fs: Firestore, id: string) {
   let subject = SUBJECT, text = '', by = 'השרת', amount: number | null = typeof j.amount === 'number' ? j.amount : null;
   let profile: Doc | null;
   if (j.kind === 'broadcast') {
-    const [p, b] = await Promise.all([profileP, j.broadcastId ? fs.get('broadcasts', String(j.broadcastId)) : null]);
+    const opId = operationalMailId(job);
+    const [p, b] = await Promise.all([profileP, opId ? fs.getMany('operational_notices', [opId], ['title','text']).then(rows => rows[0] || null) : j.broadcastId ? fs.get('broadcasts', String(j.broadcastId)) : null]);
     profile = p;
-    subject = BROADCAST_SUBJECT;
-    text = b ? broadcastText(b.data) : '';
+    subject = opId ? String(b?.data.title || '') : BROADCAST_SUBJECT;
+    text = b ? opId ? String(b.data.text || '') : broadcastText(b.data) : '';
     by = String((j.createdBy as { name?: string } | undefined)?.name || (b?.data.by as { name?: string } | undefined)?.name || '');
   } else {
     const [p, settings, facts] = await Promise.all([profileP, fs.getMany('settings', ['app'], ['templates']).then((r) => r[0]?.data), j.kind === 'order'
@@ -363,7 +370,10 @@ async function sendBroadcastMail(fs: Firestore, env: Env, nowMs: number): Promis
     const r = await fs.commit(jobs.map((j) => fs.patch(OUTBOX, j.id, { status: 'sending', attempts: Number(j.data.attempts || 0) + 1, claimedAt }, j.updateTime))) as { writeResults?: { updateTime?: string }[] };
     leases = (r?.writeResults || []).map((w) => String(w.updateTime || ''));
   } catch { return { room, jobs: jobs.length, claimed: false }; }
-  const broadcasts = new Map((await fs.getMany('broadcasts', [...new Set(jobs.map((j) => String(j.data.broadcastId || '')))].filter(Boolean))).map((d) => [d.id, d.data]));
+  const regular = jobs.filter((j) => !j.id.startsWith('op_') && !('operationalId' in j.data));
+  const broadcasts = new Map((await fs.getMany('broadcasts', [...new Set(regular.map((j) => String(j.data.broadcastId || '')))].filter(Boolean))).map((d) => [d.id, d.data]));
+  const opIds = [...new Set(jobs.map(operationalMailId).filter(Boolean))];
+  const notices = new Map((await fs.getMany('operational_notices', opIds, ['source','title','text','createdAt','emailUids'])).map(d => [d.id, d.data]));
   const people = new Map((await fs.getMany('users', [...new Set(jobs.map((j) => String(j.data.uid || '')))].filter(Boolean))).map((d) => [d.id, d.data]));
   const st = { sent: 0, skipped: 0, failed: 0, retried: 0 };
   const outcome: Write[] = [];
@@ -371,17 +381,19 @@ async function sendBroadcastMail(fs: Firestore, env: Env, nowMs: number): Promis
     const job = jobs[i];
     const end = (data: Record<string, unknown>) => outcome.push(fs.patch(OUTBOX, job.id, { ...data, updatedAt: iso(Date.now()) }, leases[i] || undefined));
     const skip = (reason: string) => { end({ status: 'skipped', reason }); st.skipped++; };
-    const b = broadcasts.get(String(job.data.broadcastId));
+    const operational = job.id.startsWith('op_') || 'operationalId' in job.data;
+    const b = operational ? notices.get(operationalMailId(job)) : broadcasts.get(String(job.data.broadcastId));
     const p = people.get(String(job.data.uid));
     const to = String(p?.email || '').trim();
     if (!b) { skip('deleted'); continue; }
-    if (!(Array.isArray(b.recipients) && b.recipients.includes(job.data.uid))) { skip('not_recipient'); continue; }
+    const recipient = operational ? allowsOperationalChannel(b, String(job.data.uid), 'email') : Array.isArray(b.recipients) && b.recipients.includes(job.data.uid);
+    if (!recipient) { skip('not_recipient'); continue; }
     if (!(nowMs - ms(b.createdAt) < BROADCAST_STALE_MS)) { skip('stale'); continue; }
     if (!p || p.status !== 'active') { skip('no_profile'); continue; }
     if (b.audience === 'everyone' && p.updatesOptIn !== true) { skip('opted_out'); continue; }
     if (!EMAIL_RE.test(to)) { skip('no_address'); continue; }
     const attempts = Number(job.data.attempts || 0) + 1;
-    const r = await brevoSend(env, { to, name: String(p.displayName || ''), subject: BROADCAST_SUBJECT, text: broadcastText(b), key: await broadcastKey(job.id), tag: 'broadcast' });
+    const r = await brevoSend(env, { to, name: String(p.displayName || ''), subject: operational ? String(b.title) : BROADCAST_SUBJECT, text: operational ? String(b.text) : broadcastText(b), key: await broadcastKey(job.id), tag: 'broadcast' });
     if (r.ok) { end({ status: 'sent', to, messageId: r.messageId, sentAt: iso(Date.now()), reason: r.duplicate ? 'duplicate_key' : null, provider: 'brevo' }); st.sent++; continue; }
     if (r.retry && attempts < MAX_ATTEMPTS) { end({ status: 'queued', reason: r.reason }); st.retried++; continue; }
     end({ status: 'failed', reason: r.reason, error: r.error, to }); st.failed++;

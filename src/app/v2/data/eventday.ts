@@ -1,15 +1,18 @@
+import { eventMillis } from '../screens/events/logic';
 // Event day and live event data (E1-E9, Y1-Y5): tickets at the gate, the scan log, the live counters, stall tabs and closing.
-// Everything goes through db.ts, so the same code runs on the demo store and on Firestore, and every write works offline.
+// Firestore and the local demo share the event data layer. Catalog sales recheck availability when the cashier submits.
 // Collections (docs/redesign-data/eventday.md):
 //   tickets (existing, + payLater, cancelledAt/By/Note, walkIn)        events/{id}/scans/{sid} (GateScan)
 //   events/{id}/counters/live (LiveCounters + per10m)                    events/{id}/counters/cash (cash counted before closing)
 //   events/{id}/staffing/{station} (read only here)                      events.closed (EventClose)       tabs (existing)
-import { useMemo } from 'react';
-import { useList, useDoc, write, newId, push, inc, serverNow, transact, ConflictError, type Tx } from '../../db';
+import { hasCatalogReference } from '../../../../shared/farm-catalogs';
+import { useSaleAvailability } from './saleAvailability';
+import { useList, useDoc, readOnce, write, newId, push, inc, serverNow, transact, ConflictError, type Tx } from '../../db';
 import { nowIso, nowMs, dateKeyOf } from '../../clock';
-import { logActivity } from '../../activity';
-import { openTab, addTabItems, removeTabItem, setTabStatus, parseQr, qrPayload, randomSecret, hasTabPurchases, type StallGuest } from '../../data';
+import { activityOp, logActivity } from '../../activity';
+import { contactPhoneOk, openTab, addTabItems, removeTabItem, setTabStatus, parseQr, qrPayload, randomSecret, hasTabPurchases, type StallGuest } from '../../data';
 import { ddmm, hhmm } from '../format';
+import { cartSnapshot, needsSignedStallSale, localStallLog, submitStallCart, type CheckoutOptions } from './stallCheckout';
 import type { Actor, Activity, EventClose, FarmEvent, GateScan, LiveCounters, Product, ScanResult, Staffing, Tab, TabItem, Ticket } from '../../types';
 
 // ---------- types (local extensions; every new field is optional) ----------
@@ -58,8 +61,11 @@ export const useEventTabs = (eventId: string, enabled = true) =>
   useList<Tab>('tabs', { where: [['eventId', '==', eventId]], orderBy: [['createdAt', 'desc']] }, enabled && !!eventId);
 export const useTab = (id: string) => useDoc<Tab>('tabs/' + (id || '_'), !!id);
 export function useStallProducts(eventId: string, enabled = true) {
-  const r = useList<Product>(`events/${eventId || '_'}/products`, { orderBy: [['sort', 'asc']] }, enabled && !!eventId);
-  return useMemo(() => ({ ...r, items: r.items.filter((p) => p.active !== false) }), [r]);
+  const on = enabled && !!eventId;
+  const r = useList<Product>(`events/${eventId || '_'}/products`, { orderBy: [['sort', 'asc']] }, on);
+  const config = useDoc<{enabled:boolean}>(`events/${eventId || '_'}/stall_config/catalog`, on);
+  const available = useSaleAvailability(r, on);
+  return { ...available, catalogEnabled: config.item?.enabled === true || r.items.some(hasCatalogReference) };
 }
 /** The scan log, newest first. Y2 shows it; E2 reads the latest line. */
 export const useScans = (eventId: string, max = 300, enabled = true) =>
@@ -106,7 +112,7 @@ function orderedWhen(iso: string) {
 export function cancelDate(t: TicketV2) { return t.cancelledAt || t.updatedAt; }
 /** What the gate says about a ticket (E3 ok, E4 pay, E5 bad). Pure: the screen records the scan only when someone acts. */
 export function judge(t: TicketV2 | undefined, all: TicketV2[], eventId: string, secret?: string): Verdict {
-  if (!t) return { kind: 'bad', headline: 'לא נמצא', detail: 'הכרטיס לא שייך לאירוע הזה, או שהרשימה עוד לא ירדה למכשיר.', reason: 'לא נמצא' };
+  if (!t) return { kind: 'bad', headline: 'הכרטיס לא נמצא', detail: 'חפשו את השם ברשימה. אם הכרטיס חדש והמכשיר בלי קליטה, בדקו שוב כשיש חיבור.', reason: 'לא נמצא' };
   if (t.eventId !== eventId) return { kind: 'bad', headline: 'אירוע אחר', name: ticketName(t), detail: `הכרטיס שייך ל${t.eventTitle}`, ticket: t, reason: 'אירוע אחר' };
   if (secret !== undefined && secret !== t.secret) return { kind: 'bad', headline: 'ברקוד לא תקין', name: ticketName(t), detail: 'הקוד לא תואם את הכרטיס.', ticket: t, reason: 'ברקוד לא תקין' };
   if (t.status === 'cancelled') return { kind: 'bad', headline: 'כרטיס בוטל', name: ticketName(t), detail: `ההזמנה בוטלה ב־${ddmm(cancelDate(t))} על ידי מנהל`, ticket: t, reason: 'ההזמנה בוטלה' };
@@ -172,9 +178,21 @@ export type AdmitResult = {
  *  the cash count at closing shows the double. Managers' writes are trusted by the rules (managerTicket). */
 export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, order: TicketV2[], pay: Pay = 'none'): Promise<AdmitResult> {
   const at = nowIso();
+  const expectedScan = ticket.id + '-' + ((ticket.entries || 0) + 1);
+  const scanCollection = 'events/' + event.id + '/scans';
+  const repeated = 'הכניסה הזאת כבר נרשמה. אין צורך לסרוק שוב.';
+  // Rule rejections also cover a revoked role. Only a matching confirmed admission proves this is the same entry.
+  const queuedErrorText = async (reason:unknown) => {
+    if ((reason as {code?:string})?.code !== 'permission-denied') return;
+    try {
+      const [scan] = await readOnce<ScanV2>(scanCollection,{where:[['__id__','==',expectedScan]],limit:1});
+      if (scan && scan.ticketId===ticket.id && scan.eventId===event.id && scan.orderId===ticket.orderId && ['ok','paidAtGate','payLater'].includes(scan.result)) return repeated;
+    } catch { /* A storage or read-permission error provides no evidence of another admission. */ }
+  };
   const res = await transact(async (tx) => {
     const cur = await tx.get<TicketV2>('tickets', ticket.id);
-    if (!cur || cur.status !== 'valid' || (cur.entries || 0) !== (ticket.entries || 0)) throw new ConflictError();
+    if (!cur || cur.status !== 'valid') throw new ConflictError('הכרטיס כבר אינו פעיל. חפשו את ההזמנה ברשימה.');
+    if ((cur.entries || 0) !== (ticket.entries || 0)) throw new ConflictError(repeated);
     // the rest of the order as the server has it now (all reads before the first write, as Firestore requires)
     const others = await Promise.all(order.filter((t) => t.id !== ticket.id).map((t) => tx.get<TicketV2>('tickets', t.id)));
     const fresh = [cur, ...others.filter((t): t is TicketV2 & { id: string } => !!t && t.orderId === ticket.orderId)];
@@ -182,7 +200,7 @@ export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, or
     const amount = pay === 'none' ? 0 : owing.reduce((s, t) => s + (t.price || 0), 0);
     const n = (cur.entries || 0) + 1;
     const sid = `${ticket.id}-${n}`;
-    if (await tx.get('events/' + event.id + '/scans', sid)) throw new ConflictError();
+    if (await tx.get(scanCollection, sid)) throw new ConflictError(repeated);
     const payPatch = (t: TicketV2) => (pay === 'gate' && isUnpaid(t) ? { paymentStatus: 'paid_onsite', paidAt: serverNow() } : pay === 'later' && isUnpaid(t) ? { payLater: true, payLaterAt: at, payLaterBy: actor } : {});
     for (const t of owing) if (t.id !== ticket.id) tx.update('tickets', t.id, { ...payPatch(t), updatedAt: at });
     tx.update('tickets', ticket.id, { scans: push({ at, by: actor }), entries: inc(1), ...payPatch(cur), updatedAt: at });
@@ -192,10 +210,11 @@ export async function admit(actor: Actor, event: FarmEvent, ticket: TicketV2, or
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: ticket.id, orderId: ticket.orderId, name: ticketName(ticket), phone: ticket.ownerPhone, meta, result, ...(amount ? { amount, method: '' } : {}), count: result === 'ok' ? 1 : owing.length, by: actor, at, reopenedBy: null, reopenedAt: null };
     tx.set('events/' + event.id + '/scans', sid, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: n === 1 ? 1 : 0, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: owing.length } : {}), ...(result === 'payLater' ? { payLater: owing.length, payLaterAmount: amount } : {}) });
+    const details = ticketName(ticket) + ' · כניסה ' + n + (result === 'paidAtGate' ? ' · שולם במקום ' + amount + ' ₪' : result === 'payLater' ? ' · ישלמו אחר כך ' + amount + ' ₪' : '');
+    const audit = activityOp(actor,'ticket',ticket.id,'scanned',details,{subjectUid:ticket.ownerUid,eventId:event.id});
+    tx.set(audit.col,audit.id,audit.data);
     return { entries: n, result, amount };
-  }, { queue: true }); // weak reception: saved on the phone like the old gate, never lost
-  const { amount, result } = res;
-  logActivity(actor, 'ticket', ticket.id, 'scanned', `${ticketName(ticket)} · כניסה ${res.entries}${result === 'paidAtGate' ? ` · שולם במקום ${amount} ₪` : ''}${result === 'payLater' ? ` · ישלמו אחר כך ${amount} ₪` : ''}`, { subjectUid: ticket.ownerUid, eventId: event.id });
+  }, { queue: true, queuedErrorText, localReceipt: { col: scanCollection, id: expectedScan } });
   return res;
 }
 
@@ -217,6 +236,9 @@ export async function logRejected(actor: Actor, event: FarmEvent, v: { ticket?: 
 
 /** E6 "אורח בלי כרטיס": tickets created at the gate, already inside. */
 export async function admitWalkIn(actor: Actor, event: FarmEvent, guest: { name: string; phone: string; count: number }, pay: 'gate' | 'later') {
+  if (!guest.name.trim() || !contactPhoneOk(guest.phone)) throw new Error('יש למלא שם מלא ומספר טלפון תקין');
+  if (!(eventMillis(event.end) > nowMs()) || ('closed' in event && event.closed)) throw new Error('האירוע הסתיים');
+  if (!Number.isInteger(guest.count) || guest.count < 1 || guest.count > 20) throw new Error('יש לבחור בין כרטיס אחד לעשרים כרטיסים');
   const at = nowIso();
   const orderId = newId('tickets');
   const ids = Array.from({ length: guest.count }, () => newId('tickets'));
@@ -235,7 +257,7 @@ export async function admitWalkIn(actor: Actor, event: FarmEvent, guest: { name:
     const scan: Omit<ScanV2, 'id'> = { eventId: event.id, ticketId: ids[0], orderId, name: guest.name, phone: guest.phone, meta: `${ticketWord(guest.count)} · אורח בלי כרטיס${amount ? ` · ${amount} ₪` : ''}`, result, ...(amount ? { amount, method: '' } : {}), count: guest.count, by: actor, at, reopenedBy: null, reopenedAt: null };
     tx.set(`events/${event.id}/scans`, `${ids[0]}-1`, scan as unknown as Record<string, unknown>);
     await bumpCounters(tx, event.id, at, { entered: guest.count, scans: 1, ...(result === 'paidAtGate' ? { paidAtGate: guest.count } : {}), ...(result === 'payLater' ? { payLater: guest.count, payLaterAmount: amount } : {}) });
-  }, { queue: true });
+  }, { queue: true, localReceipt: { col: `events/${event.id}/scans`, id: `${ids[0]}-1` } });
   logActivity(actor, 'ticket', orderId, 'ordered', `${guest.name} · ${ticketWord(guest.count)} בשער · ${event.title}${amount ? ` · ${amount} ₪ ${pay === 'gate' ? 'שולם במקום' : 'ישלמו אחר כך'}` : ''}`, { eventId: event.id });
   return { orderId, ticketId: ids[0] };
 }
@@ -291,19 +313,28 @@ export function findOpenTab(tabs: Tab[], g: StallGuest) {
 /** The guest's open account id, or '' when there is none yet. Picking a buyer creates nothing: the account is opened by the
  *  first "רישום לחשבון" (sellToGuest), as in the old stall, so a guest never sees an empty "0 ₪ · פתוח" account. */
 export const tabFor = (tabs: Tab[], g: StallGuest) => findOpenTab(tabs, g)?.id || '';
-/** E8 "רישום לחשבון": adds the cart to the account without reading it first (works offline, two phones may add at once). */
-export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product; qty: number }[]) {
-  const items: TabItem[] = cart.filter((c) => c.qty > 0).map((c) => ({ productId: c.product.id, name: c.product.name, price: c.product.price, qty: c.qty, at: nowIso(), by: actor }));
-  if (!items.length) return 0;
-  await addTabItems(actor, tab, items);
-  return items.reduce((s, i) => s + i.price * i.qty, 0);
+/** E8 "רישום לחשבון": carry the price and catalog generations the cashier saw into checkout. */
+export async function sellToTab(actor: Actor, tab: Tab, cart: { product: Product; qty: number }[], options: CheckoutOptions = {}) {
+  const rows=cart.filter(c=>c.qty>0);
+  const items: TabItem[] = rows.map(({product,qty}) => ({productId:product.id,name:product.name,price:product.price,qty,at:nowIso(),by:actor}));
+  return addTabItems(actor,tab,items,options,rows.map(c=>cartSnapshot(c.product,c.qty)));
 }
 /** The first sale to a buyer without an account: opens it (the rules need the empty account before its first item), then adds
  *  the cart. An account another phone opened meanwhile is used instead. */
-export async function sellToGuest(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest, cart: { product: Product; qty: number }[]) {
-  if (!cart.some((c) => c.qty > 0)) return { tab: null, total: 0 };
+export async function sellToGuest(actor: Actor, event: FarmEvent, tabs: Tab[], g: StallGuest, cart: { product: Product; qty: number }[], options: CheckoutOptions = {}) {
+  const lines=cart.filter(c=>c.qty>0).map(c=>cartSnapshot(c.product,c.qty));
+  if (!lines.length) return { tab: null, total: 0 };
+  const request = {eventId:event.id,guest:g,items:lines};
+  if (await needsSignedStallSale(actor,request,options)) {
+    const sale=await submitStallCart(actor,request,options);
+    return {tab:{id:sale.tabId},total:sale.total};
+  }
+  if (options.operationId) {
+    const {result}=await localStallLog(actor,options.operationId,{eventId:event.id,guest:g,items:lines});
+    if (result) return {tab:{id:result.tabId},total:result.total};
+  }
   const tab = findOpenTab(tabs, g) || await openTab(actor, event, g);
-  const total = await sellToTab(actor, tab, cart);
+  const total = await sellToTab(actor, tab, cart, options);
   return { tab, total };
 }
 /** The buyer picked on E7 for a first sale, kept on this phone until "רישום לחשבון" opens the account (route /event/stall/new). */

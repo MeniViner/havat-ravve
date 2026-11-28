@@ -313,6 +313,16 @@ try{
  const confirmation={paymentConfirmation:{by:actor('beni'),at:now},updatedAt:now};
  await assertFails(setDoc(doc(anon,'tickets','t0'),tk('anon')));
  await assertSucceeds(setDoc(doc(guest,'tickets','t1'),tk('guest')));
+ await assertFails(setDoc(doc(anon,'contact_people','spoof'),{accountUid:'',method:'phone',reply:'050-000-0000'}));
+ await assertFails(getDoc(doc(guest,'contact_people','any')));
+ await assertFails(getDocs(collection(vol,'contact_people')));
+ await assertSucceeds(getDocs(collection(beni,'contact_people')));
+ await assertSucceeds(setDoc(doc(guest,'tickets','self-marked'),tk('guest',{selfRegistered:true})));
+ await assertSucceeds(setDoc(doc(beni,'tickets','manual-marked'),tk('beni',{selfRegistered:false})));
+ await assertFails(setDoc(doc(guest,'tickets','foreign-marked'),tk('other',{selfRegistered:true})));
+ await assertFails(setDoc(doc(guest,'tickets','invalid-marker'),tk('guest',{selfRegistered:'yes'})));
+ await assertFails(updateDoc(doc(beni,'tickets','manual-marked'),{selfRegistered:true}));
+ await assertFails(updateDoc(doc(beni,'tickets','t1'),{selfRegistered:true}));
  await assertFails(setDoc(doc(guest,'tickets','forged-send'),tk('guest',confirmation)));
  await assertFails(updateDoc(doc(beni,'tickets','t1'),confirmation));
  await assertFails(setDoc(doc(guest,'tickets','t2'),tk('other')));                                   // not own
@@ -434,6 +444,37 @@ try{
  const savedPurchase=(await assertSucceeds(getDoc(firstPurchase))).data();
  assert.deepEqual(savedPurchase.items,[firstItem]);
  assert.equal(savedPurchase.total,40);
+ // The first linked selection enables authoritative checkout, even for an older open register.
+ const saleEvent='guarded-stall', guardedTab=doc(vol,'tabs','guarded-buyer');
+ const marker=doc(beni,'events',saleEvent,'stall_config','catalog');
+ const prior={productId:'coffee',name:'קפה',price:8,qty:1,at:now,by:actor('vol')};
+ const second={...prior,at:'2030-01-02T00:00:00.000Z'};
+ const plain={...second,productId:'standalone',name:'עוגה',price:4};
+ await env2.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,'events',saleEvent),{closed:null});
+  await setDoc(doc(db,'events',saleEvent,'products','coffee'),{name:'קפה',price:8,active:true,catalogId:'drinks',catalogProductId:'coffee'});
+  // Older one-off products can predate the active flag.
+  await setDoc(doc(db,'events',saleEvent,'products','standalone'),{name:'עוגה',price:4,sort:0});
+  await setDoc(doc(db,'events',saleEvent,'products','retired'),{name:'עוגה',price:4,active:false});
+  await setDoc(doc(db,'tabs','guarded-buyer'),{...tb,eventId:saleEvent,items:[prior],total:8});
+  await setDoc(doc(db,'tabs','settled-buyer'),{...tb,eventId:saleEvent,items:[prior],total:8,status:'paid',paidAt:now});
+ });
+ await assertSucceeds(setDoc(marker,{enabled:true}));
+ await assertSucceeds(getDoc(doc(vol,'events',saleEvent,'stall_config','catalog')));
+ await assertFails(getDoc(doc(guest,'events',saleEvent,'stall_config','catalog')));
+ await assertFails(deleteDoc(marker));
+ await assertFails(updateDoc(marker,{enabled:false}));
+ await assertFails(updateDoc(guardedTab,{total:16,updatedAt:now}));
+ await assertFails(updateDoc(guardedTab,{items:arrayUnion(second),total:increment(8),updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'tabs','guarded-buyer'),{items:arrayUnion(second),total:increment(8),updatedAt:now}));
+ await assertFails(updateDoc(doc(beni,'tabs','guarded-buyer'),{eventId:'e1',items:arrayUnion(second),total:increment(8)}));
+ await assertFails(updateDoc(guardedTab,{items:[prior,plain,second],total:20,updatedAt:now}));
+ await assertFails(updateDoc(guardedTab,{items:arrayUnion({...plain,productId:'retired'}),total:increment(4),updatedAt:now}));
+ await assertFails(updateDoc(doc(vol,'tabs','settled-buyer'),{items:arrayUnion(plain),total:increment(4),updatedAt:now}));
+ await assertSucceeds(updateDoc(guardedTab,{items:arrayUnion(plain),total:increment(4),updatedAt:now}));
+ await assertSucceeds(updateDoc(guardedTab,{items:[prior],total:8,updatedAt:now}));
+ assert.deepEqual((await getDoc(guardedTab)).data().items,[prior]);
  await assertFails(setDoc(doc(guest,'tabs','tb1'),{...tb,createdBy:actor('guest')}));
  await assertSucceeds(setDoc(doc(vol,'tabs','tb1'),tb));
  await assertFails(setDoc(doc(vol,'tabs','forged-send'),{...tb,...confirmation}));
@@ -468,7 +509,7 @@ try{
  await assertFails(getDoc(doc(guest,'notifications','guest-contact')));
  await assertSucceeds(getDoc(doc(beni,'notifications','guest-contact')));
  await assertSucceeds(updateDoc(doc(beni,'notifications','guest-contact'),{handled:true,handledBy:actor('beni'),handledAt:now}));
- const cal={ownerUid:'beni',ownerName:'בני',title:'פריט ביומן',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now};
+ const cal={ownerUid:'beni',ownerName:'בני',title:'פריט ביומן',audience:'all',date:'2030-01-01',time:'',kind:'manual',refId:'',createdAt:now};
  const volCal={...cal,ownerUid:'vol',ownerName:'בדיקה',kind:'presence',time:'08:00–11:00'};
  await assertSucceeds(setDoc(doc(beni,'calendar','c1'),cal));
  await assertSucceeds(setDoc(doc(beni,'calendar','c2'),{...cal,time:'18:00–21:00',kind:'event',refId:'e1'}));
@@ -477,7 +518,8 @@ try{
  await assertSucceeds(setDoc(doc(beni,'calendar','c5'),{...cal,kind:'planning'}));
  await assertSucceeds(setDoc(doc(beni,'calendar','c6'),{...cal,kind:'presence'}));
  await assertFails(updateDoc(doc(beni,'calendar','c1'),{time:'08:00–11:000'}));
- const teamCalendar=await assertSucceeds(getDocs(query(collection(vol,'calendar'),where('date','==',cal.date))));
+ await assertFails(getDocs(query(collection(vol,'calendar'),where('date','==',cal.date))));
+ const teamCalendar=await assertSucceeds(getDocs(query(collection(vol,'calendar'),where('audience','==','all'),where('date','==',cal.date))));
  assert(teamCalendar.docs.some((entry)=>entry.data().kind==='visit'));
  await assertFails(getDocs(collection(guest,'calendar')));
  await assertFails(getDoc(doc(guest,'calendar','c1')));
@@ -715,7 +757,8 @@ try{
  await v2ok(setDoc(doc(vol,'calendar','cp1'),cal('vol',{from:'08:00',to:'13:00',note:'מגיע עם הטנדר'})),'farm 1 own presence with hours and note');
  await v2no(setDoc(doc(vol,'calendar','cp2'),cal('dana')),'farm 2 presence for someone else');
  await v2no(setDoc(doc(vol,'calendar','cp3'),cal('vol',{ownerName:'שם אחר'})),'farm 2 ownerName not the profile name');
- await v2no(setDoc(doc(vol,'calendar','cp4'),cal('vol',{audience:'all'})),'farm 3 presence with audience');
+ await v2ok(setDoc(doc(vol,'calendar','cp4'),cal('vol',{audience:'all'})),'staff publishes their own presence for the team');
+ await v2no(setDoc(doc(vol,'calendar','cp4priv'),cal('vol',{audience:'managers'})),'staff cannot mark their presence managers-only');
  await v2no(setDoc(doc(vol,'calendar','cp5'),cal('vol',{participants:[]})),'farm 3 presence with participants');
  await v2no(setDoc(doc(vol,'calendar','cp6'),cal('vol',{remindAt:now})),'farm 3 presence with remindAt');
  await v2no(setDoc(doc(vol,'calendar','cp7'),cal('vol',{kind:'manual'})),'farm 4 staff creates a C11 item');
@@ -733,7 +776,8 @@ try{
  await v2no(setDoc(doc(mgr,'calendar','cm5'),c11({note:'x'.repeat(201)})),'farm 8 note of 201');
  await v2no(setDoc(doc(mgr,'calendar','cm6'),c11({time:'x'.repeat(12)})),'farm 8 time of 12');
  await v2ok(updateDoc(doc(mgr,'calendar','c-old'),{title:'פגישה חדשה'}),'farm 9 old item updated by manager');
- await v2ok(getDocs(query(collection(vol,'calendar'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'farm 10 staff reads a date range');
+ await v2no(getDocs(query(collection(vol,'calendar'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'staff cannot query a range including private calendar items');
+ await v2ok(getDocs(query(collection(vol,'calendar'),where('audience','==','all'),where('date','>=','2030-01-01'),where('date','<=','2030-01-07'))),'staff reads an explicitly public date range');
  await v2no(getDocs(query(collection(anon,'calendar'),where('date','>=','2030-01-01'))),'farm 10 signed-out read');
  await v2no(getDocs(query(collection(raz,'calendar'),where('date','>=','2030-01-01'))),'calendar vendor read');
  await v2ok(updateDoc(doc(mgr,'calendar','visit_x'),{time:'09:00–14:00'}),'manage 8 visit time of 11 chars');

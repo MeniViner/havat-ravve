@@ -1,0 +1,5 @@
+.registration-terms__line { display: flex; align-items: center; gap: 4px; line-height: 1.6; }
+.registration-terms__toggle { flex: 0 0 44px; justify-content: center; }
+.registration-terms a { color: #185aa1; text-decoration: underline; text-underline-offset: 3px; }
+.registration-terms a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+html[data-theme="dark"] .registration-terms a { color: #8ac4ff; }

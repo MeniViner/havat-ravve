@@ -5,7 +5,7 @@
 import { ApiError, invalid } from '../http';
 import { type Doc, type Write, encFields } from '../firestore';
 import { activity, forbidden, isManager, mustGet, notFound, nowIso, whereEq } from '../core';
-import { type Ctx, def, en, num, req, str } from '../writes';
+import { type Ctx, def, en, eventIso, num, req, str } from '../writes';
 import { autoId } from '../util';
 import { type Data, ddmm, eventFor, hhmmIL, int, randomSecret } from './events';
 
@@ -112,12 +112,13 @@ def('gate.reject', 'tabs:write', 'רישום כרטיס שלא הוכנס בשע
 
 // admitWalkIn()
 def('gate.admitWalkIn', 'tabs:write', 'אורח בלי כרטיס: יצירת כרטיסים בשער, כבר בפנים', {
-  eventId: req(), name: str(80, 'שם האורח', true, 1), phone: str(25, 'טלפון'), count: int(1, 20, 'כמה נכנסים', false, 1),
+  eventId: req(), name: str(80, 'שם האורח', true, 1), phone: str(25, 'טלפון', true, 9), count: int(1, 20, 'כמה נכנסים', false, 1),
   pay: en(['gate', 'later'], 'gate שילמו עכשיו, later ישלמו אחר כך (באירוע בתשלום)', false, 'gate'),
 }, async (c) => {
+  if (!/^\+?[\d(). -]+$/.test(String(c.input.phone)) || !/^\d{9,15}$/.test(String(c.input.phone).replace(/\D/g,''))) throw invalid('phone','valid phone required');
   const ev = await eventFor(c, c.input.eventId);
   // firestore.rules: walk-in tickets only while the event is open, for managers too
-  if (ev.data.closed) throw forbidden('the event is closed: reopen it (events.reopen) to add guests at the gate');
+  if (ev.data.closed || !(Date.parse(eventIso(ev.data.end)) > Date.now())) throw forbidden('the event has ended for walk-in registration');
   const at = nowIso();
   const orderId = autoId();
   const count = c.input.count as number, name = c.input.name as string, phone = (c.input.phone as string) || '';

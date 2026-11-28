@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App } from '@capacitor/app';
-import { isNativeAndroid } from '../native';
 import { demoOnly } from '../demo/store';
-import { connectSurvey, recorder, type Level, type Status } from './native';
+import { connectSurvey, hasSurveyRecorder, recorder, type Level, type Status } from './native';
 import type { Fix, Recording, Sample } from './model';
 
 const blank: Status = { level: 'prompt', enabled: true, notifications: true };
 export function useSurveyLocation(uid: string) {
-  const native = isNativeAndroid && !demoOnly();
+  const native = hasSurveyRecorder && !demoOnly();
   const [grant, setGrant] = useState<{ key: string } | null>(null);
   const [status, setStatus] = useState<Status>(blank);
   const [statusReady, setStatusReady] = useState(!native);

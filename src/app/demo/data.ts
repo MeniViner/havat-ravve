@@ -176,7 +176,7 @@ const order = (eventId: string, owner: Profile, count: number, paymentStatus: Ti
   const { holders = [], entriesPer = [], ...rest } = o;
   return Array.from({ length: count }, (_, i) => ({
     id: `${orderId}-${i + 1}`, eventId, eventTitle: e.title, orderId, index: i + 1, total: count,
-    ownerUid: owner.uid, ownerName: owner.displayName, ownerPhone: owner.phone, holderName: holders[i] || '',
+    ownerUid: owner.uid, selfRegistered: true, ownerName: owner.displayName, ownerPhone: owner.phone, holderName: holders[i] || '',
     secret: `d${tseq.toString(16).padStart(4, '0')}${(i + 1).toString(16).padStart(2, '0')}deadbeef`.slice(0, 24), price: e.price, paymentStatus, status: 'valid' as const,
     scans: Array.from({ length: entriesPer[i] || 0 }, (_, s) => ({ at: at(0, `16:${30 + s}`), by: s % 2 ? A.yoav : A.noa })), entries: entriesPer[i] || 0, answers: {}, createdAt, updatedAt: createdAt, ...rest,
   }));

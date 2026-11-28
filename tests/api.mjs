@@ -634,6 +634,26 @@ try {
     const off = (await w(MGR, 'events.saveProduct', { eventId, name: 'מיץ (לא במלאי)', price: 0, active: false })).json.data.productId;
     const offAdd = await w(STAFF, 'tabs.addItem', { tabId, productId: off });
     check(offAdd.status === 400 && offAdd.json.error.details.field === 'productId', 'an inactive product cannot be added to a tab (found by the assistant)');
+    // A cached selection must be revalidated by the key-auth API too, even when active is still true.
+    const sourceCatalog = 'syn-coffee-catalog', sourceProduct = 'syn-coffee', saleTab = 'syn-catalog-sale-tab';
+    const master = {name:'קפה',price:14,createdAt:t0,updatedAt:t0};
+    const linked = { name:'קפה',price:12,active:true,sort:1,catalogId:sourceCatalog,catalogProductId:sourceProduct };
+    await seed('farm_catalogs',sourceCatalog,{name:'משקאות',createdAt:t0,updatedAt:t0});
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,master);
+    await seed('events/'+eventId+'/products','syn-linked',linked);
+    await seed('tabs',saleTab,{...tb.json.data.record,eventId,ticketId:saleTab,items:[],total:0,status:'open'});
+    const catalogSale = () => w(STAFF,'tabs.addItem',{tabId:saleTab,productId:'syn-linked'});
+    check((await catalogSale()).status===200,'catalog sale uses the event selection, including a legacy generation');
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,{...master,archived:true,generation:1});
+    check((await catalogSale()).status===400,'archived coffee cannot be sold from an open event');
+    await seed('farm_catalogs/'+sourceCatalog+'/products',sourceProduct,{...master,archived:false,generation:1});
+    check((await catalogSale()).status===400,'restoring coffee alone does not revive its earlier event selection');
+    const historical = (await where('tabs','ticketId',saleTab))[0];
+    check(historical.items.length===1 && historical.items[0].price===12 && historical.total===12,'archive and restore preserve the recorded price and total');
+    await seed('events/'+eventId+'/products','syn-linked',{...linked,catalogProductGeneration:1});
+    check((await catalogSale()).status===200,'explicit selection in the current product generation permits a new sale');
+    await seed('farm_catalogs',sourceCatalog,{name:'משקאות',createdAt:t0,updatedAt:t0,archived:true,generation:1});
+    check((await catalogSale()).status===400,'archiving a whole catalog stops its active event lines');
     check((await w(STAFF, 'tabs.setStatus', { tabId, status: 'paid' })).status === 403, 'staff cannot settle a tab');
     ok(await w(MGR, 'tabs.setStatus', { tabId, status: 'paid' }), 'tabs.setStatus paid');
     check((await actsOf(tabId)) === 'item,item,opened,paid,removed', 'tab activity', await actsOf(tabId));

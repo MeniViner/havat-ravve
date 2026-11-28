@@ -37,6 +37,19 @@ try {
   page.on('pageerror', (e) => exceptions.push(e.message));
   await page.goto(origin + '/app/farm/map?demo=owner');
   const button = (name) => page.getByRole('button', { name, exact: true });
+  await button('בחירה ידנית במפה').and(page.locator(':enabled')).waitFor();
+  const marker = page.locator('.survey-place-button').first();
+  const placeName = await marker.getAttribute('aria-label');
+  const placeHeading = page.getByRole('heading', { name: placeName, exact: true });
+  for (const key of ['Enter', 'Space']) {
+    await marker.press(key);
+    await placeHeading.waitFor();
+    assert.ok(await placeHeading.evaluate(el => el === document.activeElement));
+    await button('סגירה').click();
+  }
+  await marker.click();
+  await placeHeading.waitFor();
+  await button('סגירה').click();
   // Disconnecting disposes the basemap. Zooming after reconnect must not call the detached layer.
   await ctx.setOffline(true);
   await page.getByText(/אין רשת · מפת הרקע/).waitFor();
@@ -145,6 +158,13 @@ try {
   await page.goto(origin + '/app/farm/map?demo=staff');
   await page.waitForTimeout(500);
   assert.equal(await page.getByRole('heading', { name: 'מפת החווה' }).count(), 0);
+  await page.goto(origin + '/app/farm/map?demo=anon');
+  await page.getByRole('heading', { name: 'כניסה למפת החווה' }).waitFor();
+  await page.getByRole('button', { name: /Google/ }).waitFor();
+  assert.equal(await page.locator('.leaflet-container').count(), 0);
+  await page.goto(origin + '/app/farm/map?demo=guest');
+  await page.getByText('מפת החווה זמינה לבעלים').waitFor();
+  assert.equal(await page.locator('.leaflet-container').count(), 0);
   assert.deepEqual(exceptions, []);
   console.log(
     'PASS mobile RTL map, browser measurement states, manual selection, cancellation, reload, edit, search, explicit trail connection, stale target and owner route guard'

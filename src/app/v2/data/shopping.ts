@@ -3,6 +3,7 @@ import { isFemale as sharedIsFemale } from '../gender';
 // Old shopping docs keep loading: every v2 field (tripId, notAvailable, notAvailableAt, foundWhere, taskId) is optional,
 // and a write outside a trip keeps exactly the old document shape. All "now" from clock.ts, all writes offline-first via db.ts.
 import { useMemo } from 'react';
+import { categoryName, customCategoryId, customCategoryName, type CustomShoppingCategory } from '../../../../shared/shopping-categories';
 import { useList, useDoc, write, newId } from '../../db';
 import { nowIso, nowMs, todayKey, dateKeyOf } from '../../clock';
 import { activityOp, logActivity, useActivityFor } from '../../activity';
@@ -13,16 +14,29 @@ import type { Activity, Actor, Profile, ShoppingCategory, ShoppingItem, Shopping
 
 // ---------- lists ----------
 /** URL key (?list=) of each list. "giveaway" items are the מחפשים list (S2). */
-export type ListKey = 'super' | 'building' | 'online' | 'wish';
+export type ListKey = 'super' | 'building' | 'online' | 'wish' | CustomShoppingCategory;
 export const LISTS: { key: ListKey; cat: ShoppingCategory; label: string }[] = [
   { key: 'super', cat: 'super', label: 'סופר' },
   { key: 'building', cat: 'building', label: 'בניין' },
   { key: 'online', cat: 'online', label: 'אינטרנט' },
   { key: 'wish', cat: 'giveaway', label: 'מחפשים' },
 ];
-export const catOfKey = (k: string): ShoppingCategory => LISTS.find((l) => l.key === k)?.cat || 'super';
-export const keyOfCat = (c: ShoppingCategory): ListKey => LISTS.find((l) => l.cat === c)?.key || 'super';
-export const listLabel = (c: ShoppingCategory) => LISTS.find((l) => l.cat === c)?.label || 'סופר';
+export const catOfKey = (key: string): ShoppingCategory => LISTS.find(l => l.key === key)?.cat || (customCategoryName(key) ? key as ShoppingCategory : 'super');
+export const keyOfCat = (cat: ShoppingCategory): ListKey => LISTS.find(l => l.cat === cat)?.key || (customCategoryName(cat) ? cat as ListKey : 'super');
+export const listLabel = (cat: ShoppingCategory) => LISTS.find(l => l.cat === cat)?.label || customCategoryName(cat) || 'קניות';
+export function useShoppingCategories(enabled = true) {
+  const { items } = useList<{ id: string; name: string }>('shopping_categories', {}, enabled);
+  return useMemo(() => [...LISTS, ...items.filter(row => customCategoryName(row.id) === row.name)
+    .sort((a,b) => a.name.localeCompare(b.name, 'he')).map(row => ({ key: row.id as ListKey, cat: row.id as ShoppingCategory, label: row.name }))], [items]);
+}
+export async function addShoppingCategory(input: string): Promise<ShoppingCategory> {
+  const name = categoryName(input);
+  const builtin = LISTS.find(row => row.label === name);
+  if (builtin) return builtin.cat;
+  const id = customCategoryId(name);
+  await write.set('shopping_categories', id, { name });
+  return id as ShoppingCategory;
+}
 /** Capture-bar placeholder per list (S1 "להוסיף לסופר", S2 "מה מחפשים?", S3 "להוסיף לאינטרנט"). */
 export const addPlaceholder = (c: ShoppingCategory) => (c === 'giveaway' ? 'מה מחפשים?' : `להוסיף ל${listLabel(c)}`);
 /** The verb of "done" per list: bought / ordered online / found. */
@@ -122,7 +136,7 @@ export function weekStartKey(today: string): string {
   dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay());
   return dt.toISOString().slice(0, 10);
 }
-export type HistoryFilter = 'all' | 'super' | 'building' | 'online' | 'giveaway';
+export type HistoryFilter = 'all' | ShoppingCategory;
 export type HistoryGroup = { key: 'today' | 'week' | 'earlier'; title: string; items: ShoppingItem[] };
 /** S8: bought items, and found ones from the מחפשים list (as the old history), filtered by list and by a search over item and
  *  person, grouped today / this week / earlier. */
@@ -203,7 +217,11 @@ const qtyPart = (q: string) => (q ? ' · ' + q : '');
 /** Team members to tell (C1 + push): active staff, managers and owners. */
 export const teamUids = (team: Profile[]) => team.filter((p) => p.status === 'active' && ['staff', 'manager', 'owner'].includes(p.role)).map((p) => p.uid);
 
-export type NewShopItem = { title: string; qty?: string; note?: string; link?: string; category: ShoppingCategory; urgent?: boolean; photo?: string; taskId?: string };
+export const tripRecipients = (team: Profile[], selection?: string[]) => {
+  const selected = selection && new Set(selection);
+  return [...new Set(teamUids(team).filter(uid => !selected || selected.has(uid)))];
+};
+export type NewShopItem = { title: string; qty?: string; note?: string; link?: string; category: ShoppingCategory; urgent?: boolean; urgentDueAt?: string | null; photo?: string; taskId?: string };
 /** Adds an item (S1 chips, S8 "שוב", and S5 may use it). An urgent item tells the team (kind 'urgent'). */
 export async function addShopItem(actor: Actor, data: NewShopItem, team: Profile[] = []): Promise<string> {
   const now = nowIso();
@@ -212,7 +230,7 @@ export async function addShopItem(actor: Actor, data: NewShopItem, team: Profile
   const doc: Record<string, unknown> = {
     title, qty, note: (data.note || '').trim(), link: (data.link || '').trim(), category: data.category, urgent: !!data.urgent,
     createdBy: actor, createdAt: now, bought: false, boughtBy: null, boughtAt: null, expireAt: null, updatedAt: now,
-    ...(data.photo ? { photo: data.photo } : {}), ...(data.taskId ? { taskId: data.taskId } : {}),
+    ...(data.urgent && data.urgentDueAt ? { urgentDueAt: data.urgentDueAt } : {}), ...(data.photo ? { photo: data.photo } : {}), ...(data.taskId ? { taskId: data.taskId } : {}),
   };
   await write.set('shopping', id, doc);
   logActivity(actor, 'shopping', id, 'added', `${title}${qtyPart(qty)} (${listLabel(data.category)})`);
@@ -259,14 +277,15 @@ export const againShopItem = (actor: Actor, item: ShoppingItem) =>
   addShopItem(actor, { title: item.title, qty: item.qty, note: item.note, link: item.link, category: item.category });
 
 /** "אני בסופר, מתחילים": resumes my open trip, or opens one and tells the team (C1 "יואב יוצא לסופר עכשיו" + push). */
-export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[]) {
+export async function startTrip(actor: Actor, list: ShoppingCategory, trips: ShoppingTrip[], team: Profile[], selection?: string[]) {
   const mine = activeTripOf(trips, actor.uid);
   if (mine) return { tripId: mine.id, list: mine.list, resumed: true };
   const now = nowIso();
   const id = newId('shopping_trips');
-  const trip: ShoppingTrip = { id, by: actor, list, startedAt: now, closedAt: null, bought: [], missing: [] };
+  const recipientUids = tripRecipients(team, selection);
+  const trip: ShoppingTrip = { id, by: actor, list, recipientUids, startedAt: now, closedAt: null, bought: [], missing: [] };
   const name = first(actor.name);
-  await notify(teamUids(team), {
+  await notify(recipientUids, {
     kind: 'trip', title: `${name} ${g(actor.name, 'יוצא', 'יוצאת')} ל${listLabel(list)} עכשיו`, sub: 'צריך משהו? עוד אפשר להוסיף',
     link: `/shopping?list=${keyOfCat(list)}`, refId: id, action: { label: 'הוספה', kind: 'addToTrip' }, by: actor,
   }, [
@@ -278,14 +297,13 @@ export async function startTrip(actor: Actor, list: ShoppingCategory, trips: Sho
 /** "סיימתי לקנות": closes the trip with what was bought and what was missing, and tells the team (C1, no push). */
 export async function closeTrip(actor: Actor, trip: ShoppingTrip, view: TripView, team: Profile[]) {
   const bought = view.bought.map((i) => i.id); const missing = view.missing.map((i) => i.id);
-  await write.batch([
+  await notify(tripRecipients(team, trip.recipientUids), {
+    kind: 'trip', title: `הקנייה ב${listLabel(trip.list)} נסגרה`, sub: tripSummary(bought.length, view.missing.map(i => i.title)),
+    link: `/shopping/trip/done?id=${trip.id}`, refId: trip.id, by: actor, push: false,
+  }, [
     { op: 'update', col: 'shopping_trips', id: trip.id, data: { closedAt: nowIso(), bought, missing } },
     activityOp(actor, 'shopping', trip.id, 'closed', 'קנייה'),
   ]);
-  void notify(teamUids(team), {
-    kind: 'trip', title: `הקנייה ב${listLabel(trip.list)} נסגרה`, sub: tripSummary(bought.length, view.missing.map((i) => i.title)),
-    link: `/shopping/trip/done?id=${trip.id}`, refId: trip.id, by: actor, push: false,
-  });
 }
 /** A manager deletes a trip (from S7). The items keep what happened to them: bought stays bought. */
 export const deleteTrip = (actor: Actor, trip: ShoppingTrip) => write.batch([

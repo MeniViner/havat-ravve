@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import type { ScreenProps } from '../../ctx';
 import { AppScreen, RootHead, go, useToast, useV2 } from '../../core';
-import { ProgressSegments, NextUpCard, Button, Segmented, ListCard, Row, CheckButton, EmptyState, ChipRow, Chip, Icon, Strip } from '../../kit';
+import { ProgressSegments, Button, Segmented, ListCard, Row, CheckButton, EmptyState, ChipRow, Chip, Icon, Strip } from '../../kit';
 import { useParam } from '../../../router';
 import { useEvent } from '../../../data';
 import { useClockVersion, nowMs, nowIso } from '../../../clock';
@@ -12,13 +12,13 @@ import { ProjectsBlock } from '../projects';
 import { BroadcastCard } from '../broadcast';
 import { OfflineQueue } from '../system';
 import { useOnline } from '../../../store';
-import { useMySteps, useSteps, completeStep, reopenStep, projectLink, stepLink, type MyStep } from '../../data/projects';
+import { useMySteps, useSteps, completeStep, reopenStep, stepLink, type MyStep } from '../../data/projects';
 import {
-  useRootTasks, pickNextUp, progressOf, progressCaption, groupByPlace, groupByTime, ordered, isMine, isForToday, isFree,
-  rowMeta, dueText, splitOverdue, routineTime, DONE_VISIBLE_MS,
+  useRootTasks, progressOf, progressCaption, groupByPlace, groupByTime, ordered, isMine, isForToday, isFree,
+  splitOverdue, DONE_VISIBLE_MS,
 } from '../../data/tasks';
 import type { Task } from '../../../types';
-import { TaskRow, TasksCapture, useTaskActions, useFail, useDoneHere, useProfileOf, to } from './shared';
+import { TaskRow, TasksCapture, useFail, useDoneHere, to } from './shared';
 import './tasks.css';
 
 type View = 'place' | 'time' | 'mine' | 'free';
@@ -33,7 +33,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
   useClockVersion();
   const demo = useDemo(); const states = useDemoStates();
   const online = useOnline();
-  // C8: without reception the queue of kept writes takes the place of "הבא בתור" and the view switch
+  // Offline, surface queued writes above the task list.
   const offline = !online || (demo.on && states.offline);
   const viewParam = useParam('view');
   // L5 "לקחת אחת מהפנויות": by place, free tasks only, until the chip is closed
@@ -41,13 +41,12 @@ export function TasksRoot({ ctx }: ScreenProps) {
   // "/tasks?event=<id>" (from the event's screen): only the tasks that prepare that event, by time unless a view was chosen
   const eventId = useParam('event');
   const ev = useEvent(eventId, !!eventId);
-  const doneHere = useDoneHere(); const profileOf = useProfileOf();
+  const doneHere = useDoneHere();
   const view = (offline ? 'place' : viewParam || (eventId ? 'time' : 'place')) as View;
   const onlyFree = view === 'free' || (view === 'place' && freeParam);
   const root = useRootTasks(ctx);
   const steps = useMySteps(ctx);
   const uid = ctx.user.uid; const today = ctx.today; const now = nowMs();
-  const a = useTaskActions();
 
   // L5 in the demo ("רשימות ריקות"): everything that was on me today shows as done.
   const all = useMemo(() => (demo.on && states.empty
@@ -56,16 +55,11 @@ export function TasksRoot({ ctx }: ScreenProps) {
   const tasks = useMemo(() => (eventId ? all.filter((t) => t.eventId === eventId) : all), [all, eventId]);
 
   const nameOf = (id: string) => ctx.places.find((p) => p.id === id)?.name;
-  const nextStep: MyStep | undefined = ctx.manager && !offline && !eventId ? steps.items.find((s) => !s.step.done) : undefined;
-  const nextTask = nextStep || offline || eventId ? null : pickNextUp(tasks, uid, today);
-  const lists = nextTask ? tasks.filter((t) => t.id !== nextTask.id) : tasks;
-
-  // P6 "עליך": my tasks (open, and done in the last 24h) and my project steps, without the one in "הבא בתור".
-  const mineTasks = ordered(lists.filter((t) => isMine(t, uid) && (!t.done || now - Date.parse(t.doneAt || '') < DONE_VISIBLE_MS)), uid, today);
-  const mineSteps = steps.items.filter((s) => s !== nextStep && (!s.step.done || now - Date.parse(s.step.doneAt || '') < DAY30));
+  const mineTasks = ordered(tasks.filter((t) => isMine(t, uid) && (!t.done || now - Date.parse(t.doneAt || '') < DONE_VISIBLE_MS)), uid, today);
+  const mineSteps = steps.items.filter((s) => (!s.step.done || now - Date.parse(s.step.doneAt || '') < DAY30));
   const mineCount = mineTasks.length + mineSteps.length;
   const progress = ctx.manager
-    ? { total: mineCount + (nextStep || nextTask ? 1 : 0), done: mineTasks.filter((t) => t.done).length + mineSteps.filter((s) => s.step.done).length }
+    ? { total: mineCount, done: mineTasks.filter((t) => t.done).length + mineSteps.filter((s) => s.step.done).length }
     : progressOf(tasks, uid, today);
   const caption = progressCaption(progress.done, progress.total);
 
@@ -73,11 +67,11 @@ export function TasksRoot({ ctx }: ScreenProps) {
   const setView = (v: View) => go(v === 'place' && !evQuery ? '/tasks' : `/tasks?${[v === 'place' && !evQuery ? '' : `view=${v}`, evQuery].filter(Boolean).join('&')}`, true);
   const free = tasks.filter((t) => isFree(t) && isForToday(t, today));
   // "באיחור" stands apart, in its own group (the old list's late section), in every view
-  const [placeLate, placeRest] = splitOverdue(onlyFree ? lists.filter((t) => isFree(t) && !t.done) : lists, uid, today);
+  const [placeLate, placeRest] = splitOverdue(onlyFree ? tasks.filter((t) => isFree(t) && !t.done) : tasks, uid, today);
   const placeGroups = groupByPlace(placeRest, uid, today, nameOf, doneHere).filter((g) => g.rows.length);
-  const timeGroups = groupByTime(lists, uid, today, true);
-  const myOpen = lists.filter((t) => isMine(t, uid) && !t.done);
-  const [myLate, myRows] = splitOverdue(ordered(lists.filter((t) => isMine(t, uid) && (!t.done || now - Date.parse(t.doneAt || '') < DONE_VISIBLE_MS)), uid, today), uid, today);
+  const timeGroups = groupByTime(tasks, uid, today, true);
+  const myOpen = tasks.filter((t) => isMine(t, uid) && !t.done);
+  const [myLate, myRows] = splitOverdue(mineTasks, uid, today);
   const stepsShown = ctx.manager && !eventId ? mineSteps : [];
   const stepsOpen = stepsShown.filter((s) => !s.step.done);
   const stepsDone = stepsShown.filter((s) => s.step.done);
@@ -98,15 +92,6 @@ export function TasksRoot({ ctx }: ScreenProps) {
       <BroadcastCard ctx={ctx} />
       {progress.total > 0 && <ProgressSegments className="tasks-progress" total={progress.total} done={progress.done} caption={caption} />}
       {offline && <OfflineQueue uid={uid} />}
-      {nextStep && <NextStepCard s={nextStep} />}
-      {nextTask && (
-        <NextUpCard title={nextTask.title}
-          meta={[nextTask.location?.placeName, rowMeta(nextTask, { uid, view: 'place', today, now, profileOf, time: routineTime(nextTask, ctx.templates) })].filter(Boolean).join(' · ')}
-          actions={<>
-            <Button size="big" grow icon="check" onClick={() => a.done(nextTask)}>בוצע</Button>
-            <Button variant="secondary" size="lg" icon="camera" onClick={() => go(`/tasks/${nextTask.id}/done`)}>צילום</Button>
-          </>} />
-      )}
       {failed && <Strip tone="red" role="alert" className="tasks-loaderr">{loadError(root.error)}</Strip>}
       {ctx.manager && !eventId && <ProjectsBlock ctx={ctx} />}
       {eventId && (
@@ -132,7 +117,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
           {g.rows.map((t) => <TaskRow key={t.id} t={t} view={g.key === 'late' ? 'late' : g.key === 'today' || g.key === 'none' ? 'time' : 'later'} />)}
         </ListCard>
       ))}
-      {view === 'mine' && (myOpen.length === 0 && !stepsOpen.length && !nextTask && !root.loading && !failed ? (
+      {view === 'mine' && (myOpen.length === 0 && !stepsOpen.length && !root.loading && !failed ? (
         <EmptyState variant="done" className="tasks-empty-mine" title="סיימת את כל מה שעליך" text={doneToday === 1 ? 'משימה אחת היום' : `${doneToday} משימות היום`}
           action={free.length > 0 ? <Button className="tasks-take-free" onClick={() => go('/tasks?free=1', true)}>{`לקחת אחת מהפנויות · ${free.length}`}</Button> : undefined} />
       ) : <>
@@ -147,7 +132,7 @@ export function TasksRoot({ ctx }: ScreenProps) {
           </ListCard>
         )}
       </>)}
-      {view !== 'mine' && !root.loading && !failed && lists.length === 0 && (
+      {view !== 'mine' && !root.loading && !failed && tasks.length === 0 && (
         <EmptyState variant="card" title="אין משימות פתוחות" text="משימה חדשה נכנסת מהשורה למטה" />
       )}
       {/* Q2: one row to the history and, for managers, one row to the recurring tasks. Places are reached from the Farm tab. */}
@@ -162,26 +147,6 @@ export function TasksRoot({ ctx }: ScreenProps) {
         </ListCard>
       )}
     </AppScreen>
-  );
-}
-
-/** P1 next-up when it is a project step: "בוצע" closes the step (the project too when it was the last open one). */
-function NextStepCard({ s }: { s: MyStep }) {
-  const ctx = useV2(); const all = useSteps(s.project.id); const toast = useToast(); const fail = useFail();
-  const done = async () => {
-    try {
-      await completeStep(ctx, s.project.id, s.step.id, all.items);
-      toast.show({ text: `בוצע: ${s.step.title}`, actions: [{ label: 'ביטול', onClick: () => { reopenStep(ctx, s.project.id, s.step.id).catch(fail); } }] });
-    } catch (e) { fail(e); }
-  };
-  const due = s.step.due ? `עד ${dueText(s.step.due, ctx.today)}` : '';
-  return (
-    <NextUpCard title={<span className="tasks-nextup-title">{s.step.title}<ProjectTag /></span>} metaIcon={null}
-      meta={[s.short, `צעד ${s.n} מתוך ${s.total}`, due].filter(Boolean).join(' · ')}
-      actions={<>
-        <Button size="big" grow icon="check" onClick={done}>בוצע</Button>
-        <Button variant="secondary" size="lg" {...to(projectLink(s.project.id))}>לפרויקט</Button>
-      </>} />
   );
 }
 

@@ -34,6 +34,13 @@
   background: transparent; border: 0; font: inherit; color: var(--ink); text-align: start;
 }
 
+/* The person link is a separate touch target from the button that opens the order. */
+.events-guestrow__person {
+  flex: none; min-width: 44px; min-height: 44px; display: flex; flex-direction: column; justify-content: center;
+  align-items: center; gap: 0; padding: 0; line-height: 1.25; text-decoration: underline;
+}
+.events-guestrow__person > span { font-size: 13px; }
+
 /* sheets */
 .events-sheet { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
 .events-sheet__meta { margin: 0; font-size: 15px; line-height: 1.6; color: var(--soft); }
@@ -126,3 +133,27 @@
 /* edit form header: ביטול and ⋯ (rule 6) */
 .events-formend { display: flex; align-items: center; gap: 12px; }
 .v2 .events-cancel { background: transparent; border: 0; font-family: inherit; }
+
+.events-report { display: grid; gap: 10px; min-width: 0; }
+.events-arrivals { display: inline-grid; position: relative; border-radius: 4px; overflow: hidden; min-width: 34px; text-align: center; }
+.events-arrivals > span { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--green-tint, #d8ebd9); }
+.events-arrivals > b { position: relative; }
+
+.events-cache { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; background: var(--card); border: 1px solid var(--line); border-radius: 30px; color: var(--ink); font: inherit; padding: 5px 10px; cursor: pointer; }
+.events-cache > span { border-radius: 50%; width: 9px; height: 9px; background: #a64c0d; }
+.events-cache--good > span { background: #28734b; } .events-cache--bad > span { background: #a32b2b; }
+
+.events-catalog, .events-need { padding: 12px; }
+.events-catalog > button { margin: 4px; }
+.events-checkline { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+
+
+.k-check-select { border:1px solid var(--line); border-radius:8px; background:var(--card); }
+.k-check-select summary { min-height:44px; padding:10px 12px; cursor:pointer; }
+.k-check-select summary span { margin-inline:5px; font-weight:600; }
+.k-check-select summary small { color:var(--muted, #525c55); }
+.k-check-select > div { padding:0 12px 6px; }
+
+.k-grid2.events-resources { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.events-resources .k-tile { min-width: 0; padding: 10px 8px; }
+.events-resources .k-tile__title { font-size: 15px; overflow-wrap: anywhere; }
